@@ -69,6 +69,19 @@ impl<'de> Deserialize<'de> for Template {
     }
 }
 
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for Template {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Template".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": ["string", "boolean", "number"],
+        })
+    }
+}
+
 /// Deserialize from a template [Value]. Used for deserializing values into
 /// function arguments
 pub struct ValueDeserializer(Value);

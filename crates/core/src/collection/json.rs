@@ -12,6 +12,7 @@ use thiserror::Error;
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum JsonTemplate {
     Null,
     Bool(bool),

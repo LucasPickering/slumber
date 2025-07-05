@@ -20,6 +20,7 @@ indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
 ratatui = {workspace = true, features = ["serde"]}
+schemars = {workspace = true, features = ["indexmap2"], optional = true}
 serde = {workspace = true}
 slumber_util = {workspace = true}
 tracing = {workspace = true}
@@ -30,6 +31,9 @@ env-lock = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}
+
+[features]
+schema = ["dep:schemars"]
 
 [lints]
 workspace = true

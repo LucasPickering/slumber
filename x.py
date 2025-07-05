@@ -11,17 +11,20 @@ import sys
 import subprocess
 import argparse
 import itertools
+from typing import Literal
+import json
 
 WATCH_PATHS = ["Cargo.toml", "Cargo.lock", "src/", "crates/"]
+SCHEMA_TARGETS = ["collection", "config"]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--log", "-l", default="DEBUG", help="Log level")
     subparsers = parser.add_subparsers(help="Subcommand to execute")
 
     # `cli` subcommand
     cli_parser = subparsers.add_parser("cli", help=cli.__doc__)
+    cli_parser.add_argument("--log", "-l", default="DEBUG", help="Log level")
     cli_parser.add_argument(
         "args", nargs=argparse.REMAINDER, help="Additional arguments to pass to the CLI"
     )
@@ -30,6 +33,7 @@ def main():
     # `tui` subcommand
     tui_parser = subparsers.add_parser("tui", help=tui.__doc__)
     tui_parser.set_defaults(func=tui)
+    tui_parser.add_argument("--log", "-l", default="DEBUG", help="Log level")
     tui_parser.add_argument(
         "--tracing",
         action="store_true",
@@ -38,6 +42,23 @@ def main():
     )
     tui_parser.add_argument(
         "args", nargs=argparse.REMAINDER, help="Additional arguments to pass to the TUI"
+    )
+
+    # `schema` subcommand
+    schema_parser = subparsers.add_parser("schema", help=schema.__doc__)
+    schema_parser.set_defaults(func=schema)
+    schema_parser.add_argument(
+        "targets",
+        nargs="*",
+        choices=SCHEMA_TARGETS,
+        help="Schema file(s) to generate. Omit for all",
+    )
+    schema_parser.add_argument(
+        "--output",
+        "-o",
+        dest="output_dir",
+        default="schemas/",
+        help="Output directory for schema files, relative to repository root",
     )
 
     args = vars(parser.parse_args())
@@ -100,6 +121,26 @@ def tui(log: str, tracing: bool, args: list[str]) -> None:
         sys.exit(0)
 
 
+def schema(targets: list[str], output_dir: str) -> None:
+    """Generate JSON Schema files from Rust type definitions"""
+
+    # Schema generator is run in a Rust script so it can access the Rust type definitions
+    script = os.path.join(root_dir(), "scripts", "schema.rs")
+    output_dir = os.path.join(root_dir(), output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Default to all
+    if not targets:
+        targets = SCHEMA_TARGETS
+
+    for target in targets:
+        output_file = os.path.join(output_dir, f"{target}.json")
+        print(f"Writing schema `{target}` to {output_file}")
+        stdout = subprocess.check_output([script, target])
+        with open(output_file, "wb") as f:
+            f.write(stdout)
+
+
 def env(log: str) -> dict[str, str]:
     """Get the environment that cargo should be run with"""
     return {
@@ -107,6 +148,11 @@ def env(log: str) -> dict[str, str]:
         "RUST_BACKTRACE": "1",
         **os.environ,
     }
+
+
+def root_dir() -> str:
+    """Get the root directory of the project"""
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 if __name__ == "__main__":

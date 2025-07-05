@@ -38,6 +38,8 @@ TODO write migration guide
 
 - Add collection switcher modal [#536](https://github.com/LucasPickering/slumber/issues/536)
   - You can now switch between any collection that you've opened in the past without having to close Slumber
+- Generate JSON Schema for both the collection and config formats [#374](https://github.com/LucasPickering/slumber/issues/374)
+  - This enables better validation and completion in your IDE; [see docs for more](TODO)
 
 ### Changed
 

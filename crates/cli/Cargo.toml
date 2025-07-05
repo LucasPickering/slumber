@@ -24,7 +24,9 @@ dialoguer = {workspace = true, features = ["password"]}
 indexmap = {workspace = true}
 itertools = {workspace = true}
 reqwest = {workspace = true}
+schemars = {workspace = true, optional = true}
 serde = {workspace = true}
+serde_json = {workspace = true, optional = true}
 serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}

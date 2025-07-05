@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Collection",
+  "description": "A collection of profiles, requests, etc. This is the primary Slumber unit\nof configuration.",
+  "type": "object",
+  "properties": {
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Profile"
+      }
+    },
+    "requests": {
+      "$ref": "#/$defs/RecipeTree"
+    }
+  },
+  "required": [
+    "profiles",
+    "requests"
+  ],
+  "examples": [
+    {
+      "profiles": {
+        "local": {
+          "name": "Local",
+          "default": true,
+          "data": {
+            "host": "http://localhost:8000"
+          }
+        },
+        "remote": {
+          "name": "Remote",
+          "default": false,
+          "data": {
+            "host": "https://myfishes.fish"
+          }
+        }
+      },
+      "requests": {}
+    }
+  ],
+  "patternProperties": {
+    "^\\.": {
+      "description": "Ignore any property beginning with `.`"
+    }
+  },
+  "$defs": {
+    "Profile": {
+      "description": "Mutually exclusive hot-swappable config group",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "default": {
+          "description": "For the CLI, use this profile when no `--profile` flag is passed. For\nthe TUI, select this profile by default from the list. Only one profile\nin the collection can be marked as default. This is enforced by a\ncustom deserializer function.",
+          "type": "boolean",
+          "default": false
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Template"
+          }
+        }
+      },
+      "required": [
+        "data"
+      ]
+    },
+    "Template": {
+      "type": [
+        "string",
+        "boolean",
+        "number"
+      ]
+    },
+    "RecipeTree": {
+      "description": "A folder/recipe tree. This is exactly what the user inputs in their\ncollection file. IDs in this tree are **globally** unique, meaning no two\nnodes can have the same ID anywhere in the tree, even between folders and\nrecipes. This is a mild restriction on the user that makes implementing a\nlot simpler. In reality it's unlikely they would want to give two things\nthe same ID anyway.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/RecipeNode"
+      }
+    },
+    "RecipeNode": {
+      "description": "A node in the recipe tree, either a folder or recipe",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "folder"
+            }
+          },
+          "$ref": "#/$defs/Folder",
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "Rename this variant to match the `requests` field in the root and\nfolders",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "request"
+            }
+          },
+          "$ref": "#/$defs/Recipe",
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "Folder": {
+      "description": "A gathering of like-minded recipes and/or folders",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requests": {
+          "description": "RECURSION. Use `requests` in serde to match the root field.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/RecipeNode"
+          }
+        }
+      },
+      "required": [
+        "requests"
+      ]
+    },
+    "HttpMethod": {
+      "description": "HTTP method. This is duplicated from [reqwest::Method] so we can enforce\nthe method is valid during deserialization. This is also generally more\nergonomic at the cost of some flexibility.\n\nThe FromStr implementation will be case-insensitive",
+      "type": "string"
+    },
+    "RecipeBody": {
+      "description": "Template for a request body. `Raw` is the \"default\" variant, which\nrepresents a single string (parsed as a template). Other variants can be\nused for convenience, to construct complex bodies in common formats. The\nHTTP engine uses the variant to determine not only how to serialize the\nbody, but also other parameters of the request (e.g. the `Content-Type`\nheader).",
+      "anyOf": [
+        {
+          "description": "`application/json` body",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "json"
+            },
+            "data": {
+              "$ref": "#/$defs/JsonTemplate"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ]
+        },
+        {
+          "description": "`application/x-www-form-urlencoded` fields. Values must be strings",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "form_urlencoded"
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Template"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ]
+        },
+        {
+          "description": "`multipart/form-data` fields. Values can be binary",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "form_multipart"
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Template"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ]
+        },
+        {
+          "description": "Plain string/bytes body. Must be the last variant to support untagged.\nThis captures any value that doesn't fit one of the above variants.",
+          "$ref": "#/$defs/Template"
+        }
+      ]
+    },
+    "JsonTemplate": {
+      "description": "A JSON value like [serde_json::Value], but all strings are templates",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/Template"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JsonTemplate"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonTemplate"
+          }
+        }
+      ]
+    },
+    "Authentication": {
+      "description": "Shortcut for defining authentication method. If this is defined in addition\nto the `Authorization` header, that header will end up being included in the\nrequest twice.\n\nType parameter allows this to be re-used for post-render purposes (with\n`T=String`).",
+      "oneOf": [
+        {
+          "description": "`Authorization: Basic {username:password | base64}`",
+          "type": "object",
+          "properties": {
+            "username": {
+              "$ref": "#/$defs/Template"
+            },
+            "password": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Template"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "basic"
+            }
+          },
+          "required": [
+            "type",
+            "username"
+          ]
+        },
+        {
+          "description": "`Authorization: Bearer {token}`",
+          "type": "object",
+          "properties": {
+            "token": {
+              "$ref": "#/$defs/Template"
+            },
+            "type": {
+              "type": "string",
+              "const": "bearer"
+            }
+          },
+          "required": [
+            "type",
+            "token"
+          ]
+        }
+      ]
+    },
+    "QueryParameterValue": {
+      "description": "A value for a particular query parameter key",
+      "anyOf": [
+        {
+          "description": "The common case: `?foo=bar`",
+          "$ref": "#/$defs/Template"
+        },
+        {
+          "description": "Multiple values for the same parameter. This will be represented by\nrepeating the parameter key: `?foo=bar&foo=baz`",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Template"
+          }
+        }
+      ]
+    },
+    "Recipe": {
+      "description": "A definition of how to make a request. This is *not* called `Request` in\norder to distinguish it from a single instance of an HTTP request. And it's\nnot called `RequestTemplate` because the word \"template\" has a specific\nmeaning related to string interpolation.",
+      "type": "object",
+      "properties": {
+        "persist": {
+          "type": "boolean",
+          "default": true
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method": {
+          "description": "*Not* a template string because the usefulness doesn't justify the\ncomplexity. This gives the user an immediate error if the method is\nwrong which is helpful.",
+          "$ref": "#/$defs/HttpMethod"
+        },
+        "url": {
+          "$ref": "#/$defs/Template"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecipeBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authentication": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Authentication"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "description": "A map of key-value query parameters. Each value can either be a single\nvalue (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/QueryParameterValue"
+          }
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Template"
+          }
+        }
+      },
+      "required": [
+        "method",
+        "url"
+      ]
+    }
+  }
+}

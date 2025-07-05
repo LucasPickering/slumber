@@ -9,13 +9,14 @@ use strum::EnumDiscriminants;
 use thiserror::Error;
 
 /// A folder/recipe tree. This is exactly what the user inputs in their
-/// collection file. IDs in this tree are **globally* unique, meaning no two
+/// collection file. IDs in this tree are **globally** unique, meaning no two
 /// nodes can have the same ID anywhere in the tree, even between folders and
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
 #[derive(derive_more::Debug, Default, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
     #[serde(flatten)]
@@ -66,7 +67,7 @@ impl IntoIterator for RecipeLookupKey {
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[expect(clippy::large_enum_variant)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum RecipeNode {
     Folder(Folder),
     /// Rename this variant to match the `requests` field in the root and

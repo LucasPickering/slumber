@@ -73,6 +73,29 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  # Check our generated JSON schemas for uncommitted changes. This happens if
+  # the Rust code is modified but the updated schemas aren't committed.
+  schema:
+    name: Check JSON Schemas for Changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust files
+        uses: swatinem/rust-cache@v2
+
+      - name: Generate schemas
+        run: ./x.py schema
+
+      - name: Check for uncommitted schema changes
+        run: |
+          git diff --exit-code schemas/
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            echo "Uncommitted schema changes. Run `./x.py schema` to update"
+            exit $rc
+          fi
+
   test:
     name: Test - ${{ matrix.platform.name }}
     strategy:

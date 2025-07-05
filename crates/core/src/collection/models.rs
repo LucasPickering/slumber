@@ -21,11 +21,22 @@ use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
-///
-/// This deliberately does not implement `Clone`, because it could potentially
-/// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
 #[derive(Debug, Default, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "schema",
+    schemars(
+        // Allow any top-level property beginning with .
+        extend("patternProperties" = {
+            "^\\.": { "description": "Ignore any property beginning with `.`" }
+        }),
+        example = Collection {
+            profiles: schema::example_profiles(),
+            recipes: schema::example_recipe_tree(),
+        },
+    )
+)]
 pub struct Collection {
     /// Descriptive name for the collection
     pub name: Option<String>,
@@ -57,6 +68,7 @@ impl Collection {
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
@@ -65,6 +77,7 @@ pub struct Profile {
     /// the TUI, select this profile by default from the list. Only one profile
     /// in the collection can be marked as default. This is enforced by a
     /// custom deserializer function.
+    #[cfg_attr(feature = "schema", schemars(default))]
     pub default: bool,
     pub data: IndexMap<String, Template>,
 }
@@ -108,6 +121,7 @@ impl slumber_util::Factory for Profile {
 )]
 #[deref(forward)]
 #[serde(transparent)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ProfileId(String);
 
 #[cfg(any(test, feature = "test"))]
@@ -127,6 +141,7 @@ impl slumber_util::Factory for ProfileId {
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
@@ -160,9 +175,11 @@ impl slumber_util::Factory for Folder {
 /// meaning related to string interpolation.
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
+    #[cfg_attr(feature = "schema", schemars(default = "persist_default"))]
     pub persist: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -178,8 +195,10 @@ pub struct Recipe {
     /// A map of key-value query parameters. Each value can either be a single
     /// value (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    #[cfg_attr(feature = "schema", schemars(default))]
     pub query: IndexMap<String, QueryParameterValue>,
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    #[cfg_attr(feature = "schema", schemars(default))]
     pub headers: IndexMap<String, Template>,
 }
 
@@ -247,6 +266,12 @@ impl slumber_util::Factory<&str> for Recipe {
     }
 }
 
+/// Default value for `Recipe::persist`
+#[cfg(feature = "schema")]
+fn persist_default() -> bool {
+    true
+}
+
 #[derive(
     Clone,
     Debug,
@@ -263,6 +288,7 @@ impl slumber_util::Factory<&str> for Recipe {
 )]
 #[deref(forward)]
 #[serde(transparent)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RecipeId(String);
 
 #[cfg(any(test, feature = "test"))]
@@ -298,6 +324,7 @@ impl slumber_util::Factory for RecipeId {
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
     Basic { username: T, password: Option<T> },
@@ -309,6 +336,7 @@ pub enum Authentication<T = Template> {
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum QueryParameterValue {
     /// The common case: `?foo=bar`
     One(Template),
@@ -342,6 +370,7 @@ impl<const N: usize> From<[&str; N]> for QueryParameterValue {
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum RecipeBody {
     /// `application/json` body
     Json(JsonTemplate),
@@ -436,6 +465,42 @@ impl slumber_util::Factory for Collection {
             recipes: by_id([recipe]).into(),
             profiles: by_id([profile]),
         }
+    }
+}
+
+/// Functions to generate examples for the JSON Schema
+#[cfg(feature = "schema")]
+mod schema {
+    use crate::{
+        collection::{Profile, ProfileId, RecipeTree},
+        test_util::by_id,
+    };
+    use indexmap::{IndexMap, indexmap};
+
+    pub fn example_profiles() -> IndexMap<ProfileId, Profile> {
+        by_id([
+            Profile {
+                id: "local".into(),
+                name: Some("Local".into()),
+                default: true,
+                data: indexmap! {
+                    "host".into() => "http://localhost:8000".into()
+                },
+            },
+            Profile {
+                id: "remote".into(),
+                name: Some("Remote".into()),
+                default: false,
+                data: indexmap! {
+                    "host".into() => "https://myfishes.fish".into()
+                },
+            },
+        ])
+    }
+
+    pub fn example_recipe_tree() -> RecipeTree {
+        // TODO
+        RecipeTree::default()
     }
 }
 

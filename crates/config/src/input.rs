@@ -93,6 +93,7 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
 #[derive(
     Copy, Clone, Debug, Display, Eq, PartialEq, Hash, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     // vvvvv If adding a variant, make sure to update the docs vvvvv
@@ -211,6 +212,7 @@ impl Action {
 /// One or more key combinations, which should correspond to a single action
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct InputBinding(Vec<KeyCombination>);
 
@@ -259,6 +261,7 @@ impl From<KeyCode> for InputBinding {
 /// Key input sequence, which can trigger an action
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(into = "String", try_from = "String")]
 pub struct KeyCombination {
     pub code: KeyCode,

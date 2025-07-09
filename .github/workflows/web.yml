@@ -46,7 +46,7 @@ jobs:
       # If you use any mdbook plugins, here's the place to install them!
       - name: Install mdbook plugins
         run: |
-          cargo install mdbook-toc@0.14.2
+          cargo install mdbook-pagetoc@0.2.0
 
       # Install and run oranda (and mdbook)
       # This will write all output to ./public/ (including copying mdbook's output to there)

@@ -38,8 +38,6 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 
 The following fields are available in `config.yml`:
 
-<!-- toc -->
-
 ### `commands.shell`
 
 **Type:** `string[]`

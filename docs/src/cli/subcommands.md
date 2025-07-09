@@ -1,7 +1,5 @@
 # Subcommands
 
-<!-- toc -->
-
 ## `slumber collections`
 
 View and manipulate stored collection history/state. Slumber uses a local database to store all request/response history, as well as UI state and other persisted values. **As a user, you rarely have to worry about this.** The most common scenario in which you _do_ have to is if you've renamed a collection file and want to migrate the history to match the new path. [See here for how to migrate collection files](../user_guide/database.md#migrating-collections).

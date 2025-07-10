@@ -2,7 +2,7 @@
 
 ## `slumber collections`
 
-View and manipulate stored collection history/state. Slumber uses a local database to store all request/response history, as well as UI state and other persisted values. **As a user, you rarely have to worry about this.** The most common scenario in which you _do_ have to is if you've renamed a collection file and want to migrate the history to match the new path. [See here for how to migrate collection files](../user_guide/database.md#migrating-collections).
+View and manipulate stored collection history/state. Slumber uses a local database to store all request/response history, as well as UI state and other persisted values. **As a user, you rarely have to worry about this.** The most common scenario in which you _do_ have to is if you've renamed a collection file and want to migrate the history to match the new path. [See here for how to migrate collection files](../database.md#migrating-collections).
 
 See `slumber collections --help` for more options.
 
@@ -26,13 +26,13 @@ slumber db 'select 1'
 
 Generate an HTTP request in an external format. Currently the only supported format is cURL.
 
-### Overrides
+**Overrides**
 
 The `generate` subcommand supports overriding template values in the same that `slumber request` does. See the [`request` subcommand docs](#overrides) for more.
 
 See `slumber generate --help` for more options.
 
-### Examples
+**Examples**
 
 Given this request collection:
 
@@ -97,11 +97,11 @@ Generate a Slumber collection file based on an external format.
 
 See `slumber import --help` for more options.
 
-### Disclaimer
+**Disclaimer**
 
 Importers are **approximate**. They'll give the you skeleton of a collection file, but don't expect 100% equivalency. They save a lot of tedious work for you, but you'll generally still need to do some manual work on the collection file to get what you want.
 
-### Formats
+**Formats**
 
 Supported formats:
 
@@ -110,7 +110,7 @@ Supported formats:
 - [VSCode `.rest`](https://github.com/Huachao/vscode-restclient)
 - [JetBrains `.http`](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html)
 
-### Examples
+**Examples**
 
 The general format is:
 
@@ -148,7 +148,7 @@ If you'd like another format supported, please [open an issue](https://github.co
 
 Generate a new Slumber collection file. The new collection will have some example data predefined.
 
-### Examples
+**Examples**
 
 ```sh
 # Generate and use a new collection at the default path of slumber.yml
@@ -171,7 +171,7 @@ Send an HTTP request. There are many use cases to which the CLI is better suited
 
 See `slumber request --help` for more options.
 
-### Overrides
+**Overrides**
 
 You can manually override template values using CLI arguments. This means the template renderer will use the override value in place of calculating it. For example:
 
@@ -185,7 +185,7 @@ This can also be used to override chained values:
 slumber request login --override chains.password=hunter2
 ```
 
-### Exit Code
+**Exit Code**
 
 By default, the CLI returns exit code 1 if there is a fatal error, e.g. the request failed to build or a network error occurred. If an HTTP response was received and parsed, the process will exit with code 0, regardless of HTTP status.
 
@@ -197,7 +197,7 @@ If you want to set the exit code based on the HTTP response status, use the flag
 | 1    | Fatal error                                         |
 | 2    | HTTP response had status >=400 (with `--exit-code`) |
 
-### Examples
+**Examples**
 
 Given this request collection:
 
@@ -227,7 +227,7 @@ Print metadata about Slumber.
 
 See `slumber show --help` for more options.
 
-### Examples
+**Examples**
 
 ```sh
 slumber show paths # Show paths of various Slumber data files/directories

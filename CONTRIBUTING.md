@@ -82,6 +82,12 @@ oranda dev
 
 #### Writing Docs
 
+Docs live in `docs/src`. You'll need to install [mdbook](https://rust-lang.github.io/mdBook/guide/installation.html), as well as any plugins (preprocessors) listed in `docs/book.toml`. To build and view the docs:
+
+```sh
+mdbook serve docs --open
+```
+
 - Any new file added to the book must be listed in `SUMMARY.md`
 - All fields, types, etc. in the collection (`slumber.yml`) or config (`config.yml`) files **must** be documented
 - Larger features should be documented via a section in the user guide

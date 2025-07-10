@@ -43,4 +43,4 @@ commands:
   shell: [fish, -c]
 ```
 
-If you don't want to execute via _any_ shell, you can set it to `[]`. In this case, query commands will be parsed via [shell-words](https://docs.rs/shell-words/latest/shell_words/) and executed directly. For example, `jq .args` will be parsed into `["jq", ".args"]`, then `jq` will be executed with a single argument: `.args`.
+If you don't want to execute via _any_ shell, you can set it to `[]`. In this case, query commands will be parsed via [shell-words](https://docs.rs/shell-words/latest/shell_words/) and executed directly. For example, `jq .args` will be parsed into `["jq", ".args"]`, then `jq` will be executed with a single argument: `.args`. This of course means you won't get access to shell features such as `|`, but it provides better cross-platform portability.

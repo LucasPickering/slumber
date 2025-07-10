@@ -45,7 +45,7 @@ Chain a value from the body of another response. This can reference either
 | `trigger` | [`ChainRequestTrigger`](#chain-request-trigger) | When the upstream recipe should be executed, as opposed to loaded from memory | `!never` |
 | `section` | [`ChainRequestSection`](#chain-request-section) | The section (header or body) of the request from which to chain a value       | `Body`   |
 
-#### Chain Request Trigger
+**Chain Request Trigger**
 
 This defines when a chained request should be triggered (i.e. when to execute a new request) versus when to use the most recent from history.
 
@@ -63,7 +63,7 @@ This defines when a chained request should be triggered (i.e. when to execute a 
 - `h` (hours)
 - `d` (days)
 
-#### Examples
+**Examples**
 
 ```yaml
 !request
@@ -96,7 +96,7 @@ This defines which section of the response (headers or body) should be used to l
 | `body`   | None       | The body of the response                                                                                                     |
 | `header` | `Template` | A specific header from the response. If the header appears multiple times in the response, only the first value will be used |
 
-#### Examples
+**Examples**
 
 ```yaml
 !request
@@ -127,7 +127,7 @@ Load a value from an environment variable.
 | ---------- | ---------- | ---------------- | -------- |
 | `variable` | `Template` | Variable to load | Required |
 
-#### Examples
+**Examples**
 
 ```yaml
 current_dir:
@@ -143,7 +143,7 @@ Read a file and use its contents as the rendered value.
 | ------ | ---------- | -------------------------------------------------------- | -------- |
 | `path` | `Template` | Path of the file to load (relative to current directory) | Required |
 
-#### Examples
+**Examples**
 
 ```yaml
 username:
@@ -160,7 +160,7 @@ Prompt the user for text input to use as the rendered value.
 | `message` | `Template` | Descriptive prompt for the user                                                                                                               | Chain ID |
 | `default` | `Template` | Value to pre-populated the prompt textbox. **Note**: Due to a library limitation, not supported on chains with `sensitive: true` _in the CLI_ | `null`   |
 
-#### Examples
+**Examples**
 
 ```yaml
 password:
@@ -178,7 +178,7 @@ Prompt the user to select a defined value from a list.
 | `message` | `Template`                         | Descriptive prompt for the user        | Chain ID |
 | `options` | [`SelectOptions`](#Select-options) | List of options to present to the user | Required |
 
-#### Select Options
+**Select Options**
 
 The list of options to present to the user. This can be a static list of values or a dynamic template to generate the list of options.
 
@@ -187,7 +187,7 @@ The list of options to present to the user. This can be a static list of values 
 | `fixed`   | `Template[]` | Fixed list of options                     |
 | `dynamic` | `Template`   | Template that renders to a **JSON array** |
 
-#### Examples
+**Examples**
 
 ```yaml
 fruit:

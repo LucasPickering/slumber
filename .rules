@@ -18,3 +18,7 @@ cargo test -p slumber_core
 # Run a specific test
 cargo test -p slumber_core -- test_regression
 ```
+
+## Rust scripts
+
+Any file matching scripts/*.rs is a Rust script file. It contains an embedded Cargo.toml at the start, and after that is a normal Rust binary program. These can be executed by running the file directly: `./scripts/<script>.rs`

@@ -30,6 +30,7 @@ anyhow = "1.0.0"
 async-trait = "0.1.81"
 bytes = {version = "1.6.1", default-features = false}
 chrono = {version = "0.4.31", default-features = false}
+clap = {version = "4.4.2", default-features = false}
 derive_more = {version = "1.0.0", default-features = false}
 dialoguer = {version = "0.11.0", default-features = false}
 dirs = "5.0.1"
@@ -57,6 +58,7 @@ slumber_template = {path = "./crates/template", version = "3.2.0"}
 slumber_tui = {path = "./crates/tui", version = "3.2.0"}
 slumber_util = {path = "./crates/util", version = "3.2.0"}
 strum = {version = "0.26.3", default-features = false}
+syn = "2.0.101"
 terminput = "0.5.3"
 thiserror = "2.0.12"
 tokio = {version = "1.39.2", default-features = false}

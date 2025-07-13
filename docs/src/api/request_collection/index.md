@@ -28,70 +28,65 @@ A request collection supports the following top-level fields:
 | ---------- | ------------------------------------------------------- | ------------------------- | ------- |
 | `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values    | `{}`    |
 | `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send | `{}`    |
-| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values   | `{}`    |
 
 In addition to these fields, any top-level field beginning with `.` will be ignored. This can be combined with [YAML anchors](https://yaml.org/spec/1.2.2/#anchors-and-aliases) to define reusable components in your collection file.
 
 ## Examples
 
 ```yaml
+# Use YAML anchors for de-duplication. Normally unknown fields in the
+# collection trigger an error; the . prefix tells Slumber to ignore this field
+.base_profile: &base_profile
+  username: "{{ file('username.txt') }}"
+  password: "{{ prompt(message='Password', sensitive=true) }}"
+  auth_token: "{{ response('login') | jsonpath('$.token') }}"
+
 profiles:
   local:
     name: Local
     data:
+      <<: *base_profile
       host: http://localhost:5000
       user_guid: abc123
   prd:
     name: Production
     data:
+      <<: *base_profile
       host: https://httpbin.org
       user_guid: abc123
 
-chains:
-  username:
-    source: !file
-      path: ./username.txt
-  password:
-    source: !prompt
-      message: Password
-    sensitive: true
-  auth_token:
-    source: !request
-      recipe: login
-    selector: $.token
-
-# Use YAML anchors for de-duplication. Normally unknown fields in the
-# collection trigger an error; the . prefix tells Slumber to ignore this field
-.base: &base
+.base_request: &base_request
   headers:
     Accept: application/json
 
 requests:
-  login: !request
-    <<: *base
+  login:
+    type: request
+    <<: *base_request
     method: POST
-    url: "{{host}}/anything/login"
+    url: "{{ host }}/anything/login"
     body:
-      !json {
-        "username": "{{chains.username}}",
-        "password": "{{chains.password}}",
-      }
+      type: json
+      data: { "username": "{{ username }}", "password": "{{ password }}" }
 
   # Folders can be used to keep your recipes organized
-  users: !folder
+  users:
+    type: folder
     requests:
-      get_user: !request
-        <<: *base
+      get_user:
+        type: request
+        <<: *base_request
         name: Get User
         method: GET
-        url: "{{host}}/anything/current-user"
-        authentication: !bearer "{{chains.auth_token}}"
+        url: "{{ host }}/anything/current-user"
+        authentication: !bearer "{{ auth_token }}"
 
-      update_user: !request
-        <<: *base
+      update_user:
+        type: request
+        <<: *base_request
         name: Update User
         method: PUT
-        url: "{{host}}/anything/current-user"
-        authentication: !bearer "{{chains.auth_token}}"
+        url: "{{ host }}/anything/current-user"
+        authentication: !bearer "{{ auth_token }}"
         body: !json { "username": "Kenny" }
 ```

@@ -2,17 +2,17 @@
 
 There are a variety of ways to define the body of your request. Slumber supports structured bodies for a fixed set of known content types (see table below).
 
-In addition, you can pass any [`Template`](./template.md) to render any text or binary data. In this case, you'll probably want to explicitly set the `Content-Type` header to tell the server what kind of data you're sending. This may not be necessary though, depending on the server implementation.
+In addition, you can pass any [`Template`](../../user_guide/templates/index.md) to render any text or binary data. In this case, you'll probably want to explicitly set the `Content-Type` header to tell the server what kind of data you're sending. This may not be necessary though, depending on the server implementation.
 
 ## Body Types
 
 The following content types have first-class support. Slumber will automatically set the `Content-Type` header to the specified value, but you can override this simply by providing your own value for the header.
 
-| Variant            | Type                                         | `Content-Type`                      | Description                                                                                                |
-| ------------------ | -------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `!json`            | Any                                          | `application/json`                  | Structured JSON body; all strings are treated as templates                                                 |
-| `!form_urlencoded` | [`mapping[string, Template]`](./template.md) | `application/x-www-form-urlencoded` | URL-encoded form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) |
-| `!form_multipart`  | [`mapping[string, Template]`](./template.md) | `multipart/form-data`               | Binary form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST)      |
+| Variant            | Type                                                               | `Content-Type`                      | Description                                                                                                |
+| ------------------ | ------------------------------------------------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `!json`            | Any                                                                | `application/json`                  | Structured JSON body; all strings are treated as templates                                                 |
+| `!form_urlencoded` | [`mapping[string, Template]`](../../user_guide/templates/index.md) | `application/x-www-form-urlencoded` | URL-encoded form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) |
+| `!form_multipart`  | [`mapping[string, Template]`](../../user_guide/templates/index.md) | `multipart/form-data`               | Binary form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST)      |
 
 ## Examples
 

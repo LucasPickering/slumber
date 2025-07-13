@@ -10,8 +10,7 @@ use derive_more::{Deref, Display, From};
 use mime::{APPLICATION, JSON, Mime};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use slumber_util::Mapping;
-use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
+use std::{borrow::Cow, fmt::Debug};
 
 /// All supported content types. Each variant should have a corresponding
 /// implementation of [ResponseContent].
@@ -31,10 +30,6 @@ pub enum ContentType {
 }
 
 impl ContentType {
-    /// File extensions for each content type
-    const EXTENSIONS: Mapping<'static, ContentType> =
-        Mapping::new(&[(Self::Json, &["json"])]);
-
     /// Parse a MIME string and map it to a known content type
     fn parse_mime(mime_type: &str) -> anyhow::Result<Self> {
         let mime: Mime = mime_type
@@ -63,17 +58,6 @@ impl ContentType {
         match self {
             ContentType::Json => mime::APPLICATION_JSON,
         }
-    }
-
-    /// Guess content type from a file path based on its extension
-    pub fn from_path(path: &Path) -> anyhow::Result<Self> {
-        let extension = path
-            .extension()
-            .and_then(OsStr::to_str)
-            .ok_or_else(|| anyhow!("Path {path:?} has no extension"))?;
-        Self::EXTENSIONS
-            .get(extension)
-            .ok_or_else(|| anyhow!("Unknown extension `{extension}`"))
     }
 
     /// Parse the content type from the `Content-Type` header
@@ -232,24 +216,6 @@ mod tests {
         #[case] expected_error: &str,
     ) {
         assert_err!(ContentType::parse_mime(mime_type), expected_error);
-    }
-
-    #[test]
-    fn test_from_extension() {
-        assert_eq!(
-            ContentType::from_path(Path::new("turbo.json")).unwrap(),
-            ContentType::Json
-        );
-
-        // Errors
-        assert_err!(
-            ContentType::from_path(Path::new("no_extension")),
-            "no extension"
-        );
-        assert_err!(
-            ContentType::from_path(Path::new("turbo.ohno")),
-            "Unknown extension `ohno`"
-        );
     }
 
     /// Test all content types

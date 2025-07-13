@@ -1,0 +1,25 @@
+[package]
+authors = {workspace = true}
+description = "Local-only utilities for generating documentation"
+edition = {workspace = true}
+homepage = {workspace = true}
+keywords = {workspace = true}
+license = {workspace = true}
+name = "doc_utils"
+repository = {workspace = true}
+rust-version = {workspace = true}
+version = {workspace = true}
+
+[package.metadata.release]
+tag = false
+
+[dependencies]
+anyhow = {workspace = true}
+clap = {workspace = true, features = ["derive"]}
+itertools = {workspace = true}
+mdbook = {version = "0.4", default-features = false}
+serde_json = {workspace = true}
+syn = {workspace = true, features = ["extra-traits", "full"]}
+
+[lints]
+workspace = true

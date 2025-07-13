@@ -18,11 +18,11 @@ slumber import v3 <old file> <new file>
 
 The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/lucaspickering/slumber/issues/new).
 
-TODO write migration guide
+[**See the migration guide for more details**](https://slumber.lucaspickering.me/book/troubleshooting/v4_migration.html)
 
 - Replace template chains with a more intuitive function syntax
   - Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: `{{ response('login') | jsonpath('$.token') }}`
-  - TODO link to docs for this
+  - [See docs for more](https://slumber.lucaspickering.me/book/user_guide/templates/functions.html)
 - Replace YAML `!tags` with an inner `type` field
   - This change makes the format compatible with JSON Schema
   - Impacts these collection nodes:

@@ -6,7 +6,17 @@ multilingual = false
 src = "src"
 title = "Slumber"
 
+[build]
+# Watch sources for auto-generated docs
+extra-watch-dirs = ["../crates/doc_utils/", "../crates/core/src/render/functions.rs"]
+
+[preprocessor.template_functions]
+command = "./scripts/mdbook.rs --mode template-functions"
+renderer = ["html"]
+
 [preprocessor.pagetoc]
+after = ["template_functions"]
+
 
 [output.html]
 additional-css = ["theme/pagetoc.css"]

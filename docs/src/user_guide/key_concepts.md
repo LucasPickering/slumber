@@ -10,10 +10,10 @@ The collection is the main form of configuration. It defines a set of request re
 
 A recipe defines which HTTP requests Slumber can make. A recipe generally corresponds to one endpoint on an API, although you can create as many recipes per endpoint as you'd like.
 
+## [Profile](./profiles.md)
+
+A profile is a set of static template values. A collection can contain a list of profiles, allowing you to quickly switch between different sets of values. This is useful for using different deployment environments, different sets of IDs, etc.
+
 ## [Template](./templates/index.md)
 
 Templates are Slumber's most powerful feature. They allow you to dynamically build URLs, query parameters, request bodies, etc. using predefined _or_ dynamic values.
-
-## [Profile](../api/request_collection/profile.md)
-
-A profile is a set of static template values. A collection can contain a list of profiles, allowing you to quickly switch between different sets of values. This is useful for using different deployment environments, different sets of IDs, etc.

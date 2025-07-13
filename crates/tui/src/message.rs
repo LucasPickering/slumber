@@ -15,7 +15,7 @@ use slumber_core::{
     template::{Prompt, ResponseChannel, Select, Template, TemplateChunk},
 };
 use slumber_util::ResultTraced;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -55,6 +55,9 @@ pub enum Message {
     CollectionEndReload(Collection),
     /// Open the collection in the user's editor
     CollectionEdit,
+    /// Switch to a different collection file. This will start an entirely new
+    /// TUI session for the new collection
+    CollectionSelect(PathBuf),
 
     /// Show a yes/no confirmation to the user. Use the included channel to
     /// return the value.

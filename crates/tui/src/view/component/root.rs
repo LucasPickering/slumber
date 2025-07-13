@@ -584,6 +584,7 @@ mod tests {
                 KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,
+                KeyCode::Down,
                 KeyCode::Enter,
                 // Decline
                 KeyCode::Left,
@@ -604,6 +605,7 @@ mod tests {
             .open_actions()
             .send_keys([
                 // "Delete Request" action
+                KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,

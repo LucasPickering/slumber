@@ -1,3 +1,4 @@
+mod collection_select;
 mod exchange_pane;
 mod help;
 mod history;

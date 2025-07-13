@@ -19,7 +19,11 @@ use slumber_core::{
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use slumber_util::ResultTraced;
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::task;
 use tracing::{error, info};
 
@@ -91,6 +95,12 @@ impl TuiState {
     /// Panic if we receive a message of a type that we expected the root TUI
     /// to handle.
     pub fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
+        // This message has to be handled specially because it involves a
+        // wholesale replacement of the state
+        if let Message::CollectionSelect(path) = message {
+            return self.select_collection(path);
+        }
+
         match &mut self.0 {
             TuiStateInner::Loaded(state) => state.handle_message(message),
             // Nothing to do in the error state
@@ -160,6 +170,30 @@ impl TuiState {
                 View::draw_collection_load_error(frame, collection_file, error);
             }
         }
+    }
+
+    /// Select a new collection file, replacing this state entirely
+    fn select_collection(&mut self, path: PathBuf) -> anyhow::Result<()> {
+        let collection_file = CollectionFile::new(Some(path))?;
+
+        // Reuse the existing DB connection and message channel. We clone
+        // because we can't move out of the old state until the new one has
+        // replaced it. These are cheap clones.
+        let (database, messages_tx) = match &self.0 {
+            TuiStateInner::Loaded(state) => {
+                (&state.database, &state.messages_tx)
+            }
+            TuiStateInner::Error {
+                database,
+                messages_tx,
+                ..
+            } => (database, messages_tx),
+        };
+        let database =
+            database.root().clone().into_collection(&collection_file)?;
+
+        *self = Self::load(database, collection_file, messages_tx.clone());
+        Ok(())
     }
 }
 
@@ -363,7 +397,10 @@ impl LoadedState {
 
             // All other messages are handled by the root TUI and should never
             // get here
-            Message::ClearTerminal | Message::Quit | Message::Draw => {
+            Message::CollectionSelect(_)
+            | Message::ClearTerminal
+            | Message::Quit
+            | Message::Draw => {
                 panic!(
                     "Unexpected message in TuiState; should have been handled \
                     by parent: {message:?}"
@@ -828,6 +865,43 @@ requests:
             TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
         );
         assert_eq!(collection.recipes.iter().count(), 0);
+    }
+
+    /// Switch the selected request, which should rebuild the state entirely
+    #[rstest]
+    #[tokio::test]
+    async fn test_collection_switch(temp_dir: TempDir, harness: TestHarness) {
+        // Start with an empty collection
+        let file = collection_file(&temp_dir);
+
+        // Create a second collection
+        let other_collection = temp_dir.join("other_slumber.yml");
+        fs::write(
+            &other_collection,
+            r#"requests: {"r1": !request {"method": "GET", "url": "http://localhost"}}"#,
+        )
+        .unwrap();
+
+        let mut state = TuiState::load(
+            harness.database.clone(),
+            file.clone(),
+            harness.messages_tx().clone(),
+        );
+        // Make sure it loaded correctly
+        let collection = assert_matches!(
+            &state.0,
+            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
+        );
+        assert_eq!(collection.recipes.iter().count(), 0);
+
+        state
+            .handle_message(Message::CollectionSelect(other_collection.clone()))
+            .unwrap();
+        let collection = assert_matches!(
+            &state.0,
+            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
+        );
+        assert_eq!(collection.recipes.iter().count(), 1);
     }
 
     /// Get a path to a collection file in a directory. The file will be created

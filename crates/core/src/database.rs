@@ -277,6 +277,11 @@ impl CollectionDatabase {
             .map(PathBuf::from)
     }
 
+    /// Get the root database, which has access to all collections
+    pub fn root(&self) -> &Database {
+        &self.database
+    }
+
     /// Get a request by ID, or `None` if it does not exist in history.
     pub fn get_request(
         &self,

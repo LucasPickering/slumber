@@ -169,6 +169,9 @@ pub enum Action {
     #[display("Help")]
     /// Open the help modal
     OpenHelp,
+    /// Open collection selection modal (unbound by default)
+    #[display("Select Collection")]
+    SelectCollection,
     /// Select profile list pane
     SelectProfileList,
     /// Select recipe list pane

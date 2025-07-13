@@ -65,6 +65,7 @@ input_bindings:
 | `fullscreen`          | `f`                         | Fullscreen current pane                               |
 | `open_actions`        | `x`                         | Open actions menu                                     |
 | `open_help`           | `?`                         | Open help dialog                                      |
+| `select_collection`   | Unbound                     | Open collection select dialog                         |
 | `select_profile_list` | `p`                         | Open Profile List dialog                              |
 | `select_recipe_list`  | `l`                         | Select Recipe List pane                               |
 | `select_recipe`       | `c`                         | Select Recipe pane                                    |

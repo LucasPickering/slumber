@@ -11,6 +11,7 @@ use crate::{
             modal::Modal,
         },
         component::{
+            collection_select::CollectionSelect,
             exchange_pane::{ExchangePane, ExchangePaneEvent},
             help::HelpModal,
             misc::DeleteRecipeRequestsModal,
@@ -261,6 +262,7 @@ impl EventHandler for PrimaryView {
                 Action::SelectResponse => {
                     self.selected_pane.get_mut().select(&PrimaryPane::Exchange);
                 }
+                Action::SelectCollection => CollectionSelect::new().open(),
 
                 // Toggle fullscreen
                 Action::Fullscreen => {
@@ -320,6 +322,9 @@ impl EventHandler for PrimaryView {
                 match menu_action {
                     GlobalMenuAction::EditCollection => {
                         ViewContext::send_message(Message::CollectionEdit);
+                    }
+                    GlobalMenuAction::SwitchCollection => {
+                        CollectionSelect::new().open();
                     }
                 }
             })
@@ -461,11 +466,24 @@ enum FullscreenMode {
 /// Menu actions available in all contexts
 #[derive(Copy, Clone, Debug, Display, EnumIter)]
 enum GlobalMenuAction {
+    /// Open the current collection file in an external editor
     #[display("Edit Collection")]
     EditCollection,
+    /// Open a modal to swich to a different collection
+    #[display("Switch Collection")]
+    SwitchCollection,
 }
 
-impl IntoMenuAction<PrimaryView> for GlobalMenuAction {}
+impl IntoMenuAction<PrimaryView> for GlobalMenuAction {
+    fn shortcut(&self, _: &PrimaryView) -> Option<Action> {
+        match self {
+            GlobalMenuAction::EditCollection => None,
+            GlobalMenuAction::SwitchCollection => {
+                Some(Action::SelectCollection)
+            }
+        }
+    }
+}
 
 /// Helper for adjusting pane behavior according to state
 struct Panes {
@@ -578,7 +596,7 @@ mod tests {
             .send_key(KeyCode::Char('l')) // Select recipe list
             .open_actions()
             // Copy URL
-            .send_keys([KeyCode::Down, KeyCode::Enter])
+            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         assert_matches!(harness.pop_message_now(), Message::CopyRequestUrl);
@@ -595,7 +613,12 @@ mod tests {
             .send_key(KeyCode::Char('l')) // Select recipe list
             .open_actions()
             // Copy as cURL
-            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
+            .send_keys([
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Enter,
+            ])
             .assert_empty();
 
         assert_matches!(harness.pop_message_now(), Message::CopyRequestCurl);

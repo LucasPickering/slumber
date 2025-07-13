@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add collection switcher modal [#536](https://github.com/LucasPickering/slumber/issues/536)
+  - You can now switch between any collection that you've opened in the past without having to close Slumber
+
 ### Changed
 
 - Update to Rust 1.88

@@ -160,7 +160,6 @@ impl slumber_template::Context for TemplateContext {
         };
 
         // Then check the current profile
-        // TODO document the caching feature
         let template = self
             .current_profile()
             .and_then(|profile| profile.data.get(field.as_str()))
@@ -188,6 +187,7 @@ impl slumber_template::Context for TemplateContext {
         arguments: Arguments<'_, Self>,
     ) -> Result<slumber_template::Value, RenderError> {
         match function_name.as_str() {
+            // vv If you add a function, update the docs!! vv
             "command" => functions::command(arguments).await,
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
@@ -199,6 +199,7 @@ impl slumber_template::Context for TemplateContext {
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
             "trim" => functions::trim(arguments),
+            // ^^ If you add a function, update the docs!! ^^
             _ => Err(RenderError::UnknownFunction {
                 name: function_name.clone(),
             }),

@@ -7,7 +7,7 @@ use crate::{
     view::{
         UpdateContext,
         common::{
-            actions::ActionsModal,
+            actions::{ActionsModal, MenuAction},
             modal::{Modal, ModalQueue},
         },
         component::Component,
@@ -26,7 +26,7 @@ use crossterm::event::{
 use itertools::Itertools;
 use ratatui::{Frame, layout::Rect};
 use slumber_config::Action;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, iter, rc::Rc};
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make
@@ -361,9 +361,26 @@ where
         self.send_keys(text.chars().map(KeyCode::Char))
     }
 
-    /// Open the actions menu
-    pub fn open_actions(self) -> Self {
-        self.send_key(KeyCode::Char('x'))
+    /// Open the actions menu, find the first action *containing* the given
+    /// string, and execute it. Panic if no matching action exists
+    pub fn action(self, name: &str) -> Self {
+        let actions = self.component.component.collect_actions();
+        // Find the index of the action in the list so we know how far to scroll
+        let action_index = actions
+            .iter()
+            .position(|action| action.to_string().contains(name))
+            .unwrap_or_else(|| panic!(
+                "No action containing string `{name}`. Available actions: {}",
+                actions.iter().map(MenuAction::to_string).format(", "),
+            ));
+        self.send_keys(
+            // Open actions menu
+            iter::once(KeyCode::Char('x'))
+                // Move down to select the matching action
+                .chain(iter::repeat_n(KeyCode::Down, action_index))
+                // Execute
+                .chain(iter::once(KeyCode::Enter)),
+        )
     }
 
     /// Assert that no events were propagated, i.e. the component handled all

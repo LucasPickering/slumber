@@ -265,22 +265,16 @@ mod tests {
         // Select a basic action
         component
             .int()
-            .open_actions()
-            .send_keys([KeyCode::Down, KeyCode::Enter])
+            .action("Profilate")
             .assert_emitted([TestMenuAction::Profilate]);
 
         // Selecting a disabled action does nothing
-        component
-            .int()
-            .open_actions()
-            .send_keys([KeyCode::Down, KeyCode::Enter])
-            .assert_emitted([TestMenuAction::Profilate]);
+        component.int().action("Disablify").assert_emitted([]);
 
         // Actions can be selected by shortcut
         component
             .int()
-            .open_actions()
-            .send_keys([KeyCode::Char('e')])
+            .send_keys([KeyCode::Char('x'), KeyCode::Char('e')])
             .assert_emitted([TestMenuAction::Shortcutticated]);
     }
 }

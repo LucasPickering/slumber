@@ -486,8 +486,8 @@ mod tests {
 
         component
             .int()
-            .open_actions()
-            .send_keys([KeyCode::Enter, KeyCode::Char('!'), KeyCode::Enter])
+            .action("Edit Authentication")
+            .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
             component.data().override_value(),

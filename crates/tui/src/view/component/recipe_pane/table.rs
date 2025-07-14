@@ -571,8 +571,8 @@ mod tests {
 
         component
             .int_props(props_factory)
-            .open_actions()
-            .send_keys([KeyCode::Enter, KeyCode::Char('!'), KeyCode::Enter])
+            .action("Edit Row")
+            .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
 
         let selected_row = component.data().select.data().selected().unwrap();

@@ -11,7 +11,7 @@ use itertools::Itertools;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout},
-    text::{Line, Text},
+    text::{Line, Span},
 };
 use slumber_config::{Action, Config, InputBinding};
 use slumber_util::{doc_link, paths};
@@ -24,7 +24,7 @@ pub struct HelpFooter;
 
 impl Generate for HelpFooter {
     type Output<'this>
-        = Text<'this>
+        = Span<'this>
     where
         Self: 'this;
 
@@ -44,7 +44,7 @@ impl Generate for HelpFooter {
             })
             .join(" / ");
 
-        Text::styled(text, tui_context.styles.text.highlight)
+        Span::styled(text, tui_context.styles.text.highlight)
     }
 }
 

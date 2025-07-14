@@ -425,10 +425,7 @@ impl LoadedState {
             self.database.clone(),
             self.messages_tx(),
         );
-        self.view.notify(format!(
-            "Reloaded collection from {}",
-            self.collection_file.path().to_string_lossy()
-        ));
+        self.view.notify("Reloaded collection");
     }
     /// Render URL for a request, then copy it to the clipboard
     fn copy_request_url(&self) -> anyhow::Result<()> {

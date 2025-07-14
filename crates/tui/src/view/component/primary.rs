@@ -323,9 +323,6 @@ impl EventHandler for PrimaryView {
                     GlobalMenuAction::EditCollection => {
                         ViewContext::send_message(Message::CollectionEdit);
                     }
-                    GlobalMenuAction::SwitchCollection => {
-                        CollectionSelect::new().open();
-                    }
                 }
             })
     }
@@ -469,21 +466,9 @@ enum GlobalMenuAction {
     /// Open the current collection file in an external editor
     #[display("Edit Collection")]
     EditCollection,
-    /// Open a modal to swich to a different collection
-    #[display("Switch Collection")]
-    SwitchCollection,
 }
 
-impl IntoMenuAction<PrimaryView> for GlobalMenuAction {
-    fn shortcut(&self, _: &PrimaryView) -> Option<Action> {
-        match self {
-            GlobalMenuAction::EditCollection => None,
-            GlobalMenuAction::SwitchCollection => {
-                Some(Action::SelectCollection)
-            }
-        }
-    }
-}
+impl IntoMenuAction<PrimaryView> for GlobalMenuAction {}
 
 /// Helper for adjusting pane behavior according to state
 struct Panes {
@@ -596,7 +581,7 @@ mod tests {
             .send_key(KeyCode::Char('l')) // Select recipe list
             .open_actions()
             // Copy URL
-            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
+            .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         assert_matches!(harness.pop_message_now(), Message::CopyRequestUrl);
@@ -613,12 +598,7 @@ mod tests {
             .send_key(KeyCode::Char('l')) // Select recipe list
             .open_actions()
             // Copy as cURL
-            .send_keys([
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Enter,
-            ])
+            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         assert_matches!(harness.pop_message_now(), Message::CopyRequestCurl);

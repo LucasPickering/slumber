@@ -3,9 +3,11 @@
 pub mod fixed_select;
 pub mod select;
 
-use chrono::{DateTime, Utc};
 use derive_more::Deref;
-use std::cell::{Ref, RefCell};
+use std::{
+    cell::{Ref, RefCell},
+    time::Duration,
+};
 use uuid::Uuid;
 
 /// An internally mutable cell for UI state. Certain state needs to be updated
@@ -105,15 +107,20 @@ impl<T> From<T> for Identified<T> {
 /// It should be shown for a short period of time, then disappear on its own.
 #[derive(Debug)]
 pub struct Notification {
+    /// Unique ID for this notification. Used to ensure the clear timer is
+    /// clearing the correct notification
+    pub id: Uuid,
     pub message: String,
-    pub timestamp: DateTime<Utc>,
 }
 
 impl Notification {
+    /// Notifications should be cleared automatically after this amount of time
+    pub const DURATION: Duration = Duration::from_secs(5);
+
     pub fn new(message: String) -> Self {
         Self {
+            id: Uuid::new_v4(),
             message,
-            timestamp: Utc::now(),
         }
     }
 }

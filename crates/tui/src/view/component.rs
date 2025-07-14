@@ -1,5 +1,6 @@
 mod collection_select;
 mod exchange_pane;
+mod footer;
 mod help;
 mod history;
 mod internal;

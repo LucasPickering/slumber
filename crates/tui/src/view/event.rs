@@ -262,6 +262,8 @@ pub enum Event {
 
     /// Tell the user something informational
     Notify(Notification),
+    /// Clear the current notification if it matches the given ID
+    NotifyClear(Uuid),
 
     /// A localized event emitted by a particular [Emitter] implementation.
     /// The event type here does not need to be unique because the emitter ID

@@ -15,10 +15,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
-        state::{
-            Notification,
-            select::{SelectState, SelectStateEvent, SelectStateEventType},
-        },
+        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
 use derive_more::Display;
@@ -26,7 +23,6 @@ use ratatui::{
     Frame,
     prelude::Constraint,
     text::{Line, Text},
-    widgets::Paragraph,
 };
 use slumber_core::{
     collection::{ProfileId, RecipeId},
@@ -511,25 +507,4 @@ enum DeleteRecipeRequestsButton {
     /// Delete all requests for all profiles
     #[display("For all profiles")]
     All,
-}
-
-/// Show most recent notification with timestamp
-#[derive(Debug)]
-pub struct NotificationText {
-    notification: Notification,
-}
-
-impl NotificationText {
-    pub fn new(notification: Notification) -> Self {
-        Self { notification }
-    }
-}
-
-impl Draw for NotificationText {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        frame.render_widget(
-            Paragraph::new(self.notification.generate()),
-            metadata.area(),
-        );
-    }
 }

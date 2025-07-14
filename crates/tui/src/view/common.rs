@@ -17,11 +17,10 @@ use crate::{
     context::TuiContext,
     view::{
         draw::Generate,
-        state::Notification,
         util::{format_duration, format_time},
     },
 };
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{DateTime, Duration, Utc};
 use itertools::{Itertools, Position};
 use ratatui::{
     text::{Line, Span, Text},
@@ -118,25 +117,6 @@ impl Generate for &Profile {
         Self: 'this,
     {
         self.name().to_owned().into()
-    }
-}
-
-impl Generate for &Notification {
-    type Output<'this>
-        = Span<'this>
-    where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        format!(
-            "[{}] {}",
-            self.timestamp.with_timezone(&Local).format("%H:%M:%S"),
-            self.message
-        )
-        .into()
     }
 }
 

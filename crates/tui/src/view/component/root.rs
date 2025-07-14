@@ -565,17 +565,9 @@ mod tests {
         // Select "Delete Requests" but decline the confirmation
         component
             .int_props(props_factory)
-            .open_actions()
-            .send_keys([
-                // "Delete Request" action
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Enter,
-                // Decline
-                KeyCode::Left,
-                KeyCode::Enter,
-            ])
+            .action("Delete Request")
+            // Decline
+            .send_keys([KeyCode::Left, KeyCode::Enter])
             .assert_empty();
 
         // Same request is still selected
@@ -588,16 +580,9 @@ mod tests {
         // for All Profiles
         component
             .int_props(props_factory)
-            .open_actions()
-            .send_keys([
-                // "Delete Request" action
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Enter,
-                // Confirm
-                KeyCode::Enter,
-            ])
+            .action("Delete Request")
+            // Confirm
+            .send_keys([KeyCode::Enter])
             .assert_empty();
 
         assert_eq!(component.data().selected_request_id(), None);
@@ -642,15 +627,9 @@ mod tests {
         // Select "Delete Request" but decline the confirmation
         component
             .int_props(props_factory)
-            .open_actions()
-            .send_keys([
-                // "Delete Request" action
-                KeyCode::Up,
-                KeyCode::Enter,
-                // Decline
-                KeyCode::Left,
-                KeyCode::Enter,
-            ])
+            .action("Delete Request")
+            // Decline
+            .send_keys([KeyCode::Left, KeyCode::Enter])
             .assert_empty();
 
         // Same request is still selected
@@ -662,14 +641,9 @@ mod tests {
         component
             .int_props(props_factory)
             .send_key(KeyCode::Char('r'))
-            .open_actions()
-            .send_keys([
-                // "Delete Request" action
-                KeyCode::Up,
-                KeyCode::Enter,
-                // Confirm
-                KeyCode::Enter,
-            ])
+            .action("Delete Request")
+            // Confirm
+            .send_keys([KeyCode::Enter])
             .assert_empty();
 
         // New exchange is gone

@@ -561,11 +561,7 @@ mod tests {
 
         harness.clear_messages(); // Clear init junk
 
-        component
-            .int()
-            .open_actions()
-            .send_key(KeyCode::Enter) // Select first action - Edit Collection
-            .assert_empty();
+        component.int().action("Edit Collection").assert_empty();
         // Event should be converted into a message appropriately
         assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
     }
@@ -579,9 +575,7 @@ mod tests {
         component
             .int()
             .send_key(KeyCode::Char('l')) // Select recipe list
-            .open_actions()
-            // Copy URL
-            .send_keys([KeyCode::Down, KeyCode::Enter])
+            .action("Copy URL")
             .assert_empty();
 
         assert_matches!(harness.pop_message_now(), Message::CopyRequestUrl);
@@ -596,9 +590,7 @@ mod tests {
         component
             .int()
             .send_key(KeyCode::Char('l')) // Select recipe list
-            .open_actions()
-            // Copy as cURL
-            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
+            .action("Copy as cURL")
             .assert_empty();
 
         assert_matches!(harness.pop_message_now(), Message::CopyRequestCurl);

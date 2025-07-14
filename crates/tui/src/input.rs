@@ -180,6 +180,7 @@ impl Default for InputEngine {
                 Action::Edit => KeyCode::Char('e').into(),
                 Action::Reset => KeyCode::Char('z').into(),
                 Action::View => KeyCode::Char('v').into(),
+                Action::SelectCollection => KeyCode::F(3).into(),
                 Action::SelectProfileList => KeyCode::Char('p').into(),
                 Action::SelectRecipeList => KeyCode::Char('l').into(),
                 Action::SelectRecipe => KeyCode::Char('c').into(),

@@ -9,13 +9,13 @@ use crate::{
             modal::{Modal, ModalQueue},
         },
         component::{
-            help::HelpFooter,
+            footer::Footer,
             history::History,
-            misc::{ConfirmModal, NotificationText},
+            misc::ConfirmModal,
             primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
+        draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, OptionEvent},
         util::persistence::PersistedLazy,
     },
@@ -41,7 +41,7 @@ pub struct Root {
     // ==== Children =====
     primary_view: Component<PrimaryView>,
     modal_queue: Component<ModalQueue>,
-    notification_text: Component<Option<NotificationText>>,
+    footer: Component<Footer>,
 }
 
 impl Root {
@@ -58,7 +58,7 @@ impl Root {
             // Children
             primary_view: primary_view.into(),
             modal_queue: Component::default(),
-            notification_text: Component::default(),
+            footer: Component::default(),
         }
     }
 
@@ -200,12 +200,6 @@ impl EventHandler for Root {
                     None
                 }
 
-                Event::Notify(notification) => {
-                    self.notification_text =
-                        Some(NotificationText::new(notification)).into();
-                    None
-                }
-
                 // Any other unhandled input event should *not* log an error,
                 // because it is probably just unmapped input, and not a bug
                 Event::Input { .. } => None,
@@ -220,6 +214,7 @@ impl EventHandler for Root {
         vec![
             self.modal_queue.to_child_mut(),
             self.primary_view.to_child_mut(),
+            self.footer.to_child_mut(),
         ]
     }
 }
@@ -249,15 +244,7 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
         );
 
         // Footer
-        let footer = HelpFooter.generate();
-        let [notification_area, help_area] = Layout::horizontal([
-            Constraint::Min(10),
-            Constraint::Length(footer.width() as u16),
-        ])
-        .areas(footer_area);
-        self.notification_text
-            .draw_opt(frame, (), notification_area, false);
-        frame.render_widget(footer, help_area);
+        self.footer.draw(frame, (), footer_area, false);
 
         // Render modals last so they go on top
         self.modal_queue.draw(frame, (), frame.area(), true);
@@ -584,7 +571,6 @@ mod tests {
                 KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,
-                KeyCode::Down,
                 KeyCode::Enter,
                 // Decline
                 KeyCode::Left,
@@ -605,7 +591,6 @@ mod tests {
             .open_actions()
             .send_keys([
                 // "Delete Request" action
-                KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,

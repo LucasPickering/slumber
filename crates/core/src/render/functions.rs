@@ -5,13 +5,11 @@ use crate::{
     render::{FunctionError, Prompt, Select, TemplateContext},
 };
 use bytes::Bytes;
-use serde::{
-    Deserialize,
-    de::{self, Unexpected, Visitor, value::SeqDeserializer},
-};
-use serde_json_path::{JsonPath, NodeList};
+use derive_more::FromStr;
+use serde::{Deserialize, de::value::SeqDeserializer};
+use serde_json_path::NodeList;
 use slumber_macros::template;
-use slumber_template::TryFromValue;
+use slumber_template::{RenderError, TryFromValue, impl_try_from_value_str};
 use slumber_util::TimeSpan;
 use std::{env, fmt::Debug, process::Stdio, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
@@ -154,10 +152,16 @@ pub async fn file(path: String) -> Result<Bytes, FunctionError> {
     Ok(bytes.into())
 }
 
+/// Wrapper for [serde_json_path::JsonPath] to enable implementing
+/// [TryFromValue]
+#[derive(Debug, FromStr)]
+pub struct JsonPath(serde_json_path::JsonPath);
+
+impl_try_from_value_str!(JsonPath);
+
 /// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
+#[derive(Copy, Clone, Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum JsonPathMode {
     /// 0 - Error
     /// 1 - Single result
@@ -173,6 +177,24 @@ pub enum JsonPathMode {
     /// 2 - Array of values
     Array,
 }
+
+// Manual implementation provides the best error messages
+impl FromStr for JsonPathMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            "single" => Ok(Self::Single),
+            "array" => Ok(Self::Array),
+            _ => Err(format!(
+                "Invalid mode `{s}`; must be `array`, `single`, or `auto`"
+            )),
+        }
+    }
+}
+
+impl_try_from_value_str!(JsonPathMode);
 
 /// Transform a JSON value using a JSONPath query. See
 /// [JSONPath specification](https://datatracker.ietf.org/doc/html/rfc9535) or
@@ -210,10 +232,8 @@ pub enum JsonPathMode {
 pub fn jsonpath(
     // Value first so it can be piped in
     value: serde_json::Value,
-    #[serde] query: JsonPath,
-    #[kwarg]
-    #[serde]
-    mode: JsonPathMode,
+    query: JsonPath,
+    #[kwarg] mode: JsonPathMode,
 ) -> Result<slumber_template::Value, FunctionError> {
     fn node_list_to_value(node_list: NodeList) -> slumber_template::Value {
         slumber_template::Value::deserialize(SeqDeserializer::new(
@@ -224,6 +244,7 @@ pub fn jsonpath(
         .unwrap()
     }
 
+    let query = query.0;
     let node_list = query.query(&value);
 
     // Convert the node list to a template value based on mode
@@ -349,9 +370,7 @@ pub async fn prompt(
 pub async fn response(
     #[context] context: &TemplateContext,
     recipe_id: RecipeId,
-    #[kwarg]
-    #[serde]
-    trigger: RequestTrigger,
+    #[kwarg] trigger: RequestTrigger,
 ) -> Result<Bytes, FunctionError> {
     let response = context.get_latest_response(&recipe_id, trigger).await?;
     let body = match Arc::try_unwrap(response) {
@@ -384,9 +403,7 @@ pub async fn response_header(
     #[context] context: &TemplateContext,
     recipe_id: RecipeId,
     header: String,
-    #[kwarg]
-    #[serde]
-    trigger: RequestTrigger,
+    #[kwarg] trigger: RequestTrigger,
 ) -> Result<Bytes, FunctionError> {
     let response = context.get_latest_response(&recipe_id, trigger).await?;
     // Only clone the header value if necessary
@@ -468,12 +485,7 @@ pub fn sensitive(
 /// {{ command(["echo", "hello"]) | trim() }} => "hello"
 /// ```
 #[template(TemplateContext)]
-pub fn trim(
-    value: String,
-    #[kwarg]
-    #[serde]
-    mode: TrimMode,
-) -> String {
+pub fn trim(value: String, #[kwarg] mode: TrimMode) -> String {
     match mode {
         TrimMode::Start => value.trim_start().to_string(),
         TrimMode::End => value.trim_end().to_string(),
@@ -507,56 +519,33 @@ pub enum RequestTrigger {
     Always,
 }
 
-/// Deserialize a request trigger from a single string. Unit variants are
-/// assigned a static string, and anything else is treated as an expire
-/// duration.
-impl<'de> Deserialize<'de> for RequestTrigger {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct RequestTriggerVisitor;
+/// Parse a request trigger from a string. Unit variants are assigned a static
+/// string, and anything else is treated as an expire duration.
+impl FromStr for RequestTrigger {
+    type Err = String;
 
-        impl Visitor<'_> for RequestTriggerVisitor {
-            type Value = RequestTrigger;
-
-            fn expecting(
-                &self,
-                formatter: &mut std::fmt::Formatter,
-            ) -> std::fmt::Result {
-                formatter.write_str(
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            // If you add a case here, update the expecting string too
+            "never" => Ok(Self::Never),
+            "no_history" => Ok(Self::NoHistory),
+            "always" => Ok(Self::Always),
+            // Anything else is parsed as a duration
+            _ => {
+                let duration = s.parse::<TimeSpan>().map_err(|_| {
                     "\"never\", \"no_history\", \"always\", or a duration \
-                    string such as \"1h\"",
-                )
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                match v {
-                    // If you add a case here, update the expecting string too
-                    "never" => Ok(RequestTrigger::Never),
-                    "no_history" => Ok(RequestTrigger::NoHistory),
-                    "always" => Ok(RequestTrigger::Always),
-                    // Anything else is parsed as a duration
-                    _ => {
-                        let duration = v.parse::<TimeSpan>().map_err(|_| {
-                            de::Error::invalid_value(Unexpected::Str(v), &self)
-                        })?;
-                        Ok(RequestTrigger::Expire { duration })
-                    }
-                }
+                    string such as \"1h\"; duration units are `s`, `m`, `h`, or `d`"
+                })?;
+                Ok(Self::Expire { duration })
             }
         }
-
-        deserializer.deserialize_any(RequestTriggerVisitor)
     }
 }
 
+impl_try_from_value_str!(RequestTrigger);
+
 /// Trim whitespace from a string
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum TrimMode {
     /// Trim the start of the output
     Start,
@@ -566,6 +555,24 @@ pub enum TrimMode {
     #[default]
     Both,
 }
+
+// Manual implementation provides the best error messages
+impl FromStr for TrimMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "start" => Ok(Self::Start),
+            "end" => Ok(Self::End),
+            "both" => Ok(Self::Both),
+            _ => Err(format!(
+                "Invalid mode `{s}`; must be `start`, `end`, or `both`"
+            )),
+        }
+    }
+}
+
+impl_try_from_value_str!(TrimMode);
 
 impl TryFromValue for RecipeId {
     fn try_from_value(

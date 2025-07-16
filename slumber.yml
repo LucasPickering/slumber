@@ -101,7 +101,7 @@ requests:
             ['foo', 'bar', 'baz', 'a really really really really long option', username],
             message='Select a value'
             ) }}"
-          select_dynamic: "{{ response('get_users') | jsonpath('$.headers') | select() }}"
+          select_dynamic: "{{ response('get_users') | jsonpath('$.headers', mode='array') | select() }}"
 
       modify_user:
         <<: *base_request

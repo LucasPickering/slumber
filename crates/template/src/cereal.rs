@@ -6,7 +6,6 @@ use serde::{
         value::{MapDeserializer, SeqDeserializer},
     },
 };
-use std::fmt::Display;
 
 impl Serialize for Template {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -171,15 +170,6 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
         unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
         string identifier ignored_any unit_struct struct map seq
         tuple tuple_struct enum newtype_struct option
-    }
-}
-
-impl de::Error for RenderError {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: Display,
-    {
-        RenderError::Other(msg.to_string().into())
     }
 }
 

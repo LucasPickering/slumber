@@ -21,7 +21,7 @@ use futures::future;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
-use serde::{Deserialize, Serialize, de::IntoDeserializer};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
@@ -429,19 +429,6 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         T::try_from_value(value)
     }
 
-    /// Pop the next positional argument off the front of the queue and convert
-    /// it to type `T` using its [Deserialize] implementation. Return an error
-    /// if there are no positional arguments left or the conversion fails.
-    pub fn pop_position_serde<'de, T: Deserialize<'de>>(
-        &mut self,
-    ) -> Result<T, RenderError> {
-        let value = self
-            .position
-            .pop_front()
-            .ok_or(RenderError::NotEnoughArguments)?;
-        T::deserialize(value.into_deserializer())
-    }
-
     /// Remove a keyword argument from the argument set, converting it to type
     /// `T` using its [TryFromValue] implementation. Return an error if the
     /// keyword argument does not exist or the conversion fails.
@@ -451,20 +438,6 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
     ) -> Result<T, RenderError> {
         match self.keyword.remove(name) {
             Some(value) => T::try_from_value(value),
-            // Kwarg not provided - use the default value
-            None => Ok(T::default()),
-        }
-    }
-
-    /// Remove a keyword argument from the argument set, converting it to type
-    /// `T` using its [Deserialize] implementation. Return an error if the
-    /// keyword argument does not exist or the conversion fails.
-    pub fn pop_keyword_serde<'de, T: Default + Deserialize<'de>>(
-        &mut self,
-        name: &str,
-    ) -> Result<T, RenderError> {
-        match self.keyword.remove(name) {
-            Some(value) => T::deserialize(value.into_deserializer()),
             // Kwarg not provided - use the default value
             None => Ok(T::default()),
         }
@@ -570,6 +543,24 @@ impl TryFromValue for serde_json::Value {
             }
         }
     }
+}
+
+/// Implement [TryFromValue] for the given type by converting the [Value] to a
+/// [String], then using `T`'s [FromStr] implementation to convert to `T`.
+///
+/// This could be a derive macro, but decl is much simpler
+#[macro_export]
+macro_rules! impl_try_from_value_str {
+    ($type:ty) => {
+        impl TryFromValue for $type {
+            fn try_from_value(
+                value: $crate::Value,
+            ) -> Result<Self, RenderError> {
+                let s = String::try_from_value(value)?;
+                s.parse().map_err(RenderError::other)
+            }
+        }
+    };
 }
 
 /// Convert any value into `Result<Value, RenderError>`

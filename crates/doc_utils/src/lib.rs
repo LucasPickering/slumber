@@ -78,12 +78,14 @@ pub fn mdbook() -> anyhow::Result<()> {
 enum SlumberPreprocessor {
     /// Generate markdown for template functions, based on their Rust
     /// function signatures. This will replace any occurrences of the string
-    /// `<!-- template_functions -->` with the generated markdown.
+    /// `{{#template_functions}}` with the generated markdown.
     TemplateFunctions,
+    /// Replace `{{#version}}` with the crate version
+    Version,
 }
 
 impl SlumberPreprocessor {
-    fn preprocess(&self) -> Result<()> {
+    fn preprocess(self) -> Result<()> {
         let (ctx, book) = CmdPreprocessor::parse_input(io::stdin())?;
         let processed_book = self.run(&ctx, book)?;
         serde_json::to_writer(io::stdout(), &processed_book)?;
@@ -91,9 +93,10 @@ impl SlumberPreprocessor {
     }
 
     /// Render markdown content
-    fn render(&self) -> Result<String> {
+    fn render(self) -> Result<String> {
         match self {
             Self::TemplateFunctions => template_functions::render(),
+            Self::Version => Ok(env!("CARGO_PKG_VERSION").to_owned()),
         }
     }
 }
@@ -120,6 +123,12 @@ impl Preprocessor for SlumberPreprocessor {
                     }
                 });
             }
+            Self::Version => book.for_each_mut(|item: &mut BookItem| {
+                if let BookItem::Chapter(chapter) = item {
+                    chapter.content =
+                        chapter.content.replace("{{#version}}", &markdown);
+                }
+            }),
         }
         Ok(book)
     }

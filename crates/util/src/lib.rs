@@ -113,6 +113,16 @@ pub fn doc_link(path: &str) -> String {
     }
 }
 
+/// Get a link to a file in the remote git repo. This is the raw link, not the
+/// fancy UI link. It will be pinned to tag of the current crate version.
+pub fn git_link(path: &str) -> String {
+    format!(
+        "https://raw.githubusercontent.com\
+        /LucasPickering/slumber/refs/tags/v{version}/{path}",
+        version = env!("CARGO_PKG_VERSION"),
+    )
+}
+
 /// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
 pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
     // We use two-step parsing to enable pre-processing on the YAML

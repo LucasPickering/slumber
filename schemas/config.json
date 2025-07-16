@@ -72,11 +72,6 @@
         "error_color": "Red"
       }
     },
-    "debug": {
-      "description": "Enable debug monitor in TUI",
-      "type": "boolean",
-      "default": false
-    },
     "persist": {
       "description": "Enable/disable persistence for all TUI requests? The CLI ignores this\nin favor of the absence/presence of the `--persist` flag",
       "type": "boolean",

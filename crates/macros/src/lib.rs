@@ -136,19 +136,10 @@ impl ArgumentInfo {
             ArgumentKind::Positional => quote! {
                 let #name = arguments.pop_position()?;
             },
-            ArgumentKind::PositionalSerde => quote! {
-                let #name = arguments.pop_position_serde()?;
-            },
             ArgumentKind::Kwarg => {
                 let key = name.to_string();
                 quote! {
                     let #name = arguments.pop_keyword(#key)?;
-                }
-            }
-            ArgumentKind::KwargSerde => {
-                let key = name.to_string();
-                quote! {
-                    let #name = arguments.pop_keyword_serde(#key)?;
                 }
             }
         }
@@ -162,8 +153,6 @@ struct ArgumentAttributes {
     context: bool,
     /// #[kwarg] attribute is present
     kwarg: bool,
-    /// #[serde] attribute is present
-    serde: bool,
 }
 
 impl ArgumentAttributes {
@@ -178,10 +167,6 @@ impl ArgumentAttributes {
                 self.kwarg = true;
                 true
             }
-            "serde" => {
-                self.serde = true;
-                true
-            }
             _ => false,
         }
     }
@@ -192,17 +177,11 @@ enum ArgumentKind {
     /// Extract template context
     Context,
     /// Default (no attribute) - Extract next positional argument and convert it
-    /// using its TryFromValue implementation
+    /// using its `TryFromValue` implementation
     Positional,
-    /// Extract next positional argument and convert it using its Deserialize
-    /// implementation
-    PositionalSerde,
     /// Extract keyword argument matching the parameter name and convert it
-    /// using its TryFromValue implementation
+    /// using its `TryFromValue` implementation
     Kwarg,
-    /// Extract keyword argument matching the parameter name and convert it
-    /// using its Deserialize implementation
-    KwargSerde,
 }
 
 impl ArgumentKind {
@@ -213,28 +192,15 @@ impl ArgumentKind {
             ArgumentAttributes {
                 context: false,
                 kwarg: false,
-                serde: false,
             } => Self::Positional,
             ArgumentAttributes {
                 context: true,
                 kwarg: false,
-                serde: false,
             } => Self::Context,
             ArgumentAttributes {
                 context: false,
                 kwarg: true,
-                serde: false,
             } => Self::Kwarg,
-            ArgumentAttributes {
-                context: false,
-                kwarg: false,
-                serde: true,
-            } => Self::PositionalSerde,
-            ArgumentAttributes {
-                context: false,
-                kwarg: true,
-                serde: true,
-            } => Self::KwargSerde,
             ArgumentAttributes { context: true, .. } => {
                 panic!("#[context] cannot be used with other attributes")
             }

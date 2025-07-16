@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Update to Rust 1.88
 
+### Fixed
+
+- Fix empty actions modal queuing when opening actions while another modal is already open
+
 ## [3.2.0] - 2025-06-20
 
 ### Added

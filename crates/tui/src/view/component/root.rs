@@ -163,7 +163,10 @@ impl EventHandler for Root {
                     // Walk down the component tree and collect actions from
                     // all visible+focused components
                     let actions = self.primary_view.collect_actions();
-                    ActionsModal::new(actions).open();
+                    // Actions can be empty if a modal is already open
+                    if !actions.is_empty() {
+                        ActionsModal::new(actions).open();
+                    }
                 }
                 Action::History => {
                     self.open_history(context.request_store)

@@ -147,6 +147,7 @@ impl Config {
                 // scenario we show an error and continue with the default
                 // config
                 if let io::ErrorKind::NotFound = err.kind() {
+                    // TODO include yaml-language-server comment
                     let _ = create_parent(&path)
                         .and_then(|()| {
                             File::create_new(&path)?;

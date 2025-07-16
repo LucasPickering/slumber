@@ -2,8 +2,8 @@
 
 Slumber generates a publishes a [JSON Schema](https://json-schema.org/) for both the [Config](../api/configuration/index.md) and [Collection](../api/request_collection/index.md) formats. These are published via the [git repository](https://github.com/LucasPickering/slumber) and are accessible at:
 
-- [config.json](https://raw.githubusercontent.com/LucasPickering/slumber/refs/heads/{{#version}}/schemas/config.json)
-- [collection.json](https://raw.githubusercontent.com/LucasPickering/slumber/refs/heads/{{#version}}/schemas/collection.json)
+- [config.json](https://raw.githubusercontent.com/LucasPickering/slumber/refs/tags/{{#version}}/schemas/config.json)
+- [collection.json](https://raw.githubusercontent.com/LucasPickering/slumber/refs/tags/{{#version}}/schemas/collection.json)
 
 > Replace `{{#version}}` with the version of Slumber you use for the most accurate schema definitions.
 

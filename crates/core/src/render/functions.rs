@@ -7,7 +7,7 @@ use crate::{
 use bytes::Bytes;
 use serde::{
     Deserialize,
-    de::{self, Visitor, value::SeqDeserializer},
+    de::{self, Unexpected, Visitor, value::SeqDeserializer},
 };
 use serde_json_path::{JsonPath, NodeList};
 use slumber_macros::template;
@@ -541,8 +541,9 @@ impl<'de> Deserialize<'de> for RequestTrigger {
                     "always" => Ok(RequestTrigger::Always),
                     // Anything else is parsed as a duration
                     _ => {
-                        let duration =
-                            v.parse::<TimeSpan>().map_err(de::Error::custom)?;
+                        let duration = v.parse::<TimeSpan>().map_err(|_| {
+                            de::Error::invalid_value(Unexpected::Str(v), &self)
+                        })?;
                         Ok(RequestTrigger::Expire { duration })
                     }
                 }

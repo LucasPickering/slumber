@@ -44,7 +44,7 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
   - This allows you to provide a descriptive name for the collection to show in the new switcher modal
   - The name is purely descriptive and does not need to be unique
 - Generate JSON Schema for both the collection and config formats [#374](https://github.com/LucasPickering/slumber/issues/374)
-  - This enables better validation and completion in your IDE; [see docs for more](TODO)
+  - This enables better validation and completion in your IDE; [see docs for more](https://slumber.lucaspickering.me/book/user_guide/json_schema.md)
 
 ### Changed
 

@@ -20,6 +20,7 @@
 - [Collection Reuse with `$ref`](./user_guide/composition.md)
 - [Importing External Collections](./user_guide/import.md)
 - [Database & Persistence](./user_guide/database.md)
+- [JSON Schema: Completion & Validation](./user_guide/json_schema.md)
 
 # API Reference
 

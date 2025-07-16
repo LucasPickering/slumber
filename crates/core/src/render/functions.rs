@@ -525,7 +525,7 @@ impl<'de> Deserialize<'de> for RequestTrigger {
                 formatter: &mut std::fmt::Formatter,
             ) -> std::fmt::Result {
                 formatter.write_str(
-                    "\"never\", \"noHistory\", \"always\", or a duration \
+                    "\"never\", \"no_history\", \"always\", or a duration \
                     string such as \"1h\"",
                 )
             }
@@ -537,7 +537,7 @@ impl<'de> Deserialize<'de> for RequestTrigger {
                 match v {
                     // If you add a case here, update the expecting string too
                     "never" => Ok(RequestTrigger::Never),
-                    "noHistory" => Ok(RequestTrigger::NoHistory),
+                    "no_history" => Ok(RequestTrigger::NoHistory),
                     "always" => Ok(RequestTrigger::Always),
                     // Anything else is parsed as a duration
                     _ => {

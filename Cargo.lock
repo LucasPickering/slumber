@@ -3282,6 +3282,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_test",
+ "serde_yaml",
  "slumber_util",
  "tracing",
 ]

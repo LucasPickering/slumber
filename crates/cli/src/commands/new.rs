@@ -1,6 +1,7 @@
 use crate::{GlobalArgs, Subcommand};
 use anyhow::Context;
 use clap::Parser;
+use slumber_util::git_link;
 use std::{fs::OpenOptions, io::Write, path::PathBuf, process::ExitCode};
 
 const DEFAULT_PATH: &str = "slumber.yml";
@@ -47,10 +48,10 @@ fn source() -> String {
     /// Generating a collection and serializing it would be like driving from
     /// the back seat with a broom stick.
     const SOURCE: &str = include_str!("new.yml");
-    /// This string will be replaced with the current crate version
-    const VERSION_REPLACEMENT: &str = "{{#version}}";
+    /// This string will be replaced with the link to the schema file
+    const SCHEMA_REPLACEMENT: &str = "{{#schema}}";
 
-    SOURCE.replace(VERSION_REPLACEMENT, env!("CARGO_PKG_VERSION"))
+    SOURCE.replace(SCHEMA_REPLACEMENT, &git_link("schemas/collection.json"))
 }
 
 #[cfg(test)]
@@ -159,9 +160,8 @@ mod tests {
         let source = source();
         let first_line = source.lines().next().unwrap();
         let expected = format!(
-            "# yaml-language-server: $schema=https://raw.githubusercontent.com\
-            /LucasPickering/slumber/refs/heads/{}/schemas/collection.json",
-            env!("CARGO_PKG_VERSION")
+            "# yaml-language-server: $schema={}",
+            git_link("schemas/collection.json")
         );
         assert_eq!(first_line, expected);
     }

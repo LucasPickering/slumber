@@ -13,7 +13,7 @@ use syn::{
     Type, parse_quote,
 };
 
-pub const REPLACE: &str = "<!-- template_functions -->";
+pub const REPLACE: &str = "{{#template_functions}}";
 /// Rust file containing template function definitions
 const INPUT_FILE: &str = "crates/core/src/render/functions.rs";
 /// Strings that must appear in every doc comment. Use bold instead of headers

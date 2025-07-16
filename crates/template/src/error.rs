@@ -1,10 +1,11 @@
 use bytes::Bytes;
-use std::{collections::HashMap, string::FromUtf8Error};
+use std::{collections::HashMap, fmt::Display, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
 use winnow::error::{ContextError, ParseError};
 
 use crate::{Identifier, Value};
+use serde::de;
 
 /// An error while parsing a template. The string is provided by winnow
 #[derive(Debug, Error)]
@@ -96,8 +97,17 @@ pub enum RenderError {
 impl RenderError {
     /// Create a [RenderError::Other] from another error
     pub fn other(
-        error: impl 'static + std::error::Error + Send + Sync,
+        error: impl 'static + Into<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Self {
-        Self::Other(Box::new(error))
+        Self::Other(error.into())
+    }
+}
+
+impl de::Error for RenderError {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: Display,
+    {
+        RenderError::Other(msg.to_string().into())
     }
 }

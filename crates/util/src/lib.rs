@@ -175,7 +175,7 @@ impl Display for TimeSpan {
 }
 
 impl FromStr for TimeSpan {
-    type Err = anyhow::Error;
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         fn quantity(input: &mut &str) -> ModalResult<u64> {
@@ -198,7 +198,7 @@ impl FromStr for TimeSpan {
             // The format is so simple there isn't much value in spitting out a
             // specific parsing error, just use a canned one
             .map_err(|_| {
-                anyhow!(
+                format!(
                     "Invalid duration, must be `(<quantity><unit>)+` \
                     (e.g. `12d` or `1h30m`). Units are {}",
                     DurationUnit::ALL.iter().format_with(", ", |unit, f| f(

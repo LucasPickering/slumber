@@ -17,6 +17,8 @@ renderer = ["html"]
 [preprocessor.pagetoc]
 after = ["template_functions"]
 
+[preprocessor.version]
+command = "./scripts/mdbook.rs --mode version"
 
 [output.html]
 additional-css = ["theme/pagetoc.css"]

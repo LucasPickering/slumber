@@ -3,10 +3,6 @@ use anyhow::Context;
 use clap::Parser;
 use std::{fs::OpenOptions, io::Write, path::PathBuf, process::ExitCode};
 
-/// We use a static source file, to get control of whitespace/comments.
-/// Generating a collection and serializing it would be like driving from the
-/// back seat with a broom stick.
-const SOURCE: &str = include_str!("new.yml");
 const DEFAULT_PATH: &str = "slumber.yml";
 
 /// Generate a new Slumber collection file
@@ -36,7 +32,7 @@ impl Subcommand for NewCommand {
             .with_context(|| {
                 format!("Error opening file `{}`", path.display())
             })?;
-        file.write_all(SOURCE.as_bytes()).with_context(|| {
+        file.write_all(source().as_bytes()).with_context(|| {
             format!("Error writing to file `{}`", path.display())
         })?;
 
@@ -44,6 +40,17 @@ impl Subcommand for NewCommand {
 
         Ok(ExitCode::SUCCESS)
     }
+}
+
+fn source() -> String {
+    /// We use a static source file, to get control of whitespace/comments.
+    /// Generating a collection and serializing it would be like driving from
+    /// the back seat with a broom stick.
+    const SOURCE: &str = include_str!("new.yml");
+    /// This string will be replaced with the current crate version
+    const VERSION_REPLACEMENT: &str = "{{#version}}";
+
+    SOURCE.replace(VERSION_REPLACEMENT, env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(test)]
@@ -97,14 +104,14 @@ mod tests {
                 )
             })
             .unwrap();
-        assert_eq!(contents, SOURCE);
+        assert_eq!(contents, source());
     }
 
     /// Test that the initial collection is a valid collection with some
     /// specific contents
     #[test]
     fn test_deserialize() {
-        let collection: Collection = Collection::parse(SOURCE).unwrap();
+        let collection: Collection = Collection::parse(&source()).unwrap();
         let expected = Collection {
             name: Some("My Collection".into()),
             profiles: by_id([Profile {
@@ -145,5 +152,18 @@ mod tests {
             .into(),
         };
         assert_eq!(collection, expected);
+    }
+
+    /// Make sure version replacement works in the schema link
+    #[test]
+    fn test_schema_link() {
+        let source = source();
+        let first_line = source.lines().next().unwrap();
+        let expected = format!(
+            "# yaml-language-server: $schema=https://raw.githubusercontent.com\
+            /LucasPickering/slumber/refs/heads/{}/schemas/collection.json",
+            env!("CARGO_PKG_VERSION")
+        );
+        assert_eq!(first_line, expected);
     }
 }

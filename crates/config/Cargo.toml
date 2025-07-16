@@ -22,6 +22,7 @@ mime = {workspace = true}
 ratatui = {workspace = true, features = ["serde"]}
 schemars = {workspace = true, features = ["indexmap2"], optional = true}
 serde = {workspace = true}
+serde_yaml = {workspace = true}
 slumber_util = {workspace = true}
 tracing = {workspace = true}
 

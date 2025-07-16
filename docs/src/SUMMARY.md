@@ -17,7 +17,7 @@
   - [Data Filtering & Querying](./user_guide/tui/filter_query.md)
 - [Command Line Interface (CLI)](./user_guide/cli/index.md)
   - [Subcommands](./user_guide/cli/subcommands.md)
-- [Collection Reuse & Inheritance](./user_guide/inheritance.md)
+- [Collection Reuse with `$ref`](./user_guide/composition.md)
 - [Importing External Collections](./user_guide/import.md)
 - [Database & Persistence](./user_guide/database.md)
 

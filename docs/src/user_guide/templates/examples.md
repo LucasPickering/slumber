@@ -155,7 +155,7 @@ requests:
     url: "{{ host }}/fishes/{{ fish_id }}"
 ```
 
-Now we can easily use that template in multiple recipes. **But**, what if we have multiple profiles? We wouldn't want to copy-paste that template across every profile. Using [composition](../inheritance.md), we can define the template in one place and share it in every profile:
+Now we can easily use that template in multiple recipes. **But**, what if we have multiple profiles? We wouldn't want to copy-paste that template across every profile. Using [composition](../composition.md), we can define the template in one place and share it in every profile:
 
 ```yaml
 .base_profile_data: &base_profile_data

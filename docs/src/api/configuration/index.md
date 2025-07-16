@@ -54,14 +54,6 @@ Shell used to execute commands within the TUI. Use `[]` for no shell (commands w
 
 Default query command for all responses. [More info](../../user_guide/tui/filter_query.md)
 
-### `debug`
-
-**Type:** `boolean`
-
-**Default:** `false`
-
-Enable developer information in the TUI
-
 ### `editor`
 
 **Type:** `string`

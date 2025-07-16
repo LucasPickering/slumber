@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/LucasPickering/slumber/refs/heads/{{#version}}/schemas/collection.json
+# yaml-language-server: $schema={{#schema}}
 # ^ This enables schema validation and autocomplete in your editor
 # https://github.com/redhat-developer/yaml-language-server
 

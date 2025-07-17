@@ -25,10 +25,8 @@ use ratatui::{
     Frame, layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Authentication, RecipeId},
-    template::Template,
-};
+use slumber_core::collection::{Authentication, RecipeId};
+use slumber_template::Template;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display authentication settings for a recipe
@@ -62,7 +60,7 @@ impl AuthenticationDisplay {
                     selected_field: Default::default(),
                 }
             }
-            Authentication::Bearer(token) => State::Bearer {
+            Authentication::Bearer { token } => State::Bearer {
                 token: RecipeTemplate::new(
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
@@ -89,9 +87,9 @@ impl AuthenticationDisplay {
                     // See note on field def for why we always use Some
                     password: Some(password.template().clone()),
                 },
-                State::Bearer { token, .. } => {
-                    Authentication::Bearer(token.template().clone())
-                }
+                State::Bearer { token, .. } => Authentication::Bearer {
+                    token: token.template().clone(),
+                },
             })
         } else {
             None
@@ -447,7 +445,9 @@ mod tests {
 
     #[rstest]
     fn test_edit_bearer(harness: TestHarness, terminal: TestTerminal) {
-        let authentication = Authentication::Bearer("i am a token".into());
+        let authentication = Authentication::Bearer {
+            token: "i am a token".into(),
+        };
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -466,7 +466,9 @@ mod tests {
             .assert_empty();
         assert_eq!(
             component.data().override_value(),
-            Some(Authentication::Bearer("i am a token!!!".into()))
+            Some(Authentication::Bearer {
+                token: "i am a token!!!".into()
+            })
         );
 
         // Reset token
@@ -477,7 +479,9 @@ mod tests {
     /// Test edit menu action
     #[rstest]
     fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
-        let authentication = Authentication::Bearer("i am a token".into());
+        let authentication = Authentication::Bearer {
+            token: "i am a token".into(),
+        };
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -491,7 +495,9 @@ mod tests {
             .assert_empty();
         assert_eq!(
             component.data().override_value(),
-            Some(Authentication::Bearer("i am a token!".into()))
+            Some(Authentication::Bearer {
+                token: "i am a token!".into()
+            })
         );
     }
 
@@ -537,7 +543,7 @@ mod tests {
             &RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
             &RecipeOverrideValue::Override("token".into()),
         );
-        let authentication = Authentication::Bearer("".into());
+        let authentication = Authentication::Bearer { token: "".into() };
         let component = TestComponent::new(
             &harness,
             &terminal,
@@ -546,7 +552,9 @@ mod tests {
 
         assert_eq!(
             component.data().override_value(),
-            Some(Authentication::Bearer("token".into()))
+            Some(Authentication::Bearer {
+                token: "token".into()
+            })
         );
     }
 }

@@ -1,120 +1,85 @@
 # Templates
 
-Templates enable dynamic string/binary construction. Slumber's template language is relatively simple, compared to complex HTML templating languages like Handlebars or Jinja. The goal is to be intuitive and unsurprising. It doesn't support complex features like loops, conditionals, etc.
+Templates enable dynamic request construction. Slumber's template language is relatively simple when compared to HTML templating languages such as Handlebars or Jinja. The goal is to be simple, intuitive, and unsurprising. Every value in a request (except for the HTTP method) is a template, meaning it can be computed dynamically.
 
-Most string values in a request collection (e.g. URL, request body, etc.) are templates. Map keys (e.g. recipe ID, profile ID) are _not_ templates; they must be static strings.
+## Quick Start
 
-The syntax for injecting a dynamic value into a template is double curly braces `{{...}}`. The contents inside the braces tell Slumber how to retrieve the dynamic value.
+Slumber templates in 60 seconds or less:
 
-This guide serves as a functional example of how to use templates. For detailed information on options available, see [the API reference](../../api/request_collection/template.md).
+- Double curly braces `{{...}}` denotes a dynamic value in a template
+- Literals:
+  - Null: `null`
+  - Booleans: `true` and `false`
+  - Integers: `-3` or `1000`
+  - Floats: `-3.14`, `1000.0`, `3.14e2`
+  - String: `'hello'` or `"hello"` (single or double quotes)
+    - Escape inner quotes with `\`
+  - Bytes: `b'hello'` or `b"hello"`
+  - Array: `[1, "hello", [true, b"world"]]`
+- Profile fields: `host` (see [Profiles](../profiles.md))
+- Function calls: `g(f(), 1)`
+  - [See all available functions](../../api/template_functions.md)
+- Pipes: `f() | g(1)`
+  - Result of `f()` is passed as the _first_ argument to `g`
+  - `f() | g(1)` is equivalent to `g(f(), 1)`
+
+Put it all together and you can build collections like this:
+
+```python
+{{ host }}/fish/{{ response('list_fish') | jsonpath('$[0].id') }}
+```
+
+If you still have questions, you can keep reading or [skip to some examples](./examples.md).
+
+## YAML Syntax
+
+Templates are defined as strings in your request collection YAML file. For example, here's a template for a request URL:
+
+```yaml
+requests:
+  list_fish:
+    type: request
+    method: GET
+    url: "{{ host }}/fish"
+```
+
+Most values in a request collection (e.g. URL, request body, etc.) are templates. [Even profile values are templates!](../profiles.md#dynamic-profile-values). Map keys (e.g. recipe ID, profile ID) are _not_ templates; they must be static strings.
 
 > **A note on YAML string syntax**
 >
 > One of the advantages (and disadvantages) of YAML is that it has a number of different string syntaxes. This enables you to customize your templates according to your specific needs around the behavior of whitespace and newlines. See [YAML's string syntaxes](https://www.educative.io/answers/how-to-represent-strings-in-yaml) and [yaml-multiline.info](https://yaml-multiline.info/) for more info on YAML strings.
 
-## A Basic Example
-
-Let's start with a simple example. Let's say you're working on a fish-themed website, and you want to make requests both to your local stack and the deployed site. Templates, combined with profiles, allow you to easily switch between hosts:
-
-> Note: for the purposes of these examples, I've made up some theoretical endpoints and responses, following standard REST practice. This isn't a real API but it should get the point across.
->
-> Additionally, these examples will use the CLI because it's easy to demonstrate in text. All these concepts apply equally to the TUI.
+Not all template are dynamic. Static strings are also valid templates and just render to themselves:
 
 ```yaml
-profiles:
-  local:
-    data:
-      host: http://localhost:5000
-  production:
-    data:
-      host: https://myfishes.fish
-
 requests:
-  list_fish: !request
+  list_fish:
+    type: request
     method: GET
-    url: "{{host}}/fishes"
+    # This is a valid template
+    url: "https://myfishes.fish/fish"
+    # Numbers and booleans can also be templates!
     query:
-      - big=true
+      number_param: 3 # Parses as the template "3"
+      bool_param: false # Parses as "false"
 ```
 
-Now you can easily select which host to hit. In the TUI, this is done via the Profile list. In the CLI, use the `--profile` option:
+## Escape Sequences
 
-```sh
-> slumber request --profile local list_fish
-# http://localhost:5000/fishes
-# Only one fish :(
-[{"id": 1, "kind": "tuna", "name": "Bart"}]
-> slumber request --profile production list_fish
-# https://myfishes.fish/fishes
-# More fish!
-[
-  {"id": 1, "kind": "marlin", "name": "Kim"},
-  {"id": 2, "kind": "salmon", "name": "Francis"}
-]
-```
+In some scenarios you may want to use the `{{` sequence to represent those literal characters, rather than the start of a template key. To achieve this, you can escape the sequence with an underscore inside it, e.g. `{_{`. If you want the literal string `{_{`, then add an extra underscore: `{__{`.
 
-## Nested Templates
+| Template                | Parses as                  |
+| ----------------------- | -------------------------- |
+| `{_{this is raw text}}` | `["{{this is raw text}}"]` |
+| `{_{{field1}}`          | `["{", field("field1")]`   |
+| `{__{{field1}}`         | `["{__", field("field1")]` |
+| `{_`                    | `["{_"]` (no escaping)     |
 
-What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. Templates support nesting implicitly. You can use this to compose template values into more complex strings. Just be careful not to trigger infinite recursion!
+## Why?
 
-```yaml
-profiles:
-  local:
-    data:
-      host: http://localhost:5000
-      fish_id: "fish_{{chains.fish_id}}"
+Why does Slumber have its own template language? Why not use Jinja/Handlebars/Tera/Liquid/etc?
 
-chains:
-  fish_id:
-    source: !request
-      recipe: create_fish
-    selector: $.id
-
-requests:
-  create_fish: !request
-    method: POST
-    url: "{{host}}/fishes"
-    body: !json { "kind": "barracuda", "name": "Jimmy" }
-
-  get_fish: !request
-    method: GET
-    url: "{{host}}/fishes/{{fish_id}}"
-```
-
-And let's see it in action:
-
-```sh
-> slumber request -p local create_fish
-# http://localhost:5000/fishes
-{"id": 2, "kind": "barracuda", "name": "Jimmy"}
-> slumber request -p local get_fish
-# http://localhost:5000/fishes/fish_2
-{"id": "fish_2", "kind": "barracuda", "name": "Jimmy"}
-```
-
-## Binary Templates
-
-While templates are mostly useful for generating strings, they can also generate binary data. This is most useful for sending binary request bodies. Some fields (e.g. URL) do _not_ support binary templates because they need valid text; in those cases, if the template renders to non-UTF-8 data, an error will be returned. In general, if binary data _can_ be supported, it is.
-
-> Note: Support for binary form data is currently incomplete. You can render binary data from templates, but forms must be constructed manually. See [#235](https://github.com/LucasPickering/slumber/discussions/235) for more info.
-
-```yaml
-profiles:
-  local:
-    data:
-      host: http://localhost:5000
-      fish_id: "cod_father"
-
-chains:
-  fish_image:
-    source: !file
-      path: ./cod_father.jpg
-
-requests:
-  set_fish_image: !request
-    method: POST
-    url: "{{host}}/fishes/{{fish_id}}/image"
-    headers:
-      Content-Type: image/jpg
-    body: "{{chains.fish_image}}"
-```
+- Rust integration. Not all template languages have a Rust interface that enables the flexibility that Slumber needs.
+- Support for lazy expressions. Some languages require all available values in template to be precomputed, which is incompatible with Slumber's dynamic data sources.
+- Binary values. Most template languages focus on generating strings and don't support binary output values. Binary values are necessary for Slumber because not all HTTP requests are strings. For example, loading an image from a file and uploading it to a server involves non-textual template values.
+- Simplicity. Most template languages are written for the purpose of building websites, which means generating HTML. This involves complex features such as conditionals and for loops. Slumber's needs are much more narrow. By simplifying the template language, it reduces the level of complexity available to users. This is a tradeoff: an easier learning curve, at the cost of less power.

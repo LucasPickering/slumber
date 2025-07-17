@@ -19,7 +19,9 @@ indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
 ratatui-core = {version = "0.1.0-alpha.6", default-features = false, features = ["serde"]}
+schemars = {workspace = true, features = ["indexmap2"], optional = true}
 serde = {workspace = true}
+serde_yaml = {workspace = true}
 slumber_util = {workspace = true}
 terminput = {workspace = true}
 tracing = {workspace = true}
@@ -30,6 +32,9 @@ env-lock = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}
+
+[features]
+schema = ["dep:schemars"]
 
 [lints]
 workspace = true

@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Config",
+  "description": "App-level configuration, which is global across all sessions and\ncollections. This is *not* meant to modifiable during a session. If changes\nare made to the config file while a TUI session is running, they won't be\npicked up until the app restarts.",
+  "type": "object",
+  "properties": {
+    "commands": {
+      "description": "Configuration for in-app query and export commands",
+      "$ref": "#/$defs/CommandsConfig",
+      "default": {
+        "shell": [
+          "/bin/sh",
+          "-c"
+        ],
+        "default_query": {}
+      }
+    },
+    "editor": {
+      "description": "Command to use for in-app editing. If provided, overrides\n`VISUAL`/`EDITOR` environment variables. This only supports a single\ncommand, *not* a content type map. This is because there isn't much\nvalue in it, and plumbing the content type around to support it is\nannoying.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "pager": {
+      "description": "Command to use to browse response bodies. If provided, overrides\n`PAGER` environment variable.  This could be a single command, or a map\nof {content_type: command} to use different commands based on response\ntype. Aliased for backward compatibility with the old name.",
+      "$ref": "#/$defs/MimeMap",
+      "default": {}
+    },
+    "ignore_certificate_hosts": {
+      "description": "TLS cert errors on these hostnames are ignored. Be careful!",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "large_body_size": {
+      "description": "Request/response bodies over this size are treated differently, for\nperformance reasons",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0,
+      "default": 1000000
+    },
+    "follow_redirects": {
+      "description": "Follow 3xx redirects automatically. Enabled by default",
+      "type": "boolean",
+      "default": true
+    },
+    "preview_templates": {
+      "description": "Should templates be rendered inline in the UI, or should we show the\nraw text?",
+      "type": "boolean",
+      "default": true
+    },
+    "input_bindings": {
+      "description": "Overrides for default key bindings",
+      "$ref": "#/$defs/InputMap",
+      "default": {
+        "quit": [
+          "q"
+        ],
+        "force_quit": [
+          "ctrl c"
+        ],
+        "scroll_left": [
+          "shift left"
+        ],
+        "scroll_right": [
+          "shift right"
+        ],
+        "open_actions": [
+          "x"
+        ],
+        "open_help": [
+          "?"
+        ],
+        "fullscreen": [
+          "f"
+        ],
+        "reload_collection": [
+          "f5"
+        ],
+        "history": [
+          "h"
+        ],
+        "search": [
+          "/"
+        ],
+        "export": [
+          ":"
+        ],
+        "previous_pane": [
+          "shift tab"
+        ],
+        "next_pane": [
+          "tab"
+        ],
+        "up": [
+          "up"
+        ],
+        "down": [
+          "down"
+        ],
+        "left": [
+          "left"
+        ],
+        "right": [
+          "right"
+        ],
+        "page_up": [
+          "pageup"
+        ],
+        "page_down": [
+          "pagedown"
+        ],
+        "home": [
+          "home"
+        ],
+        "end": [
+          "end"
+        ],
+        "submit": [
+          "enter"
+        ],
+        "toggle": [
+          " "
+        ],
+        "cancel": [
+          "escape"
+        ],
+        "delete": [
+          "delete"
+        ],
+        "edit": [
+          "e"
+        ],
+        "reset": [
+          "z"
+        ],
+        "view": [
+          "v"
+        ],
+        "select_collection": [
+          "f3"
+        ],
+        "select_profile_list": [
+          "p"
+        ],
+        "select_recipe_list": [
+          "l"
+        ],
+        "select_recipe": [
+          "c"
+        ],
+        "select_response": [
+          "r"
+        ]
+      }
+    },
+    "theme": {
+      "description": "Visual configuration for the TUI (e.g. colors)",
+      "$ref": "#/$defs/Theme",
+      "default": {
+        "primary_color": "Blue",
+        "primary_text_color": "White",
+        "secondary_color": "Yellow",
+        "success_color": "Green",
+        "error_color": "Red"
+      }
+    },
+    "persist": {
+      "description": "Enable/disable persistence for all TUI requests? The CLI ignores this\nin favor of the absence/presence of the `--persist` flag",
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "CommandsConfig": {
+      "description": "Configuration for in-app query and export commands",
+      "type": "object",
+      "properties": {
+        "shell": {
+          "description": "Wrapping shell to parse and execute commands\nIf empty, commands will be parsed with shell-words and run natievly",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/bin/sh",
+            "-c"
+          ]
+        },
+        "default_query": {
+          "description": "Default query command for responses",
+          "$ref": "#/$defs/MimeMap",
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "MimeMap": {
+      "description": "A map of content type patterns to values. Use this when you need to select a\nvalue based on the `Content-Type` header of a request/response. The patterns\nuse [glob] for matching, so technically it's trying to match a Unix\npath-like string, but that happens to look the same as a MIME type.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "InputMap": {
+      "description": "Mapping of actions to input bindings\n\nIntuitively this should be binding:action since we get key events from the\nuser and need to look up the corresponding actions. But we can't look up a\nbinding from the map based on an input event because event<=>binding\nmatching is more nuanced that simple equality (e.g. bonus modifiers keys can\nbe ignored). We have to iterate over map when checking inputs, but keying by\naction at least allows us to look up action=>binding for help text.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/InputBinding"
+      }
+    },
+    "InputBinding": {
+      "description": "One or more key combinations, which should correspond to a single action",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/KeyCombination"
+      }
+    },
+    "KeyCombination": {
+      "description": "Key input sequence, which can trigger an action",
+      "type": "string"
+    },
+    "Theme": {
+      "description": "User-configurable visual settings. These are used to generate the full style\nset.",
+      "type": "object",
+      "properties": {
+        "primary_color": {
+          "type": "string",
+          "default": "Blue"
+        },
+        "primary_text_color": {
+          "description": "Theoretically we could calculate this bsed on primary color, but for\nnamed or indexed colors, we don't know the exact RGB code since it\ndepends on the user's terminal theme. It's much easier and less\nfallible to just have the user specify it.",
+          "type": "string",
+          "default": "White"
+        },
+        "secondary_color": {
+          "type": "string",
+          "default": "Yellow"
+        },
+        "success_color": {
+          "type": "string",
+          "default": "Green"
+        },
+        "error_color": {
+          "type": "string",
+          "default": "Red"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

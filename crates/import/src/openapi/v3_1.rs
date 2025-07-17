@@ -1,3 +1,4 @@
+use crate::common;
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -14,8 +15,8 @@ use slumber_core::{
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    template::Template,
 };
+use slumber_template::Template;
 use slumber_util::ResultTraced;
 use std::{iter, mem};
 use strum::IntoEnumIterator;
@@ -40,7 +41,6 @@ pub fn from_openapi_v3_1(
         name: Some(name),
         profiles,
         recipes,
-        chains: IndexMap::new(),
     })
 }
 
@@ -211,7 +211,7 @@ impl<'a> RecipeBuilder<'a> {
         // Build the base URL template. We may modify this to replace its path
         // params with corresponding chain references, so don't convert it into
         // a template until the end
-        let url = format!("{{{{host}}}}{path_name}");
+        let url = format!("{{{{ host }}}}{path_name}");
 
         let mut builder = Self {
             id,
@@ -254,7 +254,7 @@ impl<'a> RecipeBuilder<'a> {
             url,
             body: builder.body,
             authentication: builder.authentication,
-            query: builder.query,
+            query: common::build_query_parameters(builder.query),
             headers: builder.headers,
         }
     }
@@ -360,9 +360,9 @@ impl<'a> RecipeBuilder<'a> {
                     });
                 }
                 "bearer" => {
-                    self.authentication = Some(Authentication::Bearer(
-                        Template::from_field("api_token"),
-                    ));
+                    self.authentication = Some(Authentication::Bearer {
+                        token: Template::from_field("api_token"),
+                    });
                 }
                 _ => {
                     error!("Unsupported HTTP authentication scheme `{scheme}`");

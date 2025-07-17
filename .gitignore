@@ -7,5 +7,6 @@ response.json
 *.sqlite
 expand.rs
 *.prof
+__pycache__/
 *.swp
 gifs.md

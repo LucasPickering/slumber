@@ -38,7 +38,6 @@
 pub mod content_type;
 mod curl;
 mod models;
-pub mod query;
 #[cfg(test)]
 mod tests;
 
@@ -47,7 +46,7 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::curl::CurlBuilder,
-    template::{Template, TemplateContext},
+    render::TemplateContext,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -64,6 +63,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
+use slumber_template::Template;
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
@@ -472,7 +472,7 @@ impl Recipe {
             .url
             .render_string(template_context)
             .await
-            .context("Error rendering URL")?;
+            .context("Rendering URL")?;
         url.parse::<Url>()
             .with_context(|| format!("Invalid URL: `{url}`"))
     }
@@ -483,20 +483,24 @@ impl Recipe {
         options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let iter = self.query.iter().enumerate().filter_map(|(i, (k, v))| {
-            // Look up and apply override. We do this by index because the
-            // keys aren't necessarily unique
-            let template = options.query_parameters.get(i, v)?;
+        let iter =
+            self.query_iter().enumerate().filter_map(|(i, (k, _, v))| {
+                // Look up and apply override. We do this by index because the
+                // keys aren't necessarily unique
+                let template = options.query_parameters.get(i, v)?;
 
-            Some(async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    template.render_string(template_context).await.context(
-                        format!("Error rendering query parameter `{k}`"),
-                    )?,
-                ))
-            })
-        });
+                Some(async move {
+                    Ok::<_, anyhow::Error>((
+                        k.to_owned(),
+                        template
+                            .render_string(template_context)
+                            .await
+                            .context(format!(
+                                "Rendering query parameter `{k}`"
+                            ))?,
+                    ))
+                })
+            });
         future::try_join_all(iter).await
     }
 
@@ -540,10 +544,11 @@ impl Recipe {
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let mut value = value_template
-            .render(template_context)
+        let mut value: Vec<u8> = value_template
+            .render_bytes(template_context)
             .await
-            .context(format!("Error rendering header `{header}`"))?;
+            .context(format!("Rendering header `{header}`"))?
+            .into();
 
         // Strip leading/trailing line breaks because they're going to trigger a
         // validation error and are probably a mistake. We're trading
@@ -582,7 +587,7 @@ impl Recipe {
                         username
                             .render_string(template_context)
                             .await
-                            .context("Error rendering username")
+                            .context("Rendering username")
                     },
                     async {
                         OptionFuture::from(password.as_ref().map(|password| {
@@ -590,18 +595,18 @@ impl Recipe {
                         }))
                         .await
                         .transpose()
-                        .context("Error rendering password")
+                        .context("Rendering password")
                     },
                 )?;
                 Ok(Some(Authentication::Basic { username, password }))
             }
 
-            Some(Authentication::Bearer(token)) => {
+            Some(Authentication::Bearer { token }) => {
                 let token = token
                     .render_string(template_context)
                     .await
-                    .context("Error rendering bearer token")?;
-                Ok(Some(Authentication::Bearer(token)))
+                    .context("Rendering bearer token")?;
+                Ok(Some(Authentication::Bearer { token }))
             }
             None => Ok(None),
         }
@@ -619,15 +624,14 @@ impl Recipe {
 
         let rendered = match body {
             RecipeBody::Raw(body) => RenderedBody::Raw(
-                body.render(template_context)
+                body.render_bytes(template_context)
                     .await
-                    .context("Error rendering body")?
-                    .into(),
+                    .context("Rendering body")?,
             ),
             RecipeBody::Json(json) => RenderedBody::Json(
                 json.render(template_context)
                     .await
-                    .context("Error rendering body")?,
+                    .context("Rendering body")?,
             ),
             RecipeBody::FormUrlencoded(fields) => {
                 let iter = fields.iter().enumerate().filter_map(
@@ -639,7 +643,7 @@ impl Recipe {
                                 .render_string(template_context)
                                 .await
                                 .context(format!(
-                                    "Error rendering form field `{field}`"
+                                    "Rendering form field `{field}`"
                                 ))?;
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
@@ -655,11 +659,12 @@ impl Recipe {
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
                             let value = template
-                                .render(template_context)
+                                .render_bytes(template_context)
                                 .await
                                 .context(format!(
-                                    "Error rendering form field `{field}`"
-                                ))?;
+                                    "Rendering form field `{field}`"
+                                ))?
+                                .into();
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
                     },
@@ -678,7 +683,7 @@ impl Authentication<String> {
             Authentication::Basic { username, password } => {
                 builder.basic_auth(username, password)
             }
-            Authentication::Bearer(token) => builder.bearer_auth(token),
+            Authentication::Bearer { token } => builder.bearer_auth(token),
         }
     }
 }

@@ -18,7 +18,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Text},
 };
-use slumber_core::template::{Prompt, Prompter, ResponseChannel, Select};
+use slumber_core::render::{Prompt, Prompter, ResponseChannel, Select};
 use std::io::Write;
 use tracing::trace;
 

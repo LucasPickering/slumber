@@ -1,157 +1,155 @@
+# yaml-language-server: $schema=./schemas/collection.json
 # Note: This file is meant primarily for development and testing of Slumber. It
 # is not intended as documentation. While it may be a helpful example, canonical
 # documentation is at: https://slumber.lucaspickering.me/
+
+.base_profile_data: &base_profile_data
+  username: xX{{ command(['whoami']) | trim() | sensitive() }}Xx
+  user_guid: abc123
+.base_request: &base_request
+  type: request
+  headers:
+    Accept: application/json
 
 profiles:
   works:
     name: This Works
     data:
+      <<: *base_profile_data
       host: https://httpbin.org
-      username: xX{{chains.username}}Xx
-      user_guid: abc123
   local:
     name: Local
     default: true
     data:
+      <<: *base_profile_data
       host: http://localhost:80
-      username: xX{{chains.username}}Xx
-      user_guid: abc123
   init-fails:
     name: Request Init Fails
     data:
+      <<: *base_profile_data
   request-fails:
     name: Request Fails
     data:
+      <<: *base_profile_data
       host: http://localhost:5000
-      username: xX{{chains.username}}Xx
-      user_guid: abc123
-
-chains:
-  username:
-    source: !command
-      command: [whoami]
-    trim: both
-  password:
-    source: !prompt
-      message: Password
-    sensitive: true
-  select_value:
-    source: !select
-      message: Select a value
-      options:
-        - foo
-        - bar
-        - baz
-        - a really really really really long option
-        - "{{chains.username}}"
-  select_dynamic:
-    source: !select
-      message: Select a value
-      options: "{{chains.login_form_values}}"
-  login_form_values:
-    source: !request
-      recipe: login
-      trigger: !expire 12h
-    selector: $.form[*]
-    selector_mode: array
-  auth_token:
-    source: !request
-      recipe: login
-      trigger: !expire 12h
-    selector: $.form
-  image:
-    source: !file
-      path: ./static/slumber.png
-  big_file:
-    source: !file
-      path: Cargo.lock
-  response_type:
-    source: !select
-      options:
-        - json
-        - html
-        - xml
-
-.base_request: &base
-  authentication: !bearer "{{chains.auth_token}}"
-  headers:
-    Accept: application/json
 
 requests:
-  login: !request
-    method: POST
-    url: "{{host}}/anything/login"
-    persist: false
-    authentication: !basic
-      username: "{{username}}"
-      password: "{{chains.password}}"
-    query:
-      - sudo=yes_please
-      - fast=no_thanks
-      - fast=actually_maybe
-    headers:
-      Accept: application/json
-    body: !form_urlencoded
-      username: "{{username}}"
-      password: "{{chains.password}}"
+  authentication:
+    type: folder
+    requests:
+      login:
+        <<: *base_request
+        method: POST
+        url: "{{ host }}/anything/login"
+        persist: false
+        query:
+          sudo: yes_please
+          fast: [no_thanks, actually_maybe]
+        body:
+          type: form_urlencoded
+          data:
+            username: "{{ username }}"
+            password: "{{ prompt(message='Password', sensitive=true) }}"
 
-  users: !folder
+      basic_auth:
+        <<: *base_request
+        method: POST
+        url: "{{ host }}/anything/login"
+        persist: false
+        authentication:
+          type: basic
+          username: "{{ username }}"
+          password: "{{ prompt(message='Password') }}"
+        query:
+          sudo: yes_please
+          fast: [no_thanks, actually_maybe]
+        headers:
+          Accept: application/json
+
+      bearer_auth:
+        <<: *base_request
+        method: POST
+        url: "{{ host }}/anything/login"
+        persist: false
+        authentication:
+          type: bearer
+          token: "{{ response('login', trigger='12h') | jsonpath('$.form') }}"
+        query:
+          sudo: yes_please
+          fast: [no_thanks, actually_maybe]
+        headers:
+          Accept: application/json
+
+  users:
+    type: folder
     name: Users
     requests:
-      get_users: !request
-        <<: *base
+      get_users:
+        <<: *base_request
         name: Get Users
         method: GET
-        url: "{{host}}/get"
-        query:
-          - foo=bar
-          - select={{chains.select_dynamic}}
+        url: "{{ host }}/get"
 
-      get_user: !request
-        <<: *base
+      get_user:
+        <<: *base_request
         name: Get User
         method: GET
-        url: "{{host}}/anything/{{user_guid}}"
+        url: "{{ host }}/anything/{{ user_guid }}"
+        query:
+          foo: bar
+          select_static: "{{ select(
+            ['foo', 'bar', 'baz', 'a really really really really long option', username],
+            message='Select a value'
+            ) }}"
+          select_dynamic: "{{ response('get_users') | jsonpath('$.headers', mode='array') | select() }}"
 
-      modify_user: !request
-        <<: *base
+      modify_user:
+        <<: *base_request
         name: Modify User
         method: PUT
-        url: "{{host}}/anything/{{user_guid}}"
+        url: "{{ host }}/anything/{{ user_guid }}"
         body:
-          !json {
-            "new_username": "user formerly known as {{chains.username}}",
-            "number": 3,
-            "bool": true,
-            "null": null,
-            "array": [1, 2, false, 3.3, "www.www"],
-          }
+          type: json
+          data:
+            {
+              "new_username": "user formerly known as {{ username }}",
+              "number": 3,
+              "bool": true,
+              "null": null,
+              "array": [1, 2, false, 3.3, "www.www"],
+            }
 
-  get_image: !request
+  get_image:
+    type: request
     headers:
       Accept: image/png
     name: Get Image
     method: GET
-    url: "{{host}}/image"
+    url: "{{ host }}/image"
 
-  upload_image: !request
+  upload_image:
+    <<: *base_request
     name: Upload Image
     method: POST
-    url: "{{host}}/anything/image"
-    body: !form_multipart
-      filename: "logo.png"
-      image: "{{chains.image}}"
+    url: "{{ host }}/anything/image"
+    body:
+      type: form_multipart
+      data:
+        filename: "logo.png"
+        image: "{{ file('static/slumber.png') }}"
 
-  big_file: !request
+  big_file:
+    <<: *base_request
     name: Big File
     method: POST
-    url: "{{host}}/anything"
-    body: "{{chains.big_file}}"
+    url: "{{ host }}/anything"
+    body: "{{ file('Cargo.lock') }}"
 
-  raw_json: !request
+  raw_json:
+    <<: *base_request
     name: Raw JSON
     method: POST
-    url: "{{host}}/anything"
+    url: "{{ host }}/anything"
     headers:
       Content-Type: application/json
     body: >
@@ -160,18 +158,20 @@ requests:
         "size": "HUGE"
       }
 
-  delay: !request
-    <<: *base
+  delay:
+    <<: *base_request
     name: Delay
     method: GET
-    url: "{{host}}/delay/5"
+    url: "{{ host }}/delay/5"
 
-  dynamic_response_type: !request
+  dynamic_response_type:
+    <<: *base_request
     name: Dynamic Response Type
     method: GET
-    url: "{{host}}/{{chains.response_type}}"
+    url: "{{ host }}/{{ select(['json', 'html', 'xml']) }}"
 
-  redirect: !request
+  redirect:
+    <<: *base_request
     name: Redirect
     method: GET
     url: "{{host}}/redirect-to?url={{host}}/get"

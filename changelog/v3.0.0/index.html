@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" id="oranda" class="dark">
+  <head>
+    <title>slumber</title>
+    
+      <meta property="og:url" content="https://slumber.lucaspickering.me" />
+    
+    
+      <link rel="icon" href="/favicon.ico" />
+    
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+      <meta name="description" content="Terminal-based HTTP client" />
+      <meta property="og:description" content="Terminal-based HTTP client" />
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="slumber" />
+    
+    
+    
+    <meta http-equiv="Permissions-Policy" content="interest-cohort=()" />
+    <link rel="stylesheet" href="/oranda-v0.6.1.css" />
+    
+    
+  </head>
+  <body>
+    <div class="container">
+      <div class="page-body">
+        
+          <div class="repo_banner">
+            <a href="https://github.com/LucasPickering/slumber">
+              <div class="github-icon" aria-hidden="true"></div>
+              Check out our GitHub!
+            </a>
+          </div>
+        
+
+        <main>
+          <header>
+            
+              <img src="/slumber.png" alt="slumber" class="logo" />
+            
+            <h1 class="title">slumber</h1>
+            
+  <nav class="nav">
+    <ul>
+      <li><a href="/">Home</a></li>
+
+      
+
+      
+        <li><a href="/artifacts/">Install</a></li>
+      
+
+      
+        <li><a href="/book/">Docs</a></li>
+      
+
+      
+        <li><a href="/funding/">Funding</a></li>
+      
+
+      
+        <li><a href="/changelog/">Changelog</a></li>
+      
+    </ul>
+  </nav>
+
+          </header>
+
+          
+  <div>
+    <h1>3.0.0 - 2025-02-15</h1>
+    <div class="releases-body">
+      
+      
+      <section class="release ">
+  
+  <div class="release-info">
+    <span class="flex items-center gap-2">
+      <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'>
+    <path stroke-linecap='round' stroke-linejoin='round' d='M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z' />
+    <path stroke-linecap='round' stroke-linejoin='round' d='M6 6h.008v.008H6V6z' /></svg>
+      v3.0.0
+    </span>
+    <span class="flex items-center gap-2">
+      
+        <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'><path stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5' /></svg>
+        Feb 17 2025 at 23:19 UTC
+      
+    </span>
+  </div>
+  <div class="release-body">
+    <p>A major release! The main focus of this release is the introduction of shell commands for data querying and export. Previously, you could query response bodies within the TUI only using JSONPath. This limited querying only to JSON responses, and the limited amount of operators supported by JSON. Now, you can use whatever shell commands you want (such as <code>head</code>, <code>grep</code>, and <code>jq</code>) to filter your reponses bodies, right in the TUI! <a href="https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md" rel="noopener noreferrer">Check out the docs</a> for more examples.</p>
+<p>In addition to the querying change, this release includes a handful of breaking changes, none of which are likely to cause issues for existing users.</p>
+<h3>Breaking</h3>
+<ul>
+<li>Don't store CLI requests in history</li>
+<li>Simplify display for <code>slumber request</code>
+<ul>
+<li>The flags <code>--status</code>, <code>--headers</code> and <code>--no-body</code> have been removed in favor of a single <code>--verbose</code> flag</li>
+</ul>
+</li>
+<li>Remove DB migration to upgrade from the pre-1.8.0 DB format
+<ul>
+<li>This only impacts users upgrading to 3.0.0 from versions <em>before</em> 1.8.0. You'll need to upgrade to an intermediate version first. If you install 3.0.0 and try to start it, you'll see an error message explaining how to fix it.</li>
+<li>See <a href="https://github.com/LucasPickering/slumber/issues/306" rel="noopener noreferrer">#306</a> for more info</li>
+</ul>
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li>Replace JSONPath querying with general purpose shell commands for querying response bodies. <a href="https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md" rel="noopener noreferrer">See docs</a>
+<ul>
+<li>Now you can access any CLI tools you want for transforming response bodies, such as <code>jq</code> or <code>grep</code></li>
+<li>By default, commands are executed via <code>sh</code> (or <code>cmd</code> on Windows), but this is configured via the <a href="https://slumber.lucaspickering.me/book/api/configuration/index.html" rel="noopener noreferrer"><code>commands.shell</code> field</a></li>
+</ul>
+</li>
+<li>Add keybind (<code>:</code> by default) to run an "export" command with a response body, allowing you to run arbitrary shell commands to save a response body to a file, copy it to the clipboard, etc. <a href="https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md#exporting-data" rel="noopener noreferrer">See docs</a></li>
+<li>Add <code>slumber history</code> subcommand. Currently it has two operations:
+<ul>
+<li><code>slumber history list</code> lists all stored requests for a recipe</li>
+<li><code>slumber history get</code> prints a specific request/response</li>
+</ul>
+</li>
+<li>Add <code>--output</code> flag to <code>slumber request</code> to control where the response body is written to</li>
+<li>Support MIME type mapping for <code>pager</code> config field, so you can set different pagers based on media type. <a href="https://slumber.lucaspickering.me/book/api/configuration/mime.html" rel="noopener noreferrer">See docs</a></li>
+<li>Several changes related to keybinds and action menus to make the two feel more cohesive
+<ul>
+<li>Add "Edit" and "Reset" actions to menus on the recipe pane
+<ul>
+<li>These don't provide any new functionality, as the <code>e</code> and <code>z</code> keys are already bound to those actions, but it should make them more discoverable</li>
+</ul>
+</li>
+<li>Add keybind (<code>v</code> by defualt) to open a recipe/request/response body in your pager
+<ul>
+<li>Previously this was available only through the actions menu</li>
+</ul>
+</li>
+<li>"View Body" and "Copy Body" actions for a <strong>recipe</strong> are now only available within the Body tab of the Recipe pane
+<ul>
+<li>Previously they were available anywhere in the Recipe List or Recipe panes. With the addition of other actions to the menu it was started to feel cluttered</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Denote templates that have been edited during the current session with italics instead of a faint "(edited)" note</li>
+<li>Header names in recipes are now lowercased in the UI
+<ul>
+<li>They have always been lowercased when the request is actually sent, so now the UI is just more representative of what will be sent</li>
+</ul>
+</li>
+<li>Accept a directory for the <code>--file</code>/<code>-f</code> CLI argument
+<ul>
+<li>If a directory is given, the <a href="https://slumber.lucaspickering.me/book/api/request_collection/index.html#format--loading" rel="noopener noreferrer">standard rules for detecting a collection file</a> will be applied from that directory</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix certain recipe-related menu actions being enabled when they shouldn't be</li>
+</ul>
+
+  </div>
+</section>
+    </div>
+  </div>
+
+        </main>
+      </div>
+
+      <footer>
+        
+          <a href="https://github.com/LucasPickering/slumber"><div class="github-icon" aria-hidden="true"></div></a>
+        
+        <span>
+          slumber, MIT
+        </span>
+      </footer>
+    </div>
+
+    
+    
+
+    
+  </body>
+</html>

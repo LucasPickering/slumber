@@ -58,7 +58,7 @@ jobs:
       - name: Check HTML for broken internal links
         uses: untitaker/hyperlink@0.1.42
         with:
-          args: ./public
+          args: ./public --sources docs/src/ --check-anchors
 
       # Deploy to our gh-pages branch (creating it if it doesn't exist)
       # the "public" dir that oranda made above will become the root dir

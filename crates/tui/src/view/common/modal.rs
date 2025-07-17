@@ -216,6 +216,8 @@ impl Draw for ModalQueue {
             area.y = area.y.saturating_sub(y_buffer);
             area.width += x_buffer * 2;
             area.height += y_buffer * 2;
+            // Don't overflow the draw area
+            area = area.clamp(frame.area());
 
             let block = Block::default()
                 .title(modal.data().title())

@@ -5,6 +5,7 @@ mod cereal;
 mod json;
 mod models;
 mod recipe_tree;
+mod resolve;
 #[cfg(feature = "schema")]
 mod schema;
 

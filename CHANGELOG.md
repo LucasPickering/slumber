@@ -33,6 +33,9 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
   - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
   - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`
   - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html) for examples of the new format
+- YAML anchor/alias/merge syntax has been replaced with `$ref` references, similar to OpenAPI [#290](https://github.com/LucasPickering/slumber/issues/290)
+  - These references are much more flexible, including the ability to import from other files
+  - [See docs](https://slumber.lucaspickering.me/book/user_guide/composition.html) for examples
 
 ### Added
 

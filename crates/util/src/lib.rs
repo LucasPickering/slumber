@@ -34,7 +34,7 @@ use winnow::{
 
 /// Link to the GitHub New Issue form
 pub const NEW_ISSUE_LINK: &str =
-    "https://github.com/LucasPickering/slumber/issues/new/choose";
+    "https://github.com/LucasPickering/slumber/issues/new";
 
 /// A static mapping between values (of type `T`) and labels (strings). Used to
 /// both stringify from and parse to `T`.

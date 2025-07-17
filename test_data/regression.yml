@@ -5,9 +5,9 @@
 
 name: Regression Test
 
-.base_profile_data: &base_profile_data
+.base_profile_data:
   host: https://httpbin.org
-.base_recipe: &base_recipe
+.base_recipe:
   headers:
     Accept: application/json
 
@@ -15,14 +15,14 @@ profiles:
   profile1:
     name: Profile 1
     data:
-      <<: *base_profile_data
+      $ref: "#/.base_profile_data"
       username: xX{{ command(['whoami']) | trim() }}Xx
       user_guid: abc123
   profile2:
     name: Profile 2
     default: true
     data:
-      <<: *base_profile_data
+      $ref: "#/.base_profile_data"
 
 requests:
   text_body:
@@ -55,7 +55,7 @@ requests:
 
       json_body:
         type: request
-        <<: *base_recipe
+        $ref: "#/.base_recipe"
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
         authentication:
@@ -67,7 +67,7 @@ requests:
 
       json_body_but_not:
         type: request
-        <<: *base_recipe
+        $ref: "#/.base_recipe"
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
         authentication:
@@ -80,7 +80,7 @@ requests:
 
       form_urlencoded_body:
         type: request
-        <<: *base_recipe
+        $ref: "#/.base_recipe"
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
         body:

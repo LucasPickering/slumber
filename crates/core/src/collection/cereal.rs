@@ -12,6 +12,7 @@ use crate::{
         Authentication, Collection, Folder, JsonTemplate, Profile, ProfileId,
         QueryParameterValue, Recipe, RecipeBody, RecipeId, RecipeTree,
         recipe_tree::RecipeNode,
+        resolve::{ReferenceError, ResolveReferences},
     },
     http::HttpMethod,
 };
@@ -25,7 +26,9 @@ use slumber_template::Template;
 use std::path::Path;
 use thiserror::Error;
 
-type Result<T> = std::result::Result<T, LocatedError>;
+const TYPE_FIELD: &str = "type";
+
+type Result<T> = std::result::Result<T, LocatedError<Error>>;
 
 /// Parse and deserialize a YAML string into a [Collection]
 ///
@@ -37,19 +40,34 @@ type Result<T> = std::result::Result<T, LocatedError>;
 ///
 /// The given path is used only for error context. The data must already be
 /// loaded out of the file prior to calling.
+///
+/// ## Params
+///
+/// - `yaml_input`: YAML string to parse and deserialize
+/// - `path`: File that the YAML was loaded from. `None` for tests that define
+///   YAML inline
 pub fn deserialize_collection(
     yaml_input: &str,
     path: Option<&Path>,
 ) -> anyhow::Result<Collection> {
+    fn deserialize(mut yaml: MarkedYaml<'static>) -> Result<Collection> {
+        // Resolve $ref keys before deserializing
+        yaml.resolve_references().map_err(|error| LocatedError {
+            error: Error::Reference(error.error),
+            location: error.location,
+        })?;
+        Collection::deserialize(yaml)
+    }
+
     let mut documents = MarkedYaml::load_from_str(yaml_input)?;
 
-    // If the file is empty, pretend there's an empty mapping instead because
-    // that's functionally equivalent
+    // If the file is empty, pretend there's an empty mapping instead
+    // because that's functionally equivalent
     let yaml = documents
         .pop()
         .unwrap_or(YamlData::Mapping(Default::default()).into());
 
-    Collection::deserialize(yaml).map_err(
+    deserialize(yaml).map_err(
         |LocatedError {
              error: kind,
              location,
@@ -102,10 +120,10 @@ macro_rules! deserialize_enum {
             let span = $yaml.span;
             let mut mapping = $yaml.try_into_mapping()?;
             let kind_yaml = mapping
-                .remove(&MarkedYaml::value_from_str("type"))
+                .remove(&MarkedYaml::value_from_str(TYPE_FIELD))
                 .ok_or(LocatedError {
                     error: Error::MissingField {
-                        field: "type",
+                        field: TYPE_FIELD,
                         expected: EXPECTED,
                     },
                     location: span.start,
@@ -428,12 +446,7 @@ impl DeserializeYaml for JsonTemplate {
         match yaml.data {
             YamlData::Representation(_, _, _)
             | YamlData::BadValue
-            | YamlData::Alias(_) => {
-                // Impossible because saphyr is set to parse completely and
-                // will fail fast if there's a bad value anywhere. And aliases
-                // should be resolved during parsing.
-                unreachable!("Invalid or incomplete YAML data")
-            }
+            | YamlData::Alias(_) => yaml_parse_panic(),
             YamlData::Value(Scalar::Null) => Ok(Self::Null),
             YamlData::Value(Scalar::Boolean(b)) => Ok(Self::Bool(b)),
             YamlData::Value(Scalar::Integer(i)) => Ok(Self::Number(i.into())),
@@ -615,15 +628,7 @@ impl<'a> MarkedYamlExt<'a> for MarkedYaml<'a> {
     }
 
     fn try_into_mapping(self) -> Result<AnnotatedMapping<'a, Self>> {
-        if let YamlData::Mapping(mut mapping) = self.data {
-            // Saphyr doesn't merge << keys automatically so do it here
-            // TODO replace this with $ref and drop support
-            if let Some(inner) =
-                mapping.remove(&MarkedYaml::value_from_str("<<"))
-            {
-                let inner = inner.try_into_mapping()?;
-                mapping.extend(inner);
-            }
+        if let YamlData::Mapping(mapping) = self.data {
             Ok(mapping)
         } else {
             Err(LocatedError::unexpected(Expected::Mapping, self))
@@ -637,14 +642,14 @@ impl<'a> MarkedYamlExt<'a> for MarkedYaml<'a> {
 /// for it beyond stringification.
 #[derive(Debug, derive_more::Display)]
 #[display("{error}")]
-struct LocatedError {
+pub struct LocatedError<E> {
     /// Error that occurred
-    error: Error,
+    pub error: E,
     /// Location of the error within the YAML file
-    location: Marker,
+    pub location: Marker,
 }
 
-impl LocatedError {
+impl LocatedError<Error> {
     /// Create a new [Other](Self::Other) from any error type
     fn other(
         error: impl 'static + std::error::Error + Send + Sync,
@@ -672,14 +677,9 @@ impl LocatedError {
             // Collections could be large so just include the type
             YamlData::Sequence(_) => "sequence".into(),
             YamlData::Mapping(_) => "mapping".into(),
-            // Impossible because saphyr is set to parse completely and
-            // will fail fast if there's a bad value anywhere. And aliases
-            // should be resolved during parsing.
             YamlData::Representation(_, _, _)
             | YamlData::Alias(_)
-            | YamlData::BadValue => {
-                unreachable!("Invalid or incomplete YAML data")
-            }
+            | YamlData::BadValue => yaml_parse_panic(),
         };
         Self {
             location: actual.span.start,
@@ -691,7 +691,7 @@ impl LocatedError {
     }
 }
 
-impl From<ScanError> for LocatedError {
+impl From<ScanError> for LocatedError<Error> {
     fn from(error: ScanError) -> Self {
         Self {
             location: *error.marker(),
@@ -721,6 +721,10 @@ enum Error {
     /// External error type
     #[error(transparent)]
     Other(Box<dyn 'static + std::error::Error + Send + Sync>),
+
+    /// Error parsing or resolving a reference under a `$ref` tag
+    #[error(transparent)]
+    Reference(ReferenceError),
 
     /// Error parsing YAML
     #[error(transparent)]
@@ -911,6 +915,16 @@ impl HasId for Recipe {
     }
 }
 
+/// There are a few variants of [YamlData] that are not possible to encounter
+/// with the way we use the parser. They represent partially parsed data, while
+/// we do full parsing before starting deserialization. Call this function in
+/// `match` statements for these variants
+#[track_caller]
+pub fn yaml_parse_panic() -> ! {
+    unreachable!("Invalid or incomplete YAML data")
+}
+
+/// Expose this for RecipeTree's tests
 #[cfg(test)]
 pub use tests::deserialize_recipe_tree;
 
@@ -1074,7 +1088,7 @@ mod tests {
         >,
     ) -> serde_yaml::Value {
         mapping(
-            iter::once(("type", serde_yaml::Value::from(type_)))
+            iter::once((TYPE_FIELD, serde_yaml::Value::from(type_)))
                 .chain(fields.into_iter().map(|(k, v)| (k, v.into()))),
         )
     }

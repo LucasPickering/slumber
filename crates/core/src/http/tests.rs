@@ -111,10 +111,10 @@ fn test_get_client(
     if expected_danger {
         assert!(ptr::eq(
             client,
-            &http_engine.danger_client.as_ref().unwrap().0
+            &raw const http_engine.danger_client.as_ref().unwrap().0
         ));
     } else {
-        assert!(ptr::eq(client, &http_engine.client));
+        assert!(ptr::eq(client, &raw const http_engine.client));
     }
 }
 

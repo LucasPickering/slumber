@@ -3,10 +3,10 @@
 # is not intended as documentation. While it may be a helpful example, canonical
 # documentation is at: https://slumber.lucaspickering.me/
 
-.base_profile_data: &base_profile_data
+.base_profile_data:
   username: xX{{ command(['whoami']) | trim() | sensitive() }}Xx
   user_guid: abc123
-.base_request: &base_request
+.base_request:
   type: request
   headers:
     Accept: application/json
@@ -15,22 +15,22 @@ profiles:
   works:
     name: This Works
     data:
-      <<: *base_profile_data
+      $ref: "#/.base_profile_data"
       host: https://httpbin.org
   local:
     name: Local
     default: true
     data:
-      <<: *base_profile_data
+      $ref: "#/.base_profile_data"
       host: http://localhost:80
   init-fails:
     name: Request Init Fails
     data:
-      <<: *base_profile_data
+      $ref: "#/.base_profile_data"
   request-fails:
     name: Request Fails
     data:
-      <<: *base_profile_data
+      $ref: "#/.base_profile_data"
       host: http://localhost:5000
 
 requests:
@@ -38,7 +38,7 @@ requests:
     type: folder
     requests:
       login:
-        <<: *base_request
+        $ref: "#/.base_request"
         method: POST
         url: "{{ host }}/anything/login"
         persist: false
@@ -52,7 +52,7 @@ requests:
             password: "{{ prompt(message='Password', sensitive=true) }}"
 
       basic_auth:
-        <<: *base_request
+        $ref: "#/.base_request"
         method: POST
         url: "{{ host }}/anything/login"
         persist: false
@@ -67,7 +67,7 @@ requests:
           Accept: application/json
 
       bearer_auth:
-        <<: *base_request
+        $ref: "#/.base_request"
         method: POST
         url: "{{ host }}/anything/login"
         persist: false
@@ -85,13 +85,13 @@ requests:
     name: Users
     requests:
       get_users:
-        <<: *base_request
+        $ref: "#/.base_request"
         name: Get Users
         method: GET
         url: "{{ host }}/get"
 
       get_user:
-        <<: *base_request
+        $ref: "#/.base_request"
         name: Get User
         method: GET
         url: "{{ host }}/anything/{{ user_guid }}"
@@ -104,7 +104,7 @@ requests:
           select_dynamic: "{{ response('get_users') | jsonpath('$.headers', mode='array') | select() }}"
 
       modify_user:
-        <<: *base_request
+        $ref: "#/.base_request"
         name: Modify User
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
@@ -128,7 +128,7 @@ requests:
     url: "{{ host }}/image"
 
   upload_image:
-    <<: *base_request
+    $ref: "#/.base_request"
     name: Upload Image
     method: POST
     url: "{{ host }}/anything/image"
@@ -139,14 +139,14 @@ requests:
         image: "{{ file('static/slumber.png') }}"
 
   big_file:
-    <<: *base_request
+    $ref: "#/.base_request"
     name: Big File
     method: POST
     url: "{{ host }}/anything"
     body: "{{ file('Cargo.lock') }}"
 
   raw_json:
-    <<: *base_request
+    $ref: "#/.base_request"
     name: Raw JSON
     method: POST
     url: "{{ host }}/anything"
@@ -159,19 +159,19 @@ requests:
       }
 
   delay:
-    <<: *base_request
+    $ref: "#/.base_request"
     name: Delay
     method: GET
     url: "{{ host }}/delay/5"
 
   dynamic_response_type:
-    <<: *base_request
+    $ref: "#/.base_request"
     name: Dynamic Response Type
     method: GET
     url: "{{ host }}/{{ select(['json', 'html', 'xml']) }}"
 
   redirect:
-    <<: *base_request
+    $ref: "#/.base_request"
     name: Redirect
     method: GET
     url: "{{host}}/redirect-to?url={{host}}/get"

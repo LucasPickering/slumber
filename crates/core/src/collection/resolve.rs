@@ -1,7 +1,7 @@
 //! Resolve $ref tags in YAML documents
 
 use crate::collection::cereal::{LocatedError, yaml_parse_panic};
-use saphyr::{AnnotatedMapping, MarkedYaml, Scalar, YamlData};
+use saphyr::{AnnotatedMapping, MarkedYaml, Marker, Scalar, YamlData};
 use slumber_util::NEW_ISSUE_LINK;
 use std::{
     borrow::Cow,
@@ -116,21 +116,7 @@ impl<'input> Resolver<'input> {
                     if key.data.as_str() == Some(REFERENCE_KEY) {
                         // Key is $ref; value should be a reference
                         let reference = Reference::try_from_yaml(value)?;
-                        let source = self.source(&reference, root);
-                        let value =
-                            reference.path.lookup(source).ok_or_else(|| {
-                                LocatedError {
-                                    error: ReferenceError::NoResource(
-                                        reference.clone(),
-                                    ),
-                                    // Report the error location as the final
-                                    // value we were able to successfully
-                                    // traverse. Maybe this should be the
-                                    // location of the reference instead, but
-                                    // the value location is easier to get
-                                    location: value.span.start,
-                                }
-                            })?;
+                        let value = self.lookup(&reference, root)?;
                         self.resolved.insert(reference, value.clone());
                     } else {
                         self.load_references(root, value)?;
@@ -143,6 +129,26 @@ impl<'input> Resolver<'input> {
             | YamlData::BadValue
             | YamlData::Alias(_) => yaml_parse_panic(),
         }
+    }
+
+    /// Resolve a single reference to its value
+    fn lookup<'a>(
+        &self,
+        reference: &Reference,
+        root: &'a MarkedYaml<'input>,
+    ) -> Result<&'a MarkedYaml<'input>> {
+        let source = self.source(reference, root);
+        reference
+            .path
+            .lookup(source)
+            .map_err(|location| LocatedError {
+                error: ReferenceError::NoResource(reference.clone()),
+                // Error location points to the deepest value we were able to
+                // traverse. Using the location of the reference may be more
+                // intuitive, but this is easier to get and it points the user
+                // to where the reference ceased to be valid
+                location,
+            })
     }
 
     /// Replace all references with computed values. Every `$ref` field in a
@@ -425,21 +431,24 @@ impl<'a> ReferencePath<'a> {
     }
 
     /// Traverse a YAML value according to this path, returning the value at the
-    /// end of the rainbow. Return `None` if not found
+    /// end of the rainbow. If not found, return the source location of the
+    /// deepest value we successfully traversed, which is also the location of
+    /// where the path went cold.
     fn lookup<'input, 'value>(
         &self,
         value: &'value MarkedYaml<'input>,
-    ) -> Option<&'value MarkedYaml<'input>> {
+    ) -> std::result::Result<&'value MarkedYaml<'input>, Marker> {
         if let Some((first, rest)) = self.first_rest() {
+            let location = value.span.start;
             // We need to go deeper. Value better be something we can drill into
             match &value.data {
-                YamlData::Value(_) => None,
+                YamlData::Value(_) => Err(location),
                 YamlData::Sequence(sequence) => {
                     // Parse the segment as an int. If parsing fails, we can
                     // report this as a generic "no resource" error, as there
                     // isn't a traversable resource at the given path
-                    let index: usize = first.parse().ok()?;
-                    let inner = sequence.get(index)?;
+                    let index: usize = first.parse().or(Err(location))?;
+                    let inner = sequence.get(index).ok_or(location)?;
                     rest.lookup(inner)
                 }
                 YamlData::Mapping(mapping) => {
@@ -448,9 +457,8 @@ impl<'a> ReferencePath<'a> {
                         // With &str, the lifetime of `first` gets promoted
                         // to the lifetime param on MarkedYaml, which is
                         // `'input`
-                        .get(&MarkedYaml::scalar_from_string(
-                            first.to_owned(),
-                        ))?;
+                        .get(&MarkedYaml::scalar_from_string(first.to_owned()))
+                        .ok_or(location)?;
                     rest.lookup(inner)
                 }
                 YamlData::Tagged(_, value) => {
@@ -463,7 +471,7 @@ impl<'a> ReferencePath<'a> {
             }
         } else {
             // End of the line!!
-            Some(value)
+            Ok(value)
         }
     }
 }
@@ -471,6 +479,7 @@ impl<'a> ReferencePath<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use rstest::rstest;
     use saphyr::LoadableYamlNode;
     use slumber_util::{TempDir, assert_err, temp_dir};
@@ -516,19 +525,41 @@ mod tests {
         value: b
         "
     )]
-    #[ignore = "Nested references not implemented yet"]
     #[case::nested(
-        // Two levels of references
+        // Referred value contains another reference that must be resolved
+        r##"
+        base:
+            url: test
+
+        requests:
+            details:
+                $ref: "#/requests/login"
+            login:
+                $ref: "#/base"
+        "##,
+        r"
+        base:
+            url: test
+
+        requests:
+            details:
+                url: test
+            login:
+                url: test
+        "
+    )]
+    #[case::nested_through(
+        // Referred value contains a reference that gets traversed through
         r##"
         base:
             headers:
                 Content-Type: application/json
 
         requests:
-            login:
-                $ref: "#/base/headers"
             details:
-                $ref: "#/requests/login"
+                $ref: "#/requests/login/headers"
+            login:
+                $ref: "#/base"
         "##,
         r"
         base:
@@ -536,10 +567,10 @@ mod tests {
                 Content-Type: application/json
 
         requests:
-            login:
+            details:
                 headers:
                     Content-Type: application/json
-            details:
+            login:
                 headers:
                     Content-Type: application/json
         "
@@ -691,13 +722,11 @@ data:
         "##,
         "Resource does not exist: `#/map/c`"
     )]
-    #[ignore = "Nested references not implemented yet"]
     #[case::circular_self(
         r##"ref_self:
             $ref: "#/ref_self""##,
         "Circular references: `#/ref_self` -> `#/ref_self`"
     )]
-    #[ignore = "Nested references not implemented yet"]
     #[case::circular_mutual(
         r##"
         ref1:
@@ -707,7 +736,6 @@ data:
         "##,
         "Circular references: `#/ref1` -> `#/ref2` -> `#/ref1`"
     )]
-    #[ignore = "Nested references not implemented yet"]
     #[case::circular_parent(
         r##"
         root:

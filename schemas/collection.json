@@ -140,8 +140,19 @@
       ]
     },
     "HttpMethod": {
-      "description": "HTTP method. This is duplicated from [reqwest::Method] so we can enforce\nthe method is valid during deserialization. This is also generally more\nergonomic at the cost of some flexibility.\n\nThe FromStr implementation will be case-insensitive",
-      "type": "string"
+      "description": "[HTTP request method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods)",
+      "type": "string",
+      "enum": [
+        "CONNECT",
+        "DELETE",
+        "GET",
+        "HEAD",
+        "OPTIONS",
+        "PATCH",
+        "POST",
+        "PUT",
+        "TRACE"
+      ]
     },
     "RecipeBody": {
       "description": "Template for a request body. `Raw` is the \"default\" variant, which\nrepresents a single string (parsed as a template). Other variants can be\nused for convenience, to construct complex bodies in common formats. The\nHTTP engine uses the variant to determine not only how to serialize the\nbody, but also other parameters of the request (e.g. the `Content-Type`\nheader).",

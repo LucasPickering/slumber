@@ -143,17 +143,18 @@ pub struct HttpVersionParseError {
     input: String,
 }
 
-/// HTTP method. This is duplicated from [reqwest::Method] so we can enforce
-/// the method is valid during deserialization. This is also generally more
-/// ergonomic at the cost of some flexibility.
-///
-/// The FromStr implementation will be case-insensitive
+/// [HTTP request method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods)
+// This is duplicated from [reqwest::Method] so we can enforce
+// the method is valid during deserialization. This is also generally more
+// ergonomic at the cost of some flexibility.
 #[derive(Copy, Clone, Debug, EnumIter, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-// TODO make this show the enum of values in the json schema
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schema", schemars(rename_all = "UPPERCASE"))]
-#[serde(into = "&str", try_from = "String")]
+// Use FromStr to enable case-insensitivity. This attribute causes schemars to
+// omit the `enum` field that is very helpful. Hiding this from schemars works
+// because the FromStr impl is compliant with what we tell schemars to generate.
+#[cfg_attr(not(feature = "schema"), serde(into = "&str", try_from = "String"))]
 pub enum HttpMethod {
     Connect,
     Delete,

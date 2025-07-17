@@ -4,9 +4,9 @@ use itertools::Itertools;
 use mime::Mime;
 use oas3::spec::{
     FromRef, MediaType, MediaTypeExamples, ObjectOrReference, ObjectSchema,
-    Operation, Parameter, ParameterIn, PathItem, Ref, RefError, RefType,
-    RequestBody, SchemaType, SchemaTypeSet, SecurityRequirement,
-    SecurityScheme, Server, Spec,
+    Operation, Parameter, ParameterIn, PathItem, RequestBody, Schema,
+    SchemaType, SchemaTypeSet, SecurityRequirement, SecurityScheme, Server,
+    Spec,
 };
 use slumber_core::{
     collection::{
@@ -542,11 +542,19 @@ impl<'a> RecipeBuilder<'a> {
             SchemaType::Array => schema
                 .items
                 .as_ref()
-                .and_then(|items| {
+                .and_then(|item_schema| {
                     // Figure out the type of the contained item, and include
                     // one element of it as the prefilled value
-                    let item_schema = self.reference_resolver.resolve(items)?;
-                    let item_value = self.schema_to_json(&item_schema);
+                    let item_value: serde_json::Value = match &**item_schema {
+                        Schema::Boolean(boolean_schema) => {
+                            boolean_schema.0.into()
+                        }
+                        Schema::Object(object) => {
+                            let item_schema =
+                                self.reference_resolver.resolve(object)?;
+                            self.schema_to_json(&item_schema)
+                        }
+                    };
                     Some(serde_json::Value::Array(vec![item_value]))
                 })
                 // No items given, use an empty array
@@ -645,54 +653,12 @@ impl<'a> ReferenceResolver<'a> {
     /// Look up a security scheme by name. Used to resolve security requirements
     /// in an operation
     fn security_schema(&self, scheme_name: &str) -> Option<SecurityScheme> {
-        // SecuritySchema doesn't implement FromRef so we need a wrapper to
-        // implement it
-        // Remove this after https://github.com/x52dev/oas3-rs/pull/221
-        #[derive(Clone)]
-        struct SecuritySchemeWrap(SecurityScheme);
-
-        impl FromRef for SecuritySchemeWrap {
-            fn from_ref(
-                spec: &Spec,
-                path: &str,
-            ) -> Result<Self, oas3::spec::RefError> {
-                let refpath = path.parse::<Ref>()?;
-
-                match refpath.kind {
-                    RefType::SecurityScheme => spec
-                        .components
-                        .as_ref()
-                        .and_then(|cs| cs.security_schemes.get(&refpath.name))
-                        .ok_or_else(|| RefError::Unresolvable(path.to_owned()))
-                        .map(map_ref)
-                        .and_then(|oor| oor.resolve(spec)),
-                    typ => Err(RefError::MismatchedType(
-                        typ,
-                        RefType::SecurityScheme,
-                    )),
-                }
-            }
-        }
-
-        fn map_ref(
-            oor: &ObjectOrReference<SecurityScheme>,
-        ) -> ObjectOrReference<SecuritySchemeWrap> {
-            match oor {
-                ObjectOrReference::Object(o) => {
-                    ObjectOrReference::Object(SecuritySchemeWrap(o.clone()))
-                }
-                ObjectOrReference::Ref { ref_path } => ObjectOrReference::Ref {
-                    ref_path: ref_path.clone(),
-                },
-            }
-        }
-
         let reference = self
             .spec
             .components
             .as_ref()?
             .security_schemes
             .get(scheme_name)?;
-        self.resolve(&map_ref(reference)).map(|wrap| wrap.0)
+        self.resolve(reference)
     }
 }

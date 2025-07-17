@@ -17,7 +17,7 @@ futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
-oas3 = "0.16.1"
+oas3 = "0.17.0"
 openapiv3 = "2.0.0"
 reqwest = {workspace = true}
 rest_parser = "0.1.7"

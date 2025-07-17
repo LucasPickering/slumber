@@ -5,6 +5,8 @@ mod cereal;
 mod json;
 mod models;
 mod recipe_tree;
+#[cfg(feature = "schema")]
+mod schema;
 
 pub use cereal::HasId;
 pub use json::JsonTemplate;

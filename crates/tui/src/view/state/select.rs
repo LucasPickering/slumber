@@ -402,7 +402,8 @@ where
 impl<Item, State> PersistedContainer for SelectState<Item, State>
 where
     Item: HasId,
-    Item::Id: PartialEq<Item>, // Bound needed so we can select items by ID
+    // PartialEq needed so we can select items by ID
+    Item::Id: Clone + PartialEq<Item>,
     State: SelectStateData,
 {
     type Value = Option<Item::Id>;

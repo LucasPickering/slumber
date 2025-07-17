@@ -37,20 +37,22 @@ profiles:
       host: https://myfishes.fish
 
 requests:
-  create_fish: !request
+  create_fish:
+    type: request
     method: POST
-    url: "{{host}}/fishes"
+    url: "{{ host }}/fishes"
     body: !json { "kind": "barracuda", "name": "Jimmy" }
 
-  list_fish: !request
+  list_fish:
+    type: request
     method: GET
-    url: "{{host}}/fishes"
+    url: "{{ host }}/fishes"
     query:
-      - big=true
+      big: true
 ```
 
-> Note: the `!request` tag, which tells Slumber that this is a request recipe, not a folder. This is [YAML's tag syntax](https://yaml.org/spec/1.2.2/#24-tags), which is used commonly throughout Slumber to provide explicit configuration.
+> The `type: request` tag tells Slumber that this node is a request recipe, not a folder.
 
-This request collection uses [templates](./user_guide/templates/index.md) and [profiles](./api/request_collection/profile.md), allowing you to dynamically change the target host.
+This request collection uses [templates](./user_guide/templates/index.md) and [profiles](./user_guide/profiles.md), allowing you to dynamically change the target host.
 
 To learn more about the powerful features of Slumber you can use in your collections, keep reading with [Key Concepts](./user_guide/key_concepts.md).

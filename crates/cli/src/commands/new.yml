@@ -1,3 +1,7 @@
+# yaml-language-server: $schema={{#schema}}
+# ^ This enables schema validation and autocomplete in your editor
+# https://github.com/redhat-developer/yaml-language-server
+
 # For basic usage info, see:
 # https://slumber.lucaspickering.me/getting_started.html
 # For all collection options, see:
@@ -13,24 +17,22 @@ profiles:
     data:
       host: https://httpbin.org
 
-# Chains allow you to use dynamic data in your request templates
-chains:
-  example:
-    source: !request
-      recipe: example1
-    selector: $.data
-
 requests:
-  example1: !request
+  example1:
+    type: request
     name: Example Request 1
     method: GET
-    url: "{{host}}/anything"
+    url: "{{ host }}/anything"
 
-  example_folder: !folder
+  example_folder:
+    type: folder
     name: Example Folder
     requests:
-      example2: !request
+      example2:
+        type: request
         name: Example Request 2
         method: POST
-        url: "{{host}}/anything"
-        body: !json { "data": "{{chains.example}}" }
+        url: "{{ host }}/anything"
+        body:
+          type: json
+          data: { "data": "{{ response('example1') | jsonpath('$.data') }}" }

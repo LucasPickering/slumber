@@ -20,7 +20,7 @@ You can disable persistence for a single recipe by setting `persist: false` [for
 Slumber will generally continue to work just fine with request persistence disabled. Requests and responses are still cached in memory, they just aren't written to the database anymore and therefore can't be recovered after the current session is closed. If you disable persistence, you will notice a few impacts on functionality:
 
 - The history modal will only show requests made during the current session
-- Chained requests can only access responses from the current session. [Consider adding `trigger: !no_history` to the request](../api/request_collection/chain_source.md#chain-request-trigger) to automatically refetch it on new sessions.
+- Chained requests can only access responses from the current session. [Consider adding `trigger="no_history"` to the `response` call](../api/template_functions.md#response) to automatically refetch it on new sessions.
 
 Unlike the TUI, requests made from the CLI are _not_ persisted by default. This is because the CLI is often used for scripting and bulk requests. Persisting these requests could have major performance impacts for little to no practical gain. Pass the `--persist` flag to `slumber request` to persist a CLI request.
 

@@ -1,31 +1,32 @@
 //! Recipe/folder tree structure
 
-use crate::collection::{
-    Folder, HasId, Recipe, RecipeId, cereal::deserialize_id_map,
-};
+use crate::collection::{Folder, HasId, Recipe, RecipeId};
 use anyhow::anyhow;
 use derive_more::From;
 use indexmap::{IndexMap, map::Values};
-use serde::{Deserialize, Deserializer, Serialize, de::Error};
+use serde::Serialize;
 use strum::EnumDiscriminants;
 use thiserror::Error;
 
 /// A folder/recipe tree. This is exactly what the user inputs in their
-/// collection file. IDs in this tree are **globally* unique, meaning no two
+/// collection file. IDs in this tree are **globally** unique, meaning no two
 /// nodes can have the same ID anywhere in the tree, even between folders and
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
-#[derive(derive_more::Debug, Default)]
+#[derive(derive_more::Debug, Default, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
+    #[serde(flatten)]
     tree: IndexMap<RecipeId, RecipeNode>,
     /// A flattened version of the tree, with each ID pointing to its path in
     /// the tree. This is possible because the IDs are globally unique. It is
     /// an invariant that every lookup key in this map is valid, therefore it's
     /// safe to panic if one is found to be invalid.
     #[debug(skip)] // It's big and useless
+    #[serde(skip)]
     nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
 }
 
@@ -62,10 +63,11 @@ impl IntoIterator for RecipeLookupKey {
 }
 
 /// A node in the recipe tree, either a folder or recipe
-#[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
+#[derive(Debug, From, Serialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum RecipeNode {
     Folder(Folder),
     /// Rename this variant to match the `requests` field in the root and
@@ -210,26 +212,6 @@ impl RecipeTree {
     }
 }
 
-impl Serialize for RecipeTree {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.tree.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for RecipeTree {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let tree: IndexMap<RecipeId, RecipeNode> =
-            deserialize_id_map(deserializer)?;
-        Self::new(tree).map_err(D::Error::custom)
-    }
-}
-
 #[cfg(any(test, feature = "test"))]
 impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
     fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
@@ -276,14 +258,11 @@ impl RecipeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::by_id;
+    use crate::{collection::cereal, test_util::by_id};
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
-    use serde_yaml::{
-        Value,
-        value::{Tag, TaggedValue},
-    };
+    use serde_yaml::Value;
     use slumber_util::{Factory, assert_err};
 
     impl<const N: usize> From<[&str; N]> for RecipeLookupKey {
@@ -307,15 +286,18 @@ mod tests {
         )
     }
 
-    /// Build a YAML mapping with a variant tag
-    fn tagged_mapping<const N: usize>(
-        tag: &str,
-        items: [(&str, Value); N],
-    ) -> Value {
-        Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new(tag),
-            value: mapping(items),
-        }))
+    /// Build a folder
+    fn folder<const N: usize>(children: [(&str, Value); N]) -> Value {
+        mapping([("type", "folder".into()), ("requests", mapping(children))])
+    }
+
+    /// Build a recipe
+    fn recipe() -> Value {
+        mapping([
+            ("type", "request".into()),
+            ("method", "GET".into()),
+            ("url", "http://localhost/url".into()),
+        ])
     }
 
     #[fixture]
@@ -380,88 +362,37 @@ mod tests {
 
     /// Deserializing with a duplicate ID anywhere in the tree should fail
     #[rstest]
-    #[case::anywhere(
+    #[case::recipe(
         // Two requests share an ID
         mapping([
-            (
-                "dupe",
-                tagged_mapping(
-                    "!request",
-                    [("method", "GET".into()), ("url", "url".into())],
-                ),
-            ),
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([(
-                            "dupe",
-                            tagged_mapping(
-                                "!request",
-                                [
-                                    ("method", "GET".into()),
-                                    ("url", "url".into()),
-                                ],
-                            ),
-                        )]),
-                    )],
-                ),
-            ),
+            ("dupe", recipe()),
+            ("f1", folder([("dupe", recipe())])),
         ])
     )]
     // Two folders share an ID
     #[case::folder(
         mapping([
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([("dupe", tagged_mapping("!folder", []))]),
-                    )],
-                ),
-            ),
-            ("dupe", tagged_mapping("!folder", [])),
+            ("f1", folder([("dupe", folder([]))])),
+            ("dupe", folder([])),
         ])
     )]
     // Request + folder share an ID
     #[case::request_folder(
         mapping([
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        tagged_mapping(
-                            "!request",
-                            [("dupe", tagged_mapping("!folder", []))],
-                        ),
-                    )],
-                ),
-            ),
-            (
-                "dupe",
-                tagged_mapping(
-                    "!request",
-                    [("method", "GET".into()), ("url", "url".into())],
-                ),
-            ),
+            ("f1", folder([("dupe", recipe())])),
+            ("dupe", recipe()),
         ])
     )]
     fn test_duplicate_id(#[case] yaml_value: Value) {
         assert_err!(
-            serde_yaml::from_value::<RecipeTree>(yaml_value),
+            cereal::deserialize_recipe_tree(yaml_value),
             "Duplicate recipe/folder ID `dupe`"
         );
     }
 
-    /// Test successful serialization/deserialization
+    /// Test successful deserialization
     #[rstest]
-    fn test_deserialization(tree: IndexMap<RecipeId, RecipeNode>) {
+    fn test_deserialize(tree: IndexMap<RecipeId, RecipeNode>) {
         // Manually create the ID map to make sure it's correct
         let tree = RecipeTree {
             tree,
@@ -476,42 +407,17 @@ mod tests {
         };
 
         // Create equivalent YAML
-        let recipe_value: Value = tagged_mapping(
-            "!request",
-            [
-                ("method", "GET".into()),
-                ("url", "http://localhost/url".into()),
-            ],
-        );
         let yaml = mapping([
-            ("r1", recipe_value.clone()),
+            ("r1", recipe()),
             (
                 "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([
-                            (
-                                "f2",
-                                tagged_mapping(
-                                    "!folder",
-                                    [(
-                                        "requests",
-                                        mapping([("r2", recipe_value.clone())]),
-                                    )],
-                                ),
-                            ),
-                            ("r3", recipe_value.clone()),
-                        ]),
-                    )],
-                ),
+                folder([("f2", folder([("r2", recipe())])), ("r3", recipe())]),
             ),
-            ("r4", recipe_value.clone()),
+            ("r4", recipe()),
         ]);
 
         assert_eq!(
-            serde_yaml::from_value::<RecipeTree>(yaml).unwrap(),
+            cereal::deserialize_recipe_tree(yaml).unwrap(),
             tree,
             "Deserialization failed"
         );

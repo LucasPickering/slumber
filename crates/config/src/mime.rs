@@ -10,11 +10,12 @@ use std::str::FromStr;
 /// path-like string, but that happens to look the same as a MIME type.
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct MimeMap<V> {
-    /// We take the first matching pattern, so order matters. The most general
-    /// patterns should go last. This could be a vec of tuples since we never
-    /// actually do keyed lookup, but that makes ser/de more complicated.
+    // We take the first matching pattern, so order matters. The most general
+    // patterns should go last. This could be a vec of tuples since we never
+    // actually do keyed lookup, but that makes ser/de more complicated.
     patterns: IndexMap<MimePattern, V>,
 }
 
@@ -78,6 +79,7 @@ impl<'de, V: Deserialize<'de>> Deserialize<'de> for MimeMap<V> {
     Hash,
     PartialEq,
 )]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(try_from = "String", into = "String")]
 struct MimePattern(Pattern);
 

@@ -1,11 +1,12 @@
 //! Miscellaneous utility constants/types/functions
 
-use derive_more::{DerefMut, Display};
+use derive_more::Display;
 use dialoguer::Confirm;
 use std::{
     collections::{HashMap, hash_map::Entry},
-    fmt::{self, Debug},
+    fmt,
     hash::Hash,
+    ops::DerefMut,
     sync::Arc,
 };
 use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};

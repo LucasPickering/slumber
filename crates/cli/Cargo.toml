@@ -18,13 +18,15 @@ path = "src/bin.rs"
 anyhow = {workspace = true}
 async-trait = {workspace = true}
 chrono = {workspace = true}
-clap = {version = "4.4.2", features = ["derive"]}
+clap = {workspace = true, features = ["derive"]}
 clap_complete = {version = "4.5.29", features = ["unstable-dynamic"]}
 dialoguer = {workspace = true, features = ["password"]}
 indexmap = {workspace = true}
 itertools = {workspace = true}
 reqwest = {workspace = true}
+schemars = {workspace = true, optional = true}
 serde = {workspace = true}
+serde_json = {workspace = true, optional = true}
 serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}

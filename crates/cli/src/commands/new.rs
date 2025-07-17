@@ -1,12 +1,9 @@
 use crate::{GlobalArgs, Subcommand};
 use anyhow::Context;
 use clap::Parser;
+use slumber_util::git_link;
 use std::{fs::OpenOptions, io::Write, path::PathBuf, process::ExitCode};
 
-/// We use a static source file, to get control of whitespace/comments.
-/// Generating a collection and serializing it would be like driving from the
-/// back seat with a broom stick.
-const SOURCE: &[u8] = include_bytes!("new.yml");
 const DEFAULT_PATH: &str = "slumber.yml";
 
 /// Generate a new Slumber collection file
@@ -36,7 +33,7 @@ impl Subcommand for NewCommand {
             .with_context(|| {
                 format!("Error opening file `{}`", path.display())
             })?;
-        file.write_all(SOURCE).with_context(|| {
+        file.write_all(source().as_bytes()).with_context(|| {
             format!("Error writing to file `{}`", path.display())
         })?;
 
@@ -44,6 +41,17 @@ impl Subcommand for NewCommand {
 
         Ok(ExitCode::SUCCESS)
     }
+}
+
+fn source() -> String {
+    /// We use a static source file, to get control of whitespace/comments.
+    /// Generating a collection and serializing it would be like driving from
+    /// the back seat with a broom stick.
+    const SOURCE: &str = include_str!("new.yml");
+    /// This string will be replaced with the link to the schema file
+    const SCHEMA_REPLACEMENT: &str = "{{#schema}}";
+
+    SOURCE.replace(SCHEMA_REPLACEMENT, &git_link("schemas/collection.json"))
 }
 
 #[cfg(test)]
@@ -55,8 +63,7 @@ mod tests {
     use serde_json::json;
     use slumber_core::{
         collection::{
-            Chain, ChainSource, Collection, Folder, Profile, Recipe,
-            RecipeBody, RecipeNode,
+            Collection, Folder, Profile, Recipe, RecipeBody, RecipeNode,
         },
         http::HttpMethod,
         test_util::by_id,
@@ -89,7 +96,7 @@ mod tests {
         };
 
         command.execute(global_args).await.unwrap();
-        let contents = fs::read(&expected_created_path)
+        let contents = fs::read_to_string(&expected_created_path)
             .with_context(|| {
                 format!(
                     "Error reading results from expected output path \
@@ -97,14 +104,14 @@ mod tests {
                 )
             })
             .unwrap();
-        assert_eq!(contents, SOURCE);
+        assert_eq!(contents, source());
     }
 
     /// Test that the initial collection is a valid collection with some
     /// specific contents
     #[test]
     fn test_deserialize() {
-        let collection: Collection = serde_yaml::from_slice(SOURCE).unwrap();
+        let collection: Collection = Collection::parse(&source()).unwrap();
         let expected = Collection {
             name: Some("My Collection".into()),
             profiles: by_id([Profile {
@@ -115,22 +122,12 @@ mod tests {
                     "host".into() => "https://httpbin.org".into()
                 },
             }]),
-            chains: by_id([Chain {
-                id: "example".into(),
-                source: ChainSource::Request {
-                    recipe: "example1".into(),
-                    trigger: Default::default(),
-                    section: Default::default(),
-                },
-                selector: Some("$.data".parse().unwrap()),
-                ..Chain::factory(())
-            }]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
                     method: HttpMethod::Get,
-                    url: "{{host}}/anything".into(),
+                    url: "{{ host }}/anything".into(),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
@@ -140,10 +137,11 @@ mod tests {
                         id: "example2".into(),
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
-                        url: "{{host}}/anything".into(),
+                        url: "{{ host }}/anything".into(),
                         body: Some(
                             RecipeBody::json(
-                                json!({"data": "{{chains.example}}"}),
+                                json!({"data": "{{ response('example1') \
+                                | jsonpath('$.data') }}"}),
                             )
                             .unwrap(),
                         ),
@@ -154,5 +152,17 @@ mod tests {
             .into(),
         };
         assert_eq!(collection, expected);
+    }
+
+    /// Make sure version replacement works in the schema link
+    #[test]
+    fn test_schema_link() {
+        let source = source();
+        let first_line = source.lines().next().unwrap();
+        let expected = format!(
+            "# yaml-language-server: $schema={}",
+            git_link("schemas/collection.json")
+        );
+        assert_eq!(first_line, expected);
     }
 }

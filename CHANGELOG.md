@@ -22,6 +22,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Shell completion for the global `--file`/`-f` flag only suggests `.yml`/`.yaml` files
 - `slumber collections migrate` now accepts paths for files that don't exist on disk (as long as they existed as collections at some point)
 
+### Breaking
+
+This release contains a number of breaking changes to the collection format. The major one is a change in the template format, but there are a few other quality of life improvements as well.
+
+You can automatically migrate your collection to the new v4 format with:
+
+```sh
+slumber import v3 <old file> <new file>
+```
+
+The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/lucaspickering/slumber/issues/new).
+
+[**See the migration guide for more details**](https://slumber.lucaspickering.me/book/troubleshooting/v4_migration.html)
+
+- Replace template chains with a more intuitive function syntax
+  - Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: `{{ response('login') | jsonpath('$.token') }}`
+  - [See docs for more](https://slumber.lucaspickering.me/book/user_guide/templates/functions.html)
+- Replace YAML `!tags` with an inner `type` field
+  - This change makes the format compatible with JSON Schema
+  - Impacts these collection nodes:
+    - Folder/request nodes
+    - Authentication
+    - Body
+- Represent query parameters as a map of `{parameter: value}` instead of a list of strings like `parameter=value`
+  - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
+  - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`
+  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html) for examples of the new format
+
 <!-- This anchor makes it easy for the site to include the content of the changelog -->
 <!-- ANCHOR: changelog -->
 
@@ -34,6 +62,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add optional root-level `name` field to collections
   - This allows you to provide a descriptive name for the collection to show in the new switcher modal
   - The name is purely descriptive and does not need to be unique
+- Generate JSON Schema for both the collection and config formats [#374](https://github.com/LucasPickering/slumber/issues/374)
+  - This enables better validation and completion in your IDE; [see docs for more](https://slumber.lucaspickering.me/book/user_guide/json_schema.md)
 
 ### Changed
 

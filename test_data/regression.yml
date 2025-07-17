@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../schemas/collection.json
 # This collection contains one of everything. This is a regression test for
 # deserialization, to make sure we don't accidentally introduce breaking changes
 # to the format
@@ -15,7 +16,7 @@ profiles:
     name: Profile 1
     data:
       <<: *base_profile_data
-      username: xX{{chains.username}}Xx
+      username: xX{{ command(['whoami']) | trim() }}Xx
       user_guid: abc123
   profile2:
     name: Profile 2
@@ -23,124 +24,66 @@ profiles:
     data:
       <<: *base_profile_data
 
-chains:
-  command:
-    source: !command
-      command: [whoami]
-  command_stdin:
-    source: !command
-      command: [head -c 1]
-      stdin: abcdef
-  command_trim_none:
-    source: !command
-      command: [whoami]
-    trim: none
-  command_trim_start:
-    source: !command
-      command: [whoami]
-    trim: start
-  command_trim_end:
-    source: !command
-      command: [whoami]
-    trim: end
-  command_trim_both:
-    source: !command
-      command: [whoami]
-    trim: both
-
-  prompt_sensitive:
-    source: !prompt
-      message: Password
-    sensitive: true
-  prompt_default:
-    source: !prompt
-      message: User GUID
-      default: "{{user_guid}}"
-
-  file:
-    source: !file
-      path: ./README.md
-  file_content_type:
-    source: !file
-      path: ./data.json
-    content_type: json
-
-  request_selector:
-    source: !request
-      recipe: login
-    selector: $.data
-  request_trigger_never:
-    source: !request
-      recipe: login
-  request_trigger_no_history:
-    source: !request
-      recipe: login
-  request_trigger_expire:
-    source: !request
-      recipe: login
-      trigger: !expire 12h
-  request_trigger_always:
-    source: !request
-      recipe: login
-  request_section_body:
-    source: !request
-      recipe: login
-      section: !body
-  request_section_header:
-    source: !request
-      recipe: login
-      section: !header content-type
-
 requests:
-  text_body: !request
+  text_body:
+    type: request
     method: POST
     # Missing name
-    url: "{{host}}/anything/login"
+    url: "{{ host }}/anything/login"
     query:
       sudo: yes_please
       fast: no_thanks
     headers:
       Accept: application/json
     # Text body
-    body: '{"username": "{{username}}", "password": "{{chains.password}}"}'
+    body: >-
+      {"username":"{{ username }}","password":"{{ prompt('Password', sensitive=true) }}"}
 
-  users: !folder
+  users:
+    type: folder
     name: Users
     requests:
-      simple: !request
-        name: Get User
+      simple:
+        type: request
+        name: Simple
         method: GET
         # No headers or authentication
-        url: "{{host}}/anything/{{user_guid}}"
+        url: "{{ host }}/anything/{{ user_guid }}"
         query:
-          - value={{field1}}
-          - value={{field2}}
-        headers: # Should parse as an empty map
+          one: "{{ field1 }}"
+          many: ["{{ field1 }}", "{{ field2 }}"]
 
-      json_body: !request
+      json_body:
+        type: request
         <<: *base_recipe
-        name: Modify User
         method: PUT
-        url: "{{host}}/anything/{{user_guid}}"
-        authentication: !bearer "{{chains.auth_token}}"
-        body: !json { "username": "new username" }
-        query: # Should parse as an empty map
+        url: "{{ host }}/anything/{{ user_guid }}"
+        authentication:
+          type: bearer
+          token: "{{ response('login') | jsonpath('$.token') }}"
+        body:
+          type: json
+          data: { "username": "new username" }
 
-      json_body_but_not: !request
+      json_body_but_not:
+        type: request
         <<: *base_recipe
-        name: Modify User
         method: PUT
-        url: "{{host}}/anything/{{user_guid}}"
-        authentication: !basic
-          username: "{{username}}"
+        url: "{{ host }}/anything/{{ user_guid }}"
+        authentication:
+          type: basic
+          username: "{{ username }}"
           password: "{{password}}"
-        # Nested JSON is *not* parsed
-        body: !json '{"warning": "NOT an object"}'
+        body:
+          type: json
+          data: '{"warning": "NOT an object"}'
 
-      form_urlencoded_body: !request
+      form_urlencoded_body:
+        type: request
         <<: *base_recipe
-        name: Modify User
         method: PUT
-        url: "{{host}}/anything/{{user_guid}}"
-        body: !form_urlencoded
-          username: "new username"
+        url: "{{ host }}/anything/{{ user_guid }}"
+        body:
+          type: form_urlencoded
+          data:
+            username: "new username"

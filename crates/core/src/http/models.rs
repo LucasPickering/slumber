@@ -6,7 +6,6 @@
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::{ChainError, Template, TemplateError, TriggeredRequestError},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -19,6 +18,7 @@ use reqwest::{
     header::{self, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
+use slumber_template::Template;
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
@@ -143,14 +143,17 @@ pub struct HttpVersionParseError {
     input: String,
 }
 
-/// HTTP method. This is duplicated from [reqwest::Method] so we can enforce
-/// the method is valid during deserialization. This is also generally more
-/// ergonomic at the cost of some flexibility.
-///
-/// The FromStr implementation will be case-insensitive
+/// [HTTP request method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods)
+// This is duplicated from [reqwest::Method] so we can enforce
+// the method is valid during deserialization. This is also generally more
+// ergonomic at the cost of some flexibility.
 #[derive(Copy, Clone, Debug, EnumIter, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+// Use FromStr to enable case-insensitivity
 #[serde(into = "&str", try_from = "String")]
+// Show as a string enum
+#[cfg_attr(feature = "schema", schemars(!try_from, rename_all = "UPPERCASE"))]
 pub enum HttpMethod {
     Connect,
     Delete,
@@ -710,7 +713,7 @@ fn content_type_header(headers: &HeaderMap) -> Option<Mime> {
 ///
 /// The generic type is to make this usable with references to bodies. In most
 /// cases you can just use the default.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ResponseBody<T = Bytes> {
     /// Raw body
     data: T,
@@ -815,13 +818,7 @@ impl RequestBuildError {
         self.source.chain().any(|error| {
             matches!(
                 error.downcast_ref(),
-                Some(TemplateError::Chain {
-                    error: ChainError::Trigger {
-                        error: TriggeredRequestError::NotAllowed,
-                        ..
-                    },
-                    ..
-                })
+                Some(TriggeredRequestError::NotAllowed)
             )
         })
     }
@@ -868,6 +865,40 @@ impl PartialEq for RequestError {
             && self.request == other.request
             && self.start_time == other.start_time
             && self.end_time == other.end_time
+    }
+}
+
+/// Error occurred while trying to build/execute a triggered request.
+///
+/// This type implements `Clone` so it can be shared between deduplicated chain
+/// renders, hence the `Arc`s on inner errors.
+#[derive(Clone, Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum TriggeredRequestError {
+    /// This render was invoked in a way that doesn't support automatic request
+    /// execution. In some cases the user needs to explicitly opt in to enable
+    /// it (e.g. with a CLI flag)
+    #[error("Triggered request execution not allowed in this context")]
+    NotAllowed,
+
+    /// Tried to auto-execute a chained request but couldn't build it
+    #[error(transparent)]
+    Build(#[from] Arc<RequestBuildError>),
+
+    /// Chained request was triggered, sent and failed
+    #[error(transparent)]
+    Send(#[from] Arc<RequestError>),
+}
+
+impl From<RequestBuildError> for TriggeredRequestError {
+    fn from(error: RequestBuildError) -> Self {
+        Self::Build(error.into())
+    }
+}
+
+impl From<RequestError> for TriggeredRequestError {
+    fn from(error: RequestError) -> Self {
+        Self::Send(error.into())
     }
 }
 

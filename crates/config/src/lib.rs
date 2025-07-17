@@ -26,14 +26,14 @@ use anyhow::Context;
 use editor_command::EditorBuilder;
 use serde::{Deserialize, Serialize};
 use slumber_util::{
-    ResultTraced, doc_link, parse_yaml,
+    ResultTraced, doc_link, git_link, parse_yaml,
     paths::{self, create_parent, expand_home},
 };
 use std::{
     env,
     error::Error,
     fs::File,
-    io,
+    io::{self, Write},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -48,6 +48,7 @@ const FILE: &str = "config.yml";
 /// picked up until the app restarts.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// Configuration for in-app query and export commands
@@ -74,6 +75,10 @@ pub struct Config {
     /// Visual configuration for the TUI (e.g. colors)
     pub theme: Theme,
     /// Enable debug monitor in TUI
+    ///
+    /// Mainly meant for development so don't expose it
+    #[serde(skip_serializing)]
+    #[cfg_attr(feature = "schema", schemars(skip))]
     pub debug: bool,
     /// Enable/disable persistence for all TUI requests? The CLI ignores this
     /// in favor of the absence/presence of the `--persist` flag
@@ -147,7 +152,9 @@ impl Config {
                 if let io::ErrorKind::NotFound = err.kind() {
                     let _ = create_parent(&path)
                         .and_then(|()| {
-                            File::create_new(&path)?;
+                            let mut file = File::create_new(&path)?;
+                            // Prepopulate with contents
+                            file.write_all(&Self::default_content())?;
                             Ok(())
                         })
                         .context("Error creating config file {path:?}")
@@ -208,6 +215,24 @@ impl Config {
                 )
             })
     }
+
+    /// Pre-populated content for a new config file. Include all default values
+    /// for discoverability, as well as a comment to enable LSP completion based
+    /// on the schema
+    fn default_content() -> Vec<u8> {
+        // Write into a single byte buffer to minimize allocations
+        let mut bytes: Vec<u8> = format!(
+            "# yaml-language-server: $schema={schema}
+# This config has been prepopulated with default values. For documentation, see:
+# {doc}
+",
+            schema = git_link("schemas/config.json"),
+            doc = doc_link("api/configuration/index"),
+        )
+        .into_bytes();
+        serde_yaml::to_writer(&mut bytes, &Config::default()).unwrap();
+        bytes
+    }
 }
 
 impl Default for Config {
@@ -229,6 +254,7 @@ impl Default for Config {
 /// Configuration for the engine that handles HTTP requests
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct HttpEngineConfig {
     /// TLS cert errors on these hostnames are ignored. Be careful!
@@ -262,6 +288,7 @@ impl Default for HttpEngineConfig {
 /// Configuration for in-app query and export commands
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct CommandsConfig {
     /// Wrapping shell to parse and execute commands

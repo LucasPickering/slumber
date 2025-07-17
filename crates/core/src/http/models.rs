@@ -150,11 +150,10 @@ pub struct HttpVersionParseError {
 #[derive(Copy, Clone, Debug, EnumIter, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(rename_all = "UPPERCASE"))]
-// Use FromStr to enable case-insensitivity. This attribute causes schemars to
-// omit the `enum` field that is very helpful. Hiding this from schemars works
-// because the FromStr impl is compliant with what we tell schemars to generate.
-#[cfg_attr(not(feature = "schema"), serde(into = "&str", try_from = "String"))]
+// Use FromStr to enable case-insensitivity
+#[serde(into = "&str", try_from = "String")]
+// Show as a string enum
+#[cfg_attr(feature = "schema", schemars(!try_from, rename_all = "UPPERCASE"))]
 pub enum HttpMethod {
     Connect,
     Delete,

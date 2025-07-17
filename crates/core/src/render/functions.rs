@@ -328,7 +328,7 @@ pub async fn prompt(
 ///
 /// **Parameters**
 ///
-/// - `recipe_id`: ID of the recipe to load the response from
+/// - `recipe_id`: ID (**not** name) of the recipe to load the response from
 /// - `trigger`: When to execute the upstream request
 ///
 /// An explanation of `trigger`:
@@ -387,7 +387,7 @@ pub async fn response(
 ///
 /// **Parameters**
 ///
-/// - `recipe_id`: ID of the recipe to load the response from
+/// - `recipe_id`: ID (**not** name) of the recipe to load the response from
 /// - `header`: Name of the header to extract (case-insensitive)
 /// - `trigger`: When to execute the upstream request vs using the cached
 ///   response; [see `response`](#response)

@@ -28,7 +28,7 @@ Generate an HTTP request in an external format. Currently the only supported for
 
 **Overrides**
 
-The `generate` subcommand supports overriding template values in the same that `slumber request` does. See the [`request` subcommand docs](#overrides) for more.
+The `generate` subcommand supports overriding template values in the same that `slumber request` does. See the [`request` subcommand docs](#slumber-request) for more.
 
 See `slumber generate --help` for more options.
 

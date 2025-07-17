@@ -45,7 +45,7 @@ Chain a value from the body of another response. This can reference either
 | `trigger` | [`ChainRequestTrigger`](#chain-request-trigger) | When the upstream recipe should be executed, as opposed to loaded from memory | `!never` |
 | `section` | [`ChainRequestSection`](#chain-request-section) | The section (header or body) of the request from which to chain a value       | `Body`   |
 
-**Chain Request Trigger**
+#### Chain Request Trigger
 
 This defines when a chained request should be triggered (i.e. when to execute a new request) versus when to use the most recent from history.
 
@@ -87,7 +87,7 @@ recipe: login
 trigger: !always
 ```
 
-### Chain Request Section
+#### Chain Request Section
 
 This defines which section of the response (headers or body) should be used to load the value from.
 
@@ -176,9 +176,9 @@ Prompt the user to select a defined value from a list.
 | Field     | Type                               | Description                            | Default  |
 | --------- | ---------------------------------- | -------------------------------------- | -------- |
 | `message` | `Template`                         | Descriptive prompt for the user        | Chain ID |
-| `options` | [`SelectOptions`](#Select-options) | List of options to present to the user | Required |
+| `options` | [`SelectOptions`](#select-options) | List of options to present to the user | Required |
 
-**Select Options**
+#### Select Options
 
 The list of options to present to the user. This can be a static list of values or a dynamic template to generate the list of options.
 

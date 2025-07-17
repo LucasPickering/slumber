@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Fix empty actions modal queuing when opening actions while another modal is already open
+- Fix crash when a select modal is opened with a very long option
 
 ## [3.2.0] - 2025-06-20
 

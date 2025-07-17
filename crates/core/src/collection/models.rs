@@ -31,16 +31,17 @@ use tracing::info;
         extend("patternProperties" = {
             "^\\.": { "description": "Ignore any property beginning with `.`" }
         }),
-        example = Collection {
-            profiles: schema::example_profiles(),
-            recipes: schema::example_recipe_tree(),
-        },
+        example = Collection::example(),
     )
 )]
 pub struct Collection {
     /// Descriptive name for the collection
     pub name: Option<String>,
+    /// Map of profiles, keyed by their unique IDs
     pub profiles: IndexMap<ProfileId, Profile>,
+    /// Map of requests and folders, keyed by their unique IDs. Folders allow
+    /// for nested maps of more requests and folders. All IDs must be unique
+    /// **throughout the entire tree**, not just at their level.
     #[serde(rename = "requests")]
     pub recipes: RecipeTree,
 }
@@ -69,6 +70,7 @@ impl Collection {
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(example = Profile::example()))]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
@@ -142,11 +144,14 @@ impl slumber_util::Factory for ProfileId {
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(example = Folder::example()))]
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
+    /// Display name
     pub name: Option<String>,
-    /// RECURSION. Use `requests` in serde to match the root field.
+    /// Child requests of this folder
+    // Use `requests` in serde to match the root collection field
     #[serde(rename = "requests")]
     pub children: IndexMap<RecipeId, RecipeNode>,
 }
@@ -169,34 +174,63 @@ impl slumber_util::Factory for Folder {
     }
 }
 
-/// A definition of how to make a request. This is *not* called `Request` in
-/// order to distinguish it from a single instance of an HTTP request. And it's
-/// not called `RequestTemplate` because the word "template" has a specific
-/// meaning related to string interpolation.
+/// A definition of how to build an HTTP request. This is also commonly called
+/// "request" throughout Slumber documentation because that term is more common
+/// and intuitive.
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(example = Recipe::example()))]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
+    /// Should requests and responses of this recipe be persisted in the local
+    /// Slumber database?
+    /// [See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)
+    /// for more info
     #[cfg_attr(feature = "schema", schemars(default = "persist_default"))]
     pub persist: bool,
+    /// Display name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// *Not* a template string because the usefulness doesn't justify the
-    /// complexity. This gives the user an immediate error if the method is
-    /// wrong which is helpful.
+    /// [HTTP request method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods)
+    // *Not* a template string because the usefulness doesn't justify the
+    // complexity. This gives the user an immediate error if the method is
+    // wrong which is helpful.
     pub method: HttpMethod,
+    /// [HTTP request URL](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL)
+    ///
+    /// Query parameters *can* be included here, but typically it's easier to
+    /// use the `query` field instead.
     pub url: Template,
+    /// HTTP request body
+    ///
+    /// - `type: json`: `application/json` body
+    /// - `type: form_urlencoded`: `application/x-www-form-urlencoded` body
+    /// - `type: form_multipart`: `multipart/form-data` body
+    /// - Any template can be given to define the literal request body
+    ///   text/bytes. In this case, consider including a
+    ///   [`Content-Type` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Type)
+    ///   to tell the server what type of content you're sending.
+    ///
+    /// See individual variants for more details on usage.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<RecipeBody>,
+    /// HTTP authentication scheme
+    ///
+    /// - `type: basic`: [Basic authentication](https://swagger.io/docs/specification/v3_0/authentication/basic-authentication/)
+    /// - `type: bearer`: [Bearer authentication](https://swagger.io/docs/specification/v3_0/authentication/bearer-authentication/)
+    ///
+    /// See individual variants for more details on usage.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authentication: Option<Authentication>,
-    /// A map of key-value query parameters. Each value can either be a single
-    /// value (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)
+    /// A map of [URL query parameters](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL#parameters).
+    /// Each value can either be a single value (`?foo=bar`) or multiple
+    /// (`?foo=bar&foo=baz`)
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     #[cfg_attr(feature = "schema", schemars(default))]
     pub query: IndexMap<String, QueryParameterValue>,
+    /// A map of [HTTP request headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers)
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
     #[cfg_attr(feature = "schema", schemars(default))]
     pub headers: IndexMap<String, Template>,
@@ -372,11 +406,16 @@ impl<const N: usize> From<[&str; N]> for QueryParameterValue {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum RecipeBody {
-    /// `application/json` body
+    /// `application/json` body. Value can be any JSON value, with strings being
+    /// interpreted as templates
     Json(JsonTemplate),
-    /// `application/x-www-form-urlencoded` fields. Values must be strings
+    /// `application/x-www-form-urlencoded` body. Value is a mapping of form
+    /// field name to value. Values are templates while field names are not.
+    /// Values must render to strings.
     FormUrlencoded(IndexMap<String, Template>),
-    /// `multipart/form-data` fields. Values can be binary
+    /// `multipart/form-data` body. Value is a mapping of form field
+    /// name to value. Values are templates while field names are not. Values
+    /// can render to any bytes.
     FormMultipart(IndexMap<String, Template>),
     /// Plain string/bytes body. Must be the last variant to support untagged.
     /// This captures any value that doesn't fit one of the above variants.
@@ -465,42 +504,6 @@ impl slumber_util::Factory for Collection {
             recipes: by_id([recipe]).into(),
             profiles: by_id([profile]),
         }
-    }
-}
-
-/// Functions to generate examples for the JSON Schema
-#[cfg(feature = "schema")]
-mod schema {
-    use crate::{
-        collection::{Profile, ProfileId, RecipeTree},
-        test_util::by_id,
-    };
-    use indexmap::{IndexMap, indexmap};
-
-    pub fn example_profiles() -> IndexMap<ProfileId, Profile> {
-        by_id([
-            Profile {
-                id: "local".into(),
-                name: Some("Local".into()),
-                default: true,
-                data: indexmap! {
-                    "host".into() => "http://localhost:8000".into()
-                },
-            },
-            Profile {
-                id: "remote".into(),
-                name: Some("Remote".into()),
-                default: false,
-                data: indexmap! {
-                    "host".into() => "https://myfishes.fish".into()
-                },
-            },
-        ])
-    }
-
-    pub fn example_recipe_tree() -> RecipeTree {
-        // TODO
-        RecipeTree::default()
     }
 }
 

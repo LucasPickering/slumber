@@ -4,13 +4,22 @@
   "description": "A collection of profiles, requests, etc. This is the primary Slumber unit\nof configuration.",
   "type": "object",
   "properties": {
+    "name": {
+      "description": "Descriptive name for the collection",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "profiles": {
+      "description": "Map of profiles, keyed by their unique IDs",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/Profile"
       }
     },
     "requests": {
+      "description": "Map of requests and folders, keyed by their unique IDs. Folders allow\nfor nested maps of more requests and folders. All IDs must be unique\n**throughout the entire tree**, not just at their level.",
       "$ref": "#/$defs/RecipeTree"
     }
   },
@@ -20,6 +29,7 @@
   ],
   "examples": [
     {
+      "name": "Example",
       "profiles": {
         "local": {
           "name": "Local",
@@ -36,7 +46,55 @@
           }
         }
       },
-      "requests": {}
+      "requests": {
+        "my_recipe": {
+          "type": "request",
+          "persist": true,
+          "name": "My Recipe",
+          "method": "POST",
+          "url": "http://localhost:8000/fish",
+          "body": {
+            "type": "json",
+            "data": {
+              "name": "Barry",
+              "species": "Barracuda"
+            }
+          },
+          "authentication": {
+            "type": "basic",
+            "username": "mememe",
+            "password": "{{ prompt(message='Password', sensitive=true) }}"
+          },
+          "query": {
+            "submit": "true",
+            "param_with_multiple_values": [
+              "value1",
+              "value2"
+            ]
+          },
+          "headers": {
+            "Accept": "application/json"
+          }
+        },
+        "my_folder": {
+          "type": "folder",
+          "name": "My Folder",
+          "requests": {
+            "recipe1": {
+              "type": "request",
+              "persist": true,
+              "method": "GET",
+              "url": "http://localhost/url"
+            },
+            "recipe2": {
+              "type": "request",
+              "persist": true,
+              "method": "GET",
+              "url": "http://localhost/url"
+            }
+          }
+        }
+      }
     }
   ],
   "patternProperties": {
@@ -69,6 +127,15 @@
       },
       "required": [
         "data"
+      ],
+      "examples": [
+        {
+          "name": "Local",
+          "default": true,
+          "data": {
+            "host": "http://localhost:8000"
+          }
+        }
       ]
     },
     "Template": {
@@ -122,13 +189,14 @@
       "type": "object",
       "properties": {
         "name": {
+          "description": "Display name",
           "type": [
             "string",
             "null"
           ]
         },
         "requests": {
-          "description": "RECURSION. Use `requests` in serde to match the root field.",
+          "description": "Child requests of this folder",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/RecipeNode"
@@ -137,6 +205,42 @@
       },
       "required": [
         "requests"
+      ],
+      "examples": [
+        {
+          "name": "My Folder",
+          "requests": {
+            "my_recipe": {
+              "type": "request",
+              "persist": true,
+              "name": "My Recipe",
+              "method": "POST",
+              "url": "http://localhost:8000/fish",
+              "body": {
+                "type": "json",
+                "data": {
+                  "name": "Barry",
+                  "species": "Barracuda"
+                }
+              },
+              "authentication": {
+                "type": "basic",
+                "username": "mememe",
+                "password": "{{ prompt(message='Password', sensitive=true) }}"
+              },
+              "query": {
+                "submit": "true",
+                "param_with_multiple_values": [
+                  "value1",
+                  "value2"
+                ]
+              },
+              "headers": {
+                "Accept": "application/json"
+              }
+            }
+          }
+        }
       ]
     },
     "HttpMethod": {
@@ -158,7 +262,7 @@
       "description": "Template for a request body. `Raw` is the \"default\" variant, which\nrepresents a single string (parsed as a template). Other variants can be\nused for convenience, to construct complex bodies in common formats. The\nHTTP engine uses the variant to determine not only how to serialize the\nbody, but also other parameters of the request (e.g. the `Content-Type`\nheader).",
       "anyOf": [
         {
-          "description": "`application/json` body",
+          "description": "`application/json` body. Value can be any JSON value, with strings being\ninterpreted as templates",
           "type": "object",
           "properties": {
             "type": {
@@ -175,7 +279,7 @@
           ]
         },
         {
-          "description": "`application/x-www-form-urlencoded` fields. Values must be strings",
+          "description": "`application/x-www-form-urlencoded` body. Value is a mapping of form\nfield name to value. Values are templates while field names are not.\nValues must render to strings.",
           "type": "object",
           "properties": {
             "type": {
@@ -195,7 +299,7 @@
           ]
         },
         {
-          "description": "`multipart/form-data` fields. Values can be binary",
+          "description": "`multipart/form-data` body. Value is a mapping of form field\nname to value. Values are templates while field names are not. Values\ncan render to any bytes.",
           "type": "object",
           "properties": {
             "type": {
@@ -315,27 +419,31 @@
       ]
     },
     "Recipe": {
-      "description": "A definition of how to make a request. This is *not* called `Request` in\norder to distinguish it from a single instance of an HTTP request. And it's\nnot called `RequestTemplate` because the word \"template\" has a specific\nmeaning related to string interpolation.",
+      "description": "A definition of how to build an HTTP request. This is also commonly called\n\"request\" throughout Slumber documentation because that term is more common\nand intuitive.",
       "type": "object",
       "properties": {
         "persist": {
+          "description": "Should requests and responses of this recipe be persisted in the local\nSlumber database?\n[See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)\nfor more info",
           "type": "boolean",
           "default": true
         },
         "name": {
+          "description": "Display name",
           "type": [
             "string",
             "null"
           ]
         },
         "method": {
-          "description": "*Not* a template string because the usefulness doesn't justify the\ncomplexity. This gives the user an immediate error if the method is\nwrong which is helpful.",
+          "description": "[HTTP request method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods)",
           "$ref": "#/$defs/HttpMethod"
         },
         "url": {
+          "description": "[HTTP request URL](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL)\n\nQuery parameters *can* be included here, but typically it's easier to\nuse the `query` field instead.",
           "$ref": "#/$defs/Template"
         },
         "body": {
+          "description": "HTTP request body\n\n- `type: json`: `application/json` body\n- `type: form_urlencoded`: `application/x-www-form-urlencoded` body\n- `type: form_multipart`: `multipart/form-data` body\n- Any template can be given to define the literal request body\n  text/bytes. In this case, consider including a\n  [`Content-Type` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Type)\n  to tell the server what type of content you're sending.\n\nSee individual variants for more details on usage.",
           "anyOf": [
             {
               "$ref": "#/$defs/RecipeBody"
@@ -346,6 +454,7 @@
           ]
         },
         "authentication": {
+          "description": "HTTP authentication scheme\n\n- `type: basic`: [Basic authentication](https://swagger.io/docs/specification/v3_0/authentication/basic-authentication/)\n- `type: bearer`: [Bearer authentication](https://swagger.io/docs/specification/v3_0/authentication/bearer-authentication/)\n\nSee individual variants for more details on usage.",
           "anyOf": [
             {
               "$ref": "#/$defs/Authentication"
@@ -356,13 +465,14 @@
           ]
         },
         "query": {
-          "description": "A map of key-value query parameters. Each value can either be a single\nvalue (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)",
+          "description": "A map of [URL query parameters](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL#parameters).\nEach value can either be a single value (`?foo=bar`) or multiple\n(`?foo=bar&foo=baz`)",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/QueryParameterValue"
           }
         },
         "headers": {
+          "description": "A map of [HTTP request headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers)",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/Template"
@@ -372,6 +482,36 @@
       "required": [
         "method",
         "url"
+      ],
+      "examples": [
+        {
+          "persist": true,
+          "name": "My Recipe",
+          "method": "POST",
+          "url": "http://localhost:8000/fish",
+          "body": {
+            "type": "json",
+            "data": {
+              "name": "Barry",
+              "species": "Barracuda"
+            }
+          },
+          "authentication": {
+            "type": "basic",
+            "username": "mememe",
+            "password": "{{ prompt(message='Password', sensitive=true) }}"
+          },
+          "query": {
+            "submit": "true",
+            "param_with_multiple_values": [
+              "value1",
+              "value2"
+            ]
+          },
+          "headers": {
+            "Accept": "application/json"
+          }
+        }
       ]
     }
   }

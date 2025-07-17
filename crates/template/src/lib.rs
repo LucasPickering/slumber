@@ -289,9 +289,10 @@ pub enum Value {
     Int(i64),
     Float(f64),
     String(String),
-    Bytes(Bytes),
     Array(Vec<Self>),
     Object(IndexMap<String, Self>),
+    // Put this at the end so int arrays deserialize as Array instead of Bytes
+    Bytes(Bytes),
 }
 
 impl Value {
@@ -592,5 +593,75 @@ where
 impl<T: FunctionOutput> FunctionOutput for Option<T> {
     fn into_result(self) -> Result<Value, RenderError> {
         self.map(T::into_result).unwrap_or(Ok(Value::Null))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indexmap::indexmap;
+    use rstest::rstest;
+
+    /// Convert JSON values to template values
+    #[rstest]
+    #[case::null(serde_json::Value::Null, Value::Null)]
+    #[case::bool_true(serde_json::Value::Bool(true), Value::Bool(true))]
+    #[case::bool_false(serde_json::Value::Bool(false), Value::Bool(false))]
+    #[case::number_positive_int(serde_json::json!(42), Value::Int(42))]
+    #[case::number_negative_int(serde_json::json!(-17), Value::Int(-17))]
+    #[case::number_zero(serde_json::json!(0), Value::Int(0))]
+    #[case::number_float(serde_json::json!(1.23), Value::Float(1.23))]
+    #[case::number_negative_float(serde_json::json!(-2.5), Value::Float(-2.5))]
+    #[case::number_zero_float(serde_json::json!(0.0), Value::Float(0.0))]
+    #[case::string_empty(serde_json::json!(""), Value::String("".to_string()))]
+    #[case::string_simple(serde_json::json!("hello"), Value::String("hello".to_string()))]
+    #[case::string_with_spaces(serde_json::json!("hello world"), Value::String("hello world".to_string()))]
+    #[case::string_with_unicode(serde_json::json!("héllo 🌍"), Value::String("héllo 🌍".to_string()))]
+    #[case::string_with_escapes(serde_json::json!("line1\nline2\ttab"), Value::String("line1\nline2\ttab".to_string()))]
+    #[case::array(
+        serde_json::json!([null, true, 42, "hello"]),
+        Value::Array(vec![
+            Value::Null,
+            Value::Bool(true),
+            Value::Int(42),
+            Value::String("hello".to_string())
+        ])
+    )]
+    // Array of numbers should *not* be interpreted as bytes
+    #[case::array_numbers(
+        serde_json::json!([1, 2, 3]),
+        Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+    )]
+    #[case::array_nested(
+        serde_json::json!([[1, 2], [3, 4]]),
+        Value::Array(vec![
+            Value::Array(vec![Value::Int(1), Value::Int(2)]),
+            Value::Array(vec![Value::Int(3), Value::Int(4)])
+        ])
+    )]
+    #[case::object(
+        serde_json::json!({"name": "John", "age": 30, "active": true}),
+        Value::Object(indexmap! {
+            "name".into() => Value::String("John".into()),
+            "age".into() => Value::Int(30),
+            "active".into() => Value::Bool(true),
+        })
+    )]
+    #[case::object_nested(
+        serde_json::json!({"user": {"name": "Alice", "scores": [95, 87]}}),
+        Value::Object(indexmap! {
+            "user".into() => Value::Object(indexmap! {
+                "name".into() => Value::String("Alice".into()),
+                "scores".into() =>
+                    Value::Array(vec![Value::Int(95), Value::Int(87)]),
+            })
+        })
+    )]
+    fn test_from_json(
+        #[case] json: serde_json::Value,
+        #[case] expected: Value,
+    ) {
+        let actual = Value::from_json(json);
+        assert_eq!(actual, expected);
     }
 }

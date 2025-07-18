@@ -229,36 +229,45 @@ mod tests {
     /// Test various error cases when deserializing a collection. Make sure
     /// we get a useful error message for each one
     #[rstest]
-    #[case::recipe_missing_type(
+    #[case::unknown_node(
+        // If we have no known fields to key on, we get a helpful error
+        r"
+        requests:
+          r1:
+            unknown: field
+        ",
+        "Error at :4:12: Requests must have a `method` and `url` field; \
+        folders must have a `requests` field"
+    )]
+    #[case::recipe_missing_url(
+        // If the method field is present, deserializer assumes it's a recipe
+        // so we get a recipe error
         r"
         requests:
           r1:
             method: GET
-            url: http://localhost
         ",
-        "Error at :4:12: Expected field `type` with one of \"request\", \"folder\""
+        "Error at :4:12: Expected field `url` with one of string, boolean, number"
     )]
     #[case::query(
         r"
         requests:
           r1:
-            type: request
             method: GET
             url: http://localhost
             query: 3
         ",
-        "Error at :7:19: Expected mapping, received `3`"
+        "Error at :6:19: Expected mapping, received `3`"
     )]
     #[case::headers(
         r"
         requests:
           r1:
-            type: request
             method: GET
             url: http://localhost
             headers: 3
         ",
-        "Error at :7:21: Expected mapping, received `3`"
+        "Error at :6:21: Expected mapping, received `3`"
     )]
     fn test_deserialize_collection_error(
         #[case] yaml: &str,

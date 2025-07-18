@@ -38,20 +38,18 @@ profiles:
 
 requests:
   create_fish:
-    type: request
     method: POST
     url: "{{ host }}/fishes"
     body: !json { "kind": "barracuda", "name": "Jimmy" }
 
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
     query:
       big: true
 ```
 
-> The `type: request` tag tells Slumber that this node is a request recipe, not a folder.
+` tag tells Slumber that this node is a request recipe, not a folder.
 
 This request collection uses [templates](./user_guide/templates/index.md) and [profiles](./user_guide/profiles.md), allowing you to dynamically change the target host.
 

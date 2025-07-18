@@ -39,12 +39,12 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
 - Replace template chains with a more intuitive function syntax
   - Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: `{{ response('login') | jsonpath('$.token') }}`
   - [See docs for more](https://slumber.lucaspickering.me/book/user_guide/templates/functions.html)
-- Replace YAML `!tags` with an inner `type` field
+- Remove YAML `!tags` in favor of an inner `type` field
   - This change makes the format compatible with JSON Schema
   - Impacts these collection nodes:
-    - Folder/request nodes
     - Authentication
     - Body
+    - Folder/request nodes (`type` field not required at all; node type is inferred from the object structure)
 - Represent query parameters as a map of `{parameter: value}` instead of a list of strings like `parameter=value`
   - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
   - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`

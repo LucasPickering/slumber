@@ -1,9 +1,10 @@
 //! Logic related to input handling. This is considered part of the controller.
 
 use anyhow::{anyhow, bail};
-use derive_more::Display;
+use derive_more::{Deref, Display};
+use indexmap::{IndexMap, indexmap};
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use slumber_util::Mapping;
 use std::{
     borrow::Cow,
@@ -379,6 +380,101 @@ impl TryFrom<String> for KeyCombination {
     }
 }
 
+/// Mapping of actions to input bindings
+///
+/// Intuitively this should be binding:action since we get key events from the
+/// user and need to look up the corresponding actions. But we can't look up a
+/// binding from the map based on an input event because event<=>binding
+/// matching is more nuanced that simple equality (e.g. bonus modifiers keys can
+/// be ignored). We have to iterate over map when checking inputs, but keying by
+/// action at least allows us to look up action=>binding for help text.
+#[derive(Clone, Debug, Deref, Serialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(transparent)]
+pub struct InputMap(IndexMap<Action, InputBinding>);
+
+impl InputMap {
+    fn new(user_bindings: IndexMap<Action, InputBinding>) -> Self {
+        let mut new = Self::default();
+        // User bindings should overwrite any default ones
+        new.0.extend(user_bindings);
+        // If the user overwrote an action with an empty binding, remove it from
+        // the map. This has to be done *after* the extend, so the default
+        // binding is also dropped
+        new.0.retain(|_, binding| !binding.is_empty());
+        new
+    }
+}
+
+impl Default for InputMap {
+    /// Default input bindings
+    fn default() -> Self {
+        Self(indexmap! {
+            // vvvvv If making changes, make sure to update the docs vvvvv
+            Action::Quit => KeyCode::Char('q').into(),
+            Action::ForceQuit => KeyCombination {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::CTRL,
+            }.into(),
+            Action::ScrollLeft => KeyCombination {
+                code: KeyCode::Left,
+                modifiers: KeyModifiers::SHIFT,
+            }.into(),
+            Action::ScrollRight => KeyCombination {
+                code: KeyCode::Right,
+                modifiers: KeyModifiers::SHIFT,
+            }.into(),
+            Action::OpenActions => KeyCode::Char('x').into(),
+            Action::OpenHelp => KeyCode::Char('?').into(),
+            Action::Fullscreen => KeyCode::Char('f').into(),
+            Action::ReloadCollection => KeyCode::F(5).into(),
+            Action::History => KeyCode::Char('h').into(),
+            Action::Search => KeyCode::Char('/').into(),
+            Action::Export => KeyCode::Char(':').into(),
+            Action::PreviousPane => KeyCombination {
+                code: KeyCode::Tab,
+                modifiers: KeyModifiers::SHIFT,
+            }.into(),
+            Action::NextPane => KeyCode::Tab.into(),
+            Action::Up => KeyCode::Up.into(),
+            Action::Down => KeyCode::Down.into(),
+            Action::Left => KeyCode::Left.into(),
+            Action::Right => KeyCode::Right.into(),
+            Action::PageUp => KeyCode::PageUp.into(),
+            Action::PageDown => KeyCode::PageDown.into(),
+            Action::Home => KeyCode::Home.into(),
+            Action::End => KeyCode::End.into(),
+            Action::Submit => KeyCode::Enter.into(),
+            Action::Toggle => KeyCode::Char(' ').into(),
+            Action::Cancel => KeyCode::Esc.into(),
+            Action::Delete => KeyCode::Delete.into(),
+            Action::Edit => KeyCode::Char('e').into(),
+            Action::Reset => KeyCode::Char('z').into(),
+            Action::View => KeyCode::Char('v').into(),
+            Action::SelectCollection => KeyCode::F(3).into(),
+            Action::SelectProfileList => KeyCode::Char('p').into(),
+            Action::SelectRecipeList => KeyCode::Char('l').into(),
+            Action::SelectRecipe => KeyCode::Char('c').into(),
+            Action::SelectResponse => KeyCode::Char('r').into(),
+            // ^^^^^ If making changes, make sure to update the docs ^^^^^
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for InputMap {
+    /// Deserialize an input map. First we deserialize the user's provided
+    /// bindings, then we'll populate the map with the defaults so the consumer
+    /// has access to all the bindings in one place
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let user_bindings: IndexMap<Action, InputBinding> =
+            IndexMap::deserialize(deserializer)?;
+        Ok(Self::new(user_bindings))
+    }
+}
+
 /// Parse a plain key code
 fn parse_key_code(s: &str) -> anyhow::Result<KeyCode> {
     // Check for plain char code
@@ -647,5 +743,47 @@ mod tests {
             &[Token::I64(3)],
             "invalid type: integer `3`, expected a sequence",
         );
+    }
+
+    /// Test that user-provided bindings take priority
+    #[rstest]
+    #[case::user_binding(
+        Action::Submit,
+        KeyCode::Char('w'),
+        KeyCode::Char('w'),
+        Some(Action::Submit)
+    )]
+    #[case::default_not_available(
+        Action::Submit,
+        KeyCode::Tab,
+        KeyCode::Enter,
+        None
+    )]
+    #[case::unbound(Action::Submit, vec![], KeyCode::Enter, None)]
+    fn test_user_bindings(
+        #[case] action: Action,
+        #[case] binding: impl Into<InputBinding>,
+        #[case] pressed: KeyCode,
+        #[case] expected: Option<Action>,
+    ) {
+        let engine = InputMap::new(indexmap! {action => binding.into()});
+        let event = KeyEvent {
+            code: pressed,
+            kind: KeyEventKind::Press,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::empty(),
+        };
+        let actual = engine
+            .iter()
+            .find_map(|(action, binding)| {
+                // Find the action mapped to the mocked event
+                if binding.matches(&event) {
+                    Some(action)
+                } else {
+                    None
+                }
+            })
+            .copied();
+        assert_eq!(actual, expected);
     }
 }

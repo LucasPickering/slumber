@@ -26,7 +26,6 @@ profiles:
 
 requests:
   text_body:
-    type: request
     method: POST
     # Missing name
     url: "{{ host }}/anything/login"
@@ -40,11 +39,9 @@ requests:
       {"username":"{{ username }}","password":"{{ prompt('Password', sensitive=true) }}"}
 
   users:
-    type: folder
     name: Users
     requests:
       simple:
-        type: request
         name: Simple
         method: GET
         # No headers or authentication
@@ -54,7 +51,6 @@ requests:
           many: ["{{ field1 }}", "{{ field2 }}"]
 
       json_body:
-        type: request
         $ref: "#/.base_recipe"
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
@@ -66,7 +62,6 @@ requests:
           data: { "username": "new username" }
 
       json_body_but_not:
-        type: request
         $ref: "#/.base_recipe"
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
@@ -79,7 +74,6 @@ requests:
           data: '{"warning": "NOT an object"}'
 
       form_urlencoded_body:
-        type: request
         $ref: "#/.base_recipe"
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"

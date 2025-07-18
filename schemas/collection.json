@@ -40,7 +40,6 @@
       },
       "requests": {
         "my_recipe": {
-          "type": "request",
           "persist": true,
           "name": "My Recipe",
           "method": "POST",
@@ -69,17 +68,14 @@
           }
         },
         "my_folder": {
-          "type": "folder",
           "name": "My Folder",
           "requests": {
             "recipe1": {
-              "type": "request",
               "persist": true,
               "method": "GET",
               "url": "http://localhost/url"
             },
             "recipe2": {
-              "type": "request",
               "persist": true,
               "method": "GET",
               "url": "http://localhost/url"
@@ -146,33 +142,12 @@
     },
     "RecipeNode": {
       "description": "A node in the recipe tree, either a folder or recipe",
-      "oneOf": [
+      "anyOf": [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "folder"
-            }
-          },
-          "$ref": "#/$defs/Folder",
-          "required": [
-            "type"
-          ]
+          "$ref": "#/$defs/Folder"
         },
         {
-          "description": "Rename this variant to match the `requests` field in the root and\nfolders",
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "request"
-            }
-          },
-          "$ref": "#/$defs/Recipe",
-          "required": [
-            "type"
-          ]
+          "$ref": "#/$defs/Recipe"
         }
       ]
     },
@@ -203,7 +178,6 @@
           "name": "My Folder",
           "requests": {
             "my_recipe": {
-              "type": "request",
               "persist": true,
               "name": "My Recipe",
               "method": "POST",
@@ -231,6 +205,102 @@
                 "Accept": "application/json"
               }
             }
+          }
+        }
+      ]
+    },
+    "Recipe": {
+      "description": "A definition of how to build an HTTP request. This is also commonly called\n\"request\" throughout Slumber documentation because that term is more common\nand intuitive.",
+      "type": "object",
+      "properties": {
+        "persist": {
+          "description": "Should requests and responses of this recipe be persisted in the local\nSlumber database?\n[See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)\nfor more info",
+          "type": "boolean",
+          "default": true
+        },
+        "name": {
+          "description": "Display name",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method": {
+          "description": "[HTTP request method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods)",
+          "$ref": "#/$defs/HttpMethod"
+        },
+        "url": {
+          "description": "[HTTP request URL](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL)\n\nQuery parameters *can* be included here, but typically it's easier to\nuse the `query` field instead.",
+          "$ref": "#/$defs/Template"
+        },
+        "body": {
+          "description": "HTTP request body\n\n- `type: json`: `application/json` body\n- `type: form_urlencoded`: `application/x-www-form-urlencoded` body\n- `type: form_multipart`: `multipart/form-data` body\n- Any template can be given to define the literal request body\n  text/bytes. In this case, consider including a\n  [`Content-Type` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Type)\n  to tell the server what type of content you're sending.\n\nSee individual variants for more details on usage.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecipeBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authentication": {
+          "description": "HTTP authentication scheme\n\n- `type: basic`: [Basic authentication](https://swagger.io/docs/specification/v3_0/authentication/basic-authentication/)\n- `type: bearer`: [Bearer authentication](https://swagger.io/docs/specification/v3_0/authentication/bearer-authentication/)\n\nSee individual variants for more details on usage.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Authentication"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "description": "A map of [URL query parameters](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL#parameters).\nEach value can either be a single value (`?foo=bar`) or multiple\n(`?foo=bar&foo=baz`)",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/QueryParameterValue"
+          }
+        },
+        "headers": {
+          "description": "A map of [HTTP request headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers)",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Template"
+          }
+        }
+      },
+      "required": [
+        "method",
+        "url"
+      ],
+      "examples": [
+        {
+          "persist": true,
+          "name": "My Recipe",
+          "method": "POST",
+          "url": "http://localhost:8000/fish",
+          "body": {
+            "type": "json",
+            "data": {
+              "name": "Barry",
+              "species": "Barracuda"
+            }
+          },
+          "authentication": {
+            "type": "basic",
+            "username": "mememe",
+            "password": "{{ prompt(message='Password', sensitive=true) }}"
+          },
+          "query": {
+            "submit": "true",
+            "param_with_multiple_values": [
+              "value1",
+              "value2"
+            ]
+          },
+          "headers": {
+            "Accept": "application/json"
           }
         }
       ]
@@ -406,102 +476,6 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/Template"
-          }
-        }
-      ]
-    },
-    "Recipe": {
-      "description": "A definition of how to build an HTTP request. This is also commonly called\n\"request\" throughout Slumber documentation because that term is more common\nand intuitive.",
-      "type": "object",
-      "properties": {
-        "persist": {
-          "description": "Should requests and responses of this recipe be persisted in the local\nSlumber database?\n[See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)\nfor more info",
-          "type": "boolean",
-          "default": true
-        },
-        "name": {
-          "description": "Display name",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "method": {
-          "description": "[HTTP request method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods)",
-          "$ref": "#/$defs/HttpMethod"
-        },
-        "url": {
-          "description": "[HTTP request URL](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL)\n\nQuery parameters *can* be included here, but typically it's easier to\nuse the `query` field instead.",
-          "$ref": "#/$defs/Template"
-        },
-        "body": {
-          "description": "HTTP request body\n\n- `type: json`: `application/json` body\n- `type: form_urlencoded`: `application/x-www-form-urlencoded` body\n- `type: form_multipart`: `multipart/form-data` body\n- Any template can be given to define the literal request body\n  text/bytes. In this case, consider including a\n  [`Content-Type` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Type)\n  to tell the server what type of content you're sending.\n\nSee individual variants for more details on usage.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RecipeBody"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "authentication": {
-          "description": "HTTP authentication scheme\n\n- `type: basic`: [Basic authentication](https://swagger.io/docs/specification/v3_0/authentication/basic-authentication/)\n- `type: bearer`: [Bearer authentication](https://swagger.io/docs/specification/v3_0/authentication/bearer-authentication/)\n\nSee individual variants for more details on usage.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Authentication"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "query": {
-          "description": "A map of [URL query parameters](https://developer.mozilla.org/en-US/docs/Learn_web_development/Howto/Web_mechanics/What_is_a_URL#parameters).\nEach value can either be a single value (`?foo=bar`) or multiple\n(`?foo=bar&foo=baz`)",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/QueryParameterValue"
-          }
-        },
-        "headers": {
-          "description": "A map of [HTTP request headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers)",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/Template"
-          }
-        }
-      },
-      "required": [
-        "method",
-        "url"
-      ],
-      "examples": [
-        {
-          "persist": true,
-          "name": "My Recipe",
-          "method": "POST",
-          "url": "http://localhost:8000/fish",
-          "body": {
-            "type": "json",
-            "data": {
-              "name": "Barry",
-              "species": "Barracuda"
-            }
-          },
-          "authentication": {
-            "type": "basic",
-            "username": "mememe",
-            "password": "{{ prompt(message='Password', sensitive=true) }}"
-          },
-          "query": {
-            "submit": "true",
-            "param_with_multiple_values": [
-              "value1",
-              "value2"
-            ]
-          },
-          "headers": {
-            "Accept": "application/json"
           }
         }
       ]

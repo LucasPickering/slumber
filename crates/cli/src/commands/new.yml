@@ -19,17 +19,14 @@ profiles:
 
 requests:
   example1:
-    type: request
     name: Example Request 1
     method: GET
     url: "{{ host }}/anything"
 
   example_folder:
-    type: folder
     name: Example Folder
     requests:
       example2:
-        type: request
         name: Example Request 2
         method: POST
         url: "{{ host }}/anything"

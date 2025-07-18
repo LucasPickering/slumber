@@ -61,7 +61,6 @@ profiles:
 
 requests:
   login:
-    type: request
     <<: *base_request
     method: POST
     url: "{{ host }}/anything/login"
@@ -71,10 +70,8 @@ requests:
 
   # Folders can be used to keep your recipes organized
   users:
-    type: folder
     requests:
       get_user:
-        type: request
         <<: *base_request
         name: Get User
         method: GET
@@ -82,7 +79,6 @@ requests:
         authentication: !bearer "{{ auth_token }}"
 
       update_user:
-        type: request
         <<: *base_request
         name: Update User
         method: PUT

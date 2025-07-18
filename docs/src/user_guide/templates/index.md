@@ -38,7 +38,6 @@ Templates are defined as strings in your request collection YAML file. For examp
 ```yaml
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fish"
 ```
@@ -54,7 +53,6 @@ Not all template are dynamic. Static strings are also valid templates and just r
 ```yaml
 requests:
   list_fish:
-    type: request
     method: GET
     # This is a valid template
     url: "https://myfishes.fish/fish"

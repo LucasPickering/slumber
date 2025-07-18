@@ -19,7 +19,6 @@ profiles:
 
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
     query:
@@ -53,11 +52,9 @@ If you want to send a request that includes data derived from a previous respons
 ```yaml
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
   post_fish_list:
-    type: request
     method: POST
     url: "{{ host }}/fishes"
     body: "{{ response('list_fish') }}"
@@ -74,11 +71,9 @@ In this example, we extract the first fish from `list_fish` to get additional de
 ```yaml
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
   get_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes/{{ response('fish_list') | jsonpath('$[0].id') }}"
 ```
@@ -92,11 +87,9 @@ Fetching the first fish is neat and all, but what if you want to select which fi
 ```yaml
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
   get_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes/{{ response('fish_list') | jsonpath('$[*].id', mode='array') | select() }}"
 ```
@@ -119,11 +112,9 @@ The first 3 options are pretty straight forward, so let's dig in the Duration op
 ```yaml
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
   get_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes/{{ response('fish_list', trigger='1d') | jsonpath('$[*].id', mode='array') | select() }}"
 ```
@@ -142,15 +133,12 @@ profiles:
 
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
   get_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes/{{ fish_id }}"
   delete_fish:
-    type: request
     method: DELETE
     url: "{{ host }}/fishes/{{ fish_id }}"
 ```
@@ -171,15 +159,12 @@ profiles:
 
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
   get_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes/{{ fish_id }}"
   delete_fish:
-    type: request
     method: DELETE
     url: "{{ host }}/fishes/{{ fish_id }}"
 ```

@@ -15,7 +15,6 @@ profiles:
 
 requests:
   list_fish:
-    type: request
     method: GET
     url: "{{ host }}/fishes"
 ```
@@ -33,7 +32,6 @@ profiles:
 
 requests:
   list_fish:
-    type: request
     method: GET
     url: "https://myfishes.fish/fishes"
     authentication:
@@ -60,7 +58,6 @@ profiles:
 
 requests:
   list_fish:
-    type: request
     method: GET
     url: "https://myfishes.fish/fishes"
     authentication:
@@ -91,7 +88,6 @@ profiles:
 
 requests:
   list_fish:
-    type: request
     method: GET
     url: "https://myfishes.fish/fishes"
     authentication:

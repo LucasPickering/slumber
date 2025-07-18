@@ -779,7 +779,6 @@ name: Test Reloaded
 
 requests:
     test:
-        type: "request"
         method: "GET"
         url: "test"
 "#,
@@ -901,7 +900,7 @@ requests:
         let other_collection = temp_dir.join("other_slumber.yml");
         fs::write(
             &other_collection,
-            r#"requests: {"r1": {"type": "request", "method": "GET", "url": "http://localhost"}}"#,
+            r#"requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
         )
         .unwrap();
 

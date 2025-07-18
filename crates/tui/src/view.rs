@@ -28,9 +28,10 @@ use crate::{
         event::Event,
     },
 };
-use anyhow::anyhow;
+use crossterm::clipboard::CopyToClipboard;
 use ratatui::{
     Frame,
+    crossterm::execute,
     layout::{Constraint, Layout},
     text::Text,
 };
@@ -40,7 +41,7 @@ use slumber_core::{
     database::CollectionDatabase,
     http::RequestId,
 };
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, io, sync::Arc};
 use tracing::{trace, trace_span, warn};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
@@ -218,13 +219,14 @@ impl View {
 
     /// Copy text to the user's clipboard, and notify them
     pub fn copy_text(&mut self, text: String) {
-        match cli_clipboard::set_contents(text) {
+        match execute!(io::stdout(), CopyToClipboard::to_clipboard_from(text)) {
             Ok(()) => self.notify("Copied text to clipboard"),
             Err(error) => {
                 // Returned error doesn't impl 'static so we can't
                 // directly convert it to anyhow
                 ViewContext::send_message(Message::Error {
-                    error: anyhow!("Error copying text: {error}"),
+                    error: anyhow::Error::from(error)
+                        .context("Error copying text"),
                 });
             }
         }

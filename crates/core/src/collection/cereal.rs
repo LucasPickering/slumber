@@ -278,14 +278,29 @@ impl DeserializeYaml for RecipeNode {
     }
 
     fn deserialize(yaml: MarkedYaml) -> Result<Self> {
-        deserialize_enum! {
-            yaml,
-            "request" => |yaml| {
-                Recipe::deserialize(yaml).map(RecipeNode::Recipe)
-            },
-            "folder" => |yaml| {
-                Folder::deserialize(yaml).map(RecipeNode::Folder)
-            },
+        // Recipe nodes are untagged enums. They're written very frequently,
+        // have distinct required fields that we can key on, and there's minimal
+        // risk that we'll need to add new variants. Forcing users to require a
+        // tag on every node is annoying so we can just omit it.
+
+        // Get a reference to the mapping without moving it
+        let YamlData::Mapping(mapping) = &yaml.data else {
+            return Err(LocatedError::unexpected(Expected::Mapping, yaml));
+        };
+
+        let has = |key| mapping.contains_key(&MarkedYaml::value_from_str(key));
+
+        // Do a little heuristicking to guess what the variant is. This gives
+        // slightly better error messages
+        if has("method") || has("url") {
+            Recipe::deserialize(yaml).map(RecipeNode::Recipe)
+        } else if has("requests") {
+            Folder::deserialize(yaml).map(RecipeNode::Folder)
+        } else {
+            Err(LocatedError {
+                error: Error::UnknownRecipeNodeVariant,
+                location: yaml.span.start,
+            })
         }
     }
 }
@@ -494,9 +509,9 @@ impl DeserializeYaml for Template {
     fn expected() -> Expected {
         Expected::OneOf(&[
             &Expected::String,
-            &Expected::Null,
             &Expected::Boolean,
             &Expected::Number,
+            // We accept `null` too, but it's not a helpful suggestion
         ])
     }
 
@@ -652,11 +667,11 @@ pub struct LocatedError<E> {
 impl LocatedError<Error> {
     /// Create a new [Other](Self::Other) from any error type
     fn other(
-        error: impl 'static + std::error::Error + Send + Sync,
+        error: impl Into<Box<dyn std::error::Error + Send + Sync>>,
         location: Marker,
     ) -> Self {
         Self {
-            error: Error::Other(Box::new(error)),
+            error: Error::Other(error.into()),
             location,
         }
     }
@@ -742,6 +757,13 @@ enum Error {
 
     #[error("Unexpected field `{0}`")]
     UnexpectedField(String),
+
+    /// We couldn't guess the variant of a recipe node based on its fields
+    #[error(
+        "Requests must have a `method` and `url` field; \
+        folders must have a `requests` field"
+    )]
+    UnknownRecipeNodeVariant,
 }
 
 /// When a value is expected but is either incorrect or missing, this type

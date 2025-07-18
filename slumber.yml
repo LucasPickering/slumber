@@ -7,7 +7,6 @@
   username: xX{{ command(['whoami']) | trim() | sensitive() }}Xx
   user_guid: abc123
 .base_request:
-  type: request
   headers:
     Accept: application/json
 
@@ -35,7 +34,6 @@ profiles:
 
 requests:
   authentication:
-    type: folder
     requests:
       login:
         $ref: "#/.base_request"
@@ -81,7 +79,6 @@ requests:
           Accept: application/json
 
   users:
-    type: folder
     name: Users
     requests:
       get_users:
@@ -120,7 +117,6 @@ requests:
             }
 
   get_image:
-    type: request
     headers:
       Accept: image/png
     name: Get Image

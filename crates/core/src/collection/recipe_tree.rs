@@ -66,12 +66,12 @@ impl IntoIterator for RecipeLookupKey {
 #[derive(Debug, From, Serialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(untagged)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum RecipeNode {
     Folder(Folder),
-    /// Rename this variant to match the `requests` field in the root and
-    /// folders
+    // Rename this variant to match the `requests` field in the root and
+    // folders
     #[serde(rename = "request")]
     Recipe(Recipe),
 }
@@ -288,13 +288,12 @@ mod tests {
 
     /// Build a folder
     fn folder<const N: usize>(children: [(&str, Value); N]) -> Value {
-        mapping([("type", "folder".into()), ("requests", mapping(children))])
+        mapping([("requests", mapping(children))])
     }
 
     /// Build a recipe
     fn recipe() -> Value {
         mapping([
-            ("type", "request".into()),
             ("method", "GET".into()),
             ("url", "http://localhost/url".into()),
         ])

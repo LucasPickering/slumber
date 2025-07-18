@@ -2,41 +2,27 @@
 
 use crate::message::Message;
 use derive_more::Display;
-use indexmap::{IndexMap, indexmap};
-use slumber_config::{Action, InputBinding, KeyCombination};
+use slumber_config::{Action, InputBinding, InputMap};
 use terminput::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
-    MouseEvent, MouseEventKind, ScrollDirection,
+    Event, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
+    ScrollDirection,
 };
 use tracing::trace;
 
 /// Top-level input manager. This handles things like bindings and mapping
 /// events to actions, but then the actions are actually processed by the view.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct InputEngine {
-    /// Intuitively this should be binding:action, but we can't look up a
-    /// binding from the map based on an input event, because event<=>binding
-    /// matching is more nuanced that simple equality (e.g. bonus modifiers
-    /// keys can be ignored). We have to iterate over map when checking inputs,
-    /// but keying by action at least allows us to look up action=>binding for
-    /// help text.
-    bindings: IndexMap<Action, InputBinding>,
+    bindings: InputMap,
 }
 
 impl InputEngine {
-    pub fn new(user_bindings: IndexMap<Action, InputBinding>) -> Self {
-        let mut new = Self::default();
-        // User bindings should overwrite any default ones
-        new.bindings.extend(user_bindings);
-        // If the user overwrote an action with an empty binding, remove it from
-        // the map. This has to be done *after* the extend, so the default
-        // binding is also dropped
-        new.bindings.retain(|_, binding| !binding.is_empty());
-        new
+    pub fn new(bindings: InputMap) -> Self {
+        Self { bindings }
     }
 
     /// Get a map of all available bindings
-    pub fn bindings(&self) -> &IndexMap<Action, InputBinding> {
+    pub fn bindings(&self) -> &InputMap {
         &self.bindings
     }
 
@@ -146,68 +132,12 @@ impl InputEngine {
     }
 }
 
-impl Default for InputEngine {
-    fn default() -> Self {
-        Self {
-            bindings: indexmap! {
-                // vvvvv If making changes, make sure to update the docs vvvvv
-                Action::Quit => KeyCode::Char('q').into(),
-                Action::ForceQuit => KeyCombination {
-                    code: KeyCode::Char('c'),
-                    modifiers: KeyModifiers::CTRL,
-                }.into(),
-                Action::ScrollLeft => KeyCombination {
-                    code: KeyCode::Left,
-                    modifiers: KeyModifiers::SHIFT,
-                }.into(),
-                Action::ScrollRight => KeyCombination {
-                    code: KeyCode::Right,
-                    modifiers: KeyModifiers::SHIFT,
-                }.into(),
-                Action::OpenActions => KeyCode::Char('x').into(),
-                Action::OpenHelp => KeyCode::Char('?').into(),
-                Action::Fullscreen => KeyCode::Char('f').into(),
-                Action::ReloadCollection => KeyCode::F(5).into(),
-                Action::History => KeyCode::Char('h').into(),
-                Action::Search => KeyCode::Char('/').into(),
-                Action::Export => KeyCode::Char(':').into(),
-                Action::PreviousPane => KeyCombination {
-                    code: KeyCode::Tab,
-                    modifiers: KeyModifiers::SHIFT,
-                }.into(),
-                Action::NextPane => KeyCode::Tab.into(),
-                Action::Up => KeyCode::Up.into(),
-                Action::Down => KeyCode::Down.into(),
-                Action::Left => KeyCode::Left.into(),
-                Action::Right => KeyCode::Right.into(),
-                Action::PageUp => KeyCode::PageUp.into(),
-                Action::PageDown => KeyCode::PageDown.into(),
-                Action::Home => KeyCode::Home.into(),
-                Action::End => KeyCode::End.into(),
-                Action::Submit => KeyCode::Enter.into(),
-                Action::Toggle => KeyCode::Char(' ').into(),
-                Action::Cancel => KeyCode::Esc.into(),
-                Action::Delete => KeyCode::Delete.into(),
-                Action::Edit => KeyCode::Char('e').into(),
-                Action::Reset => KeyCode::Char('z').into(),
-                Action::View => KeyCode::Char('v').into(),
-                Action::SelectCollection => KeyCode::F(3).into(),
-                Action::SelectProfileList => KeyCode::Char('p').into(),
-                Action::SelectRecipeList => KeyCode::Char('l').into(),
-                Action::SelectRecipe => KeyCode::Char('c').into(),
-                Action::SelectResponse => KeyCode::Char('r').into(),
-                // ^^^^^ If making changes, make sure to update the docs ^^^^^
-            },
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
     use slumber_util::assert_matches;
-    use terminput::KeyEventState;
+    use terminput::{KeyCode, KeyEventState, KeyModifiers};
 
     /// Helper to create a key event
     fn key_event(
@@ -231,36 +161,6 @@ mod tests {
             row: 0,
             modifiers: KeyModifiers::NONE,
         })
-    }
-
-    /// Test that user-provided bindings take priority
-    #[rstest]
-    #[case::user_binding(
-        Action::Submit,
-        KeyCode::Char('w'),
-        KeyCode::Char('w'),
-        Some(Action::Submit)
-    )]
-    #[case::default_not_available(
-        Action::Submit,
-        KeyCode::Tab,
-        KeyCode::Enter,
-        None
-    )]
-    #[case::unbound(Action::Submit, vec![], KeyCode::Enter, None)]
-    fn test_user_bindings(
-        #[case] action: Action,
-        #[case] binding: impl Into<InputBinding>,
-        #[case] pressed: KeyCode,
-        #[case] expected: Option<Action>,
-    ) {
-        let engine = InputEngine::new(indexmap! {action => binding.into()});
-        let actual = engine.action(&key_event(
-            KeyEventKind::Press,
-            pressed,
-            KeyModifiers::NONE,
-        ));
-        assert_eq!(actual, expected);
     }
 
     /// Test events that should be handled get a message generated
@@ -318,7 +218,7 @@ mod tests {
         #[case] event: Event,
         #[case] expected_action: Option<Action>,
     ) {
-        let engine = InputEngine::new(IndexMap::default());
+        let engine = InputEngine::default();
         let (queued_event, queued_action) = assert_matches!(
             engine.event_to_message(event.clone()),
             Some(Message::Input { event, action }) => (event, action),
@@ -340,7 +240,7 @@ mod tests {
     #[case::mouse_drag(mouse_event(MouseEventKind::Drag(MouseButton::Left)))]
     #[case::mouse_move(mouse_event(MouseEventKind::Moved))]
     fn test_handle_event_killed(#[case] event: Event) {
-        let engine = InputEngine::new(IndexMap::default());
+        let engine = InputEngine::default();
         assert_matches!(engine.event_to_message(event), None);
     }
 }

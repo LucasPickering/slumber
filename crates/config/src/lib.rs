@@ -17,14 +17,13 @@ mod input;
 mod mime;
 mod theme;
 
-pub use input::{Action, InputBinding, KeyCombination};
+pub use input::{Action, InputBinding, InputMap, KeyCombination};
 pub use theme::Theme;
 
 use crate::mime::MimeMap;
 use ::mime::Mime;
 use anyhow::Context;
 use editor_command::EditorBuilder;
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use slumber_util::{
     ResultTraced, doc_link, parse_yaml,
@@ -71,7 +70,7 @@ pub struct Config {
     /// raw text?
     pub preview_templates: bool,
     /// Overrides for default key bindings
-    pub input_bindings: IndexMap<Action, InputBinding>,
+    pub input_bindings: InputMap,
     /// Visual configuration for the TUI (e.g. colors)
     pub theme: Theme,
     /// Enable debug monitor in TUI

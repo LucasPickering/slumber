@@ -1,3 +1,4 @@
+use crate::view::util::IntoRatatui;
 use ratatui::{
     style::{Color, Modifier, Style},
     widgets::BorderType,
@@ -133,8 +134,8 @@ impl Styles {
         Self {
             list: ListStyles {
                 highlight: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color)
+                    .bg(theme.primary_color.rat())
+                    .fg(theme.primary_text_color.rat())
                     .add_modifier(Modifier::BOLD),
                 disabled: Style::default().fg(Color::DarkGray),
             },
@@ -145,7 +146,7 @@ impl Styles {
             pane: PaneStyles {
                 border: Style::default(),
                 border_selected: Style::default()
-                    .fg(theme.primary_color)
+                    .fg(theme.primary_color.rat())
                     .add_modifier(Modifier::BOLD),
                 border_type: BorderType::Plain,
                 border_type_selected: BorderType::Double,
@@ -153,12 +154,12 @@ impl Styles {
             status_code: StatusCodeStyles {
                 success: Style::default()
                     .fg(Color::Black)
-                    .bg(theme.success_color),
-                error: Style::default().bg(theme.error_color),
+                    .bg(theme.success_color.rat()),
+                error: Style::default().bg(theme.error_color.rat()),
             },
             tab: TabStyles {
                 highlight: Style::default()
-                    .fg(theme.primary_color)
+                    .fg(theme.primary_color.rat())
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
             },
@@ -170,27 +171,27 @@ impl Styles {
                 alt: Style::default().bg(Color::DarkGray),
                 disabled: Style::default().add_modifier(Modifier::DIM),
                 highlight: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color)
+                    .bg(theme.primary_color.rat())
+                    .fg(theme.primary_text_color.rat())
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
             template_preview: TemplatePreviewStyles {
                 text: Style::default()
-                    .fg(theme.secondary_color)
+                    .fg(theme.secondary_color.rat())
                     .add_modifier(Modifier::UNDERLINED),
                 error: Style::default()
                     .fg(Color::default()) // Override syntax highlighting
-                    .bg(theme.error_color),
+                    .bg(theme.error_color.rat()),
             },
             text: TextStyle {
                 highlight: Style::default()
-                    .fg(theme.primary_text_color)
-                    .bg(theme.primary_color),
-                primary: Style::default().fg(theme.primary_color),
+                    .fg(theme.primary_text_color.rat())
+                    .bg(theme.primary_color.rat()),
+                primary: Style::default().fg(theme.primary_color.rat()),
                 edited: Style::default().add_modifier(Modifier::ITALIC),
-                error: Style::default().bg(theme.error_color),
+                error: Style::default().bg(theme.error_color.rat()),
                 note: Style::default().add_modifier(Modifier::ITALIC),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },

@@ -16,11 +16,51 @@ use itertools::Itertools;
 use mime::Mime;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
+    style::Color as RatColor,
     text::{Line, Text},
 };
 use slumber_core::template::{Prompt, Prompter, ResponseChannel, Select};
 use std::io::Write;
 use tracing::trace;
+
+/// Convert a [slumber_config::Color] to a [ratatui::style::Color]. This is
+/// needed to get around the orphan rule. Ideally we could have a `From`
+/// implementation defined in [slumber_config], but that would add [ratatui] as
+/// a dependency which clutters up the core config repo. Also `rat()` is a funny
+/// method.
+pub trait IntoRatatui {
+    type Output;
+
+    fn rat(self) -> Self::Output;
+}
+
+impl IntoRatatui for slumber_config::Color {
+    type Output = RatColor;
+
+    fn rat(self) -> Self::Output {
+        match self {
+            Self::Reset => RatColor::Reset,
+            Self::Black => RatColor::Black,
+            Self::Red => RatColor::Red,
+            Self::Green => RatColor::Green,
+            Self::Yellow => RatColor::Yellow,
+            Self::Blue => RatColor::Blue,
+            Self::Magenta => RatColor::Magenta,
+            Self::Cyan => RatColor::Cyan,
+            Self::Gray => RatColor::Gray,
+            Self::DarkGray => RatColor::DarkGray,
+            Self::LightRed => RatColor::LightRed,
+            Self::LightGreen => RatColor::LightGreen,
+            Self::LightYellow => RatColor::LightYellow,
+            Self::LightBlue => RatColor::LightBlue,
+            Self::LightMagenta => RatColor::LightMagenta,
+            Self::LightCyan => RatColor::LightCyan,
+            Self::White => RatColor::White,
+            Self::Rgb(r, g, b) => RatColor::Rgb(r, g, b),
+            Self::Indexed(index) => RatColor::Indexed(index),
+        }
+    }
+}
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.

@@ -18,8 +18,7 @@ glob = "0.3.2"
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
-ratatui = {workspace = true, features = ["serde"]}
-serde = {workspace = true}
+serde = {workspace = true, features = ["derive"]}
 slumber_util = {workspace = true}
 terminput = {workspace = true}
 tracing = {workspace = true}

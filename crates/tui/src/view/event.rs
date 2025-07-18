@@ -238,7 +238,7 @@ pub enum Event {
     /// Input from the user, which may or may not correspond to a bound action.
     /// Most components just care about the action, but some require raw input
     Input {
-        event: crossterm::event::Event,
+        event: terminput::Event,
         action: Option<Action>,
     },
 

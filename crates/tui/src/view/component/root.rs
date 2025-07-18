@@ -293,7 +293,6 @@ mod tests {
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_core::{
@@ -302,6 +301,7 @@ mod tests {
         test_util::by_id,
     };
     use slumber_util::Factory;
+    use terminput::KeyCode;
 
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile

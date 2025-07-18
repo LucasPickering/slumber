@@ -8,16 +8,16 @@ use crate::view::{
     draw::{Draw, DrawMetadata},
     event::{Child, Emitter, Event, LocalEvent, ToChild, ToEmitter},
 };
-use crossterm::event::{
-    Event::{Key, Mouse, Paste},
-    MouseEvent,
-};
 use derive_more::Display;
 use ratatui::{Frame, layout::Rect};
 use std::{
     any,
     cell::{Cell, RefCell},
     collections::HashSet,
+};
+use terminput::{
+    Event::{Key, Mouse, Paste},
+    MouseEvent,
 };
 use tracing::{instrument, trace, trace_span, warn};
 use uuid::Uuid;
@@ -392,14 +392,14 @@ mod tests {
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::event::EventHandler,
     };
-    use crossterm::event::{
-        KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
-        MouseButton, MouseEventKind,
-    };
     use ratatui::layout::Layout;
     use rstest::{fixture, rstest};
     use slumber_config::Action;
     use slumber_util::assert_matches;
+    use terminput::{
+        KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
+        MouseButton, MouseEventKind,
+    };
 
     #[derive(Debug, Default)]
     struct Branch {
@@ -500,7 +500,7 @@ mod tests {
 
     fn keyboard_event() -> Event {
         Event::Input {
-            event: crossterm::event::Event::Key(KeyEvent {
+            event: terminput::Event::Key(KeyEvent {
                 code: KeyCode::Enter,
                 modifiers: KeyModifiers::NONE,
                 kind: KeyEventKind::Press,
@@ -512,7 +512,7 @@ mod tests {
 
     fn mouse_event((x, y): (u16, u16)) -> Event {
         Event::Input {
-            event: crossterm::event::Event::Mouse(MouseEvent {
+            event: terminput::Event::Mouse(MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
                 column: x,
                 row: y,

@@ -359,7 +359,6 @@ mod tests {
             test_util::TestComponent,
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use ratatui::{
         style::{Color, Styled},
@@ -368,6 +367,7 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
     use slumber_util::{Factory, assert_matches};
+    use terminput::KeyCode;
 
     /// Test editing a raw body, which should open a file for the user to edit,
     /// then load the response

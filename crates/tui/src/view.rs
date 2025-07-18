@@ -183,7 +183,7 @@ impl View {
     /// abstract action the input maps to.
     pub fn handle_input(
         &self,
-        event: crossterm::event::Event,
+        event: terminput::Event,
         action: Option<Action>,
     ) {
         ViewContext::push_event(Event::Input { event, action });

@@ -145,11 +145,11 @@ mod tests {
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
-    use crossterm::event::KeyCode;
     use indexmap::indexmap;
     use rstest::rstest;
     use slumber_core::{http::Exchange, test_util::header_map};
     use slumber_util::{Factory, assert_matches};
+    use terminput::KeyCode;
 
     /// Test "Copy Body" menu action
     #[rstest]

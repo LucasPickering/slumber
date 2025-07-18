@@ -61,7 +61,7 @@ impl Draw for Footer {
         // Notifications are auto-cleared so it's ok to hide other stuff
         // temporarily
         if let Some(notification) = &self.notification {
-            frame.render_widget(&notification.message, metadata.area());
+            frame.render_widget(notification.message.as_str(), metadata.area());
             return;
         }
 

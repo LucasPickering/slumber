@@ -1,7 +1,6 @@
 //! Logic related to input handling. This is considered part of the controller.
 
 use anyhow::{anyhow, bail};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode};
 use derive_more::Display;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -12,6 +11,7 @@ use std::{
     iter,
     str::FromStr,
 };
+use terminput::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode};
 
 /// Key code to string mappings
 const KEY_CODES: Mapping<'static, KeyCode> = Mapping::new(&[
@@ -29,7 +29,6 @@ const KEY_CODES: Mapping<'static, KeyCode> = Mapping::new(&[
     (KeyCode::PageUp, &["pageup", "pgup"]),
     (KeyCode::PageDown, &["pagedown", "pgdn"]),
     (KeyCode::Tab, &["tab"]),
-    (KeyCode::BackTab, &["backtab"]),
     (KeyCode::Backspace, &["backspace"]),
     (KeyCode::Delete, &["delete", "del"]),
     (KeyCode::Insert, &["insert", "ins"]),
@@ -76,7 +75,7 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
     // vvvvv If making changes, make sure to update the docs vvvvv
     (KeyModifiers::SHIFT, &["shift"]),
     (KeyModifiers::ALT, &["alt"]),
-    (KeyModifiers::CONTROL, &["ctrl"]),
+    (KeyModifiers::CTRL, &["ctrl"]),
     (KeyModifiers::SUPER, &["super"]),
     (KeyModifiers::HYPER, &["hyper"]),
     (KeyModifiers::META, &["meta"]),
@@ -295,7 +294,6 @@ impl Display for KeyCombination {
 
         // Write base code
         match self.code {
-            KeyCode::BackTab => write!(f, "<shift{}tab>", Self::SEPARATOR),
             KeyCode::Tab => write!(f, "<tab>"),
             KeyCode::Up => write!(f, "↑"),
             KeyCode::Down => write!(f, "↓"),
@@ -334,10 +332,19 @@ impl FromStr for KeyCombination {
         let code = tokens
             .next_back()
             .ok_or_else(|| anyhow!("Empty key combination"))?;
-        let mut code: KeyCode = parse_key_code(code)?;
+        let mut modifiers = KeyModifiers::NONE;
+        // `backtab` is what crossterm calls `shift tab`. We supported it in the
+        // past because this used to map directly to crossterm. Keeping this
+        // mapping for backward compatibility. We need snowflake logic because
+        // it's a code that maps to a code+modifier
+        let code: KeyCode = if code == "backtab" {
+            modifiers |= KeyModifiers::SHIFT;
+            KeyCode::Tab
+        } else {
+            parse_key_code(code)?
+        };
 
         // Parse modifiers, left-to-right
-        let mut modifiers = KeyModifiers::NONE;
         for modifier in tokens {
             let modifier = parse_key_modifier(modifier)?;
             // Prevent duplicate
@@ -345,13 +352,6 @@ impl FromStr for KeyCombination {
                 bail!("Duplicate modifier {modifier:?}");
             }
             modifiers |= modifier;
-        }
-
-        // Special case - crossterm treats shift+tab as backtab, translate it
-        // automatically for the user
-        if code == KeyCode::Tab && modifiers.contains(KeyModifiers::SHIFT) {
-            code = KeyCode::BackTab;
-            modifiers -= KeyModifiers::SHIFT;
         }
 
         Ok(Self { code, modifiers })
@@ -422,23 +422,15 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyEventKind, KeyEventState, MediaKeyCode};
     use rstest::rstest;
     use serde_test::{Token, assert_de_tokens, assert_de_tokens_error};
     use slumber_util::assert_err;
+    use terminput::{KeyEventKind, KeyEventState};
 
     #[rstest]
     #[case::whitespace_stripped(" w ", KeyCode::Char('w'))]
     #[case::f_key("f2", KeyCode::F(2))]
     #[case::tab("tab", KeyCode::Tab)]
-    #[case::backtab("backtab", KeyCode::BackTab)]
-    // crossterm treats shift+tab as a special case, we translate for
-    // convenience
-    #[case::shift_tab("shift tab", KeyCode::BackTab)]
-    #[case::multiple_modifiers("alt shift tab", KeyCombination {
-        code: KeyCode::BackTab,
-        modifiers: KeyModifiers::ALT
-    })]
     #[case::page_up("pgup", KeyCode::PageUp)]
     #[case::page_down("pgdn", KeyCode::PageDown)]
     #[case::caps_lock("capslock", KeyCode::CapsLock)]
@@ -458,6 +450,17 @@ mod tests {
     #[case::all_modifiers("super hyper meta alt ctrl shift f2", KeyCombination {
         code: KeyCode::F(2),
         modifiers: KeyModifiers::all(),
+    })]
+    // Backward compatibility: crossterm translates shift+tab as a separate
+    // keycode call backtab. We previously used crossterm directly in this crate
+    // so we supported this
+    #[case::backtab("backtab", KeyCombination {
+        code: KeyCode::Tab,
+        modifiers: KeyModifiers::SHIFT,
+    })]
+    #[case::backtab_modifiers("ctrl backtab", KeyCombination {
+        code: KeyCode::Tab,
+        modifiers: KeyModifiers::CTRL | KeyModifiers::SHIFT,
     })]
     fn test_parse_key_combination(
         #[case] input: &str,
@@ -500,7 +503,7 @@ mod tests {
     #[case::multiple_modifiers(
         "ctrl shift end",
         KeyCode::End,
-        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        KeyModifiers::CTRL | KeyModifiers::SHIFT,
         true,
     )]
     #[case::missing_modifier(
@@ -541,7 +544,6 @@ mod tests {
             KeyCode::PageUp,
             KeyCode::PageDown,
             KeyCode::Tab,
-            KeyCode::BackTab,
             KeyCode::Delete,
             KeyCode::Insert,
             // Intentionally omitting Null (what is it??)

@@ -176,7 +176,7 @@ impl EventHandler for ModalQueue {
                 // background components
                 Event::Input {
                     action: _,
-                    event: crossterm::event::Event::Mouse(_),
+                    event: terminput::Event::Mouse(_),
                 } if self.is_open() => None,
 
                 // Open a new modal

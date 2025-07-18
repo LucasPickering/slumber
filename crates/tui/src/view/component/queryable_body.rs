@@ -481,13 +481,13 @@ mod tests {
             util::persistence::{DatabasePersistedStore, PersistedLazy},
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
     use ratatui::{layout::Margin, text::Span};
     use rstest::{fixture, rstest};
     use serde::Serialize;
     use slumber_core::http::{ResponseBody, ResponseRecord};
     use slumber_util::{Factory, TempDir, assert_matches, temp_dir};
+    use terminput::KeyCode;
     use tokio::fs;
 
     const TEXT: &str = "{\"greeting\":\"hello\"}";

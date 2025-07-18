@@ -21,7 +21,7 @@ use crate::{
     util::{CANCEL_TOKEN, ResultReported},
 };
 use anyhow::Context;
-use crossterm::event::{Event, EventStream};
+use crossterm::event::EventStream;
 use futures::{StreamExt, pin_mut};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
@@ -32,6 +32,7 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
+use terminput::Event;
 use tokio::{
     select,
     sync::mpsc::{self, UnboundedReceiver},
@@ -121,6 +122,9 @@ impl Tui {
             // should be filtered out entirely so they don't trigger any updates
             EventStream::new().filter_map(|event_result| async move {
                 let event = event_result.expect("Error reading terminal input");
+                // Convert from crossterm to the common terminput format. This
+                // enables support for multiple terminal backends
+                let event = terminput_crossterm::to_terminput(event).unwrap();
                 input_engine.event_to_message(event)
             });
         pin_mut!(input_stream);
@@ -215,7 +219,7 @@ impl Tui {
                 Ok(())
             }
             Message::Input {
-                event: Event::Resize(_, _),
+                event: Event::Resize { .. },
                 ..
             } => {
                 // Redraw the entire screen. There are certain scenarios where

@@ -285,9 +285,9 @@ mod tests {
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
-    use crossterm::event::{KeyCode, KeyModifiers};
     use ratatui::text::Span;
     use rstest::rstest;
+    use terminput::{KeyCode, KeyModifiers};
 
     #[rstest]
     fn test_scroll(

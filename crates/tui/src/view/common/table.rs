@@ -89,7 +89,7 @@ impl<'a, const COLS: usize> Generate for Table<'a, COLS, Row<'a>> {
             row.set_style(base_style.patch(row_style))
         });
         let mut table = ratatui::widgets::Table::new(rows, self.column_widths)
-            .highlight_style(styles.table.highlight);
+            .row_highlight_style(styles.table.highlight);
 
         // Add title
         if let Some(title) = self.title {

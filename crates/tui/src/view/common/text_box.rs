@@ -9,7 +9,6 @@ use crate::{
         event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
     },
 };
-use crossterm::event::{KeyCode, KeyModifiers};
 use persisted::PersistedContainer;
 use ratatui::{
     Frame,
@@ -19,6 +18,7 @@ use ratatui::{
 };
 use slumber_config::Action;
 use std::{cell::Cell, mem};
+use terminput::{KeyCode, KeyModifiers};
 
 /// Single line text submission component
 #[derive(derive_more::Debug, Default)]
@@ -132,7 +132,7 @@ impl TextBox {
             KeyCode::Backspace => self.state.delete_left(),
             KeyCode::Delete => self.state.delete_right(),
             KeyCode::Left => {
-                if modifiers == KeyModifiers::CONTROL {
+                if modifiers == KeyModifiers::CTRL {
                     self.state.home();
                 } else {
                     self.state.left();
@@ -140,7 +140,7 @@ impl TextBox {
                 false
             }
             KeyCode::Right => {
-                if modifiers == KeyModifiers::CONTROL {
+                if modifiers == KeyModifiers::CTRL {
                     self.state.end();
                 } else {
                     self.state.right();
@@ -192,7 +192,7 @@ impl EventHandler for TextBox {
             .any(|event| match event {
                 // Handle any other input as text
                 Event::Input {
-                    event: crossterm::event::Event::Key(key_event),
+                    event: terminput::Event::Key(key_event),
                     ..
                 } if self.handle_key(key_event.code, key_event.modifiers) => {
                     None
@@ -533,7 +533,7 @@ mod tests {
                 .send_key_modifiers(
                     // This is what crossterm actually sends
                     KeyCode::Char('W'),
-                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                    KeyModifiers::CTRL | KeyModifiers::SHIFT,
                 )
                 .events(),
             &[Event::Input { .. }]

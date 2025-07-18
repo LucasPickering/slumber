@@ -495,11 +495,11 @@ mod tests {
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_core::http::BuildOptions;
     use slumber_util::assert_matches;
+    use terminput::KeyCode;
 
     /// Create component to be tested
     fn create_component<'term>(

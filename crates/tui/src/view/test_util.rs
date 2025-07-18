@@ -19,14 +19,14 @@ use crate::{
         },
     },
 };
-use crossterm::event::{
-    KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
-    MouseEvent, MouseEventKind,
-};
 use itertools::Itertools;
 use ratatui::{Frame, layout::Rect};
 use slumber_config::Action;
 use std::{cell::RefCell, iter, rc::Rc};
+use terminput::{
+    KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
+    MouseEvent, MouseEventKind,
+};
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make
@@ -297,10 +297,10 @@ where
     /// Push a terminal input event onto the event queue, then drain events and
     /// draw. This will include the bound action for the event, based on the key
     /// code or mouse button. See [Self::update_draw] about return value.
-    pub fn send_input(self, crossterm_event: crossterm::event::Event) -> Self {
-        let action = TuiContext::get().input_engine.action(&crossterm_event);
+    pub fn send_input(self, terminal_event: terminput::Event) -> Self {
+        let action = TuiContext::get().input_engine.action(&terminal_event);
         let event = Event::Input {
-            event: crossterm_event,
+            event: terminal_event,
             action,
         };
         self.update_draw(event)
@@ -309,7 +309,7 @@ where
     /// Simulate a left click at the given location, then drain events and draw.
     /// See [Self::update_draw] about return value.
     pub fn click(self, x: u16, y: u16) -> Self {
-        let crossterm_event = crossterm::event::Event::Mouse(MouseEvent {
+        let crossterm_event = terminput::Event::Mouse(MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),
             column: x,
             row: y,
@@ -332,7 +332,7 @@ where
         code: KeyCode,
         modifiers: KeyModifiers,
     ) -> Self {
-        let crossterm_event = crossterm::event::Event::Key(KeyEvent {
+        let crossterm_event = terminput::Event::Key(KeyEvent {
             code,
             modifiers,
             kind: KeyEventKind::Press,

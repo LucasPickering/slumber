@@ -487,13 +487,13 @@ mod tests {
             util::persistence::{DatabasePersistedStore, PersistedLazy},
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
     use ratatui::widgets::List;
     use rstest::{fixture, rstest};
     use serde::Serialize;
     use slumber_core::collection::ProfileId;
     use slumber_util::assert_matches;
+    use terminput::KeyCode;
 
     /// Test going up and down in the list
     #[rstest]

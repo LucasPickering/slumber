@@ -27,7 +27,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout},
     style::Style,
     text::{Line, Span},
-    widgets::{Paragraph, block::Title},
+    widgets::Paragraph,
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
@@ -91,7 +91,7 @@ impl Draw for ExchangePane {
         // If a recipe is selected, history is available so show the hint
         if matches!(self.state, State::Content { .. }) {
             let text = input_engine.add_hint("History", Action::History);
-            block = block.title(Title::from(text).alignment(Alignment::Right));
+            block = block.title(Line::from(text).alignment(Alignment::Right));
         }
         frame.render_widget(&block, metadata.area());
         let area = block.inner(metadata.area());

@@ -451,7 +451,6 @@ mod tests {
         test_util::{TestHarness, TestTerminal, terminal},
         view::test_util::TestComponent,
     };
-    use crossterm::event::KeyCode;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
     use slumber_core::{
@@ -459,6 +458,7 @@ mod tests {
         test_util::by_id,
     };
     use slumber_util::{Factory, assert_matches};
+    use terminput::KeyCode;
 
     /// Test the filter box
     #[rstest]

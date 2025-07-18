@@ -1,13 +1,13 @@
 //! Logic related to input handling. This is considered part of the controller.
 
 use crate::message::Message;
-use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
-    MouseEvent, MouseEventKind,
-};
 use derive_more::Display;
 use indexmap::{IndexMap, indexmap};
 use slumber_config::{Action, InputBinding, KeyCombination};
+use terminput::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
+    MouseEvent, MouseEventKind, ScrollDirection,
+};
 use tracing::trace;
 
 /// Top-level input manager. This handles things like bindings and mapping
@@ -77,10 +77,18 @@ impl InputEngine {
                     Some(Action::RightClick)
                 }
                 MouseEventKind::Up(MouseButton::Middle) => None,
-                MouseEventKind::ScrollDown => Some(Action::ScrollDown),
-                MouseEventKind::ScrollUp => Some(Action::ScrollUp),
-                MouseEventKind::ScrollLeft => Some(Action::ScrollLeft),
-                MouseEventKind::ScrollRight => Some(Action::ScrollRight),
+                MouseEventKind::Scroll(ScrollDirection::Down) => {
+                    Some(Action::ScrollDown)
+                }
+                MouseEventKind::Scroll(ScrollDirection::Up) => {
+                    Some(Action::ScrollUp)
+                }
+                MouseEventKind::Scroll(ScrollDirection::Left) => {
+                    Some(Action::ScrollLeft)
+                }
+                MouseEventKind::Scroll(ScrollDirection::Right) => {
+                    Some(Action::ScrollRight)
+                }
                 _ => None,
             },
 
@@ -146,7 +154,7 @@ impl Default for InputEngine {
                 Action::Quit => KeyCode::Char('q').into(),
                 Action::ForceQuit => KeyCombination {
                     code: KeyCode::Char('c'),
-                    modifiers: KeyModifiers::CONTROL,
+                    modifiers: KeyModifiers::CTRL,
                 }.into(),
                 Action::ScrollLeft => KeyCombination {
                     code: KeyCode::Left,
@@ -163,7 +171,10 @@ impl Default for InputEngine {
                 Action::History => KeyCode::Char('h').into(),
                 Action::Search => KeyCode::Char('/').into(),
                 Action::Export => KeyCode::Char(':').into(),
-                Action::PreviousPane => KeyCode::BackTab.into(),
+                Action::PreviousPane => KeyCombination {
+                    code: KeyCode::Tab,
+                    modifiers: KeyModifiers::SHIFT,
+                }.into(),
                 Action::NextPane => KeyCode::Tab.into(),
                 Action::Up => KeyCode::Up.into(),
                 Action::Down => KeyCode::Down.into(),
@@ -194,9 +205,9 @@ impl Default for InputEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::KeyEventState;
     use rstest::rstest;
     use slumber_util::assert_matches;
+    use terminput::KeyEventState;
 
     /// Helper to create a key event
     fn key_event(
@@ -287,19 +298,19 @@ mod tests {
         Some(Action::RightClick)
     )]
     #[case::mouse_scroll_up(
-        mouse_event(MouseEventKind::ScrollUp),
+        mouse_event(MouseEventKind::Scroll(ScrollDirection::Up)),
         Some(Action::ScrollUp)
     )]
     #[case::mouse_scroll_down(
-        mouse_event(MouseEventKind::ScrollDown),
+        mouse_event(MouseEventKind::Scroll(ScrollDirection::Down)),
         Some(Action::ScrollDown)
     )]
     #[case::mouse_scroll_left(
-        mouse_event(MouseEventKind::ScrollLeft),
+        mouse_event(MouseEventKind::Scroll(ScrollDirection::Left)),
         Some(Action::ScrollLeft)
     )]
     #[case::mouse_scroll_right(
-        mouse_event(MouseEventKind::ScrollRight),
+        mouse_event(MouseEventKind::Scroll(ScrollDirection::Right)),
         Some(Action::ScrollRight)
     )]
     #[case::paste(Event::Paste("hello!".into()), None)]

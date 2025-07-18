@@ -355,10 +355,10 @@ mod tests {
             test_util::TestComponent,
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_util::Factory;
+    use terminput::KeyCode;
 
     #[rstest]
     fn test_edit_basic(harness: TestHarness, terminal: TestTerminal) {

@@ -127,7 +127,7 @@ pub enum Message {
     /// User input from the terminal
     Input {
         /// Raw input event
-        event: crossterm::event::Event,
+        event: terminput::Event,
         /// Action mapped via input bindings. This is what most consumers use
         action: Option<Action>,
     },

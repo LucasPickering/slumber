@@ -396,12 +396,12 @@ mod tests {
             test_util::TestComponent,
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
     use serde::Serialize;
     use slumber_core::collection::RecipeId;
     use slumber_util::Factory;
+    use terminput::KeyCode;
 
     #[derive(Debug, Serialize, persisted::PersistedKey)]
     #[persisted(Option<String>)]

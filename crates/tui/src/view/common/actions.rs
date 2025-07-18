@@ -207,9 +207,9 @@ mod tests {
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
-    use crossterm::event::KeyCode;
     use rstest::rstest;
     use strum::{EnumIter, IntoEnumIterator};
+    use terminput::KeyCode;
 
     /// A component that provides some actions
     #[derive(Default)]

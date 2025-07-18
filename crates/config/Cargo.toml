@@ -18,7 +18,7 @@ glob = "0.3.2"
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
-ratatui = {workspace = true, features = ["serde"]}
+ratatui-core = {version = "0.1.0-alpha.6", default-features = false, features = ["serde"]}
 serde = {workspace = true}
 slumber_util = {workspace = true}
 terminput = {workspace = true}

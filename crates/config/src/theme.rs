@@ -1,4 +1,4 @@
-use ratatui::style::Color;
+use ratatui_core::style::Color;
 use serde::{Deserialize, Serialize};
 
 /// User-configurable visual settings. These are used to generate the full style

@@ -230,28 +230,55 @@
       "type": "object",
       "properties": {
         "primary_color": {
-          "type": "string",
+          "description": "Color for primary content such as the selected pane",
+          "$ref": "#/$defs/Color",
           "default": "Blue"
         },
         "primary_text_color": {
-          "description": "Theoretically we could calculate this bsed on primary color, but for\nnamed or indexed colors, we don't know the exact RGB code since it\ndepends on the user's terminal theme. It's much easier and less\nfallible to just have the user specify it.",
-          "type": "string",
+          "description": "Color for text on top of the primary color. This should contrast with\nthe primary color well",
+          "$ref": "#/$defs/Color",
           "default": "White"
         },
         "secondary_color": {
-          "type": "string",
+          "description": "Color for secondary accented content",
+          "$ref": "#/$defs/Color",
           "default": "Yellow"
         },
         "success_color": {
-          "type": "string",
+          "description": "Color representing success (e.g. for 2xx status codes)",
+          "$ref": "#/$defs/Color",
           "default": "Green"
         },
         "error_color": {
-          "type": "string",
+          "description": "Color representing error (e.g. for 4xx status codes)",
+          "$ref": "#/$defs/Color",
           "default": "Red"
         }
       },
       "additionalProperties": false
+    },
+    "Color": {
+      "description": "ANSI color code\n\nThis type accepts input beyond the enumerated values, but for simplicity\nthis type only declares the named colors. The other available options\nare very rarely used and make the schema harder to read.\n\nFor a full list of allowed types, see\n[the ratatui docs](https://docs.rs/ratatui/0.29.0/ratatui/style/enum.Color.html#impl-FromStr-for-Color).",
+      "type": "string",
+      "enum": [
+        "black",
+        "red",
+        "green",
+        "yellow",
+        "blue",
+        "magenta",
+        "cyan",
+        "gray",
+        "darkgray",
+        "lightred",
+        "lightgreen",
+        "lightyellow",
+        "lightblue",
+        "lightmagenta",
+        "lightcyan",
+        "white",
+        "reset"
+      ]
     }
   }
 }

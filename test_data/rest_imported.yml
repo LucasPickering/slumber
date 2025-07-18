@@ -11,7 +11,6 @@ profiles:
 
 requests:
   SimpleGet_0:
-    type: request
     name: SimpleGet
     method: GET
     url: "{{ HOST }}/get"
@@ -20,7 +19,6 @@ requests:
     query: {}
     headers: {}
   JsonPost_1:
-    type: request
     name: JsonPost
     method: POST
     url: "{{ HOST }}/post"
@@ -39,7 +37,6 @@ requests:
       Content-Type: application/json
       X-Http-Method-Override: PUT
   Request_2:
-    type: request
     name: Request
     method: POST
     url: https://httpbin.org/{{ ENDPOINT }}
@@ -53,7 +50,6 @@ requests:
       My-Header: hello
       Other-Header: goodbye
   Pet_json_3:
-    type: request
     name: Pet.json
     method: POST
     url: "{{ HOST }}/post"

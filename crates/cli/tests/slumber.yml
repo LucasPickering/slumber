@@ -17,12 +17,10 @@ profiles:
 
 requests:
   getUser:
-    type: request
     method: GET
     url: "{{ host }}/users/{{ username }}"
 
   jsonBody:
-    type: request
     method: POST
     url: "{{ host }}/json"
     body:
@@ -30,6 +28,5 @@ requests:
       data: { "username": "{{ username }}", "name": "Frederick Smidgen" }
 
   chained:
-    type: request
     method: GET
     url: "{{ host }}/chained/{{ response('getUser', trigger='always') | jsonpath('$.username') }}"

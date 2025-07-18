@@ -7,11 +7,9 @@ profiles:
 
 requests:
   tag/pet:
-    type: folder
     name: pet
     requests:
       addPet:
-        type: request
         name: Add a new pet to the store
         method: POST
         url: "{{host}}/pet"
@@ -27,7 +25,6 @@ requests:
               "tags": [{ "id": 0, "name": "" }],
             }
       updatePet:
-        type: request
         name: Update an existing pet
         method: PUT
         url: "{{host}}/pet"
@@ -43,35 +40,30 @@ requests:
               "tags": [{ "id": 0, "name": "" }],
             }
       findPetsByStatus:
-        type: request
         name: Finds Pets by status
         method: GET
         url: "{{host}}/pet/findByStatus"
         query:
           status: ""
       findPetsByTags:
-        type: request
         name: Finds Pets by tags
         method: GET
         url: "{{host}}/pet/findByTags"
         query:
           tags: ""
       deletePet:
-        type: request
         name: Deletes a pet
         method: DELETE
         url: "{{host}}/pet/{{petId}}"
         headers:
           api_key: ""
       getPetById:
-        type: request
         name: Find pet by ID
         method: GET
         url: "{{host}}/pet/{{petId}}"
         headers:
           api_key: "{{api_key}}"
       updatePetWithForm:
-        type: request
         name: Updates a pet in the store with form data
         method: POST
         url: "{{host}}/pet/{{petId}}"
@@ -81,24 +73,20 @@ requests:
             name: ""
             status: ""
       uploadFile:
-        type: request
         name: uploads an image
         method: POST
         url: "{{host}}/pet/{{petId}}/uploadImage"
         body: '""'
   tag/store:
-    type: folder
     name: store
     requests:
       getInventory:
-        type: request
         name: Returns pet inventories by status
         method: GET
         url: "{{host}}/store/inventory"
         headers:
           api_key: "{{api_key}}"
       placeOrder:
-        type: request
         name: Place an order for a pet
         method: POST
         url: "{{host}}/store/order"
@@ -114,21 +102,17 @@ requests:
               status: "placed",
             }
       deleteOrder:
-        type: request
         name: Delete purchase order by ID
         method: DELETE
         url: "{{host}}/store/order/{{orderId}}"
       getOrderById:
-        type: request
         name: Find purchase order by ID
         method: GET
         url: "{{host}}/store/order/{{orderId}}"
   tag/user:
-    type: folder
     name: user
     requests:
       createUser:
-        type: request
         name: Create user
         method: POST
         url: "{{host}}/user"
@@ -146,7 +130,6 @@ requests:
               username: "",
             }
       createUsersWithListInput:
-        type: request
         name: Creates list of users with given input array
         method: POST
         url: "{{host}}/user/createWithList"
@@ -166,7 +149,6 @@ requests:
               },
             ]
       loginUser:
-        type: request
         name: Logs user into the system
         method: GET
         url: "{{host}}/user/login"
@@ -174,22 +156,18 @@ requests:
           username: ""
           password: ""
       logoutUser:
-        type: request
         name: Logs out current logged in user session
         method: GET
         url: "{{host}}/user/logout"
       deleteUser:
-        type: request
         name: Delete user
         method: DELETE
         url: "{{host}}/user/{{username}}"
       getUserByName:
-        type: request
         name: Get user by user name
         method: GET
         url: "{{host}}/user/{{username}}"
       updateUser:
-        type: request
         name: Updated user
         method: PUT
         url: "{{host}}/user/{{username}}"

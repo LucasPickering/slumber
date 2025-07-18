@@ -55,11 +55,108 @@
     },
     "input_bindings": {
       "description": "Overrides for default key bindings",
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/InputBinding"
-      },
-      "default": {}
+      "$ref": "#/$defs/InputMap",
+      "default": {
+        "quit": [
+          "q"
+        ],
+        "force_quit": [
+          "ctrl c"
+        ],
+        "scroll_left": [
+          "shift left"
+        ],
+        "scroll_right": [
+          "shift right"
+        ],
+        "open_actions": [
+          "x"
+        ],
+        "open_help": [
+          "?"
+        ],
+        "fullscreen": [
+          "f"
+        ],
+        "reload_collection": [
+          "f5"
+        ],
+        "history": [
+          "h"
+        ],
+        "search": [
+          "/"
+        ],
+        "export": [
+          ":"
+        ],
+        "previous_pane": [
+          "shift tab"
+        ],
+        "next_pane": [
+          "tab"
+        ],
+        "up": [
+          "up"
+        ],
+        "down": [
+          "down"
+        ],
+        "left": [
+          "left"
+        ],
+        "right": [
+          "right"
+        ],
+        "page_up": [
+          "pageup"
+        ],
+        "page_down": [
+          "pagedown"
+        ],
+        "home": [
+          "home"
+        ],
+        "end": [
+          "end"
+        ],
+        "submit": [
+          "enter"
+        ],
+        "toggle": [
+          " "
+        ],
+        "cancel": [
+          "escape"
+        ],
+        "delete": [
+          "delete"
+        ],
+        "edit": [
+          "e"
+        ],
+        "reset": [
+          "z"
+        ],
+        "view": [
+          "v"
+        ],
+        "select_collection": [
+          "f3"
+        ],
+        "select_profile_list": [
+          "p"
+        ],
+        "select_recipe_list": [
+          "l"
+        ],
+        "select_recipe": [
+          "c"
+        ],
+        "select_response": [
+          "r"
+        ]
+      }
     },
     "theme": {
       "description": "Visual configuration for the TUI (e.g. colors)",
@@ -110,6 +207,13 @@
         "type": "string"
       }
     },
+    "InputMap": {
+      "description": "Mapping of actions to input bindings\n\nIntuitively this should be binding:action since we get key events from the\nuser and need to look up the corresponding actions. But we can't look up a\nbinding from the map based on an input event because event<=>binding\nmatching is more nuanced that simple equality (e.g. bonus modifiers keys can\nbe ignored). We have to iterate over map when checking inputs, but keying by\naction at least allows us to look up action=>binding for help text.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/InputBinding"
+      }
+    },
     "InputBinding": {
       "description": "One or more key combinations, which should correspond to a single action",
       "type": "array",
@@ -126,28 +230,55 @@
       "type": "object",
       "properties": {
         "primary_color": {
-          "type": "string",
+          "description": "Color for primary content such as the selected pane",
+          "$ref": "#/$defs/Color",
           "default": "Blue"
         },
         "primary_text_color": {
-          "description": "Theoretically we could calculate this bsed on primary color, but for\nnamed or indexed colors, we don't know the exact RGB code since it\ndepends on the user's terminal theme. It's much easier and less\nfallible to just have the user specify it.",
-          "type": "string",
+          "description": "Color for text on top of the primary color. This should contrast with\nthe primary color well",
+          "$ref": "#/$defs/Color",
           "default": "White"
         },
         "secondary_color": {
-          "type": "string",
+          "description": "Color for secondary accented content",
+          "$ref": "#/$defs/Color",
           "default": "Yellow"
         },
         "success_color": {
-          "type": "string",
+          "description": "Color representing success (e.g. for 2xx status codes)",
+          "$ref": "#/$defs/Color",
           "default": "Green"
         },
         "error_color": {
-          "type": "string",
+          "description": "Color representing error (e.g. for 4xx status codes)",
+          "$ref": "#/$defs/Color",
           "default": "Red"
         }
       },
       "additionalProperties": false
+    },
+    "Color": {
+      "description": "ANSI color code\n\nThis type accepts input beyond the enumerated values, but for simplicity\nthis type only declares the named colors. The other available options\nare very rarely used and make the schema harder to read.\n\nFor a full list of allowed types, see\n[the ratatui docs](https://docs.rs/ratatui/0.29.0/ratatui/style/enum.Color.html#impl-FromStr-for-Color).",
+      "type": "string",
+      "enum": [
+        "black",
+        "red",
+        "green",
+        "yellow",
+        "blue",
+        "magenta",
+        "cyan",
+        "gray",
+        "darkgray",
+        "lightred",
+        "lightgreen",
+        "lightyellow",
+        "lightblue",
+        "lightmagenta",
+        "lightcyan",
+        "white",
+        "reset"
+      ]
     }
   }
 }

@@ -11,8 +11,6 @@ import sys
 import subprocess
 import argparse
 import itertools
-from typing import Literal
-import json
 
 WATCH_PATHS = ["Cargo.toml", "Cargo.lock", "src/", "crates/"]
 SCHEMA_TARGETS = ["collection", "config"]

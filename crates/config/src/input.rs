@@ -394,6 +394,7 @@ impl TryFrom<String> for KeyCombination {
 #[derive(Clone, Debug, Deref, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(transparent)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct InputMap(IndexMap<Action, InputBinding>);
 
 impl InputMap {

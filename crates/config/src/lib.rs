@@ -48,8 +48,8 @@ const FILE: &str = "config.yml";
 /// picked up until the app restarts.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Config {
     /// Configuration for in-app query and export commands
     pub commands: CommandsConfig,

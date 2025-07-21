@@ -11,6 +11,7 @@ use crate::{
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
+use derive_more::Display;
 use ratatui::{
     Frame,
     layout::Layout,
@@ -18,10 +19,7 @@ use ratatui::{
     text::Text,
 };
 use slumber_util::ResultTraced;
-use std::{
-    fmt::{self, Display},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 /// A modal to list all collections in the DB, allowing the user to switch to a
 /// different one
@@ -47,8 +45,8 @@ impl CollectionSelect {
             collections
                 .into_iter()
                 .map(|collection| CollectionSelectItem {
+                    display_name: collection.display_name(),
                     path: collection.path,
-                    name: collection.name,
                 })
                 .collect(),
         )
@@ -119,20 +117,11 @@ impl Draw for CollectionSelect {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display("{display_name}")]
 struct CollectionSelectItem {
-    name: Option<String>,
+    display_name: String,
     path: PathBuf,
-}
-
-impl Display for CollectionSelectItem {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(name) = &self.name {
-            write!(f, "{name}")
-        } else {
-            write!(f, "{}", self.path.display())
-        }
-    }
 }
 
 impl PartialEq<CollectionSelectItem> for PathBuf {

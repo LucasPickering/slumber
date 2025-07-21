@@ -649,6 +649,15 @@ pub struct CollectionMetadata {
     pub name: Option<String>,
 }
 
+impl CollectionMetadata {
+    /// Get the name if available, otherwise fall back to the path
+    pub fn display_name(&self) -> String {
+        self.name
+            .clone()
+            .unwrap_or_else(|| self.path.display().to_string())
+    }
+}
+
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Database {
     fn factory((): ()) -> Self {

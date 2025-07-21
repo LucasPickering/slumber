@@ -15,6 +15,7 @@ use ratatui::{
     text::Span,
 };
 use slumber_config::Action;
+use slumber_core::database::CollectionDatabase;
 use slumber_util::ResultTraced;
 use tokio::time;
 
@@ -68,13 +69,13 @@ impl Draw for Footer {
         let input_engine = &TuiContext::get().input_engine;
         let styles = &TuiContext::get().styles;
 
-        let collection_path =
-            ViewContext::with_database(|db| Ok(db.metadata()?.path))
+        let collection_name =
+            ViewContext::with_database(CollectionDatabase::metadata)
+                .map(|metadata| metadata.display_name())
                 .traced()
                 .unwrap_or_default();
         let collection_path_text = Span::styled(
-            input_engine
-                .add_hint(collection_path.display(), Action::SelectCollection),
+            input_engine.add_hint(collection_name, Action::SelectCollection),
             styles.text.highlight,
         );
 

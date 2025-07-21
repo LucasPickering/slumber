@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    database::{CollectionId, ProfileFilter},
+    database::{CollectionId, CollectionMetadata, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, HttpMethod, HttpVersion, RequestId,
         RequestRecord, ResponseRecord,
@@ -119,7 +119,7 @@ impl FromSql for HttpMethod {
 /// Note: In the past (pre-1.8.0) this was encoded via MessagePack, which relied
 /// on the `Serialize`/`Deserialize` implementation, which has the same
 /// restrictions (it defers to the OS encoding).
-#[derive(Debug, Display)]
+#[derive(Clone, Debug, Display)]
 #[display("{}", _0.display())]
 pub struct CollectionPath(PathBuf);
 
@@ -188,6 +188,19 @@ impl FromSql for CollectionPath {
             .map_err(error_other)?
             .to_owned();
         Ok(Self(path.into()))
+    }
+}
+
+/// Convert from `SELECT * FROM collections`
+impl<'a, 'b> TryFrom<&'a Row<'b>> for CollectionMetadata {
+    type Error = rusqlite::Error;
+
+    fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: row.get("id")?,
+            path: row.get::<_, CollectionPath>("path")?.0,
+            name: row.get("name")?,
+        })
     }
 }
 

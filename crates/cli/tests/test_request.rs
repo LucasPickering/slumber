@@ -164,3 +164,22 @@ async fn test_request_persist() {
     assert_eq!(profile_id, &Some("profile1".into()));
     assert_eq!(*status, StatusCode::OK);
 }
+
+/// When loading a collection, the DB should be updated to reflect its name
+#[tokio::test]
+async fn test_set_collection_name() {
+    let (mut command, data_dir) = common::slumber();
+
+    // Sanity check: no collections in the DB
+    let database = Database::from_directory(&data_dir).unwrap();
+    assert_eq!(database.collections().unwrap().as_slice(), &[]);
+
+    command.args(["request", "jsonBody", "--dry-run"]);
+    command.assert().success();
+
+    // Collection name was updated in the DB
+    assert_eq!(
+        database.collections().unwrap()[0].name.as_deref(),
+        Some("CLI Tests")
+    );
+}

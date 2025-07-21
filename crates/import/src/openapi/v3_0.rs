@@ -28,6 +28,7 @@ pub fn from_openapi_v3_0(
     spec: serde_yaml::Value,
 ) -> anyhow::Result<Collection> {
     let OpenAPI {
+        info,
         components,
         paths,
         servers,
@@ -39,6 +40,7 @@ pub fn from_openapi_v3_0(
     let recipes = build_recipe_tree(paths, components)?;
 
     Ok(Collection {
+        name: Some(info.title),
         profiles,
         recipes,
         chains: IndexMap::new(),

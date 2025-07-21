@@ -17,9 +17,11 @@ use ratatui::{
     prelude::{Constraint, Line},
     text::Text,
 };
-use slumber_core::database::CollectionDatabase;
 use slumber_util::ResultTraced;
-use std::path::PathBuf;
+use std::{
+    fmt::{self, Display},
+    path::PathBuf,
+};
 
 /// A modal to list all collections in the DB, allowing the user to switch to a
 /// different one
@@ -37,14 +39,17 @@ impl CollectionSelect {
                 .reported(&ViewContext::messages_tx())
                 .unwrap_or_default();
         let current_collection =
-            ViewContext::with_database(CollectionDatabase::collection_path)
+            ViewContext::with_database(|db| Ok(db.metadata()?.path))
                 .traced()
                 .ok();
 
         let select = SelectState::builder(
             collections
                 .into_iter()
-                .map(|path| CollectionSelectItem { path })
+                .map(|collection| CollectionSelectItem {
+                    path: collection.path,
+                    name: collection.name,
+                })
                 .collect(),
         )
         .preselect_opt(current_collection.as_ref())
@@ -114,10 +119,20 @@ impl Draw for CollectionSelect {
     }
 }
 
-#[derive(Debug, derive_more::Display)]
-#[display("{}", path.display())]
+#[derive(Debug)]
 struct CollectionSelectItem {
+    name: Option<String>,
     path: PathBuf,
+}
+
+impl Display for CollectionSelectItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{name}")
+        } else {
+            write!(f, "{}", self.path.display())
+        }
+    }
 }
 
 impl PartialEq<CollectionSelectItem> for PathBuf {

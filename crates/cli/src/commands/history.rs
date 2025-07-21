@@ -2,6 +2,7 @@ use crate::{
     GlobalArgs, Subcommand,
     commands::request::DisplayExchangeCommand,
     completions::{complete_profile, complete_recipe, complete_request_id},
+    util::print_table,
 };
 use anyhow::{anyhow, bail};
 use chrono::{
@@ -16,7 +17,7 @@ use slumber_core::{
     database::{Database, ProfileFilter},
     http::RequestId,
 };
-use std::{iter, process::ExitCode, str::FromStr};
+use std::{process::ExitCode, str::FromStr};
 
 /// View and modify request history
 ///
@@ -245,28 +246,4 @@ enum DeleteSelection {
 /// Format a datetime in ISO 8601 format
 fn format_time_iso(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
     time.with_timezone(&Local).format("%FT%TZ%Z")
-}
-
-/// Print request history as a table
-fn print_table<const N: usize>(header: [&str; N], rows: &[[String; N]]) {
-    // For each column, find the largest width of any cell
-    let mut widths = [0; N];
-    for column in 0..N {
-        widths[column] = iter::once(header[column].len())
-            .chain(rows.iter().map(|row| row[column].len()))
-            .max()
-            .unwrap_or_default()
-            + 1; // Min width, for spacing
-    }
-
-    for (header, width) in header.into_iter().zip(widths.iter()) {
-        print!("{header:<width$}");
-    }
-    println!();
-    for row in rows {
-        for (cell, width) in row.iter().zip(widths) {
-            print!("{cell:<width$}");
-        }
-        println!();
-    }
 }

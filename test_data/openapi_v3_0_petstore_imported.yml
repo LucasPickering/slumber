@@ -1,3 +1,4 @@
+name: Swagger Petstore - OpenAPI 3.0
 profiles:
   /v3:
     name: /v3

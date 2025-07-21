@@ -1,3 +1,4 @@
+name: Swagger Petstore
 profiles:
   http://petstore.swagger.io/v2:
     name: http://petstore.swagger.io/v2

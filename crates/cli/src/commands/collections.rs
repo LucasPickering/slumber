@@ -1,4 +1,4 @@
-use crate::{GlobalArgs, Subcommand};
+use crate::{GlobalArgs, Subcommand, util::print_table};
 use clap::Parser;
 use slumber_core::database::Database;
 use std::{path::PathBuf, process::ExitCode};
@@ -32,9 +32,17 @@ impl Subcommand for CollectionsCommand {
         let database = Database::load()?;
         match self.subcommand {
             CollectionsSubcommand::List => {
-                for path in database.collections()? {
-                    println!("{}", path.display());
-                }
+                let rows = database
+                    .collections()?
+                    .into_iter()
+                    .map(|collection| {
+                        [
+                            collection.path.display().to_string(),
+                            collection.name.unwrap_or_default(),
+                        ]
+                    })
+                    .collect::<Vec<_>>();
+                print_table(["Path", "Name"], &rows);
             }
             CollectionsSubcommand::Migrate { from, to } => {
                 database.merge_collections(&from, &to)?;

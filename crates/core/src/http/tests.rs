@@ -52,6 +52,7 @@ fn template_context(recipe: Recipe) -> TemplateContext {
     ];
     TemplateContext {
         collection: Collection {
+            name: None,
             recipes: by_id([recipe]).into(),
             profiles: by_id([profile]),
             chains: by_id(chains),

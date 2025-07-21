@@ -322,6 +322,7 @@ fn build_collection(rest_format: RestFormat) -> Collection {
     let profiles = build_profile_map(flavor, variables);
 
     Collection {
+        name: None,
         profiles,
         chains,
         recipes,

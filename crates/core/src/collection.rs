@@ -231,6 +231,7 @@ mod tests {
         let loaded =
             Collection::load(&test_data_dir.join("regression.yml")).unwrap();
         let expected = Collection {
+            name: Some("Regression Test".to_owned()),
             profiles: by_id([
                 Profile {
                     id: "profile1".into(),

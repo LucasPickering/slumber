@@ -74,22 +74,19 @@ impl Draw for Footer {
                 .map(|metadata| metadata.display_name())
                 .traced()
                 .unwrap_or_default();
-        let collection_path_text = Span::styled(
+        let collection_name_text = Span::styled(
             input_engine.add_hint(collection_name, Action::SelectCollection),
             styles.text.highlight,
         );
 
         let help = HelpFooter.generate();
-        let [help_area, collection_area] = Layout::horizontal([
+        let [collection_area, help_area] = Layout::horizontal([
+            Constraint::Length(collection_name_text.content.len() as u16),
             Constraint::Min(help.width() as u16),
-            Constraint::Length(collection_path_text.content.len() as u16),
         ])
         .areas(metadata.area());
 
-        frame.render_widget(help, help_area);
-        frame.render_widget(
-            collection_path_text.into_right_aligned_line(),
-            collection_area,
-        );
+        frame.render_widget(collection_name_text, collection_area);
+        frame.render_widget(help.into_right_aligned_line(), help_area);
     }
 }

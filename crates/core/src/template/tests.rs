@@ -198,6 +198,7 @@ async fn test_chain_request(
     let context = TemplateContext {
         selected_profile: Some(profile.id.clone()),
         collection: Collection {
+            name: None,
             recipes: by_id([recipe]).into(),
             chains: by_id([chain]),
             profiles: by_id([profile]),
@@ -800,6 +801,7 @@ async fn test_chain_dynamic_select(
     let context = TemplateContext {
         selected_profile: Some(profile.id.clone()),
         collection: Collection {
+            name: None,
             recipes: by_id([recipe]).into(),
             chains: by_id([sut_chain, request_chain]),
             profiles: by_id([profile]),

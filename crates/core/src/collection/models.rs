@@ -28,6 +28,8 @@ use tracing::info;
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
+    /// Descriptive name for the collection
+    pub name: Option<String>,
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
     pub profiles: IndexMap<ProfileId, Profile>,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]

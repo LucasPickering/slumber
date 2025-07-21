@@ -58,6 +58,7 @@ pub async fn from_insomnia(input: &ImportInput) -> anyhow::Result<Collection> {
     let recipes = build_recipe_tree(&workspace_id, request_groups, requests)?;
 
     Ok(Collection {
+        name: None,
         profiles,
         recipes,
         chains,

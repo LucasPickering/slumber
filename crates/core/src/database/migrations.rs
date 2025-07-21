@@ -98,6 +98,8 @@ pub fn migrations() -> Migrations<'static> {
             http_version TEXT NOT NULL DEFAULT 'HTTP/1.1'",
         )
         .down("ALTER TABLE requests_v2 DROP COLUMN http_version"),
+        M::up("ALTER TABLE collections ADD COLUMN name TEXT")
+            .down("ALTER TABLE collections DROP COLUMN name"),
     ])
 }
 

@@ -14,6 +14,7 @@ use ratatui::{
     text::{Line, Span},
 };
 use slumber_config::{Action, Config, InputBinding};
+use slumber_core::database::CollectionDatabase;
 use slumber_util::{doc_link, paths};
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -103,12 +104,10 @@ impl Draw for HelpModal {
                 ("Log", paths::log_file().display().to_string().into()),
                 (
                     "Collection",
-                    ViewContext::with_database(|database| {
-                        database.collection_path()
-                    })
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default()
-                    .into(),
+                    ViewContext::with_database(CollectionDatabase::metadata)
+                        .map(|metadata| metadata.path.display().to_string())
+                        .unwrap_or_default()
+                        .into(),
                 ),
             ]
             .into_iter()

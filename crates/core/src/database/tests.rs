@@ -164,7 +164,12 @@ fn test_merge(
 
     // Make sure collection2 was deleted
     assert_eq!(
-        database.collections().unwrap(),
+        database
+            .collections()
+            .unwrap()
+            .into_iter()
+            .map(|collection| collection.path)
+            .collect::<Vec<_>>(),
         vec![collection_file.path().canonicalize().unwrap()]
     );
 }

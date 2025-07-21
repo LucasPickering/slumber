@@ -101,12 +101,10 @@ impl Database {
     }
 
     /// Get a list of all collections
-    pub fn collections(&self) -> anyhow::Result<Vec<PathBuf>> {
+    pub fn collections(&self) -> anyhow::Result<Vec<CollectionMetadata>> {
         self.connection()
-            .prepare("SELECT path FROM collections")?
-            .query_map([], |row| {
-                Ok(row.get::<_, CollectionPath>("path")?.into())
-            })
+            .prepare("SELECT * FROM collections")?
+            .query_map([], |row| row.try_into())
             .context("Error fetching collections")?
             .collect::<rusqlite::Result<Vec<_>>>()
             .context("Error extracting collection data")
@@ -263,23 +261,39 @@ pub struct CollectionDatabase {
 }
 
 impl CollectionDatabase {
-    /// Get the full path for the collection file associated with this DB handle
-    pub fn collection_path(&self) -> anyhow::Result<PathBuf> {
+    /// Get metadata for the collection associated with this DB handle
+    pub fn metadata(&self) -> anyhow::Result<CollectionMetadata> {
         self.database
             .connection()
             .query_row(
-                "SELECT path FROM collections WHERE id = :id",
+                "SELECT * FROM collections WHERE id = :id",
                 named_params! {":id": self.collection_id},
-                |row| row.get::<_, CollectionPath>("path"),
+                |row| row.try_into(),
             )
             .context("Error fetching collection path")
             .traced()
-            .map(PathBuf::from)
     }
 
     /// Get the root database, which has access to all collections
     pub fn root(&self) -> &Database {
         &self.database
+    }
+
+    /// Set the collection's display name. This should be set whenever the
+    /// collection file is loaded to ensure it's up to date in the database.
+    ///
+    /// If this fails it will log the result, but not return it. There's nothing
+    /// meaningful for the caller to do with the result beyond log it again.
+    pub fn set_name(&self, name: Option<&str>) {
+        let _ = self
+            .database
+            .connection()
+            .execute(
+                "UPDATE collections SET name = :name WHERE id = :id",
+                named_params! {":id": self.collection_id, ":name": name},
+            )
+            .context("Error updating collection name")
+            .traced();
     }
 
     /// Get a request by ID, or `None` if it does not exist in history.
@@ -496,8 +510,7 @@ impl CollectionDatabase {
         recipe_id: &RecipeId,
     ) -> anyhow::Result<usize> {
         info!(
-            collection_id = %self.collection_id,
-            collection_path = ?self.collection_path(),
+            collection = ?self.metadata(),
             %recipe_id,
             ?profile_id,
             "Deleting all requests for recipe+profile",
@@ -527,8 +540,7 @@ impl CollectionDatabase {
     /// Delete a single request by ID
     pub fn delete_request(&self, request_id: RequestId) -> anyhow::Result<()> {
         info!(
-            collection_id = %self.collection_id,
-            collection_path = ?self.collection_path(),
+            collection = ?self.metadata(),
             %request_id,
             "Deleting request"
         );
@@ -619,13 +631,22 @@ impl CollectionDatabase {
 /// A unique ID for a collection. This is generated when the collection is
 /// inserted into the DB.
 #[derive(Copy, Clone, Debug, Display)]
-#[cfg_attr(test, derive(Eq, Hash, PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(Eq, Hash, PartialEq))]
 pub struct CollectionId(Uuid);
 
 impl CollectionId {
     fn new() -> Self {
         Self(Uuid::new_v4())
     }
+}
+
+/// Info about a collection from the database
+#[derive(Clone, Debug)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub struct CollectionMetadata {
+    pub id: CollectionId,
+    pub path: PathBuf,
+    pub name: Option<String>,
 }
 
 #[cfg(any(test, feature = "test"))]

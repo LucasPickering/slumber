@@ -3,6 +3,8 @@
 # For all collection options, see:
 # https://slumber.lucaspickering.me/book/api/request_collection/index.html
 
+name: My Collection
+
 # Profiles are groups of data you can easily switch between. A common usage is
 # to define profiles for various environments of a REST service
 profiles:

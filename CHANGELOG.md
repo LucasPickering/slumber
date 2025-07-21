@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add collection switcher modal [#536](https://github.com/LucasPickering/slumber/issues/536)
   - You can now switch between any collection that you've opened in the past without having to close Slumber
+- Add optional root-level `name` field to collections
+  - This allows you to provide a descriptive name for the collection to show in the new switcher modal
+  - The name is purely descriptive and does not need to be unique
 
 ### Changed
 

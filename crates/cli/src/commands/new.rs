@@ -107,6 +107,7 @@ mod tests {
     fn test_deserialize() {
         let collection: Collection = serde_yaml::from_slice(SOURCE).unwrap();
         let expected = Collection {
+            name: Some("My Collection".into()),
             profiles: by_id([Profile {
                 id: "example".into(),
                 name: Some("Example Profile".into()),

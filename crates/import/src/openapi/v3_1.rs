@@ -28,6 +28,7 @@ pub fn from_openapi_v3_1(
     let mut spec: Spec = serde_yaml::from_value(spec)
         .context("Error deserializing OpenAPI 3.1 collection")?;
 
+    let name = mem::take(&mut spec.info.title);
     let profiles = build_profiles(
         // We don't need the servers anywhere else so we can move them out to
         // avoid a clone
@@ -36,6 +37,7 @@ pub fn from_openapi_v3_1(
     let recipes = build_recipe_tree(spec)?;
 
     Ok(Collection {
+        name: Some(name),
         profiles,
         recipes,
         chains: IndexMap::new(),

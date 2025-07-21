@@ -2,6 +2,8 @@
 # deserialization, to make sure we don't accidentally introduce breaking changes
 # to the format
 
+name: Regression Test
+
 .base_profile_data: &base_profile_data
   host: https://httpbin.org
 .base_recipe: &base_recipe

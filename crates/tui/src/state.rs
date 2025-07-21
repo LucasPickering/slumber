@@ -259,7 +259,7 @@ impl LoadedState {
         let watcher =
             watch_collection(collection_file.path(), messages_tx.clone()).ok();
 
-        LoadedState {
+        let state = LoadedState {
             collection_file,
             collection,
             database,
@@ -267,7 +267,9 @@ impl LoadedState {
             request_store,
             view,
             _watcher: watcher,
-        }
+        };
+        state.update_collection_name();
+        state
     }
 
     /// Handle an incoming message. Any error here should trigger a subsequent
@@ -418,6 +420,7 @@ impl LoadedState {
     /// Reload state with a new collection
     fn reload_collection(&mut self, collection: Collection) {
         self.collection = collection.into();
+        self.update_collection_name();
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(
@@ -427,6 +430,14 @@ impl LoadedState {
         );
         self.view.notify("Reloaded collection");
     }
+
+    /// Update the collection name in the DB according to the loaded collection.
+    /// Call this whenever the collection is successfully loaded to ensure the
+    /// DB is kept up to date.
+    fn update_collection_name(&self) {
+        self.database.set_name(self.collection.name.as_deref());
+    }
+
     /// Render URL for a request, then copy it to the clipboard
     fn copy_request_url(&self) -> anyhow::Result<()> {
         let RequestConfig {
@@ -752,11 +763,18 @@ mod tests {
             TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
         );
         assert_eq!(collection.recipes.iter().count(), 0);
+        // Collection name should be set in the DB
+        assert_eq!(
+            harness.database.metadata().unwrap().name.as_deref(),
+            Some("Test")
+        );
 
         // Update the file, make sure it's reflected
         fs::write(
             file.path(),
             r#"
+name: Test Reloaded
+
 requests:
     test: !request
         method: "GET"
@@ -780,6 +798,11 @@ requests:
             TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
         );
         assert_eq!(collection.recipes.iter().count(), 1);
+        // Name was updatd too
+        assert_eq!(
+            harness.database.metadata().unwrap().name.as_deref(),
+            Some("Test Reloaded")
+        );
     }
 
     /// Test an error in the collection during initial load. Should shove us
@@ -905,7 +928,7 @@ requests:
     /// with an empty collection
     fn collection_file(directory: &Path) -> CollectionFile {
         let path = directory.join("slumber.yml");
-        fs::write(&path, "requests: {}").unwrap();
+        fs::write(&path, "name: Test").unwrap();
         CollectionFile::new(Some(path)).unwrap()
     }
 }

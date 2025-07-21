@@ -70,6 +70,31 @@ impl Expression {
             }
         }
     }
+
+    /// Build a function call expression. Any keyword arguments with `None`
+    /// values will be omitted
+    pub fn call(
+        function_name: &'static str,
+        position: impl IntoIterator<Item = Expression>,
+        keyword: impl IntoIterator<Item = (&'static str, Option<Expression>)>,
+    ) -> Self {
+        Self::Call(FunctionCall::new(function_name, position, keyword))
+    }
+
+    /// Build a pipe expression with this expression as the left-hand side and
+    /// a function call on the right-hand side
+    #[must_use]
+    pub fn pipe(
+        self,
+        rhs_name: &'static str,
+        rhs_position: impl IntoIterator<Item = Expression>,
+        rhs_keyword: impl IntoIterator<Item = (&'static str, Option<Expression>)>,
+    ) -> Self {
+        Self::Pipe {
+            expression: Box::new(self),
+            call: FunctionCall::new(rhs_name, rhs_position, rhs_keyword),
+        }
+    }
 }
 
 impl From<String> for Expression {
@@ -134,6 +159,23 @@ pub struct FunctionCall {
 }
 
 impl FunctionCall {
+    /// Build a new function call from name+arguments
+    fn new(
+        function_name: &'static str,
+        position: impl IntoIterator<Item = Expression>,
+        keyword: impl IntoIterator<Item = (&'static str, Option<Expression>)>,
+    ) -> Self {
+        FunctionCall {
+            function: function_name.into(),
+            position: position.into_iter().collect(),
+            keyword: keyword
+                .into_iter()
+                // kwargs are inherently optional, so drop ones with no value
+                .filter_map(|(name, value)| Some((name.into(), value?)))
+                .collect(),
+        }
+    }
+
     async fn render_arguments<'ctx, Ctx: Context>(
         &self,
         context: &'ctx Ctx,

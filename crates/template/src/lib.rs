@@ -73,7 +73,8 @@ pub struct Template {
             strategy = "any::<Vec<TemplateChunk>>().prop_map(test_util::join_raw)"
         )
     )]
-    chunks: Vec<TemplateChunk>,
+    // TODO private?
+    pub chunks: Vec<TemplateChunk>,
 }
 
 impl Template {

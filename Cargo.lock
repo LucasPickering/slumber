@@ -3513,6 +3513,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "serde_json_path",
  "serde_test",
  "serde_yaml",
  "slumber_core",

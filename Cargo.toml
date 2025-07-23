@@ -20,7 +20,7 @@ homepage = "https://slumber.lucaspickering.me"
 keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
 repository = "https://github.com/LucasPickering/slumber"
-version = "3.2.0"
+version = "3.3.0"
 # Keep in sync w/ rust-toolchain.toml
 rust-version = "1.88.0"
 
@@ -45,12 +45,12 @@ serde = {version = "1.0.204", default-features = false}
 serde_json = {version = "1.0.120", default-features = false, features = ["preserve_order"]}
 serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
-slumber_cli = {path = "./crates/cli", version = "3.2.0"}
-slumber_config = {path = "./crates/config", version = "3.2.0"}
-slumber_core = {path = "./crates/core", version = "3.2.0"}
-slumber_import = {path = "./crates/import", version = "3.2.0"}
-slumber_tui = {path = "./crates/tui", version = "3.2.0"}
-slumber_util = {path = "./crates/util", version = "3.2.0"}
+slumber_cli = {path = "./crates/cli", version = "3.3.0"}
+slumber_config = {path = "./crates/config", version = "3.3.0"}
+slumber_core = {path = "./crates/core", version = "3.3.0"}
+slumber_import = {path = "./crates/import", version = "3.3.0"}
+slumber_tui = {path = "./crates/tui", version = "3.3.0"}
+slumber_util = {path = "./crates/util", version = "3.3.0"}
 strum = {version = "0.26.3", default-features = false}
 terminput = "0.5.3"
 thiserror = "2.0.12"
@@ -121,7 +121,7 @@ pre-release-replacements = [
 # Config for 'dist'
 [workspace.metadata.dist]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.28.0"
+cargo-dist-version = "0.28.2"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
@@ -138,8 +138,3 @@ pr-run-mode = "plan"
 install-updater = false
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
-
-[workspace.metadata.dist.github-custom-runners]
-global = "ubuntu-22.04"
-x86_64-unknown-linux-gnu = "ubuntu-22.04"
-x86_64-unknown-linux-musl = "ubuntu-22.04"

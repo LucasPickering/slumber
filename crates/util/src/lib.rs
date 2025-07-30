@@ -87,11 +87,11 @@ impl<T> ResultTraced<T, anyhow::Error> for anyhow::Result<T> {
 /// use slumber_util::doc_link;
 /// assert_eq!(
 ///     doc_link("api/chain"),
-///     "https://slumber.lucaspickering.me/book/api/chain.html",
+///     "https://slumber.lucaspickering.me/api/chain.html",
 /// );
 /// ```
 pub fn doc_link(path: &str) -> String {
-    const ROOT: &str = "https://slumber.lucaspickering.me/book/";
+    const ROOT: &str = "https://slumber.lucaspickering.me/";
     if path.is_empty() {
         ROOT.into()
     } else {

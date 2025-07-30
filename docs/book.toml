@@ -1,6 +1,6 @@
 [book]
 authors = ["Lucas Pickering"]
-description = "Terminal-based HTTP client"
+description = "Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests."
 language = "en"
 multilingual = false
 src = "src"
@@ -13,3 +13,6 @@ additional-css = ["theme/pagetoc.css"]
 additional-js = ["theme/pagetoc.js"]
 edit-url-template = "https://github.com/LucasPickering/slumber/edit/master/docs/{path}"
 git-repository-url = "https://github.com/LucasPickering/slumber"
+
+[output.html.redirect]
+"/book/" = "./"

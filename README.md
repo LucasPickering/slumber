@@ -4,12 +4,11 @@
 [![crates.io](https://img.shields.io/crates/v/slumber.svg)](https://crates.io/crates/slumber)
 [![Sponsor](https://img.shields.io/github/sponsors/LucasPickering?logo=github)](https://github.com/sponsors/LucasPickering)
 
-- [Home Page](https://slumber.lucaspickering.me)
-- [Installation](https://slumber.lucaspickering.me/artifacts/)
-- [Docs](https://slumber.lucaspickering.me/book/)
-- [Changelog](https://slumber.lucaspickering.me/changelog/)
+- [Installation](https://slumber.lucaspickering.me/install.html)
+- [Docs](https://slumber.lucaspickering.me/)
+- [Changelog](https://github.com/lucasPickering/slumber/releases)
 
-![Slumber example](/static/demo.gif)
+![Slumber example](./docs/src/images/demo.gif)
 
 Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests. Slumber is built on some basic principles:
 
@@ -21,10 +20,10 @@ Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and sha
 
 - Usable as a TUI or CLI
 - Source-first configuration, for easy persistence and sharing
-- [Import from external formats (e.g. Insomnia)](https://slumber.lucaspickering.me/book/user_guide/import.html)
-- [Build requests dynamically from other requests, files, and shell commands](https://slumber.lucaspickering.me/book/user_guide/templates/index.html)
-- [Browse response data using JSONPath selectors](https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.html)
-- Switch between different environments easily using [profiles](https://slumber.lucaspickering.me/book/api/request_collection/profile.html)
+- [Import from external formats (e.g. Insomnia)](https://slumber.lucaspickering.me/user_guide/import.html)
+- [Build requests dynamically from other requests, files, and shell commands](https://slumber.lucaspickering.me/user_guide/templates/index.html)
+- [Browse response data using JSONPath selectors](https://slumber.lucaspickering.me/user_guide/tui/filter_query.html)
+- Switch between different environments easily using [profiles](https://slumber.lucaspickering.me/api/request_collection/profile.html)
 - And more!
 
 ## Examples
@@ -46,7 +45,7 @@ requests:
 
 Create this file, then run the TUI with `slumber`.
 
-For a more extensive example, see [the docs](https://slumber.lucaspickering.me/book/getting_started.html).
+For a more extensive example, see [the docs](https://slumber.lucaspickering.me/getting_started.html).
 
 ## Development
 

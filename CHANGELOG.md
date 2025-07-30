@@ -22,6 +22,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Shell completion for the global `--file`/`-f` flag only suggests `.yml`/`.yaml` files
 - `slumber collections migrate` now accepts paths for files that don't exist on disk (as long as they existed as collections at some point)
 
+### Highlights
+
+4.0 is Slumber's largest release to date, with a number of exciting improvements to the collection format. The overall goal of this release is to make collection files:
+
+- Easier to read
+- Easier to write
+- Easier to share
+
+This required a number of breaking changes. For upgrade instructions, see the `Breaking` section.
+
+#### Goodbye chains, we won't miss you
+
+Previously, templates could source dynamic data (such as data from other responses, files, commands, etc.) via _chains_. While powerful, they were annoying to use because you had to define your chain in one part of the collection file, then use it in another. This led to a lot of jumping around, which was especially annoying for a simple chain that only got used once. Additionally, chains were clunky and unintuitive to compose together. You could combine multiple chains together (hence the name), but it wasn't obvious how.
+
+4.0 eliminates chains entirely, replacing them with functions directly in your templates, inspired by [Jinja](https://jinja.palletsprojects.com/en/stable/) (but dramatically simplified). Here's a side-by-side comparison:
+
+**Before**
+
+```yaml
+chains:
+  fish_ids:
+    source: !request
+      recipe: list_fish
+      trigger: !expire 1d
+    selector: $[0].id
+    selector_mode: array
+  fish_id:
+    source: !select
+      options: "{{fish_ids}}"
+
+requests:
+  list_fish:
+    method: GET
+    url: "{{host}}/fishes"
+  get_fish:
+    method: GET
+    url: "{{host}}/fishes/{{fish_id}}"
+```
+
+**After**
+
+```yaml
+requests:
+  list_fish:
+    method: GET
+    url: "{{ host }}/fishes"
+  get_fish:
+    method: GET
+    url: "{{ host }}/fishes/{{ response('fish_list', trigger='1d') | jsonpath('$[*].id', mode='array') | select() }}"
+```
+
+So much easier to follow!
+
+[See docs for more](https://slumber.lucaspickering.me/book/user_guide/templates/functions.html).
+
+#### Share configuration between collection files with `$ref`
+
+YAML merge syntax (`>>: *alias`) is no longer supported. Instead, the more flexible JSON reference (`$ref`) format is supported. This allows you to reuse any portion of the current collection _without having to declare it as an alias_. Even better though, **you can import components from other files:**
+
+```yaml
+# slumber.yml
+requests:
+  login:
+    $ref: "./common.yml#/requests/login"
+```
+
+[See docs for more](https://slumber.lucaspickering.me/book/user_guide/composition.html).
+
+#### JSON Schema
+
+Slumber now exports a [JSON Schema](https://jsonschema.com) for both its global config and request collection formats. This makes it possible to get validation and completion in your IDE. To make this possible we've ditched the YAML `!tag` syntax in favor of `type` fields within each block.
+
+[See docs for more](https://slumber.lucaspickering.me/book/user_guide/json_schema.md).
+
+[Thanks to @anussell5559 for this suggestion](https://github.com/LucasPickering/slumber/issues/374).
+
 ### Breaking
 
 This release contains a number of breaking changes to the collection format. The major one is a change in the template format, but there are a few other quality of life improvements as well.

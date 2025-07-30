@@ -1,7 +1,7 @@
 //! HTTP-specific logic and models. [HttpEngine] is the main entrypoint for all
 //! operations. This is the life cycle of a request:
 //!
-//! ```no_test
+//! ```notrust
 //! +--------+
 //! | Recipe |
 //! +--------+

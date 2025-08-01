@@ -43,18 +43,19 @@ type Result<T> = std::result::Result<T, LocatedError<Error>>;
 /// ## Params
 ///
 /// - `yaml_input`: YAML string to parse and deserialize
-/// - `path`: File that the YAML was loaded from. `None` for tests that define
-///   YAML inline
+/// - `path`: File that the YAML was loaded from. This defines where file
+///   references will be relative to.
 pub fn deserialize_collection(
     yaml_input: &str,
-    path: Option<&Path>,
+    path: &Path,
 ) -> anyhow::Result<Collection> {
     fn deserialize(mut yaml: MarkedYaml<'static>) -> Result<Collection> {
         // Resolve $ref keys before deserializing
-        yaml.resolve_references().map_err(|error| LocatedError {
-            error: Error::Reference(error.error),
-            location: error.location,
-        })?;
+        yaml.resolve_references(path)
+            .map_err(|error| LocatedError {
+                error: Error::Reference(error.error),
+                location: error.location,
+            })?;
         Collection::deserialize(yaml)
     }
 
@@ -74,7 +75,7 @@ pub fn deserialize_collection(
             // Display the error with path and location
             anyhow::Error::from(kind).context(format!(
                 "Error at {path}:{line}:{col}",
-                path = path.unwrap_or(Path::new("")).display(),
+                path = path.display(),
                 line = location.line(),
                 col = location.col(),
             ))

@@ -11,6 +11,7 @@ use saphyr::{AnnotatedMapping, MarkedYaml, Marker, Scalar, YamlData};
 use std::{
     collections::HashMap,
     fmt::{self, Display},
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use thiserror::Error;
@@ -18,7 +19,7 @@ use winnow::{
     ModalResult, Parser,
     combinator::{alt, preceded, repeat, separated_pair},
     error::EmptyError,
-    token::take_while,
+    token::{take_until, take_while},
 };
 
 /// Mapping key denoting a reference
@@ -31,11 +32,13 @@ type Result<T> = std::result::Result<T, LocatedError<ReferenceError>>;
 pub trait ResolveReferences {
     /// Mutate this YAML value, replacing each reference with its resolved
     /// value. Return an error if any reference fails to resolve
-    fn resolve_references(&mut self) -> Result<()>;
+    ///
+    /// TODO explain path
+    fn resolve_references(&mut self, file_path: &Path) -> Result<()>;
 }
 
 impl ResolveReferences for MarkedYaml<'_> {
-    fn resolve_references(&mut self) -> Result<()> {
+    fn resolve_references(&mut self, file_path: &Path) -> Result<()> {
         // The inability to both traverse and modify the document at the same
         // time means we have to transform the document in a few discrete steps:
         // - Collect all references in the YAML doc
@@ -436,7 +439,10 @@ fn spread_mapping<'input>(
 /// document (`source`) and a path to the value within that document (`path`).
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Reference {
+    /// Pointer to a YAML document. Everything before the `#` in the URI
     source: ReferenceSource,
+    /// Pointer to a particular value within the source document. Everything
+    /// after the `#` in the URI
     path: Vec<String>,
 }
 
@@ -519,8 +525,9 @@ impl FromStr for Reference {
             input: &mut &str,
         ) -> ModalResult<ReferenceSource, EmptyError> {
             alt((
+                take_until(1.., "#")
+                    .map(|path: &str| ReferenceSource::File(path.into())),
                 "".map(|_| ReferenceSource::Local),
-                // More sources to come...
             ))
             .parse_next(input)
         }
@@ -555,15 +562,24 @@ impl Display for Reference {
     }
 }
 
+/// A reference's source is everything before the `#` in the URI. It defines
+/// which YAML document the reference is pointing to.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum ReferenceSource {
+    /// Reference another value within the same YAML document
     Local,
+    /// Reference to another file on the local file system. Path can be absolute
+    /// or relative. If relative, it will be computed relative to the
+    /// referencing file (which is not necessarily the root file).
+    File(PathBuf),
 }
 
 impl Display for ReferenceSource {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
+            // Local source is blank
             ReferenceSource::Local => Ok(()),
+            ReferenceSource::File(path) => write!(f, "{}", path.display()),
         }
     }
 }
@@ -837,21 +853,31 @@ mod tests {
 
     /// Load a reference to another file
     #[rstest]
-    #[ignore = "File references not implemented yet"]
     fn test_reference_file(temp_dir: TempDir) {
-        // Create a file with its own references
-        let file_name = "other.yml";
-        let path = temp_dir.join(file_name);
+        // Create two files that reference each other. The references are
+        // non-cyclic so it doesn't create an error
+        // file1/r2 -> file2/r1 -> file1/r1
+        let file1 = "file1.yml";
         fs::write(
-            &path,
-            r##"
+            temp_dir.join(file1),
+            r#"
 requests:
     r1:
         url: test
     r2:
-        url:
-            $ref: "#/r1/url"
-"##,
+        url: {"$ref": "file2.yml#/requests/r1/url"}
+"#,
+        )
+        .unwrap();
+
+        let file2 = "file2.yml";
+        fs::write(
+            temp_dir.join(file2),
+            r#"
+requests:
+    r1:
+        url: {"$ref": "file1.yml#/requests/r1/url"}
+"#,
         )
         .unwrap();
 
@@ -859,12 +885,11 @@ requests:
         let input = format!(
             r#"
 absolute:
-    $ref: "{path_abs}#/r2/url"
+    $ref: "{temp_dir}/file1.yml#/r2/url"
 relative:
-    $ref: "{path_rel}#/r2/url"
+    $ref: "./file1.yml#/r2/url"
 "#,
-            path_abs = path.display(),
-            path_rel = file_name,
+            temp_dir = temp_dir.display(),
         );
         let mut input = parse_yaml(&input);
         let expected = parse_yaml(
@@ -879,7 +904,6 @@ relative: test
 
     /// Cross-file reference cycles should be detected and throw an error
     #[rstest]
-    #[ignore = "File references not implemented yet"]
     fn test_reference_file_cycle(temp_dir: TempDir) {
         let file1 = "file1.yml";
         let file2 = "file2.yml";
@@ -1001,7 +1025,6 @@ data:
         // References outside the cycles are NOT included in the error message
         "References contain one or more cycles: #/a, #/b, #/c, #/d"
     )]
-    #[ignore = "File references not implemented yet"]
     #[case::io(
         r#"
         root:
@@ -1031,6 +1054,38 @@ data:
             location: Marker::default(),
         };
         assert_eq!(reference.depends_on(&path), is_child);
+    }
+
+    #[rstest]
+    #[case::local("#/a/b", ReferenceSource::Local, vec!["a", "b"])]
+    #[case::num_index("#/a/0", ReferenceSource::Local, vec!["a", "0"])]
+    #[case::file_local(
+        "./file.yml#/a/b",
+        ReferenceSource::File("./file.yml".into()),
+        vec!["a", "b"],
+    )]
+    #[case::file_absolute(
+        "/root/file.yml#/a/b",
+        ReferenceSource::File("/root/file.yml".into()),
+        vec!["a", "b"],
+    )]
+    #[case::file_tilde(
+        // This parses correctly but gets expanded later
+        "~/file.yml#/a/b",
+        ReferenceSource::File("~/file.yml".into()),
+        vec!["a", "b"],
+    )]
+    fn test_parse_reference(
+        #[case] reference: &str,
+        #[case] expected_source: ReferenceSource,
+        #[case] expected_path: Vec<&str>,
+    ) {
+        let actual = reference.parse::<Reference>().unwrap();
+        let expected = Reference {
+            source: expected_source,
+            path: expected_path.into_iter().map(String::from).collect(),
+        };
+        assert_eq!(actual, expected);
     }
 
     fn parse_yaml(yaml: &str) -> MarkedYaml {

@@ -209,6 +209,44 @@ impl<'a> MarkedYamlExt<'a> for MarkedYaml<'a> {
     }
 }
 
+/// TODO
+struct SourceMap {
+    sources: IndexMap<SourceId, PathBuf>,
+}
+
+/// TODO
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+struct SourceId(usize);
+
+/// TODO
+#[derive(Copy, Clone, Debug)]
+struct SourceLocation {
+    source_id: SourceId,
+    /// 1-indexed line in the file
+    line: usize,
+    /// 1-indexed column in the file
+    column: usize,
+}
+
+impl SourceLocation {
+    /// TODO
+    pub fn display(&self, source_map: &SourceMap) -> String {
+        let path = source_map
+            .sources
+            // The source should always be present, but since this is just
+            // for error display, we shouldn't trigger another error
+            .get(&self.source_id)
+            .map(PathBuf::as_path)
+            .unwrap_or(Path::new(""));
+        format!(
+            "{path}:{line}:{column}",
+            path = path.display(),
+            line = self.line,
+            column = self.column
+        )
+    }
+}
+
 /// An error paired with the source location in YAML where the error occurred
 ///
 /// This type is internal to this module because there's no external application
@@ -438,6 +476,7 @@ pub fn yaml_parse_panic() -> ! {
     unreachable!("Invalid or incomplete YAML data")
 }
 
+use std::path::{Path, PathBuf};
 #[cfg(feature = "test")]
 pub use test_util::*;
 

@@ -506,7 +506,6 @@ mod tests {
     use super::*;
     use proptest::proptest;
     use rstest::rstest;
-    use serde_test::{Token, assert_tokens};
     use slumber_util::{assert_err, assert_matches};
     use std::borrow::Cow;
 
@@ -575,9 +574,6 @@ mod tests {
         } else {
             assert_matches!(stringified, Cow::Borrowed(_));
         }
-
-        // Make sure serialization/deserialization impls work too
-        assert_tokens(&expected, &[Token::Str(input)]);
     }
 
     /// Test parsing with extra whitespace. These strings don't round trip to

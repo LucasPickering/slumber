@@ -15,13 +15,18 @@ tag = false
 
 [dependencies]
 anyhow = {workspace = true}
+derive_more = {workspace = true, features = ["display", "from"]}
 dirs = {workspace = true}
+indexmap = {workspace = true}
 itertools = {workspace = true}
 path-clean = "1.0.1"
+pretty_assertions = {workspace = true}
 rstest = {workspace = true, optional = true}
+saphyr = {workspace = true}
 serde = {workspace = true}
 serde_path_to_error = "0.1.16"
 serde_yaml = {workspace = true}
+thiserror = {workspace = true}
 tracing = {workspace = true}
 uuid = {workspace = true, features = ["v4"], optional = true}
 winnow = {workspace = true}

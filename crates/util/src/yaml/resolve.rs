@@ -1,11 +1,13 @@
 //! Resolve $ref tags in YAML documents
 
-use crate::collection::cereal::{LocatedError, yaml_parse_panic};
+use crate::{
+    NEW_ISSUE_LINK,
+    yaml::{LocatedError, yaml_parse_panic},
+};
 use derive_more::From;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use saphyr::{AnnotatedMapping, MarkedYaml, Marker, Scalar, YamlData};
-use slumber_util::NEW_ISSUE_LINK;
 use std::{
     collections::HashMap,
     fmt::{self, Display},
@@ -708,10 +710,10 @@ pub enum ReferenceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{TempDir, assert_err, temp_dir};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use saphyr::LoadableYamlNode;
-    use slumber_util::{TempDir, assert_err, temp_dir};
     use std::fs;
 
     /// Test loading valid references

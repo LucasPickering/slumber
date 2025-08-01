@@ -17,6 +17,7 @@ futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 regex = {version = "1.10.5", default-features = false}
+saphyr = {workspace = true}
 schemars = {workspace = true, optional = true}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
@@ -31,7 +32,7 @@ proptest = "1.5.0"
 proptest-derive = "0.5.0"
 rstest = {workspace = true}
 serde_json = {workspace = true}
-serde_test = {workspace = true}
+serde_yaml = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}
 
 [features]

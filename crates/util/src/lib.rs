@@ -8,10 +8,11 @@
 //! do so at your own risk of breakage.
 
 pub mod paths;
-#[cfg(feature = "test")]
+#[cfg(any(test, feature = "test"))]
 mod test_util;
+pub mod yaml;
 
-#[cfg(feature = "test")]
+#[cfg(any(test, feature = "test"))]
 pub use test_util::*;
 
 use anyhow::anyhow;

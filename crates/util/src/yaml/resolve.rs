@@ -2,16 +2,19 @@
 
 use crate::{
     NEW_ISSUE_LINK,
-    yaml::{LocatedError, yaml_parse_panic},
+    yaml::{
+        DeserializeContext, LocatedError, ResolvedSourceLocation,
+        SourceLocation, SourcedYaml, yaml_parse_panic,
+    },
 };
 use derive_more::From;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use saphyr::{AnnotatedMapping, MarkedYaml, Marker, Scalar, YamlData};
+use saphyr::{AnnotatedMapping, Scalar, YamlData};
 use std::{
     collections::HashMap,
     fmt::{self, Display},
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
 };
 use thiserror::Error;
@@ -27,18 +30,11 @@ pub const REFERENCE_KEY: &str = "$ref";
 
 type Result<T> = std::result::Result<T, LocatedError<ReferenceError>>;
 
-/// Resolve `$ref` keys in a YAML document. `$ref` uses [the syntax from
-/// OpenAPI](https://swagger.io/docs/specification/v3_0/using-ref/#ref-syntax).
-pub trait ResolveReferences {
-    /// Mutate this YAML value, replacing each reference with its resolved
-    /// value. Return an error if any reference fails to resolve
-    ///
-    /// TODO explain path
-    fn resolve_references(&mut self, file_path: &Path) -> Result<()>;
-}
-
-impl ResolveReferences for MarkedYaml<'_> {
-    fn resolve_references(&mut self, file_path: &Path) -> Result<()> {
+impl SourcedYaml<'_> {
+    pub(super) fn resolve_references(
+        mut self,
+        context: &mut DeserializeContext,
+    ) -> Result<Self> {
         // The inability to both traverse and modify the document at the same
         // time means we have to transform the document in a few discrete steps:
         // - Collect all references in the YAML doc
@@ -51,13 +47,14 @@ impl ResolveReferences for MarkedYaml<'_> {
         // Everything after that operates just on the list of references. So
         // steps 2+ scale with the number of references, not the size of the
         // YAML.
-        ReferenceLocations::find(self)?
+        ReferenceLocations::find(&self)?
             // Convert the reference list into a dependency graph
             .build_graph()
             // Topologically sort it
             .sort()?
             // Replace each reference
-            .replace(self)
+            .replace(&mut self, context)?;
+        Ok(self)
     }
 }
 
@@ -70,7 +67,7 @@ impl<'input> ReferenceLocations<'input> {
     /// Find all references in the document, keyed by their location. Fails if
     /// any references fail to parse. References are *not* resolved, so this
     /// will *not* fail for dangling references.
-    fn find(value: &MarkedYaml<'input>) -> Result<Self> {
+    fn find(value: &SourcedYaml<'input>) -> Result<Self> {
         let mut locations = Self(Vec::new());
         locations.find_recursive(YamlPath::new(), value)?;
         Ok(locations)
@@ -80,7 +77,7 @@ impl<'input> ReferenceLocations<'input> {
     fn find_recursive(
         &mut self,
         path: YamlPath<'input>,
-        value: &MarkedYaml<'input>,
+        value: &SourcedYaml<'input>,
     ) -> Result<()> {
         match &value.data {
             // Nothing to do on scalars
@@ -89,7 +86,7 @@ impl<'input> ReferenceLocations<'input> {
             YamlData::Sequence(sequence) => {
                 for (index, value) in sequence.iter().enumerate() {
                     self.find_recursive(
-                        path.cons(index, value.span.start),
+                        path.cons(index, value.location),
                         value,
                     )?;
                 }
@@ -106,7 +103,7 @@ impl<'input> ReferenceLocations<'input> {
                         self.0.push((path.clone(), reference));
                     } else {
                         self.find_recursive(
-                            path.cons(key.clone(), value.span.start),
+                            path.cons(key.clone(), value.location),
                             value,
                         )?;
                     }
@@ -289,7 +286,11 @@ impl<'input> SortedGraph<'input> {
     ///     key: value
     ///     extra: 3
     /// ```
-    fn replace(self, root: &mut MarkedYaml<'input>) -> Result<()> {
+    fn replace(
+        self,
+        root: &mut SourcedYaml<'input>,
+        context: &DeserializeContext,
+    ) -> Result<()> {
         // For each reference in the document, resolve it any replace all
         // instances of the reference with the resolved value. Because the
         // references are in topological order, we know each one will only
@@ -321,9 +322,9 @@ impl<'input> SortedGraph<'input> {
                         return Err(LocatedError {
                             error: ReferenceError::ExpectedMapping {
                                 reference,
-                                parent: value.span.start,
+                                parent: value.location.resolve(context),
                             },
-                            location: resolved.span.start,
+                            location: resolved.location,
                         });
                     };
                     spread_mapping(mapping, to_spread);
@@ -339,11 +340,11 @@ impl<'input> SortedGraph<'input> {
 /// value we successfully traversed, which is also the location of
 /// where the path went cold.
 fn reference_lookup<'input, 'value>(
-    value: &'value MarkedYaml<'input>,
+    value: &'value SourcedYaml<'input>,
     path: &[String],
-) -> std::result::Result<&'value MarkedYaml<'input>, Marker> {
+) -> std::result::Result<&'value SourcedYaml<'input>, SourceLocation> {
     if let [first, rest @ ..] = path {
-        let location = value.span.start;
+        let location = value.location;
         // We need to go deeper. Value better be something we can drill into
         match &value.data {
             YamlData::Value(_) => Err(location),
@@ -359,9 +360,9 @@ fn reference_lookup<'input, 'value>(
                 let inner = mapping
                     // Clone is necessary to prevent lifetime fuckery.
                     // With &str, the lifetime of `first` gets promoted
-                    // to the lifetime param on MarkedYaml, which is
+                    // to the lifetime param on TodoYaml, which is
                     // `'input`
-                    .get(&MarkedYaml::scalar_from_string(first.to_owned()))
+                    .get(&SourcedYaml::from_string(first.to_owned()))
                     .ok_or(location)?;
                 reference_lookup(inner, rest)
             }
@@ -407,8 +408,8 @@ fn reference_lookup<'input, 'value>(
 ///   b: 3
 /// ```
 fn spread_mapping<'input>(
-    mapping: &mut AnnotatedMapping<MarkedYaml<'input>>,
-    to_spread: AnnotatedMapping<MarkedYaml<'input>>,
+    mapping: &mut AnnotatedMapping<SourcedYaml<'input>>,
+    to_spread: AnnotatedMapping<SourcedYaml<'input>>,
 ) {
     // We have to map from a linked hashmap to a vec because:
     // - Granular control over the ordering of keys, to ensure the last
@@ -450,8 +451,8 @@ impl Reference {
     /// Find the value referred to by this reference
     fn resolve<'value, 'input>(
         &self,
-        root: &'value MarkedYaml<'input>,
-    ) -> Result<&'value MarkedYaml<'input>> {
+        root: &'value SourcedYaml<'input>,
+    ) -> Result<&'value SourcedYaml<'input>> {
         reference_lookup(root, &self.path).map_err(|location| LocatedError {
             error: ReferenceError::NoResource(self.clone()),
             // Error location points to the deepest value we were able
@@ -466,7 +467,7 @@ impl Reference {
     /// Attempt to parse a YAML value as a reference. This should be the value
     /// assigned to the `$ref` key, *not* the parent mapping. The value must be
     /// a string that parses as a valid URI.
-    fn try_from_yaml(value: &MarkedYaml) -> Result<Self> {
+    fn try_from_yaml(value: &SourcedYaml) -> Result<Self> {
         // We can hit two error cases:
         // - It's not a string and therefore can't be parsed
         // - It's a string but can't parse into a reference
@@ -474,13 +475,13 @@ impl Reference {
             let reference =
                 reference.parse().map_err(|error| LocatedError {
                     error,
-                    location: value.span.start,
+                    location: value.location,
                 })?;
             Ok(reference)
         } else {
             Err(LocatedError {
                 error: ReferenceError::NotAReference,
-                location: value.span.start,
+                location: value.location,
             })
         }
     }
@@ -600,14 +601,14 @@ struct YamlPath<'input> {
     segments: Vec<YamlPathSegment<'input>>,
     /// Source location of the *value* associated with this path. Used for
     /// error messages
-    location: Marker,
+    location: SourceLocation,
 }
 
 impl<'input> YamlPath<'input> {
     fn new() -> Self {
         Self {
             segments: Vec::new(),
-            location: Marker::default(),
+            location: SourceLocation::default(),
         }
     }
 
@@ -615,7 +616,7 @@ impl<'input> YamlPath<'input> {
     fn cons(
         &self,
         segment: impl Into<YamlPathSegment<'input>>,
-        location: Marker,
+        location: SourceLocation,
     ) -> Self {
         let mut segments = self.segments.clone();
         segments.push(segment.into());
@@ -626,9 +627,9 @@ impl<'input> YamlPath<'input> {
     /// this path
     fn get<'value>(
         &self,
-        root: &'value mut MarkedYaml<'input>,
-    ) -> &'value mut MarkedYaml<'input> {
-        let mut value: &'value mut MarkedYaml<'input> = root;
+        root: &'value mut SourcedYaml<'input>,
+    ) -> &'value mut SourcedYaml<'input> {
+        let mut value: &'value mut SourcedYaml<'input> = root;
         for segment in &self.segments {
             match (segment, &mut value.data) {
                 (
@@ -658,13 +659,13 @@ enum YamlPathSegment<'input> {
     /// Get a sequence element by index
     Sequence(usize),
     /// Get a mapping element by key
-    Mapping(MarkedYaml<'input>),
+    Mapping(SourcedYaml<'input>),
 }
 
 #[cfg(test)]
 impl From<&'static str> for YamlPathSegment<'static> {
     fn from(value: &'static str) -> Self {
-        Self::Mapping(MarkedYaml::value_from_str(value))
+        Self::Mapping(SourcedYaml::from_str(value))
     }
 }
 
@@ -705,14 +706,13 @@ pub enum ReferenceError {
     CircularReference { references: Vec<Reference> },
     #[error(
         "Expected reference `{reference}` to refer to a mapping, as the \
-        referring parent at TODO:{}:{} is a mapping with multiple fields. \
+        referring parent at {parent} is a mapping with multiple fields. \
         The referenced value must also be a mapping so it can be spread into \
-        the referring map",
-        parent.line(),parent.col(),
+        the referring map"
     )]
     ExpectedMapping {
         reference: Reference,
-        parent: Marker,
+        parent: ResolvedSourceLocation,
     },
     /// Step 2 of reference resolution (replaced references with values)
     /// encountered a reference that wasn't resolved in step 1
@@ -845,10 +845,14 @@ mod tests {
         "
     )]
     fn test_references(#[case] input: &str, #[case] expected: &str) {
-        let mut input = parse_yaml(input);
+        let input = parse_yaml(input);
         let expected = parse_yaml(expected);
-        input.resolve_references().unwrap();
-        assert_eq!(input, expected);
+        assert_eq!(
+            input
+                .resolve_references(&mut DeserializeContext::default())
+                .unwrap(),
+            expected
+        );
     }
 
     /// Load a reference to another file
@@ -891,15 +895,19 @@ relative:
 "#,
             temp_dir = temp_dir.display(),
         );
-        let mut input = parse_yaml(&input);
+        let input = parse_yaml(&input);
         let expected = parse_yaml(
             r"
 absolute: test
 relative: test
 ",
         );
-        input.resolve_references().unwrap();
-        assert_eq!(input, expected);
+        assert_eq!(
+            input
+                .resolve_references(&mut DeserializeContext::default())
+                .unwrap(),
+            expected
+        );
     }
 
     /// Cross-file reference cycles should be detected and throw an error
@@ -925,9 +933,11 @@ data:
         .unwrap();
 
         let yaml = fs::read_to_string(temp_dir.join(file1)).unwrap();
-        let mut input = parse_yaml(&yaml);
+        let input = parse_yaml(&yaml);
+        let result =
+            input.resolve_references(&mut DeserializeContext::default());
         assert_err!(
-            input.resolve_references(),
+            result.map_err(|error| error.error),
             "References contain one or more cycles: \
             file2.yml#/data, file1.yml#/data, file2.yml#/data"
         );
@@ -1034,8 +1044,10 @@ data:
     )]
     fn test_errors(#[case] input: &str, #[case] expected_error: &str) {
         let mut input = parse_yaml(input);
-        let result = input.resolve_references();
-        assert_err!(result, expected_error);
+        assert_err!(
+            input.resolve_references(&mut DeserializeContext::default()),
+            expected_error
+        );
     }
 
     /// Test [Reference::depends_on]
@@ -1051,7 +1063,7 @@ data:
     ) {
         let path = YamlPath {
             segments: segments.into_iter().map(YamlPathSegment::from).collect(),
-            location: Marker::default(),
+            location: SourceLocation::default(),
         };
         assert_eq!(reference.depends_on(&path), is_child);
     }
@@ -1088,8 +1100,8 @@ data:
         assert_eq!(actual, expected);
     }
 
-    fn parse_yaml(yaml: &str) -> MarkedYaml {
-        let mut documents = MarkedYaml::load_from_str(yaml).unwrap();
+    fn parse_yaml(yaml: &str) -> SourcedYaml {
+        let mut documents = SourcedYaml::load_from_str(yaml).unwrap();
         documents.pop().unwrap()
     }
 }

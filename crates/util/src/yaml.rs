@@ -9,17 +9,63 @@
 
 mod resolve;
 
-pub use resolve::ResolveReferences;
+#[cfg(feature = "test")]
+pub use test_util::*;
 
 use crate::yaml::resolve::ReferenceError;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use saphyr::{
-    AnnotatedMapping, MarkedYaml, Marker, Scalar, ScanError, YamlData,
+    AnnotatedMapping, AnnotatedNode, LoadableYamlNode, MarkedYaml, Scalar,
+    ScanError, YamlData,
 };
+use std::{fs, path::Path};
 use thiserror::Error;
 
 type Result<T> = std::result::Result<T, LocatedError<Error>>;
+
+/// Parse and deserialize a YAML string into type `T`.
+///
+/// This uses [saphyr] to parse the string into a YAML document, then uses
+/// custom deserialization logic to deserialize the YAML into the collection
+/// data types. We do this rather than use serde_yaml because it provides:
+/// - Better error messages
+/// - Source span tracking
+///
+/// The given path is used only for error context. The data must already be
+/// loaded out of the file prior to calling.
+///
+/// ## Params
+///
+/// - `yaml_input`: YAML string to parse and deserialize
+/// - `path`: File that the YAML was loaded from. This defines where file
+///   references will be relative to.
+pub fn deserialize<T>(path: &Path) -> anyhow::Result<T>
+where
+    T: DeserializeYaml,
+{
+    let mut context = DeserializeContext::default();
+    // Parse YAML from the file
+    SourcedYaml::load(path, &mut context)
+        // Resolve $ref keys before deserializing
+        .and_then(|yaml| {
+            yaml.resolve_references(&mut context).map_err(|error| {
+                LocatedError {
+                    error: Error::Reference(error.error),
+                    location: error.location,
+                }
+            })
+        })
+        // Deserialize as T
+        .and_then(T::deserialize)
+        .map_err(|error| {
+            // Make the location presentable
+            let location = error.location.resolve(&context);
+            // TODO can we just use the display impl?
+            anyhow::Error::from(error.error)
+                .context(format!("Error at {location}"))
+        })
+}
 
 /// Deserialize from YAML into the implementing type
 pub trait DeserializeYaml: Sized {
@@ -27,7 +73,7 @@ pub trait DeserializeYaml: Sized {
     fn expected() -> Expected;
 
     /// Deserialize the given YAML value into this type
-    fn deserialize(yaml: MarkedYaml) -> Result<Self>;
+    fn deserialize(yaml: SourcedYaml) -> Result<Self>;
 }
 
 /// Implement [DeserializeYaml] for a type `T` via type `U`, where `T: From<U>,
@@ -40,7 +86,7 @@ macro_rules! impl_deserialize_from {
                 <$u as DeserializeYaml>::expected()
             }
 
-            fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+            fn deserialize(yaml: TodoYaml) -> Result<Self> {
                 <$u as DeserializeYaml>::deserialize(yaml).map(<$t>::from)
             }
         }
@@ -61,7 +107,7 @@ macro_rules! deserialize_enum {
             let span = $yaml.span;
             let mut mapping = $yaml.try_into_mapping()?;
             let kind_yaml = mapping
-                .remove(&MarkedYaml::value_from_str(TYPE_FIELD))
+                .remove(&TodoYaml::value_from_str(TYPE_FIELD))
                 .ok_or(LocatedError {
                     error: Error::MissingField {
                         field: TYPE_FIELD,
@@ -73,7 +119,7 @@ macro_rules! deserialize_enum {
             let kind = kind_yaml.try_into_string()?;
 
             // Deserialize the rest of the mapping as the specified enum variant
-            let yaml = MarkedYaml {
+            let yaml = TodoYaml {
                 data: YamlData::Mapping(mapping),
                 span,
             };
@@ -96,7 +142,7 @@ impl DeserializeYaml for bool {
         Expected::Boolean
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         yaml.try_into_bool()
     }
 }
@@ -106,7 +152,7 @@ impl DeserializeYaml for String {
         Expected::String
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         yaml.try_into_string()
     }
 }
@@ -120,7 +166,7 @@ impl<T: DeserializeYaml> DeserializeYaml for Option<T> {
         T::expected()
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         if yaml.data.is_null() {
             Ok(None)
         } else {
@@ -137,7 +183,7 @@ where
         Expected::Sequence
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         let sequence = yaml.try_into_sequence()?;
         sequence.into_iter().map(T::deserialize).collect()
     }
@@ -152,7 +198,7 @@ where
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         yaml.try_into_mapping()?
             .into_iter()
             .map(|(k, v)| Ok((k.try_into_string()?, V::deserialize(v)?)))
@@ -160,22 +206,47 @@ where
     }
 }
 
-/// Extension trait to add fallible conversion methods to [MarkedYaml]
-pub trait MarkedYamlExt<'a>: Sized {
-    /// Unpack the YAML as a boolean
-    fn try_into_bool(self) -> Result<bool>;
-
-    /// Unpack the YAML as a string
-    fn try_into_string(self) -> Result<String>;
-
-    /// Unpack the YAML as a sequence
-    fn try_into_sequence(self) -> Result<Vec<Self>>;
-
-    /// Unpack the YAML as a mapping
-    fn try_into_mapping(self) -> Result<AnnotatedMapping<'a, Self>>;
+/// A custom version of [saphyr::MarkedYaml] that also tracks the source *file*
+/// for each node. This allows us to load values from multiple files and track
+/// the original source of each individual value correctly. The source is stored
+/// as a numeric ID so that the file paths don't have to be copy repeatedly.
+/// [DeserializeContext] is used to map IDs to strings if the source path needs
+/// to be displayed.
+#[derive(Clone, Debug, Eq, Hash)]
+pub struct SourcedYaml<'input> {
+    location: SourceLocation,
+    data: YamlData<'input, Self>,
 }
 
-impl<'a> MarkedYamlExt<'a> for MarkedYaml<'a> {
+impl<'input> SourcedYaml<'input> {
+    /// Parse a YAML value from a file
+    fn load(path: &Path, context: &mut DeserializeContext) -> Result<Self> {
+        let content = fs::read_to_string(path).expect("TODO");
+        context.add_source(path.display().to_string());
+        let mut documents = MarkedYaml::load_from_str(&content)
+            .map_err(|error| LocatedError::scan(error, context))?;
+        // If the file is empty, pretend there's an empty mapping instead
+        // because that's functionally equivalent
+        let yaml = documents
+            .pop()
+            .unwrap_or(YamlData::Mapping(Default::default()).into());
+
+        // Convert to our own YAML format so we can track source locations for
+        // multiple files
+        let yaml = Self::from_marked_yaml(context, yaml);
+
+        Ok(yaml)
+    }
+
+    /// TODO
+    fn from_marked_yaml(
+        context: &DeserializeContext,
+        yaml: MarkedYaml<'input>,
+    ) -> Self {
+        todo!()
+    }
+
+    /// Unpack the YAML as a boolean
     fn try_into_bool(self) -> Result<bool> {
         if let YamlData::Value(Scalar::Boolean(b)) = self.data {
             Ok(b)
@@ -184,6 +255,7 @@ impl<'a> MarkedYamlExt<'a> for MarkedYaml<'a> {
         }
     }
 
+    /// Unpack the YAML as a string
     fn try_into_string(self) -> Result<String> {
         if let YamlData::Value(Scalar::String(s)) = self.data {
             Ok(s.into_owned())
@@ -192,6 +264,7 @@ impl<'a> MarkedYamlExt<'a> for MarkedYaml<'a> {
         }
     }
 
+    /// Unpack the YAML as a sequence
     fn try_into_sequence(self) -> Result<Vec<Self>> {
         if let YamlData::Sequence(sequence) = self.data {
             Ok(sequence)
@@ -199,29 +272,85 @@ impl<'a> MarkedYamlExt<'a> for MarkedYaml<'a> {
             Err(LocatedError::unexpected(Expected::Sequence, self))
         }
     }
-
-    fn try_into_mapping(self) -> Result<AnnotatedMapping<'a, Self>> {
+    /// Unpack the YAML as a mapping
+    fn try_into_mapping(self) -> Result<AnnotatedMapping<'input, Self>> {
         if let YamlData::Mapping(mapping) = self.data {
             Ok(mapping)
         } else {
             Err(LocatedError::unexpected(Expected::Mapping, self))
         }
     }
+
+    /// TODO
+    fn from_str(value: &'input str) -> Self {
+        Self {
+            data: YamlData::Value(Scalar::parse_from_cow(value.into())),
+            location: SourceLocation::default(),
+        }
+    }
+
+    /// TODO
+    fn from_string(value: String) -> Self {
+        Self {
+            data: YamlData::Value(Scalar::parse_from_cow(value.into())),
+            location: SourceLocation::default(),
+        }
+    }
+}
+
+impl<'a> From<YamlData<'a, SourcedYaml<'a>>> for SourcedYaml<'a> {
+    fn from(value: YamlData<'a, SourcedYaml<'a>>) -> Self {
+        Self {
+            data: value,
+            location: SourceLocation::default(),
+        }
+    }
+}
+
+/// Ignore source location in equality. Lifetime can vary between the two
+/// operands
+impl<'b> PartialEq<SourcedYaml<'b>> for SourcedYaml<'_> {
+    fn eq(&self, other: &SourcedYaml<'b>) -> bool {
+        self.data.eq(&other.data)
+    }
+}
+
+impl AnnotatedNode for SourcedYaml<'_> {
+    type HashKey<'a> = SourcedYaml<'a>;
+
+    fn parse_representation_recursive(&mut self) -> bool {
+        self.data.parse_representation_recursive()
+    }
 }
 
 /// TODO
-struct SourceMap {
-    sources: IndexMap<SourceId, PathBuf>,
+#[derive(Debug, Default)]
+struct DeserializeContext {
+    sources: IndexMap<SourceId, String>,
+    current_source: SourceId,
+}
+
+impl DeserializeContext {
+    /// TODO
+    fn add_source(&mut self, source: String) -> SourceId {
+        let id = SourceId(self.sources.len() as u8);
+        self.sources.insert(id, source);
+        self.current_source = id;
+        id
+    }
 }
 
 /// TODO
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-struct SourceId(usize);
+///
+/// Use a small type here to enable better bitpacking
+#[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
+struct SourceId(u8);
 
 /// TODO
-#[derive(Copy, Clone, Debug)]
-struct SourceLocation {
-    source_id: SourceId,
+#[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct SourceLocation {
+    // TODO track chain for references
+    source: SourceId,
     /// 1-indexed line in the file
     line: usize,
     /// 1-indexed column in the file
@@ -229,42 +358,52 @@ struct SourceLocation {
 }
 
 impl SourceLocation {
-    /// TODO
-    pub fn display(&self, source_map: &SourceMap) -> String {
-        let path = source_map
+    /// Resolve this source location by mapping its source ID to the
+    /// corresponding string. This makes the location ready for display, at
+    /// the cost of making it no longer `Copy`.
+    fn resolve(&self, context: &DeserializeContext) -> ResolvedSourceLocation {
+        let source = context
             .sources
-            // The source should always be present, but since this is just
-            // for error display, we shouldn't trigger another error
-            .get(&self.source_id)
-            .map(PathBuf::as_path)
-            .unwrap_or(Path::new(""));
-        format!(
-            "{path}:{line}:{column}",
-            path = path.display(),
-            line = self.line,
-            column = self.column
-        )
+            .get(&self.source)
+            .cloned()
+            .unwrap_or_default();
+        ResolvedSourceLocation {
+            source,
+            line: self.line,
+            column: self.column,
+        }
     }
+}
+
+/// TODO
+/// TODO better name
+#[derive(Clone, Debug, Default, derive_more::Display, Eq, Hash, PartialEq)]
+#[display("{source}:{line}:{column}")]
+pub struct ResolvedSourceLocation {
+    // TODO track chain for references
+    source: String,
+    /// 1-indexed line in the file
+    line: usize,
+    /// 1-indexed column in the file
+    column: usize,
 }
 
 /// An error paired with the source location in YAML where the error occurred
 ///
-/// This type is internal to this module because there's no external application
-/// for it beyond stringification.
-#[derive(Debug, derive_more::Display)]
-#[display("{error}")]
+/// TODO should this implement Error?
+#[derive(Debug)]
 pub struct LocatedError<E> {
     /// Error that occurred
     pub error: E,
-    /// Location of the error within the YAML file
-    pub location: Marker,
+    /// Source location of the error
+    pub location: SourceLocation,
 }
 
 impl LocatedError<Error> {
     /// Create a new [Other](Self::Other) from any error type
     pub fn other(
         error: impl Into<Box<dyn std::error::Error + Send + Sync>>,
-        location: Marker,
+        location: SourceLocation,
     ) -> Self {
         Self {
             error: Error::Other(error.into()),
@@ -272,9 +411,21 @@ impl LocatedError<Error> {
         }
     }
 
+    fn scan(error: ScanError, context: &DeserializeContext) -> Self {
+        let location = SourceLocation {
+            source: context.current_source,
+            line: error.marker().line(),
+            column: error.marker().col(),
+        };
+        Self {
+            error: Error::Scan(error),
+            location,
+        }
+    }
+
     /// Create a new [UnexpectedType](Self::UnexpectedType) from the expected
     /// type and actual value
-    pub fn unexpected(expected: Expected, actual: MarkedYaml) -> Self {
+    pub fn unexpected(expected: Expected, actual: SourcedYaml) -> Self {
         // Find a useful representation of the received value
         let actual_string = match actual.data {
             // Scalars are unlikely to be big so we can include the actual value
@@ -293,20 +444,11 @@ impl LocatedError<Error> {
             | YamlData::BadValue => yaml_parse_panic(),
         };
         Self {
-            location: actual.span.start,
+            location: actual.location,
             error: Error::Unexpected {
                 expected,
                 actual: actual_string,
             },
-        }
-    }
-}
-
-impl From<ScanError> for LocatedError<Error> {
-    fn from(error: ScanError) -> Self {
-        Self {
-            location: *error.marker(),
-            error: Error::Scan(error),
         }
     }
 }
@@ -383,13 +525,13 @@ pub enum Expected {
 /// - Ensure no unexpected fields were present with [done](Self::done)
 ///     - NOTE: `done` needs to be called manually after deserialization!
 pub struct StructDeserializer<'a> {
-    pub mapping: AnnotatedMapping<'a, MarkedYaml<'a>>,
-    pub location: Marker,
+    pub mapping: AnnotatedMapping<'a, SourcedYaml<'a>>,
+    pub location: SourceLocation,
 }
 
 impl<'a> StructDeserializer<'a> {
-    pub fn new(yaml: MarkedYaml<'a>) -> Result<Self> {
-        let location = yaml.span.start;
+    pub fn new(yaml: SourcedYaml<'a>) -> Result<Self> {
+        let location = yaml.location;
         let mapping = yaml.try_into_mapping()?;
         Ok(Self { mapping, location })
     }
@@ -397,7 +539,7 @@ impl<'a> StructDeserializer<'a> {
     /// Deserialize a field from the mapping
     pub fn get<T: DeserializeYaml>(&mut self, field: Field<T>) -> Result<T> {
         if let Some(value) =
-            self.mapping.remove(&MarkedYaml::value_from_str(field.name))
+            self.mapping.remove(&SourcedYaml::from_str(field.name))
         {
             T::deserialize(value)
         } else if let Some(default) = field.default {
@@ -416,7 +558,7 @@ impl<'a> StructDeserializer<'a> {
     /// Check that no fields were unused
     pub fn done(mut self) -> Result<()> {
         if let Some((key, _)) = self.mapping.pop_front() {
-            let key_location = key.span.start;
+            let key_location = key.location;
             // If the key isn't a string, it's reasonable to return a type error
             let key = key.try_into_string()?;
             Err(LocatedError {
@@ -476,14 +618,10 @@ pub fn yaml_parse_panic() -> ! {
     unreachable!("Invalid or incomplete YAML data")
 }
 
-use std::path::{Path, PathBuf};
-#[cfg(feature = "test")]
-pub use test_util::*;
-
 /// Test helpers
 #[cfg(feature = "test")]
 mod test_util {
-    use super::{DeserializeYaml, MarkedYaml, Result};
+    use super::{DeserializeYaml, Result, SourcedYaml};
     use saphyr::LoadableYamlNode;
     use std::iter;
 
@@ -493,7 +631,7 @@ mod test_util {
         yaml: serde_yaml::Value,
     ) -> Result<T> {
         let yaml_input = serde_yaml::to_string(&yaml).unwrap();
-        let mut documents = MarkedYaml::load_from_str(&yaml_input)?;
+        let mut documents = SourcedYaml::load_from_str(&yaml_input)?;
         let yaml = documents.pop().unwrap();
         T::deserialize(yaml)
     }

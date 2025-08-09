@@ -105,7 +105,7 @@ impl HttpEngine {
                 //
                 // Why we use native certs:
                 // https://github.com/LucasPickering/slumber/issues/275
-                .tls_built_in_native_certs(!cfg!(test))
+                .tls_built_in_native_certs(!cfg!(any(test, feature = "test")))
         };
 
         let client = make_builder()

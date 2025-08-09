@@ -1,16 +1,20 @@
 //! Resolve $ref tags in YAML documents
 
 use crate::{
-    NEW_ISSUE_LINK,
-    yaml::{LocatedError, yaml_parse_panic},
+    NEW_ISSUE_LINK, paths,
+    yaml::{
+        LocatedError, ResolvedSourceLocation, SourceId, SourceLocation,
+        SourceMap, SourcedYaml, yaml_parse_panic,
+    },
 };
 use derive_more::From;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
-use saphyr::{AnnotatedMapping, MarkedYaml, Marker, Scalar, YamlData};
+use saphyr::{AnnotatedMapping, Scalar, YamlData};
 use std::{
     collections::HashMap,
     fmt::{self, Display},
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use thiserror::Error;
@@ -18,7 +22,7 @@ use winnow::{
     ModalResult, Parser,
     combinator::{alt, preceded, repeat, separated_pair},
     error::EmptyError,
-    token::take_while,
+    token::{take_until, take_while},
 };
 
 /// Mapping key denoting a reference
@@ -26,16 +30,11 @@ pub const REFERENCE_KEY: &str = "$ref";
 
 type Result<T> = std::result::Result<T, LocatedError<ReferenceError>>;
 
-/// Resolve `$ref` keys in a YAML document. `$ref` uses [the syntax from
-/// OpenAPI](https://swagger.io/docs/specification/v3_0/using-ref/#ref-syntax).
-pub trait ResolveReferences {
-    /// Mutate this YAML value, replacing each reference with its resolved
-    /// value. Return an error if any reference fails to resolve
-    fn resolve_references(&mut self) -> Result<()>;
-}
-
-impl ResolveReferences for MarkedYaml<'_> {
-    fn resolve_references(&mut self) -> Result<()> {
+impl SourcedYaml<'_> {
+    pub(super) fn resolve_references(
+        self,
+        source_map: &mut SourceMap,
+    ) -> Result<Self> {
         // The inability to both traverse and modify the document at the same
         // time means we have to transform the document in a few discrete steps:
         // - Collect all references in the YAML doc
@@ -48,36 +47,201 @@ impl ResolveReferences for MarkedYaml<'_> {
         // Everything after that operates just on the list of references. So
         // steps 2+ scale with the number of references, not the size of the
         // YAML.
-        ReferenceLocations::find(self)?
+        ReferenceLocations::scan(self, source_map)?
             // Convert the reference list into a dependency graph
             .build_graph()
             // Topologically sort it
             .sort()?
             // Replace each reference
-            .replace(self)
+            .replace(source_map)
     }
 }
 
 /// A collection all references in the YAML document, each one key by the
 /// location of its *usage* in the document. Locations are unique but references
 /// are not, as the same reference can be used multiple times.
-struct ReferenceLocations<'input>(Vec<(YamlPath<'input>, Reference)>);
+#[derive(Debug)]
+struct ReferenceLocations<'input> {
+    /// All found references
+    references: Vec<(YamlPath<'input>, SourceReference)>,
+    document_map: DocumentMap<'input>,
+}
 
 impl<'input> ReferenceLocations<'input> {
     /// Find all references in the document, keyed by their location. Fails if
     /// any references fail to parse. References are *not* resolved, so this
     /// will *not* fail for dangling references.
-    fn find(value: &MarkedYaml<'input>) -> Result<Self> {
-        let mut locations = Self(Vec::new());
-        locations.find_recursive(YamlPath::new(), value)?;
-        Ok(locations)
+    fn scan(
+        value: SourcedYaml<'input>,
+        source_map: &mut SourceMap,
+    ) -> Result<Self> {
+        let mut scanner = ReferenceScanner {
+            references: Vec::new(),
+            source_map,
+            unscanned_sources: IndexSet::new(),
+        };
+
+        // We can't have encountered more than one YAML document yet, which
+        // means the source map can't have more than one entry. It's possible
+        // for it to be empty though, if the YAML was loaded from memory.
+        let source_map = &scanner.source_map;
+        assert!(source_map.sources.len() <= 1);
+        let root_source_id = if source_map.sources.is_empty() {
+            SourceId::Memory
+        } else {
+            SourceId::File(0)
+        };
+
+        // Document map caches all the YAML documents that we've loaded
+        let mut document_map = DocumentMap {
+            root: value,
+            root_source_id,
+            additional: HashMap::new(),
+        };
+
+        // Start by scanning the root value
+        // File imports will be relative to the root file. If the root value is
+        // in memory instead of a file, we'll just pass None and relative file
+        // imports are disallowed
+        let root_path = source_map
+            .get_path(root_source_id)
+            .and_then(|path| path.parent())
+            .map(Path::to_owned);
+        scanner.scan_source(
+            root_path.as_deref(),
+            YamlPath::new(root_source_id),
+            &document_map.root,
+        )?;
+
+        // Scan any additional sources encountered until we run out
+        while let Some(source_id) = scanner.unscanned_sources.pop() {
+            // Each source should've been added to the source map when it was
+            // queued
+            let file_path = scanner
+                .source_map
+                .get_path(source_id)
+                // Clone needed to detach lifetime from source map
+                .map(Path::to_owned)
+                .unwrap_or_else(|| {
+                    panic!("Source map missing source {source_id:?}")
+                });
+
+            // If this is the root, use the given value. Otherwise load the new
+            // value from the file
+            let value = match source_id {
+                SourceId::File(_) => SourcedYaml::load(&file_path, source_id)
+                    .map_err(|error| LocatedError {
+                    error: ReferenceError::Nested(Box::new(error.error)),
+                    location: error.location,
+                })?,
+                SourceId::Memory => {
+                    // It shouldn't be possible for a Memory source to end up
+                    // in the map
+                    panic!("In-memory source cannot be referenced")
+                }
+            };
+
+            // Scan this YAML for references
+            scanner.scan_source(
+                file_path.parent(),
+                YamlPath::new(source_id),
+                &value,
+            )?;
+
+            // Store the scanned value so we can use it for resolution later
+            document_map.additional.insert(source_id, value);
+        }
+
+        Ok(Self {
+            references: scanner.references,
+            document_map,
+        })
     }
 
-    /// Recursive helper for [Self::find]
-    fn find_recursive(
+    /// Build a dependency graph from the set of all references. Each reference
+    /// is mapped to the list of references that must be resolved ahead of it.
+    fn build_graph(self) -> UnsortedGraph<'input> {
+        // We have a list of every reference and where it is, which we can map
+        // into a dependency graph without having to look back at the document
+        let mut graph: HashMap<SourceReference, ReferenceMetadata> =
+            HashMap::new();
+
+        for (path, reference) in &self.references {
+            // For each reference, compare it against every other reference to
+            // look for a dependency
+            graph
+                .entry(reference.clone())
+                // If we've already computed dependencies for this reference,
+                // we can skip that and just add this location
+                .and_modify(|metadata| {
+                    metadata.locations.push(path.clone());
+                })
+                // First time seeing this reference: compute its dependencies.
+                // This is O(n^2). There's probably an O(n) solution to
+                // incrementally update each reference's dependencies but I'm
+                // being lazy.
+                .or_insert_with(|| {
+                    let dependencies = self
+                        .references
+                        .iter()
+                        .filter_map(|(other_path, other_reference)| {
+                            // `reference` points to a value somewhere. Check if
+                            // `other_path` points at, above or below the path
+                            // that `reference` points to. This would indicate
+                            // that `other_reference` must be resolved before
+                            // `reference`
+                            if reference.depends_on(other_path) {
+                                Some((
+                                    other_reference.clone(),
+                                    other_path.clone(),
+                                ))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    ReferenceMetadata {
+                        locations: vec![path.clone()],
+                        dependencies,
+                    }
+                });
+        }
+        UnsortedGraph {
+            references: graph,
+            document_map: self.document_map,
+        }
+    }
+}
+
+/// State while scanning the YAML document tree for all references
+#[derive(Debug)]
+struct ReferenceScanner<'input, 'src> {
+    /// All found references
+    references: Vec<(YamlPath<'input>, SourceReference)>,
+    source_map: &'src mut SourceMap,
+    /// Queue of sources that have been encountered but not yet scanned.
+    /// Paths are absolute to ensure there are no aliases.
+    unscanned_sources: IndexSet<SourceId>,
+}
+
+impl<'input> ReferenceScanner<'input, '_> {
+    /// Find all the references in a particular YAML source. References will be
+    /// added to `self.references`. If any new sources are encountered along the
+    /// way, they'll be added to `self.unscanned_sources`.
+    ///
+    /// ## Params
+    ///
+    /// - `reference_dir`: Directory that relative path imports will be resolved
+    ///   from. This should be the directory containing the scanned file. `None`
+    ///   for in-memory YAML, in which case file references are disallowed
+    /// - `path`: Path to the YAML value being scanned. This gets built up as we
+    ///   get further down the document
+    /// - `value`: YAML value being scanned
+    fn scan_source(
         &mut self,
+        reference_dir: Option<&Path>,
         path: YamlPath<'input>,
-        value: &MarkedYaml<'input>,
+        value: &SourcedYaml<'input>,
     ) -> Result<()> {
         match &value.data {
             // Nothing to do on scalars
@@ -85,8 +249,9 @@ impl<'input> ReferenceLocations<'input> {
             // Drill down into collections
             YamlData::Sequence(sequence) => {
                 for (index, value) in sequence.iter().enumerate() {
-                    self.find_recursive(
-                        path.cons(index, value.span.start),
+                    self.scan_source(
+                        reference_dir,
+                        path.cons(index, value.location),
                         value,
                     )?;
                 }
@@ -100,10 +265,15 @@ impl<'input> ReferenceLocations<'input> {
                     if key.data.as_str() == Some(REFERENCE_KEY) {
                         // Key is $ref; value should be a reference
                         let reference = Reference::try_from_yaml(value)?;
-                        self.0.push((path.clone(), reference));
+                        self.add_reference(
+                            reference_dir,
+                            path.clone(),
+                            reference,
+                        );
                     } else {
-                        self.find_recursive(
-                            path.cons(key.clone(), value.span.start),
+                        self.scan_source(
+                            reference_dir,
+                            path.cons(key.clone(), value.location),
                             value,
                         )?;
                     }
@@ -111,55 +281,73 @@ impl<'input> ReferenceLocations<'input> {
                 Ok(())
             }
             // Ignore the tag and drill into the value
-            YamlData::Tagged(_, value) => self.find_recursive(path, value),
+            YamlData::Tagged(_, value) => {
+                self.scan_source(reference_dir, path, value)
+            }
             YamlData::Representation(_, _, _)
             | YamlData::BadValue
             | YamlData::Alias(_) => yaml_parse_panic(),
         }
     }
 
-    /// Build a dependency graph from the set of all references. Each reference
-    /// is mapped to the list of references that must be resolved ahead of it.
-    fn build_graph(self) -> UnsortedGraph<'input> {
-        // We have a list of every reference and where it is, which we can map
-        // into a graph without having to look back at the document
-        let mut graph: HashMap<Reference, ReferenceMetadata> = HashMap::new();
-        for (location, reference) in &self.0 {
-            graph
-                .entry(reference.clone())
-                // If we've already computed dependencies for this reference,
-                // we can skip that and just add this location
-                .and_modify(|metadata| {
-                    metadata.locations.push(location.clone());
-                })
-                // First time seeing this reference: compute its dependencies.
-                // This is O(n^2). There's probably an O(n) solution to
-                // incrementally update each reference's dependencies but I'm
-                // being lazy.
-                .or_insert_with(|| {
-                    let dependencies = self
-                        .0
-                        .iter()
-                        .filter_map(|(path, other_reference)| {
-                            // `reference` points to a value somewhere. Check if
-                            // there are any other references at, above or below
-                            // the path that `reference` points to. This would
-                            // indicate that `other_reference` must be resolved
-                            // before `reference`
-                            if reference.depends_on(path) {
-                                Some((other_reference.clone(), path.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    ReferenceMetadata {
-                        locations: vec![location.clone()],
-                        dependencies,
-                    }
+    /// Add a found reference to the collection
+    ///
+    /// ## Params
+    ///
+    /// - `reference_dir`: Root directory for relative file paths. `None` for
+    ///   in-memory YAML, in which case file references are disallowed
+    /// - `path`: YAML path to the reference (within the referencing document)
+    /// - `reference`: Parsed reference to add
+    fn add_reference(
+        &mut self,
+        reference_dir: Option<&Path>,
+        path: YamlPath<'input>,
+        reference: Reference,
+    ) {
+        // Check if the reference source is new. If so, add it to the queue of
+        // sources to scan
+        let source_id = match &reference.source {
+            // Same file - the referenced source is the same as the referencing
+            // one
+            ReferenceSource::Local => path.source_id,
+            ReferenceSource::File(path) => {
+                // When resolving in-memory YAML, we can't do a file import
+                // because we don't know where the import should be relative to.
+                // We *could* allow absolute paths here still, but there isn't
+                // a real use case for that so it's not worth the logic.
+                //
+                // The panic is ok here because in-memory YAML is only possible
+                // from tests. THis shouldn't be reachable in app execution.
+                let reference_dir = reference_dir.unwrap_or_else(|| {
+                    panic!("File references disallowed from in-memory YAML")
                 });
-        }
-        UnsortedGraph(graph)
+
+                // Get an absolute path to the referenced file, relative
+                // to the given reference dir (which will be the parent of the
+                // referencing file)
+                let path = paths::normalize_path(reference_dir, path);
+
+                if let Some(source_id) = self.source_map.get_source_id(&path) {
+                    source_id
+                } else {
+                    // If this source hasn't been seen before, add it to the
+                    // queue
+                    let source_id = self.source_map.add_source(path.clone());
+                    self.unscanned_sources.insert(source_id);
+                    source_id
+                }
+            }
+        };
+
+        // Attach the source ID of the REFERENCED doc so we can easily track
+        // what document it refers to later
+        self.references.push((
+            path,
+            SourceReference {
+                reference,
+                source_id,
+            },
+        ));
     }
 }
 
@@ -176,13 +364,17 @@ struct ReferenceMetadata<'input> {
     /// times, only one location will appear. The location is tracked just
     /// so we can give a useful source location in the case of a cycle
     /// error.
-    dependencies: HashMap<Reference, YamlPath<'input>>,
+    dependencies: HashMap<SourceReference, YamlPath<'input>>,
 }
 
 /// A graph of all the references in a YAML document, in no particular order.
 /// Once [sorted](Self::sort), this will define a consistent resolution order
 /// for the references.
-struct UnsortedGraph<'input>(HashMap<Reference, ReferenceMetadata<'input>>);
+#[derive(Debug)]
+struct UnsortedGraph<'input> {
+    references: HashMap<SourceReference, ReferenceMetadata<'input>>,
+    document_map: DocumentMap<'input>,
+}
 
 impl<'input> UnsortedGraph<'input> {
     /// Step 2: Sort the graph topologically, such that every reference only has
@@ -193,12 +385,12 @@ impl<'input> UnsortedGraph<'input> {
         // https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
         let mut sorted = IndexMap::new();
         // Working set of all references that have no dependencies
-        let mut independent: Vec<(Reference, ReferenceMetadata)> = self
-            .0
+        let mut independent: Vec<(SourceReference, ReferenceMetadata)> = self
+            .references
             .extract_if(|_, metadata| metadata.dependencies.is_empty())
             .collect();
         // All remaining references that have unsorted dependencies
-        let mut dependents = self.0;
+        let mut dependents = self.references;
 
         while let Some((reference, metadata)) = independent.pop() {
             // Sanity check
@@ -239,12 +431,19 @@ impl<'input> UnsortedGraph<'input> {
             Err(LocatedError {
                 error: ReferenceError::CircularReference {
                     // Sort for predictable ordering
-                    references: dependents.into_keys().sorted().collect(),
+                    references: dependents
+                        .into_keys()
+                        .map(|reference| reference.reference)
+                        .sorted()
+                        .collect(),
                 },
                 location,
             })
         } else {
-            Ok(SortedGraph(sorted))
+            Ok(SortedGraph {
+                references: sorted,
+                document_map: self.document_map,
+            })
         }
     }
 }
@@ -252,7 +451,10 @@ impl<'input> UnsortedGraph<'input> {
 /// Same as [UnsortedGraph], but the references have been sorted topologically
 /// so that each reference only has dependencies on the references before it
 /// in the map.
-struct SortedGraph<'input>(IndexMap<Reference, ReferenceMetadata<'input>>);
+struct SortedGraph<'input> {
+    references: IndexMap<SourceReference, ReferenceMetadata<'input>>,
+    document_map: DocumentMap<'input>,
+}
 
 impl<'input> SortedGraph<'input> {
     /// Step 3: Replace all references with computed values. Every `$ref` field
@@ -286,27 +488,35 @@ impl<'input> SortedGraph<'input> {
     ///     key: value
     ///     extra: 3
     /// ```
-    fn replace(self, root: &mut MarkedYaml<'input>) -> Result<()> {
+    fn replace(
+        mut self,
+        source_map: &SourceMap,
+    ) -> Result<SourcedYaml<'input>> {
         // For each reference in the document, resolve it any replace all
         // instances of the reference with the resolved value. Because the
         // references are in topological order, we know each one will only
         // have dependencies on its predecessors. Because we do each replacement
         // inline, the dependencies will automatically be resolved in their
         // dependents.
-        for (reference, metadata) in self.0 {
-            // Clone necessary to release the ref on `root`, allowing us to
-            // take another mutable reference to it
-            let resolved = reference.resolve(root)?.clone();
+        for (reference, metadata) in self.references {
+            // Find the YAML value that this reference points to. Clone is
+            // necessary to release the ref on `self`
+            let resolved = reference.resolve(&self.document_map)?.clone();
+
             for path in metadata.locations {
-                let value = path.get(root);
-                // The collection process for references ensures that each path
-                // points to a mapping containing a `$ref`
+                // Find the document containing the reference
+                let document = self.document_map.get_mut(path.source_id);
+                // Then find the referencing value within that doc
+                let value = path.get(document);
+                // The scanning process ensures that each path points to a
+                // mapping containing a `$ref`
                 let YamlData::Mapping(mapping) = &mut value.data else {
                     panic!(
                         "Expected path {path:?} to point to a mapping, \
                         but found {value:?}"
                     )
                 };
+
                 if mapping.len() == 1 {
                     *value = resolved.clone();
                 } else {
@@ -317,17 +527,17 @@ impl<'input> SortedGraph<'input> {
                     else {
                         return Err(LocatedError {
                             error: ReferenceError::ExpectedMapping {
-                                reference,
-                                parent: value.span.start,
+                                reference: reference.reference,
+                                parent: value.location.resolve(source_map),
                             },
-                            location: resolved.span.start,
+                            location: resolved.location,
                         });
                     };
                     spread_mapping(mapping, to_spread);
                 }
             }
         }
-        Ok(())
+        Ok(self.document_map.root)
     }
 }
 
@@ -335,12 +545,12 @@ impl<'input> SortedGraph<'input> {
 /// end of the rainbow. If not found, return the source location of the deepest
 /// value we successfully traversed, which is also the location of
 /// where the path went cold.
-fn reference_lookup<'input, 'value>(
-    value: &'value MarkedYaml<'input>,
+fn path_lookup<'input, 'value>(
+    value: &'value SourcedYaml<'input>,
     path: &[String],
-) -> std::result::Result<&'value MarkedYaml<'input>, Marker> {
+) -> std::result::Result<&'value SourcedYaml<'input>, SourceLocation> {
     if let [first, rest @ ..] = path {
-        let location = value.span.start;
+        let location = value.location;
         // We need to go deeper. Value better be something we can drill into
         match &value.data {
             YamlData::Value(_) => Err(location),
@@ -350,21 +560,20 @@ fn reference_lookup<'input, 'value>(
                 // isn't a traversable resource at the given path
                 let index: usize = first.parse().or(Err(location))?;
                 let inner = sequence.get(index).ok_or(location)?;
-                reference_lookup(inner, rest)
+                path_lookup(inner, rest)
             }
             YamlData::Mapping(mapping) => {
                 let inner = mapping
-                    // Clone is necessary to prevent lifetime fuckery.
-                    // With &str, the lifetime of `first` gets promoted
-                    // to the lifetime param on MarkedYaml, which is
-                    // `'input`
-                    .get(&MarkedYaml::scalar_from_string(first.to_owned()))
+                    // Clone is necessary to prevent lifetime fuckery. With
+                    // &str, the lifetime of `first` gets promoted to the
+                    // lifetime param on SourcedYaml, which is 'input
+                    .get(&SourcedYaml::value_from_string(first.to_owned()))
                     .ok_or(location)?;
-                reference_lookup(inner, rest)
+                path_lookup(inner, rest)
             }
             YamlData::Tagged(_, value) => {
                 // Remove the tag and try again
-                reference_lookup(value, rest)
+                path_lookup(value, rest)
             }
             YamlData::Representation(_, _, _)
             | YamlData::BadValue
@@ -404,8 +613,8 @@ fn reference_lookup<'input, 'value>(
 ///   b: 3
 /// ```
 fn spread_mapping<'input>(
-    mapping: &mut AnnotatedMapping<MarkedYaml<'input>>,
-    to_spread: AnnotatedMapping<MarkedYaml<'input>>,
+    mapping: &mut AnnotatedMapping<SourcedYaml<'input>>,
+    to_spread: AnnotatedMapping<SourcedYaml<'input>>,
 ) {
     // We have to map from a linked hashmap to a vec because:
     // - Granular control over the ordering of keys, to ensure the last
@@ -432,51 +641,32 @@ fn spread_mapping<'input>(
     *mapping = vec.into_iter().collect();
 }
 
-/// A pointer to a YAML value. The reference points to a particular YAML
-/// document (`source`) and a path to the value within that document (`path`).
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Reference {
-    source: ReferenceSource,
-    path: Vec<String>,
+/// A parsed reference with its *source* resolved. The source ID is stored so
+/// we can easily look up the referenced document from [DocumentMap].
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct SourceReference {
+    reference: Reference,
+    source_id: SourceId,
 }
 
-impl Reference {
+impl SourceReference {
     /// Find the value referred to by this reference
     fn resolve<'value, 'input>(
         &self,
-        root: &'value MarkedYaml<'input>,
-    ) -> Result<&'value MarkedYaml<'input>> {
-        reference_lookup(root, &self.path).map_err(|location| LocatedError {
-            error: ReferenceError::NoResource(self.clone()),
-            // Error location points to the deepest value we were able
-            // to traverse. Using the location of
-            // the reference may be more intuitive,
-            // but this is easier to get and it points the user
-            // to where the reference ceased to be valid
-            location,
+        document_map: &'value DocumentMap<'input>,
+    ) -> Result<&'value SourcedYaml<'input>> {
+        // Find the referenced document from our source ID
+        let document = document_map.get(self.source_id);
+        path_lookup(document, &self.reference.path).map_err(|location| {
+            LocatedError {
+                error: ReferenceError::NoResource(self.reference.clone()),
+                // Error location points to the deepest value we were able to
+                // traverse. Using the location of the reference may be more
+                // intuitive, but this is easier to get and it points the user
+                // to where the reference ceased to be valid
+                location,
+            }
         })
-    }
-
-    /// Attempt to parse a YAML value as a reference. This should be the value
-    /// assigned to the `$ref` key, *not* the parent mapping. The value must be
-    /// a string that parses as a valid URI.
-    fn try_from_yaml(value: &MarkedYaml) -> Result<Self> {
-        // We can hit two error cases:
-        // - It's not a string and therefore can't be parsed
-        // - It's a string but can't parse into a reference
-        if let YamlData::Value(Scalar::String(reference)) = &value.data {
-            let reference =
-                reference.parse().map_err(|error| LocatedError {
-                    error,
-                    location: value.span.start,
-                })?;
-            Ok(reference)
-        } else {
-            Err(LocatedError {
-                error: ReferenceError::NotAReference,
-                location: value.span.start,
-            })
-        }
     }
 
     /// Does this reference depend on a reference at the given location?
@@ -492,10 +682,54 @@ impl Reference {
     /// that there's a dependency, then as long as B is resolved and replaced
     /// first, A can be resolved correctly.
     fn depends_on(&self, location: &YamlPath) -> bool {
-        self.path
-            .iter()
-            .zip(location.segments.iter())
-            .all(|(ref_part, location_part)| location_part == ref_part.as_str())
+        // Sources must match
+        self.source_id == location.source_id
+        // Look for parent/equal/child
+            && self
+                .reference
+                .path
+                .iter()
+                .zip(location.segments.iter())
+                .all(|(ref_part, location_part)| {
+                    location_part == ref_part.as_str()
+                })
+    }
+}
+
+/// A pointer to a YAML value. The reference points to a particular YAML
+/// document (`source`) and a path to the value within that document (`path`).
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Reference {
+    /// Pointer to a YAML document. Everything before the `#` in the URI
+    source: ReferenceSource,
+    /// Pointer to a particular value within the source document. Everything
+    /// after the `#` in the URI
+    path: Vec<String>,
+}
+
+impl Reference {
+    /// Attempt to parse a YAML value as a reference. This should be the value
+    /// assigned to the `$ref` key, *not* the parent mapping. The value must be
+    /// a string that parses as a valid URI.
+    fn try_from_yaml(value: &SourcedYaml) -> Result<Self> {
+        // We can hit two error cases:
+        // - It's not a string and therefore can't be parsed
+        // - It's a string but can't parse into a reference
+        if let YamlData::Value(Scalar::String(reference)) = &value.data {
+            let reference =
+                reference.parse::<Reference>().map_err(|error| {
+                    LocatedError {
+                        error,
+                        location: value.location,
+                    }
+                })?;
+            Ok(reference)
+        } else {
+            Err(LocatedError {
+                error: ReferenceError::NotAReference,
+                location: value.location,
+            })
+        }
     }
 }
 
@@ -513,17 +747,6 @@ impl FromStr for Reference {
         // A reference is just a URL with a customized base. Base options are:
         // - Empty: Local
         // - File path: Another file
-        // - HTTP/HTTPS host: Remote file
-
-        fn source(
-            input: &mut &str,
-        ) -> ModalResult<ReferenceSource, EmptyError> {
-            alt((
-                "".map(|_| ReferenceSource::Local),
-                // More sources to come...
-            ))
-            .parse_next(input)
-        }
 
         /// Parse path after `#`
         fn path(input: &mut &str) -> ModalResult<Vec<String>, EmptyError> {
@@ -536,6 +759,16 @@ impl FromStr for Reference {
                 })
                 .parse_next(input)
         }
+
+        let source =
+            |input: &mut &str| -> ModalResult<ReferenceSource, EmptyError> {
+                alt((
+                    take_until(1.., "#")
+                        .map(|path: &str| ReferenceSource::File(path.into())),
+                    "".map(|_| ReferenceSource::Local),
+                ))
+                .parse_next(input)
+            };
 
         let (source, path) = separated_pair(source, '#', path)
             .parse(s)
@@ -555,15 +788,26 @@ impl Display for Reference {
     }
 }
 
+/// A reference's source is everything before the `#` in the URI. It defines
+/// which YAML document the reference is pointing to.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum ReferenceSource {
+    /// Reference another value within the same YAML document
     Local,
+    /// Reference to another file on the local file system. The file path can
+    /// be relative or absolute. If relative, it will be resolved relative to
+    /// the parent dir of the referencing file.
+    File(PathBuf),
 }
 
 impl Display for ReferenceSource {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
+            // Local source is blank
             ReferenceSource::Local => Ok(()),
+            ReferenceSource::File(path) => {
+                write!(f, "{}", path.display())
+            }
         }
     }
 }
@@ -581,17 +825,20 @@ impl Display for ReferenceSource {
 /// `$ref` key.
 #[derive(Clone, Debug)]
 struct YamlPath<'input> {
+    /// YAML file ID
+    source_id: SourceId,
     segments: Vec<YamlPathSegment<'input>>,
     /// Source location of the *value* associated with this path. Used for
     /// error messages
-    location: Marker,
+    location: SourceLocation,
 }
 
 impl<'input> YamlPath<'input> {
-    fn new() -> Self {
+    fn new(source_id: SourceId) -> Self {
         Self {
+            source_id,
             segments: Vec::new(),
-            location: Marker::default(),
+            location: SourceLocation::default(),
         }
     }
 
@@ -599,20 +846,24 @@ impl<'input> YamlPath<'input> {
     fn cons(
         &self,
         segment: impl Into<YamlPathSegment<'input>>,
-        location: Marker,
+        location: SourceLocation,
     ) -> Self {
         let mut segments = self.segments.clone();
         segments.push(segment.into());
-        Self { segments, location }
+        Self {
+            source_id: self.source_id,
+            segments,
+            location,
+        }
     }
 
     /// Extract a sub-value from a root YAML value by traversing according to
     /// this path
     fn get<'value>(
         &self,
-        root: &'value mut MarkedYaml<'input>,
-    ) -> &'value mut MarkedYaml<'input> {
-        let mut value: &'value mut MarkedYaml<'input> = root;
+        root: &'value mut SourcedYaml<'input>,
+    ) -> &'value mut SourcedYaml<'input> {
+        let mut value: &'value mut SourcedYaml<'input> = root;
         for segment in &self.segments {
             match (segment, &mut value.data) {
                 (
@@ -642,13 +893,13 @@ enum YamlPathSegment<'input> {
     /// Get a sequence element by index
     Sequence(usize),
     /// Get a mapping element by key
-    Mapping(MarkedYaml<'input>),
+    Mapping(SourcedYaml<'input>),
 }
 
 #[cfg(test)]
 impl From<&'static str> for YamlPathSegment<'static> {
     fn from(value: &'static str) -> Self {
-        Self::Mapping(MarkedYaml::value_from_str(value))
+        Self::Mapping(SourcedYaml::value_from_str(value))
     }
 }
 
@@ -664,20 +915,50 @@ impl PartialEq<str> for YamlPathSegment<'_> {
     }
 }
 
+/// Map of all YAML document that have been loaded
+#[derive(Debug)]
+struct DocumentMap<'input> {
+    /// Root value is stored in its own field since it's always present and may
+    /// be from a file or a static YAML string
+    root: SourcedYaml<'input>,
+    /// ID of the source that the root value was extracted from. Could be
+    /// either a file path or [SourceId::Memory]
+    root_source_id: SourceId,
+    /// Additional sources (imported via reference) are stored keyed by their
+    /// absolute path. Source IDs should all be files, as there's no way to
+    /// reference an additional in-memory document.
+    additional: HashMap<SourceId, SourcedYaml<'input>>,
+}
+
+impl<'input> DocumentMap<'input> {
+    fn get(&self, source_id: SourceId) -> &SourcedYaml<'input> {
+        if source_id == self.root_source_id {
+            &self.root
+        } else {
+            // All sources should be added to the map when the references
+            // are first encountered, so we expect everything to be present
+            self.additional.get(&source_id).unwrap_or_else(|| {
+                panic!("Unregistered source `{source_id:?}`")
+            })
+        }
+    }
+
+    fn get_mut(&mut self, source_id: SourceId) -> &mut SourcedYaml<'input> {
+        if source_id == self.root_source_id {
+            &mut self.root
+        } else {
+            // All sources should be added to the map when the references
+            // are first encountered, so we expect everything to be present
+            self.additional.get_mut(&source_id).unwrap_or_else(|| {
+                panic!("Unregistered source `{source_id:?}`")
+            })
+        }
+    }
+}
+
 /// Error while parsing or resolving a reference
 #[derive(Debug, Error)]
-#[cfg_attr(test, derive(PartialEq))]
 pub enum ReferenceError {
-    /// YAML value is not a string and therefore can't be a reference
-    #[error("Not a reference")]
-    // Could potentially include the invalid value here, shortcutting for now
-    NotAReference,
-    /// Failed to parse a string to a reference
-    #[error("Invalid reference: `{0}`")]
-    InvalidReference(String),
-    /// Reference parsed correctly but doesn't point to a resource
-    #[error("Resource does not exist: `{0}`")]
-    NoResource(Reference),
     /// There's a cycle in the reference graph somewhere. Unfortunately the
     /// topological sort algorithm we use doesn't tell us how many disjoint
     /// cycles there are or which references belong to which cycles, but just
@@ -687,17 +968,35 @@ pub enum ReferenceError {
         references.iter().format(", "),
     )]
     CircularReference { references: Vec<Reference> },
+
     #[error(
         "Expected reference `{reference}` to refer to a mapping, as the \
-        referring parent at TODO:{}:{} is a mapping with multiple fields. \
+        referring parent at {parent} is a mapping with multiple fields. \
         The referenced value must also be a mapping so it can be spread into \
-        the referring map",
-        parent.line(),parent.col(),
+        the referring map"
     )]
     ExpectedMapping {
         reference: Reference,
-        parent: Marker,
+        parent: ResolvedSourceLocation,
     },
+
+    /// Failed to parse a string to a reference
+    #[error("Invalid reference: `{0}`")]
+    InvalidReference(String),
+
+    /// Error while loading another source for a reference
+    #[error(transparent)]
+    Nested(Box<super::Error>),
+
+    /// Reference parsed correctly but doesn't point to a resource
+    #[error("Resource does not exist: `{0}`")]
+    NoResource(Reference),
+
+    /// YAML value is not a string and therefore can't be a reference
+    #[error("Not a reference")]
+    // Could potentially include the invalid value here, shortcutting for now
+    NotAReference,
+
     /// Step 2 of reference resolution (replaced references with values)
     /// encountered a reference that wasn't resolved in step 1
     #[error(
@@ -713,7 +1012,6 @@ mod tests {
     use crate::{TempDir, assert_err, temp_dir};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use saphyr::LoadableYamlNode;
     use std::fs;
 
     /// Test loading valid references
@@ -828,58 +1126,109 @@ mod tests {
             b: 2
         "
     )]
-    fn test_references(#[case] input: &str, #[case] expected: &str) {
-        let mut input = parse_yaml(input);
+    fn test_reference(#[case] input: &str, #[case] expected: &str) {
+        let input = parse_yaml(input);
         let expected = parse_yaml(expected);
-        input.resolve_references().unwrap();
-        assert_eq!(input, expected);
+        assert_eq!(
+            input.resolve_references(&mut SourceMap::default()).unwrap(),
+            expected
+        );
     }
 
     /// Load a reference to another file
     #[rstest]
-    #[ignore = "File references not implemented yet"]
-    fn test_reference_file(temp_dir: TempDir) {
-        // Create a file with its own references
-        let file_name = "other.yml";
-        let path = temp_dir.join(file_name);
-        fs::write(
-            &path,
-            r##"
+    // Reference a file via relative path
+    #[case::relative(
+        r#"
+value:
+    $ref: "./file1.yml#/value"
+"#,
+        &[("file1.yml", "value: test")],
+        "value: test",
+    )]
+    // Reference a file via absolute path ({ROOT} gets replace with temp dir)
+    #[case::absolute(
+        r#"
+value:
+    $ref: "{ROOT}/file1.yml#/value"
+"#,
+        &[("file1.yml", "value: test")],
+        "value: test",
+    )]
+    // The local reference source in a subfile should be resolved within that
+    // document instead of the root
+    #[case::local_in_subfile(
+        r#"
+value:
+    $ref: "./file1.yml#/indirection"
+"#,
+        // This inner reference should refer to file1.yml, NOT the root document
+        &[("file1.yml", r##"
+value: test
+indirection:
+    $ref: "#/value"
+        "##)],
+        "value: test",
+    )]
+    // Create two files that reference each other. The references are
+    // non-cyclic so it doesn't create an error
+    // file1/r2 -> file2/r1 -> file1/r1
+    #[case::multi_file(
+        r#"
+value:
+    $ref: "./file1.yml#/requests/r2/url"
+"#,
+        &[
+            (
+                "file1.yml",
+                r#"
 requests:
     r1:
         url: test
     r2:
-        url:
-            $ref: "#/r1/url"
-"##,
-        )
-        .unwrap();
-
-        // Test both absolute and relative paths
-        let input = format!(
-            r#"
-absolute:
-    $ref: "{path_abs}#/r2/url"
-relative:
-    $ref: "{path_rel}#/r2/url"
+        url: {"$ref": "file2.yml#/requests/r1/url"}
 "#,
-            path_abs = path.display(),
-            path_rel = file_name,
+            ),
+            (
+                "file2.yml",
+                r#"
+requests:
+    r1:
+        url: {"$ref": "file1.yml#/requests/r1/url"}
+"#
+            ),
+        ],
+        r#"{"value": "test"}"#
+    )]
+    fn test_reference_file(
+        temp_dir: TempDir,
+        #[case] root: &str,
+        #[case] additional: &[(&str, &str)], // list of (path, yaml)
+        #[case] expected: &str,
+    ) {
+        for (path, yaml) in additional {
+            fs::write(temp_dir.join(path), yaml).unwrap();
+        }
+
+        // Windows paths include backslashes, which we need to escape to keep
+        // them as valid YAML
+        let base_dir = temp_dir.to_str().unwrap().replace('\\', "\\\\");
+        let input = parse_yaml(
+            // Inject the temp dir into paths as needed
+            &root.replace("{ROOT}", &base_dir),
         );
-        let mut input = parse_yaml(&input);
-        let expected = parse_yaml(
-            r"
-absolute: test
-relative: test
-",
-        );
-        input.resolve_references().unwrap();
-        assert_eq!(input, expected);
+        let expected = parse_yaml(expected);
+
+        // Fake a path for the root value so imports will be in the temp dir
+        let mut source_map = SourceMap::default();
+        source_map.add_source(temp_dir.join("root.yml"));
+
+        let actual = input.resolve_references(&mut source_map).unwrap();
+        assert_eq!(actual, expected);
     }
 
     /// Cross-file reference cycles should be detected and throw an error
     #[rstest]
-    #[ignore = "File references not implemented yet"]
     fn test_reference_file_cycle(temp_dir: TempDir) {
         let file1 = "file1.yml";
         let file2 = "file2.yml";
@@ -901,11 +1250,17 @@ data:
         .unwrap();
 
         let yaml = fs::read_to_string(temp_dir.join(file1)).unwrap();
-        let mut input = parse_yaml(&yaml);
+        let input = parse_yaml(&yaml);
+
+        // Fake a path for the root value so imports will be in the temp dir
+        let mut source_map = SourceMap::default();
+        source_map.add_source(temp_dir.join("root.yml"));
+        let result = input.resolve_references(&mut source_map);
+
         assert_err!(
-            input.resolve_references(),
+            result.map_err(|error| error.error),
             "References contain one or more cycles: \
-            file2.yml#/data, file1.yml#/data, file2.yml#/data"
+            file1.yml#/data, file2.yml#/data"
         );
     }
 
@@ -1001,40 +1356,96 @@ data:
         // References outside the cycles are NOT included in the error message
         "References contain one or more cycles: #/a, #/b, #/c, #/d"
     )]
-    #[ignore = "File references not implemented yet"]
     #[case::io(
         r#"
         root:
             $ref: "./other.yml#/root"
         "#,
-        "File not found: ./other.yml"
+        // Strategically omit the base of the path because it's absolute
+        if cfg!(unix) {
+            "other.yml: No such file or directory"
+        } else {
+            "other.yml: The system cannot find the file specified"
+        }
     )]
-    fn test_errors(#[case] input: &str, #[case] expected_error: &str) {
-        let mut input = parse_yaml(input);
-        let result = input.resolve_references();
-        assert_err!(result, expected_error);
+    fn test_errors(
+        temp_dir: TempDir,
+        #[case] input: &str,
+        #[case] expected_error: &str,
+    ) {
+        let input = parse_yaml(input);
+
+        // Fake a path for the root value so imports will be in the temp dir
+        let mut source_map = SourceMap::default();
+        source_map.add_source(temp_dir.join("root.yml"));
+
+        let result = input.resolve_references(&mut source_map);
+        assert_err!(
+            // Convert to anyhow error so the message includes the full chain
+            result.map_err(|error| anyhow::Error::from(error.error)),
+            expected_error
+        );
     }
 
     /// Test [Reference::depends_on]
     #[rstest]
-    #[case::ref_below("#/a", vec!["a", "b"], true)]
-    #[case::ref_at("#/a/b", vec!["a", "b"], true)]
-    #[case::ref_above("#/a/b/c", vec!["a", "b"], true)]
-    #[case::disjoint("#/a/c", vec!["a", "b"], false)]
+    #[case::ref_below(SourceId::Memory, "#/a", vec!["a", "b"], true)]
+    #[case::ref_at(SourceId::Memory, "#/a/b", vec!["a", "b"], true)]
+    #[case::ref_above(SourceId::Memory, "#/a/b/c", vec!["a", "b"], true)]
+    #[case::disjoint(SourceId::Memory, "#/a/c", vec!["a", "b"], false)]
+    // Same paths, different sources
+    #[case::different_sources(SourceId::File(0), "#/a/b", vec!["a", "b"], false)]
     fn test_depends_on(
-        #[case] reference: Reference,
+        #[case] reference_source_id: SourceId,
+        #[case] reference: &str,
         #[case] segments: Vec<&'static str>,
         #[case] is_child: bool,
     ) {
         let path = YamlPath {
+            source_id: SourceId::Memory,
             segments: segments.into_iter().map(YamlPathSegment::from).collect(),
-            location: Marker::default(),
+            location: SourceLocation::default(),
+        };
+        let reference = SourceReference {
+            source_id: reference_source_id,
+            reference: reference.parse::<Reference>().unwrap(),
         };
         assert_eq!(reference.depends_on(&path), is_child);
     }
 
-    fn parse_yaml(yaml: &str) -> MarkedYaml {
-        let mut documents = MarkedYaml::load_from_str(yaml).unwrap();
-        documents.pop().unwrap()
+    #[rstest]
+    #[case::local("#/a/b", ReferenceSource::Local, vec!["a", "b"])]
+    #[case::num_index("#/a/0", ReferenceSource::Local, vec!["a", "0"])]
+    #[case::file_local(
+        "./file.yml#/a/b",
+        ReferenceSource::File("./file.yml".into()),
+        vec!["a", "b"],
+    )]
+    #[case::file_absolute(
+        "/root/file.yml#/a/b",
+        ReferenceSource::File("/root/file.yml".into()),
+        vec!["a", "b"],
+    )]
+    #[case::file_tilde(
+        "~/file.yml#/a/b",
+        // This won't be expanded during parsing but it should parse
+        ReferenceSource::File("~/file.yml".into()),
+        vec!["a", "b"],
+    )]
+    fn test_parse_reference(
+        #[case] reference: &str,
+        #[case] expected_source: ReferenceSource,
+        #[case] expected_path: Vec<&str>,
+    ) {
+        let actual = reference.parse::<Reference>().unwrap();
+        let expected = Reference {
+            source: expected_source,
+            path: expected_path.into_iter().map(String::from).collect(),
+        };
+        assert_eq!(actual, expected);
+    }
+
+    fn parse_yaml(yaml: &str) -> SourcedYaml<'static> {
+        SourcedYaml::load_from_str(yaml, SourceId::Memory).unwrap()
     }
 }

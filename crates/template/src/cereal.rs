@@ -1,5 +1,5 @@
 use crate::{RenderError, Template, Value};
-use saphyr::{MarkedYaml, Scalar, YamlData};
+use saphyr::{Scalar, YamlData};
 use serde::{
     Serialize,
     de::{
@@ -7,7 +7,9 @@ use serde::{
         value::{MapDeserializer, SeqDeserializer},
     },
 };
-use slumber_util::yaml::{DeserializeYaml, Expected, LocatedError};
+use slumber_util::yaml::{
+    DeserializeYaml, Expected, LocatedError, SourcedYaml,
+};
 
 impl Serialize for Template {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -30,7 +32,7 @@ impl DeserializeYaml for Template {
     }
 
     fn deserialize(
-        yaml: MarkedYaml,
+        yaml: SourcedYaml,
     ) -> Result<Self, LocatedError<slumber_util::yaml::Error>> {
         if let YamlData::Value(scalar) = yaml.data {
             // Accept any scalar for a template. We'll treat everything as the
@@ -42,7 +44,7 @@ impl DeserializeYaml for Template {
                 Scalar::FloatingPoint(f) => f.to_string().parse(),
                 Scalar::String(s) => s.parse(),
             }
-            .map_err(|error| LocatedError::other(error, yaml.span.start))
+            .map_err(|error| LocatedError::other(error, yaml.location))
         } else {
             Err(LocatedError::unexpected(Expected::String, yaml))
         }

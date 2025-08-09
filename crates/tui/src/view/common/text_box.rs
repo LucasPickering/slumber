@@ -473,12 +473,12 @@ mod tests {
     use slumber_util::assert_matches;
 
     /// Create a span styled as the cursor
-    fn cursor(text: &str) -> Span {
+    fn cursor(text: &str) -> Span<'_> {
         Span::styled(text, TuiContext::get().styles.text_box.cursor)
     }
 
     /// Create a span styled as text in the box
-    fn text(text: &str) -> Span {
+    fn text(text: &str) -> Span<'_> {
         Span::styled(text, TuiContext::get().styles.text_box.text)
     }
 

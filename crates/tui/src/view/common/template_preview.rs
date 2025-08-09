@@ -317,12 +317,12 @@ mod tests {
     }
 
     /// Style some text as rendered
-    fn rendered(text: &str) -> Span {
+    fn rendered(text: &str) -> Span<'_> {
         Span::styled(text, TuiContext::get().styles.template_preview.text)
     }
 
     /// Style some text as an error
-    fn error(text: &str) -> Span {
+    fn error(text: &str) -> Span<'_> {
         Span::styled(text, TuiContext::get().styles.template_preview.error)
     }
 }

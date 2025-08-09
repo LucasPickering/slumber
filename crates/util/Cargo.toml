@@ -32,6 +32,7 @@ uuid = {workspace = true, features = ["v4"], optional = true}
 winnow = {workspace = true}
 
 [dev-dependencies]
+env-lock = {workspace = true}
 rstest = {workspace = true}
 serde = {workspace = true, features = ["derive"]}
 uuid = {workspace = true, features = ["v4"]}

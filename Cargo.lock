@@ -3614,6 +3614,7 @@ dependencies = [
  "anyhow",
  "derive_more 1.0.0",
  "dirs",
+ "env-lock",
  "indexmap 2.9.0",
  "itertools 0.13.0",
  "path-clean",

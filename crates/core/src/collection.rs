@@ -143,10 +143,7 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        collection::cereal::deserialize_collection, http::HttpMethod,
-        test_util::by_id,
-    };
+    use crate::{http::HttpMethod, test_util::by_id};
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
@@ -272,7 +269,7 @@ mod tests {
         #[case] yaml: &str,
         #[case] expected_error: &str,
     ) {
-        assert_err!(deserialize_collection(yaml, None), expected_error);
+        assert_err!(Collection::parse(yaml), expected_error);
     }
 
     /// A catch-all regression test, to make sure we don't break anything in the
@@ -409,8 +406,7 @@ mod tests {
         // Now that we know deserailization works, let's test serialization.
         // We'll serialize then deserialize again and expect the same thing
         let serialized = serde_yaml::to_string(&loaded).unwrap();
-        let loaded: Collection =
-            deserialize_collection(&serialized, None).unwrap();
+        let loaded: Collection = Collection::parse(&serialized).unwrap();
         assert_eq!(
             loaded, expected,
             "Serialized & re-deserialization incorrect"

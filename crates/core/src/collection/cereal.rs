@@ -16,71 +16,17 @@ use crate::{
     http::HttpMethod,
 };
 use indexmap::IndexMap;
-use saphyr::{LoadableYamlNode, MarkedYaml, Scalar, YamlData};
+use saphyr::{Scalar, YamlData};
 use slumber_template::Template;
 use slumber_util::{
     deserialize_enum, impl_deserialize_from,
     yaml::{
-        DeserializeYaml, Error, Expected, Field, LocatedError, MarkedYamlExt,
-        ResolveReferences, StructDeserializer, yaml_parse_panic,
+        DeserializeYaml, Error, Expected, Field, LocatedError, SourcedYaml,
+        StructDeserializer, yaml_parse_panic,
     },
 };
-use std::path::Path;
 
 type Result<T> = std::result::Result<T, LocatedError<Error>>;
-
-/// Parse and deserialize a YAML string into a [Collection]
-///
-/// This uses [saphyr] to parse the string into a YAML document, then uses
-/// custom deserialization logic to deserialize the YAML into the collection
-/// data types. We do this rather than use serde_yaml because it provides:
-/// - Better error messages
-/// - Source span tracking
-///
-/// The given path is used only for error context. The data must already be
-/// loaded out of the file prior to calling.
-///
-/// ## Params
-///
-/// - `yaml_input`: YAML string to parse and deserialize
-/// - `path`: File that the YAML was loaded from. `None` for tests that define
-///   YAML inline
-pub fn deserialize_collection(
-    yaml_input: &str,
-    path: Option<&Path>,
-) -> anyhow::Result<Collection> {
-    fn deserialize(mut yaml: MarkedYaml<'static>) -> Result<Collection> {
-        // Resolve $ref keys before deserializing
-        yaml.resolve_references().map_err(|error| LocatedError {
-            error: Error::Reference(error.error),
-            location: error.location,
-        })?;
-        Collection::deserialize(yaml)
-    }
-
-    let mut documents = MarkedYaml::load_from_str(yaml_input)?;
-
-    // If the file is empty, pretend there's an empty mapping instead
-    // because that's functionally equivalent
-    let yaml = documents
-        .pop()
-        .unwrap_or(YamlData::Mapping(Default::default()).into());
-
-    deserialize(yaml).map_err(
-        |LocatedError {
-             error: kind,
-             location,
-         }| {
-            // Display the error with path and location
-            anyhow::Error::from(kind).context(format!(
-                "Error at {path}:{line}:{col}",
-                path = path.unwrap_or(Path::new("")).display(),
-                line = location.line(),
-                col = location.col(),
-            ))
-        },
-    )
-}
 
 impl_deserialize_from!(ProfileId, String);
 impl_deserialize_from!(RecipeId, String);
@@ -90,7 +36,7 @@ impl DeserializeYaml for Collection {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         let mut deserializer = StructDeserializer::new(yaml)?;
 
         // Drop all fields starting with `.`
@@ -120,14 +66,14 @@ impl DeserializeYaml for Adopt<IndexMap<ProfileId, Profile>> {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         // Enforce that only one profile can be the default
         let mut default_profile: Option<ProfileId> = None;
 
         yaml.try_into_mapping()?
             .into_iter()
             .map(|(k, v)| {
-                let value_location = v.span.start;
+                let value_location = v.location;
                 let key = ProfileId::deserialize(k)?;
                 let mut value = Profile::deserialize(v)?;
                 value.set_id(key.clone());
@@ -159,7 +105,7 @@ impl DeserializeYaml for Profile {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         let mut deserializer = StructDeserializer::new(yaml)?;
         let profile = Self {
             id: ProfileId::default(), // Will be set by parent based on key
@@ -177,8 +123,8 @@ impl DeserializeYaml for RecipeTree {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
-        let location = yaml.span.start;
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+        let location = yaml.location;
         let recipes: Adopt<IndexMap<RecipeId, RecipeNode>> =
             Adopt::deserialize(yaml)?;
         // Build a tree from the map
@@ -195,7 +141,7 @@ impl DeserializeYaml for Adopt<IndexMap<RecipeId, RecipeNode>> {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         yaml.try_into_mapping()?
             .into_iter()
             .map(|(k, v)| {
@@ -214,7 +160,7 @@ impl DeserializeYaml for RecipeNode {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         // Recipe nodes are untagged enums. They're written very frequently,
         // have distinct required fields that we can key on, and there's minimal
         // risk that we'll need to add new variants. Forcing users to require a
@@ -225,7 +171,7 @@ impl DeserializeYaml for RecipeNode {
             return Err(LocatedError::unexpected(Expected::Mapping, yaml));
         };
 
-        let has = |key| mapping.contains_key(&MarkedYaml::value_from_str(key));
+        let has = |key| mapping.contains_key(&SourcedYaml::value_from_str(key));
 
         // Do a little heuristicking to guess what the variant is. This gives
         // slightly better error messages
@@ -236,7 +182,7 @@ impl DeserializeYaml for RecipeNode {
         } else {
             Err(LocatedError::other(
                 CerealError::UnknownRecipeNodeVariant,
-                yaml.span.start,
+                yaml.location,
             ))
         }
     }
@@ -247,7 +193,7 @@ impl DeserializeYaml for Recipe {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         let mut deserializer = StructDeserializer::new(yaml)?;
         let recipe = Recipe {
             id: RecipeId::default(), // Will be set by parent based on key
@@ -277,7 +223,7 @@ impl DeserializeYaml for Folder {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         let mut deserializer = StructDeserializer::new(yaml)?;
         let folder = Folder {
             id: RecipeId::default(), // Will be set by parent based on key
@@ -297,8 +243,8 @@ impl DeserializeYaml for HttpMethod {
         Expected::String
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
-        let marker = yaml.span.start;
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+        let marker = yaml.location;
         let s = String::deserialize(yaml)?;
         s.parse()
             .map_err(|error| LocatedError::other(error, marker))
@@ -311,8 +257,8 @@ impl DeserializeYaml for QueryParameterValue {
     }
 
     /// Deserialize from a single template or a list of templates
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
-        if yaml.is_sequence() {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+        if yaml.data.is_sequence() {
             // Deserialize vec
             DeserializeYaml::deserialize(yaml).map(Self::Many)
         } else {
@@ -327,17 +273,17 @@ impl DeserializeYaml for Authentication {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         deserialize_enum! {
             yaml,
-            "basic" => |yaml: MarkedYaml| {
+            "basic" => |yaml: SourcedYaml| {
                 let mut deserializer = StructDeserializer::new(yaml)?;
                 Ok(Authentication::Basic {
                     username: deserializer.get(Field::new("username"))?,
                     password: deserializer.get(Field::new("password").opt())?,
                 })
             },
-            "bearer" => |yaml: MarkedYaml| {
+            "bearer" => |yaml: SourcedYaml| {
                 let mut deserializer = StructDeserializer::new(yaml)?;
                 Ok(Authentication::Bearer {
                     token: deserializer.get(Field::new("token"))?,
@@ -352,10 +298,10 @@ impl DeserializeYaml for RecipeBody {
         Expected::OneOf(&[&Expected::String, &Expected::Mapping])
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         // Mapping deserializes as some sort of structured body. It should have
         // a `type` and `data` field
-        if yaml.is_mapping() {
+        if yaml.data.is_mapping() {
             deserialize_enum! {
                 yaml,
                 "json" => |yaml| {
@@ -396,7 +342,7 @@ impl DeserializeYaml for JsonTemplate {
         ])
     }
 
-    fn deserialize(yaml: MarkedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         match yaml.data {
             YamlData::Representation(_, _, _)
             | YamlData::BadValue
@@ -408,14 +354,14 @@ impl DeserializeYaml for JsonTemplate {
                 serde_json::Number::from_f64(f.0).ok_or_else(|| {
                     LocatedError::other(
                         CerealError::InvalidJsonFloat(f.0),
-                        yaml.span.start,
+                        yaml.location,
                     )
                 })?,
             )),
             // Parse string as a template
             YamlData::Value(Scalar::String(s)) => {
                 let template = s.parse::<Template>().map_err(|error| {
-                    LocatedError::other(error, yaml.span.start)
+                    LocatedError::other(error, yaml.location)
                 })?;
                 Ok(Self::String(template))
             }
@@ -561,7 +507,8 @@ mod tests {
         assert_err!(
             deserialize_yaml::<Adopt<IndexMap<ProfileId, Profile>>>(
                 yaml.into()
-            ),
+            )
+            .map_err(LocatedError::into_error),
             expected_error
         );
     }
@@ -637,7 +584,8 @@ mod tests {
         #[case] expected_error: &str,
     ) {
         assert_err!(
-            deserialize_yaml::<RecipeBody>(yaml.into()),
+            deserialize_yaml::<RecipeBody>(yaml.into())
+                .map_err(LocatedError::into_error),
             expected_error
         );
     }
@@ -645,10 +593,7 @@ mod tests {
     /// Test deserializing an empty file. It should return an empty collection
     #[test]
     fn test_deserialize_empty() {
-        assert_eq!(
-            deserialize_collection("", None).unwrap(),
-            Collection::default()
-        );
+        assert_eq!(Collection::parse("").unwrap(), Collection::default());
     }
 
     /// Helper for deserializing in RecipeTree's tests. We export this

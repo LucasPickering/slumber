@@ -537,13 +537,13 @@ mod tests {
     }
 
     /// Style text to match the text window gutter
-    fn gutter(text: &str) -> Span {
+    fn gutter(text: &str) -> Span<'_> {
         let styles = &TuiContext::get().styles;
         Span::styled(text, styles.text_window.gutter)
     }
 
     /// Style text to match the edited/overridden style
-    fn edited(text: &str) -> Span {
+    fn edited(text: &str) -> Span<'_> {
         let styles = &TuiContext::get().styles;
         Span::from(text).set_style(styles.text.edited)
     }

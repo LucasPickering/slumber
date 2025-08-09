@@ -140,7 +140,7 @@ pub fn view_text(text: &Text, mime: Option<Mime>) {
 }
 
 /// Format a datetime for the user
-pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
+pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems<'_>> {
     time.with_timezone(&Local).format("%b %-d %H:%M:%S")
 }
 

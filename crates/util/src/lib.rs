@@ -368,6 +368,10 @@ data:
         #[case] s: &'static str,
         #[case] expected_error: &str,
     ) {
-        assert_err!(s.parse::<TimeSpan>(), expected_error);
+        assert_err!(
+            // Map to anyhow error because assert_err! requires it
+            s.parse::<TimeSpan>().map_err(anyhow::Error::msg),
+            expected_error
+        );
     }
 }

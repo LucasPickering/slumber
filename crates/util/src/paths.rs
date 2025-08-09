@@ -1,4 +1,5 @@
 use anyhow::{Context, anyhow};
+use path_clean::PathClean;
 use std::{
     borrow::Cow,
     fs,
@@ -121,6 +122,18 @@ pub fn expand_home<'a>(path: impl Into<Cow<'a, Path>>) -> Cow<'a, Path> {
     }
 }
 
+/// Normalize a referenced file path, ensuring it is absolute and cannot have
+/// any equivalent aliases (barring the existence of symlinks). This will:
+/// - Make the path absolute by joining it with the given base path. If it's
+///   already absolute, this will have no effect
+/// - Expand a leading `~` to the home directory
+/// - "Clean" the path by resolving `.` and `..` segments
+///
+/// This will *not* touch the filesystem in any way and therefore is infallible.
+pub fn normalize_path(base_dir: &Path, file: &Path) -> PathBuf {
+    base_dir.join(expand_home(file)).clean()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,19 +143,40 @@ mod tests {
     #[rstest]
     #[case::empty("", "")]
     #[case::plain("test.txt", "test.txt")]
-    #[case::tilde_only("~", "$HOME")]
-    #[case::tilde_dir("~/test.txt", "$HOME/test.txt")]
-    #[case::tilde_double("~/~/test.txt", "$HOME/~/test.txt")]
+    #[case::tilde_only("~", "{HOME}")]
+    #[case::tilde_dir("~/test.txt", "{HOME}/test.txt")]
+    #[case::tilde_double("~/~/test.txt", "{HOME}/~/test.txt")]
     #[case::tilde_in_filename("~test.txt", "~test.txt")]
     #[case::tilde_middle("text/~/test.txt", "text/~/test.txt")]
     #[case::tilde_end("text/~", "text/~")]
-    fn test_expand_home(#[case] path: PathBuf, #[case] expected: String) {
+    fn test_expand_home(#[case] path: PathBuf, #[case] expected: &str) {
+        let expected = replace_home(expected);
+        assert_eq!(expand_home(&path).as_ref(), PathBuf::from(expected));
+    }
+
+    #[rstest]
+    #[case::relative("./file.yml", "/base/file.yml")]
+    #[case::absolute("./file.yml", "/base/file.yml")]
+    #[case::dots("../other/./file.yml", "/other/file.yml")]
+    #[case::home("./file.yml", "/base/file.yml")]
+    #[case::home("~/file.yml", "{HOME}/file.yml")]
+    fn test_normalize_path(#[case] file: &str, #[case] expected: &str) {
+        let expected = replace_home(expected);
+        assert_eq!(
+            normalize_path(Path::new("/base"), Path::new(file)),
+            Path::new(&expected)
+        );
+    }
+
+    /// Replace `{HOME}` with the home directory. Used to generate expected
+    /// strings with the correct home directory in a portable way
+    fn replace_home(path: &str) -> String {
         // We're assuming this dependency is correct. This provides portability,
         // so the tests pass on windows
         let home = dirs::home_dir().unwrap();
         let home = home.to_str().unwrap();
-        assert!(!home.is_empty(), "Home dir is empty"); // Sanity
-        let expected = expected.replace("$HOME", home);
-        assert_eq!(expand_home(&path).as_ref(), PathBuf::from(expected));
+        // Sanity check that it gave us a real dir
+        assert!(!home.is_empty(), "Home dir is empty");
+        path.replace("{HOME}", home)
     }
 }

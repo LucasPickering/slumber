@@ -19,6 +19,7 @@ derive_more = {workspace = true, features = ["display", "from"]}
 dirs = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
+path-clean = "1.0.1"
 pretty_assertions = {workspace = true}
 rstest = {workspace = true, optional = true}
 saphyr = {workspace = true}
@@ -31,6 +32,7 @@ uuid = {workspace = true, features = ["v4"], optional = true}
 winnow = {workspace = true}
 
 [dev-dependencies]
+env-lock = {workspace = true}
 rstest = {workspace = true}
 serde = {workspace = true, features = ["derive"]}
 uuid = {workspace = true, features = ["v4"]}

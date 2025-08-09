@@ -69,8 +69,10 @@ impl Drop for TempDir {
     }
 }
 
-/// Assert a result is the `Err` variant, and the stringified error contains
-/// the given message
+/// Assert a result is the `Err` variant and the stringified error contains
+/// the given message. The `Err` variant type must implement
+/// `Into<anyhow::Error>`. All errors are converted to anyhow to ensure the
+/// display string contains the entire error context.
 #[macro_export]
 macro_rules! assert_err {
     ($result:expr, $msg:expr) => {{

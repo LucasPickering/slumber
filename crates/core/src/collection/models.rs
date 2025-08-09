@@ -2,21 +2,19 @@
 
 use crate::{
     collection::{
-        cereal::deserialize_collection,
         json::JsonTemplate,
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::HttpMethod,
 };
-use anyhow::Context;
 use derive_more::{Deref, Display, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_template::{Template, TemplateParseError};
-use slumber_util::ResultTraced;
-use std::{fs, iter, path::Path};
+use slumber_util::{ResultTraced, yaml};
+use std::{iter, path::Path};
 use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -50,19 +48,12 @@ impl Collection {
     /// Load collection from a file
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         info!(?path, "Loading collection file");
-
-        fs::read_to_string(path)
-            .context(format!(
-                "Error loading collection from `{}`",
-                path.display()
-            ))
-            .and_then(|input| deserialize_collection(&input, Some(path)))
-            .traced()
+        yaml::deserialize_file(path).traced()
     }
 
     /// Load collection from a YAML string
     pub fn parse(input: &str) -> anyhow::Result<Self> {
-        deserialize_collection(input, None).traced()
+        yaml::deserialize_str(input).traced()
     }
 }
 

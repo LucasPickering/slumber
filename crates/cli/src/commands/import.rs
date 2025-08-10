@@ -14,7 +14,7 @@ use tracing::info;
 /// Generate a Slumber request collection from an external format
 ///
 /// See docs for more info on formats:
-/// https://slumber.lucaspickering.me/book/cli/import.html
+/// https://slumber.lucaspickering.me/cli/import.html
 #[derive(Clone, Debug, Parser)]
 pub struct ImportCommand {
     /// Input format

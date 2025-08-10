@@ -1,25 +1,13 @@
-# Workflow to build your docs with oranda (and mdbook)
-# and deploy them to Github Pages
 name: Web
 
 # We're going to push to the gh-pages branch, so we need that permission
 permissions:
   contents: write
 
-# What situations do we want to build docs in?
-# All of these work independently and can be removed / commented out
-# if you don't want oranda/mdbook running in that situation
 on:
-  # Check that a PR didn't break docs!
-  #
-  # Note that the "Deploy to Github Pages" step won't run in this mode,
-  # so this won't have any side-effects. But it will tell you if a PR
-  # completely broke oranda/mdbook. Sadly we don't provide previews (yet)!
   pull_request:
 
-  # Deploy website when release is published. This is a manual edit. Eventually
-  # hopefully we can configure oranda to do generate it like this
-  # https://github.com/axodotdev/oranda/issues/646
+  # Deploy website when release is published
   push:
     tags:
       - "**[0-9]+.[0-9]+.[0-9]+*"
@@ -27,13 +15,10 @@ on:
   # Run manually
   workflow_dispatch:
 
-# Alright, let's do it!
 jobs:
   web:
     name: Build and deploy site and docs
     runs-on: ubuntu-latest
-    env:
-      ORANDA_VERSION: v0.6.5
     steps:
       # Setup
       - uses: actions/checkout@v4
@@ -43,30 +28,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
 
-      # If you use any mdbook plugins, here's the place to install them!
-      - name: Install mdbook plugins
-        run: |
-          cargo install mdbook-pagetoc@0.2.0
+      - name: Install tools
+        uses: jdx/mise-action@v2
 
-      # Install and run oranda (and mdbook)
-      # This will write all output to ./public/ (including copying mdbook's output to there)
-      - name: Install and run oranda
-        run: |
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/oranda/releases/download/${{ env.ORANDA_VERSION }}/oranda-installer.sh | sh
-          oranda build
+      - name: Build site
+        run: mdbook build docs/
 
       - name: Check HTML for broken internal links
         uses: untitaker/hyperlink@0.1.42
         with:
-          args: ./public --sources docs/src/ --check-anchors
+          args: ./docs/book --sources docs/src/ --check-anchors
 
-      # Deploy to our gh-pages branch (creating it if it doesn't exist)
-      # the "public" dir that oranda made above will become the root dir
-      # of this branch.
-      #
-      # Note that once the gh-pages branch exists, you must
-      # go into repo's settings > pages and set "deploy from branch: gh-pages"
-      # the other defaults work fine.
       - name: Deploy to Github Pages
         uses: JamesIves/github-pages-deploy-action@v4.6.8
         # Deploy only on master or push event (tag releases). For tag pushes,
@@ -75,7 +47,7 @@ jobs:
         if: ${{ github.ref == 'refs/heads/master' || github.event_name == 'push' }}
         with:
           branch: gh-pages
-          # Gotta tell the action where to find oranda's output
-          folder: public
+          # Gotta tell the action where to find mdbook's output
+          folder: docs/book
           token: ${{ secrets.GITHUB_TOKEN }}
           single-commit: true

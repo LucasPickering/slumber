@@ -24,7 +24,7 @@ const COMMAND_NAME: &str = "slumber";
 ///
 /// If subcommand is omitted, start the TUI.
 ///
-/// <https://slumber.lucaspickering.me/book/>
+/// <https://slumber.lucaspickering.me/>
 #[derive(Debug, Parser)]
 #[clap(author, version, about, name = COMMAND_NAME)]
 pub struct Args {

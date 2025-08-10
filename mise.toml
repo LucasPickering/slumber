@@ -5,15 +5,15 @@ run = "RUST_LOG=slumber=${LOG:-DEBUG} cargo run --no-default-features --features
 [tasks.docs]
 description = "Build and serve docs"
 run = "mdbook serve docs/"
-tools = {mdbook = "0.4", "cargo:mdbook-pagetoc" = "latest"}
 
-[tasks.site]
-description = "Build and serve the entire website"
-run = "oranda dev"
-tools = {"cargo:oranda" = "0.6.5"}
+[tasks.favicon]
+run = "magick -background transparent $MISE_PROJECT_ROOT/static/slumber.png -define icon:auto-resize=64 $MISE_PROJECT_ROOT/docs/theme/favicon.png"
+sources = ["docs/theme/favicon.png"]
 
 [env]
 RUST_BACKTRACE = "1"
 
 [tools]
+"cargo:mdbook-pagetoc" = "0.2.0"
+mdbook = "0.4"
 vhs = "latest"

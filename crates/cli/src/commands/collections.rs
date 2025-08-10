@@ -47,12 +47,13 @@ impl Subcommand for CollectionsCommand {
                     .into_iter()
                     .map(|collection| {
                         [
+                            collection.id.to_string(),
                             collection.path.display().to_string(),
                             collection.name.unwrap_or_default(),
                         ]
                     })
                     .collect::<Vec<_>>();
-                print_table(["Path", "Name"], &rows);
+                print_table(["ID", "Path", "Name"], &rows);
             }
             CollectionsSubcommand::Migrate { from, to } => {
                 let from_id = from.to_id(&database)?;

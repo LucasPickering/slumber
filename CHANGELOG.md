@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - `slumber collections migrate` now accepts collection IDs in addition to paths
+- `slumber collections list` now includes an ID column in its output
 
 ### Fixed
 

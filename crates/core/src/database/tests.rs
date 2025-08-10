@@ -92,7 +92,7 @@ struct RequestDb {
 }
 
 #[rstest]
-fn test_merge(
+fn test_collection_merge(
     collection_file: CollectionFile,
     other_collection_file: CollectionFile,
 ) {
@@ -145,7 +145,7 @@ fn test_merge(
 
     // Do the merge
     database
-        .merge_collections(other_collection_file.path(), collection_file.path())
+        .merge_collections(collection2.collection_id, collection1.collection_id)
         .unwrap();
 
     // Collection 2 values should've overwritten

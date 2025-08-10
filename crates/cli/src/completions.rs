@@ -6,7 +6,10 @@
 //!
 //! That will enable completions for the current shell
 
-use clap_complete::{ArgValueCompleter, CompletionCandidate, PathCompleter};
+use clap_complete::{
+    ArgValueCompleter, CompletionCandidate, PathCompleter,
+    engine::ValueCompleter,
+};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::Database,
@@ -69,11 +72,33 @@ pub fn complete_request_id() -> ArgValueCompleter {
 
 /// Build a completer for `.yml` and `.yaml` files
 pub fn complete_collection_path() -> ArgValueCompleter {
-    ArgValueCompleter::new(PathCompleter::file().filter(|path| {
-        let extension = path.extension();
-        extension == Some(OsStr::new("yml"))
-            || extension == Some(OsStr::new("yaml"))
-    }))
+    ArgValueCompleter::new(collection_path_completer())
+}
+
+/// Build a completer for collection IDs *and* paths
+pub fn complete_collection_specifier() -> ArgValueCompleter {
+    let path_completer = collection_path_completer();
+    ArgValueCompleter::new(move |current: &OsStr| {
+        let mut completions = Vec::new();
+        // Suggest paths *first* because they're probably more useful
+        completions.extend(path_completer.complete(current));
+        // Suggest all matching collection IDs
+        completions.extend(
+            Database::load()
+                .and_then(|db| db.collections())
+                .map(|collections| {
+                    // Get all matching collection IDs
+                    get_candidates(
+                        collections
+                            .into_iter()
+                            .map(|collection| collection.id.to_string()),
+                        current,
+                    )
+                })
+                .unwrap_or_default(),
+        );
+        completions
+    })
 }
 
 fn load_collection() -> anyhow::Result<Collection> {
@@ -83,6 +108,17 @@ fn load_collection() -> anyhow::Result<Collection> {
     collection_file.load()
 }
 
+/// Get a completer for YAML files
+fn collection_path_completer() -> PathCompleter {
+    PathCompleter::file().filter(|path| {
+        let extension = path.extension();
+        extension == Some(OsStr::new("yml"))
+            || extension == Some(OsStr::new("yaml"))
+    })
+}
+
+/// Get all iterms in the iterator that match the given prefix, returning them
+/// as [CompletionCandidate]s
 fn get_candidates<T: Into<String>>(
     iter: impl Iterator<Item = T>,
     current: &OsStr,

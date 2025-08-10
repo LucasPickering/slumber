@@ -1,0 +1,12 @@
+# Collection for CLI integration tests
+
+profiles:
+  profile1:
+    data:
+      host: http://server
+      username: username1
+
+requests:
+  get: !request
+    method: GET
+    url: "{{host}}/users/{{username}}"

@@ -75,7 +75,8 @@ enum HistorySubcommand {
     /// Delete requests from history
     ///
     /// This operation is irreversible! Combine with `slumber history list
-    /// --id-only` to delete requests in bulk
+    /// --id-only` to delete requests in bulk. To delete all requests for a
+    /// collection, you can also use `slumber collections delete`
     Delete {
         /// Request ID(s) to delete
         #[clap(num_args = 1..)]

@@ -12,7 +12,6 @@ use crate::{
     http::{Exchange, ExchangeSummary, RequestId},
 };
 use anyhow::{Context, anyhow};
-use derive_more::Display;
 use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
 use serde::{Serialize, de::DeserializeOwned};
 use slumber_util::{ResultTraced, paths};
@@ -110,44 +109,43 @@ impl Database {
             .context("Error extracting collection data")
     }
 
+    /// Get a collection's ID by its path. This will canonicalize the path to
+    /// ensure it matches what we've stored in the DB. Return an error if the
+    /// path isn't in the DB.
+    pub fn get_collection_id(
+        &self,
+        path: &Path,
+    ) -> anyhow::Result<CollectionId> {
+        // Convert to canonicalize and make serializable
+        let path: CollectionPath = path.try_into()?;
+
+        self.connection()
+            .query_row(
+                "SELECT id FROM collections WHERE path = :path",
+                named_params! {":path": &path},
+                |row| row.get::<_, CollectionId>("id"),
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    // Use Display impl here because this will get shown in
+                    // CLI output
+                    anyhow!("Unknown collection `{path}`")
+                }
+                other => anyhow::Error::from(other)
+                    .context("Error fetching collection ID"),
+            })
+            .traced()
+    }
+
     /// Migrate all data for one collection into another, deleting the source
     /// collection
     pub fn merge_collections(
         &self,
-        source: &Path,
-        target: &Path,
+        source: CollectionId,
+        target: CollectionId,
     ) -> anyhow::Result<()> {
-        fn get_collection_id(
-            connection: &Connection,
-            path: &Path,
-        ) -> anyhow::Result<CollectionId> {
-            // Convert to canonicalize and make serializable
-            let path: CollectionPath = path.try_into()?;
-
-            connection
-                .query_row(
-                    "SELECT id FROM collections WHERE path = :path",
-                    named_params! {":path": &path},
-                    |row| row.get::<_, CollectionId>("id"),
-                )
-                .map_err(|err| match err {
-                    rusqlite::Error::QueryReturnedNoRows => {
-                        // Use Display impl here because this will get shown in
-                        // CLI output
-                        anyhow!("Unknown collection `{path}`")
-                    }
-                    other => anyhow::Error::from(other)
-                        .context("Error fetching collection ID"),
-                })
-                .traced()
-        }
-
         info!(?source, ?target, "Merging database state");
         let connection = self.connection();
-
-        // Exchange each path for an ID
-        let source = get_collection_id(&connection, source)?;
-        let target = get_collection_id(&connection, target)?;
 
         // Update each table in individually
         connection
@@ -630,7 +628,7 @@ impl CollectionDatabase {
 
 /// A unique ID for a collection. This is generated when the collection is
 /// inserted into the DB.
-#[derive(Copy, Clone, Debug, Display)]
+#[derive(Copy, Clone, Debug, derive_more::Display, derive_more::FromStr)]
 #[cfg_attr(any(test, feature = "test"), derive(Eq, Hash, PartialEq))]
 pub struct CollectionId(Uuid);
 

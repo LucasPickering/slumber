@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-Once you've [installed Slumber](/artifacts), setup is easy.
+Once you've [installed Slumber](/install.md), setup is easy.
 
 ### 1. Create a Slumber collection file
 

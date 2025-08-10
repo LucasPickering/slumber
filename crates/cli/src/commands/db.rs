@@ -12,7 +12,7 @@ use tokio::process::Command;
 /// requires `sqlite3` to be installed. You can customize which binary to invoke
 /// with `--shell`. Read more about the Slumber database:
 ///
-/// https://slumber.lucaspickering.me/book/user_guide/database.html
+/// https://slumber.lucaspickering.me/user_guide/database.html
 ///
 /// This is simply an alias to make it easy to run your preferred SQLite shell
 /// against the Slumber database. These two commands are equivalent:

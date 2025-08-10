@@ -1,4 +1,4 @@
-Output "static/demo.gif"
+Output "docs/src/images/demo.gif"
 Set Shell bash
 Set Width 1200
 Set Height 800

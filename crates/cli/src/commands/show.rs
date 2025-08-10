@@ -28,7 +28,7 @@ enum ShowTarget {
         /// Open the configuration file in the default editor
         ///
         /// See docs for how you can configure which editor to use:
-        /// https://slumber.lucaspickering.me/book/user_guide/tui/editor.html#editing
+        /// https://slumber.lucaspickering.me/user_guide/tui/editor.html#editing
         #[clap(long)]
         edit: bool,
     },
@@ -40,7 +40,7 @@ enum ShowTarget {
         /// Open the configuration file in the default editor
         ///
         /// See docs for how you can configure which editor to use:
-        /// https://slumber.lucaspickering.me/book/user_guide/tui/editor.html#editing
+        /// https://slumber.lucaspickering.me/user_guide/tui/editor.html#editing
         #[clap(long)]
         edit: bool,
     },

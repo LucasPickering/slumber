@@ -68,17 +68,9 @@ If an area that you're making a change in an area that is not already tested, it
 
 ### Documentation
 
-Slumber's documentation is written using [mdBook](https://rust-lang.github.io/mdBook/), and generating by [Oranda](https://opensource.axo.dev/oranda/). Documentation source is located in [docs/src](https://github.com/LucasPickering/slumber/tree/master/docs/src).
+Slumber's documentation is written using [mdBook](https://rust-lang.github.io/mdBook/). Documentation source is located in [docs/src](https://github.com/LucasPickering/slumber/tree/master/docs/src).
 
 To build documentation locally, use:
-
-```sh
-mise run site
-```
-
-#### Writing Docs
-
-Docs live in `docs/src`. You'll need to install [mdbook](https://rust-lang.github.io/mdBook/guide/installation.html), as well as any plugins (preprocessors) listed in `docs/book.toml`. To build and view the docs:
 
 ```sh
 mise run docs

@@ -1,6 +1,6 @@
 # Note: This file is meant primarily for development and testing of Slumber. It
 # is not intended as documentation. While it may be a helpful example, canonical
-# documentation is at: https://slumber.lucaspickering.me/book/
+# documentation is at: https://slumber.lucaspickering.me/
 
 profiles:
   works:

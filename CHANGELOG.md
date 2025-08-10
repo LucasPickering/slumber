@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Shell completion for the global `--file`/`-f` flag only suggests `.yml`/`.yaml` files
+
 <!-- This anchor makes it easy for the site to include the content of the changelog -->
 <!-- ANCHOR: changelog -->
 

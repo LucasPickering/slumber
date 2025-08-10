@@ -5,7 +5,6 @@ use crate::{
 use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use clap::{Parser, ValueHint};
-use clap_complete::ArgValueCompleter;
 use dialoguer::{Input, Password, Select as DialoguerSelect};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -75,7 +74,7 @@ pub struct RequestCommand {
 #[derive(Clone, Debug, Parser)]
 pub struct BuildRequestCommand {
     /// ID of the recipe to render into a request
-    #[clap(add = ArgValueCompleter::new(complete_recipe))]
+    #[clap(add = complete_recipe())]
     recipe_id: RecipeId,
 
     /// ID of the profile to pull template values from. If omitted and the
@@ -84,7 +83,7 @@ pub struct BuildRequestCommand {
     #[clap(
         long = "profile",
         short,
-        add = ArgValueCompleter::new(complete_profile),
+        add = complete_profile(),
     )]
     profile: Option<ProfileId>,
 

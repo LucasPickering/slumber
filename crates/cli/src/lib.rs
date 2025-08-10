@@ -8,10 +8,14 @@ mod commands;
 mod completions;
 mod util;
 
-use crate::commands::{
-    collections::CollectionsCommand, db::DbCommand, generate::GenerateCommand,
-    history::HistoryCommand, import::ImportCommand, new::NewCommand,
-    request::RequestCommand, show::ShowCommand,
+use crate::{
+    commands::{
+        collections::CollectionsCommand, db::DbCommand,
+        generate::GenerateCommand, history::HistoryCommand,
+        import::ImportCommand, new::NewCommand, request::RequestCommand,
+        show::ShowCommand,
+    },
+    completions::complete_collection_path,
 };
 use clap::{CommandFactory, Parser};
 use clap_complete::CompleteEnv;
@@ -55,7 +59,7 @@ pub struct GlobalArgs {
     /// (in this order): slumber.yml, slumber.yaml, .slumber.yml,
     /// .slumber.yaml. If a directory is passed, apply the same search
     /// logic from the given directory rather than the current.
-    #[clap(long, short)]
+    #[clap(long, short, add = complete_collection_path())]
     pub file: Option<PathBuf>,
 }
 

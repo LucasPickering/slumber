@@ -10,7 +10,6 @@ use chrono::{
     format::{DelayedFormat, StrftimeItems},
 };
 use clap::Parser;
-use clap_complete::ArgValueCompleter;
 use itertools::Itertools;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
@@ -36,17 +35,13 @@ enum HistorySubcommand {
     #[command(visible_alias = "ls")]
     List {
         /// Recipe to show requests for. Omit to show requests for all recipes
-        #[clap(add = ArgValueCompleter::new(complete_recipe))]
+        #[clap(add = complete_recipe())]
         recipe: Option<RecipeId>,
 
         /// Only show requests for a single profile. To show requests that were
         /// run under _no_ profile, pass `--profile` with no value. This must
         /// be used in conjunction with a recipe ID.
-        #[clap(
-            long = "profile",
-            short,
-            add = ArgValueCompleter::new(complete_profile),
-        )]
+        #[clap(long = "profile", short, add = complete_profile())]
         // None -> All profiles
         // Some(None) -> No profile
         // Some(Some("profile1")) -> profile1
@@ -69,7 +64,7 @@ enum HistorySubcommand {
         #[clap(
             // Autocomplete recipe IDs, because users won't ever be typing request
             // IDs by hand
-            add = ArgValueCompleter::new(complete_recipe),
+            add = complete_recipe(),
         )]
         request: RecipeOrRequest,
 
@@ -218,7 +213,7 @@ enum DeleteSelection {
     /// from the collection file.
     Recipe {
         /// Recipe to delete requests for
-        #[clap(add = ArgValueCompleter::new(complete_recipe))]
+        #[clap(add = complete_recipe())]
         recipe: RecipeId,
         /// Optional filter to delete requests for only a single profile. To
         /// delete requests that _no_ associated profile, pass `--profile`
@@ -226,7 +221,7 @@ enum DeleteSelection {
         #[clap(
             long = "profile",
             short,
-            add = ArgValueCompleter::new(complete_profile),
+            add = complete_profile(),
         )]
         // None -> All profiles
         // Some(None) -> No profile
@@ -238,7 +233,7 @@ enum DeleteSelection {
     },
     /// Delete a single request by ID
     Request {
-        #[clap(add = ArgValueCompleter::new(complete_request_id))]
+        #[clap(add = complete_request_id())]
         request: RequestId,
     },
 }

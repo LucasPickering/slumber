@@ -41,22 +41,18 @@ Generally the nightly version doesn't matter, but if you want to make sure you'r
 You'll need the following tools to build and run Slumber locally:
 
 - [rustup](https://rustup.rs/)
-- [watchexec-cli](https://crates.io/crates/watchexec-cli)
-  - Not required, but useful for automatically re-running after changes
-- [oranda](https://opensource.axo.dev/oranda/artifacts/)
-  - Only required if making documentation changes
+- [mise](https://mise.jdx.dev/installing-mise.html)
 
-That's it!
+Slumber uses [mise tasks](https://mise.jdx.dev/tasks/) to define common development tasks. `mise` will handle installation of necessary tools for each task. If you don't want to use `mise`, you can just run Slumber with `cargo run`.
 
 ### Setup
 
 - [Fork the repo](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo)
 - Clone your fork
 - `cd slumber`
-- Run `./x.py tui`
-  - This will install the appropriate Rust/Cargo toolchain if you don't have it already
-  - If you don't have `watchexec-cli` installed, you can just run `cargo run` instead
-  - For CLI development, run `./x.py cli <args...>` instead
+- Run `mise tui`
+  - This will install the appropriate tools if you don't have them already
+  - For CLI development, run `mise cli <args...>` instead
 
 ### Tests
 
@@ -76,8 +72,8 @@ Slumber's documentation is written using [mdBook](https://rust-lang.github.io/md
 
 To build documentation locally, use:
 
-```
-oranda dev
+```sh
+mise run site
 ```
 
 #### Writing Docs
@@ -85,7 +81,7 @@ oranda dev
 Docs live in `docs/src`. You'll need to install [mdbook](https://rust-lang.github.io/mdBook/guide/installation.html), as well as any plugins (preprocessors) listed in `docs/book.toml`. To build and view the docs:
 
 ```sh
-mdbook serve docs --open
+mise run docs
 ```
 
 - Any new file added to the book must be listed in `SUMMARY.md`

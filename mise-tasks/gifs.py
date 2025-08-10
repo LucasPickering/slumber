@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# fmt: off
+#MISE description="Generate GIFs from VHS tapes"
+#MISE tools=["vhs"]
+# fmt: on
 
 """
 Generate GIFs from VHS tapes
@@ -17,7 +21,7 @@ GIF_MD_FILE = "gifs.md"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate GIFs for docs")
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--check", action="store_true", help="Check if all GIFs are up to date"
     )

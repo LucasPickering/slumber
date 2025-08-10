@@ -1,0 +1,19 @@
+[tasks.cli]
+description = "Run a CLI command"
+run = "RUST_LOG=slumber=${LOG:-DEBUG} cargo run --no-default-features --features cli -- $@"
+
+[tasks.docs]
+description = "Build and serve docs"
+run = "mdbook serve docs/"
+tools = {mdbook = "0.4", "cargo:mdbook-pagetoc" = "latest"}
+
+[tasks.site]
+description = "Build and serve the entire website"
+run = "oranda dev"
+tools = {"cargo:oranda" = "0.6.5"}
+
+[env]
+RUST_BACKTRACE = "1"
+
+[tools]
+vhs = "latest"

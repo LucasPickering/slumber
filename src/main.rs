@@ -51,13 +51,15 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     }
 }
 
-/// TUI is enabled, CLI is disabled (for local TUI dev). We can't customize the
-/// collection path here without the -f flag but that's fine
+/// TUI is enabled, CLI is disabled (for local TUI dev). There is no command
+/// parsing here, so the collection file override is just passed as the first
+/// (and only argument), instead of using the -f flag.
 #[cfg(all(not(feature = "cli"), feature = "tui"))]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     initialize_tracing(false);
-    slumber_tui::Tui::start(None).await
+    let collection_file = std::env::args().nth(1).map(String::into);
+    slumber_tui::Tui::start(collection_file).await
 }
 
 /// Both disabled - problem!!

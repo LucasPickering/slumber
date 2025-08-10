@@ -20,7 +20,7 @@ pub fn slumber() -> (Command, TempDir) {
     (command, data_dir)
 }
 
-fn tests_dir() -> PathBuf {
+pub fn tests_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
 }
 

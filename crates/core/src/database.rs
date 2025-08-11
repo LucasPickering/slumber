@@ -107,6 +107,7 @@ impl Database {
             .context("Error fetching collections")?
             .collect::<rusqlite::Result<Vec<_>>>()
             .context("Error extracting collection data")
+            .traced()
     }
 
     /// Get a collection's ID by its path. This will canonicalize the path to
@@ -137,6 +138,61 @@ impl Database {
             .traced()
     }
 
+    /// Get metadata about a collection from its ID
+    pub fn get_collection_metadata(
+        &self,
+        id: CollectionId,
+    ) -> anyhow::Result<CollectionMetadata> {
+        self.connection()
+            .query_row(
+                "SELECT * FROM collections WHERE id = :id",
+                named_params! {":id": id},
+                |row| CollectionMetadata::try_from(row),
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    anyhow!("Unknown collection `{id}`")
+                }
+                other => anyhow::Error::from(other)
+                    .context("Error fetching collection ID"),
+            })
+            .traced()
+    }
+
+    /// Delete a collection from the DB, including all requests and other rows
+    /// associated with it
+    pub fn delete_collection(
+        &self,
+        collection: CollectionId,
+    ) -> anyhow::Result<()> {
+        // Delete all rows referencing the collection before deleting the
+        // collection. It would be nice to use `ON DELETE CASCADE`, but you can
+        // only set that when the table is created. Sqlite doesn't allowing
+        // creating or modifying foreign keys on a table once it's created.
+        // Manually deleting everything is simpler than writing a huge migration
+        // just to make this automatic
+
+        let statements = [
+            "DELETE FROM requests_v2 WHERE collection_id = :id",
+            "DELETE FROM ui_state_v2 WHERE collection_id = :id",
+            "DELETE FROM collections WHERE id = :id",
+        ];
+
+        // Shitty try block!
+        (|| {
+            let mut connection = self.connection();
+            let tx = connection.transaction()?;
+            for statement in statements {
+                tx.prepare(statement)?
+                    .execute(named_params! {":id": collection})?;
+            }
+            tx.commit()?;
+            Ok::<(), anyhow::Error>(())
+        })()
+        .context(format!("Error deleting collection `{collection}`"))
+        .traced()
+    }
+
     /// Migrate all data for one collection into another, deleting the source
     /// collection
     pub fn merge_collections(
@@ -145,36 +201,36 @@ impl Database {
         target: CollectionId,
     ) -> anyhow::Result<()> {
         info!(?source, ?target, "Merging database state");
-        let connection = self.connection();
+        let mut connection = self.connection();
+        let tx = connection.transaction()?;
 
         // Update each table in individually
-        connection
-            .execute(
-                "UPDATE requests_v2 SET collection_id = :target
+        tx.execute(
+            "UPDATE requests_v2 SET collection_id = :target
                 WHERE collection_id = :source",
-                named_params! {":source": source, ":target": target},
-            )
-            .context("Error migrating table `requests_v2`")
-            .traced()?;
-        connection
-            .execute(
-                // Overwrite UI state. Maybe this isn't the best UX, but sqlite
-                // doesn't provide an "UPDATE OR DELETE" so this is easiest and
-                // still reasonable
-                "UPDATE OR REPLACE ui_state_v2 SET collection_id = :target
+            named_params! {":source": source, ":target": target},
+        )
+        .context("Error migrating table `requests_v2`")
+        .traced()?;
+        tx.execute(
+            // Overwrite UI state. Maybe this isn't the best UX, but sqlite
+            // doesn't provide an "UPDATE OR DELETE" so this is easiest and
+            // still reasonable
+            "UPDATE OR REPLACE ui_state_v2 SET collection_id = :target
                 WHERE collection_id = :source",
-                named_params! {":source": source, ":target": target},
-            )
-            .context("Error migrating table `ui_state_v2`")
-            .traced()?;
+            named_params! {":source": source, ":target": target},
+        )
+        .context("Error migrating table `ui_state_v2`")
+        .traced()?;
 
-        connection
-            .execute(
-                "DELETE FROM collections WHERE id = :source",
-                named_params! {":source": source},
-            )
-            .context("Error deleting source collection")
-            .traced()?;
+        tx.execute(
+            "DELETE FROM collections WHERE id = :source",
+            named_params! {":source": source},
+        )
+        .context("Error deleting source collection")
+        .traced()?;
+        tx.commit()?;
+
         Ok(())
     }
 

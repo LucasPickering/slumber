@@ -92,6 +92,39 @@ struct RequestDb {
 }
 
 #[rstest]
+fn test_collection_delete(collection_file: CollectionFile) {
+    let database = Database::factory(());
+    let collection =
+        database.clone().into_collection(&collection_file).unwrap();
+
+    let exchange = Exchange::factory(RecipeId::from("recipe1"));
+    let key_type = "MyKey";
+    let ui_key = "key1";
+    collection.insert_exchange(&exchange).unwrap();
+    collection.set_ui(key_type, ui_key, "value1").unwrap();
+
+    // Sanity checks
+    assert_eq!(collection.get_all_requests().unwrap().len(), 1);
+    assert_eq!(
+        collection.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        Some("value1".into())
+    );
+
+    // Do the delete
+    database
+        .delete_collection(collection.collection_id)
+        .unwrap();
+
+    // All gone!
+    assert_eq!(database.collections().unwrap(), []);
+    assert_eq!(database.get_all_requests().unwrap(), []);
+    assert_eq!(
+        collection.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        None
+    );
+}
+
+#[rstest]
 fn test_collection_merge(
     collection_file: CollectionFile,
     other_collection_file: CollectionFile,

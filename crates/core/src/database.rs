@@ -620,7 +620,7 @@ impl CollectionDatabase {
         Ok(())
     }
 
-    #[cfg(test)]
+    /// Get the unique ID of this collection
     pub fn collection_id(&self) -> CollectionId {
         self.collection_id
     }

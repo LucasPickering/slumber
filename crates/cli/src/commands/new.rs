@@ -76,10 +76,9 @@ mod tests {
         #[case] global_file_arg: Option<&str>,
         #[case] expected_created_path: PathBuf,
     ) {
-        // Lock an empty env as a proxy for the cwd. We can't just construct
-        // full paths because the default value will always be relative to cwd
-        let _env_guard = env_lock::lock_env([] as [(&str, Option<&str>); 0]);
-        let _dir_guard = env_lock::lock_current_dir(&*temp_dir).unwrap();
+        // Lock the cwd. We can't just construct full paths because the default
+        // value will always be relative to cwd
+        let _guard = env_lock::lock_current_dir(&*temp_dir).unwrap();
 
         let command = NewCommand {
             file: file_arg.map(PathBuf::from),

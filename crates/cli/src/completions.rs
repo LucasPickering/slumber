@@ -148,7 +148,7 @@ mod tests {
     use slumber_util::{
         Factory, TempDir, paths::DATA_DIRECTORY_ENV_VARIABLE, temp_dir,
     };
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     /// Complete profile IDs from the collection
     #[rstest]
@@ -173,7 +173,7 @@ mod tests {
         let id2 = RequestId::new();
         let collection_db = database
             .database
-            .into_collection(&CollectionFile::new(None).unwrap())
+            .into_collection(&collection_file())
             .unwrap();
         for id in [id1, id2] {
             collection_db
@@ -201,7 +201,7 @@ mod tests {
         // Add a collection to the DB
         let collection_db = database
             .database
-            .into_collection(&CollectionFile::new(None).unwrap())
+            .into_collection(&collection_file())
             .unwrap();
 
         let completions = complete(complete_collection_specifier());
@@ -263,14 +263,23 @@ mod tests {
         }
     }
 
+    /// Get path to `crates/cli/tests/`
+    fn tests_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
+    }
+
+    fn collection_file() -> CollectionFile {
+        // Make sure to not make a call that checks env::current_dir(), because
+        // that can be modified by other tests
+        CollectionFile::with_dir(tests_dir(), None).unwrap()
+    }
+
     /// Set the current directory to the directory containing test collection
     /// files. Return a guard that will reset the directory on drop. The cwd is
     /// global mutable state so this uses a mutex to prevent concurrent runs
     /// using the cwd.
     #[fixture]
     fn current_dir() -> CurrentDirGuard {
-        let tests_dir =
-            Path::new(dbg!(env!("CARGO_MANIFEST_DIR"))).join("tests");
-        env_lock::lock_current_dir(tests_dir).unwrap()
+        env_lock::lock_current_dir(tests_dir()).unwrap()
     }
 }

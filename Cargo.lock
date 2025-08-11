@@ -842,9 +842,9 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "env-lock"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d9c39afe2774241fa28f311b7b32e8c25053f79db6b74ea58e5ee954472cbf"
+checksum = "2afbd3cff67810192b5bdb76b77feff72775314d41195c1d779bc92e0e83285d"
 
 [[package]]
 name = "equivalent"

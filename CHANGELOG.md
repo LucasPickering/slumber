@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `slumber collections delete` subcommand to remove collections from history
+- Add `slumber history rm` as an alias for `slumber history delete`
+
 ### Changed
 
 - `slumber collections migrate` now accepts collection IDs in addition to paths

@@ -12,6 +12,7 @@ use slumber_core::{
 };
 use slumber_util::Factory;
 use std::path::Path;
+use uuid::Uuid;
 
 /// `slumber collections list`
 #[rstest]
@@ -87,6 +88,45 @@ fn test_collections_migrate_ids() {
     assert_eq!(collections.len(), 1);
     assert_eq!(collections[0].id, id1);
     assert_eq!(database.get_all_requests().unwrap().len(), 3);
+}
+
+/// `slumber collections delete`
+#[test]
+fn test_collections_delete() {
+    let (mut command, data_dir) = common::slumber();
+    let database = init_db(&data_dir);
+
+    // Verify we start with 2 collections and 3 requests
+    let collections = database.collections().unwrap();
+    assert_eq!(collections.len(), 2);
+    let id = collections[0].id;
+    assert_eq!(database.get_all_requests().unwrap().len(), 3);
+
+    // Delete!!
+    command
+        .args(["collections", "delete", &id.to_string()])
+        .assert()
+        .success()
+        .stdout(format!("Deleted collection {id}\n"));
+
+    // 1 collection now. The requests of the deleted collection are gone
+    let collections = database.collections().unwrap();
+    assert_eq!(collections.len(), 1);
+    assert_ne!(collections[0].id, id); // Deleted collection is NOT present
+    assert_eq!(database.get_all_requests().unwrap().len(), 1);
+}
+
+/// Passing an unknown ID to `slumber collections delete` gives an error
+#[test]
+fn test_collections_delete_bad_id() {
+    let (mut command, _) = common::slumber();
+
+    let id = Uuid::new_v4().to_string();
+    command
+        .args(["collections", "delete", &id])
+        .assert()
+        .failure()
+        .stderr(format!("Unknown collection `{id}`\n"));
 }
 
 /// Initialize database with multiple collections and some exchanges

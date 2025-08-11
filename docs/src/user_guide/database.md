@@ -29,7 +29,8 @@ Unlike the TUI, requests made from the CLI are _not_ persisted by default. This 
 There are a few ways to delete requests from history:
 
 - In the TUI. Open the actions menu while a request/response is selected to delete that request. From the recipe list/recipe pane, you can delete all requests for that recipe.
-- The `slumber history delete` can delete one or more commands at a time. Combine with `slumber history list` for bulk deletes: `slumber history list login --id-only | xargs slumber history delete`
+- `slumber history delete` can delete one or more commands at a time. Combine with `slumber history list` for bulk deletes: `slumber history list login --id-only | xargs slumber history delete`
+- `slumber collections delete` can delete all history for a single collection. If you have an old collection that you no longer use, you can delete it from the list using this command. **Note:** If you moved a collection file and want to remove the old file's history, you can also [migrate the history to the new file location](#migrating-collections).
 - Manually modifying the database. You can access the DB with `slumber db`. While this is not an officially supported technique (as the DB schema may change without warning), it's simple enough to navigate if you want to performance bulk deletes with custom criteria.
 
 ### Migrating Collections

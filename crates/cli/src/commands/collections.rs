@@ -23,16 +23,24 @@ enum CollectionsSubcommand {
     /// List all known request collections
     #[command(visible_alias = "ls")]
     List,
+    /// Delete all history for a collection
+    ///
+    /// This will delete all record of the collection from the history database.
+    /// It will NOT delete the collection file from disk.
+    #[command(visible_alias = "rm")]
+    Delete {
+        /// Path or ID of the collection to delete
+        collection: CollectionSpecifier,
+    },
     /// Move all data from one collection to another.
     ///
     /// The data from the source collection will be merged into the target
     /// collection, then all traces of the source collection will be deleted!
     Migrate {
-        /// Path or ID the collection to migrate *from*
+        /// Path or ID of the collection to migrate *from*
         #[clap(add = complete_collection_specifier())]
         from: CollectionSpecifier,
-        /// Path or ID the collection to migrate *into*
-        #[clap(add = complete_collection_specifier())]
+        /// Path or ID of the collection to migrate *into*
         to: CollectionSpecifier,
     },
 }
@@ -55,6 +63,11 @@ impl Subcommand for CollectionsCommand {
                     .collect::<Vec<_>>();
                 print_table(["ID", "Path", "Name"], &rows);
             }
+            CollectionsSubcommand::Delete { collection } => {
+                let id = collection.to_id(&database)?;
+                database.delete_collection(id)?;
+                println!("Deleted collection {id}");
+            }
             CollectionsSubcommand::Migrate { from, to } => {
                 let from_id = from.to_id(&database)?;
                 let to_id = to.to_id(&database)?;
@@ -76,8 +89,21 @@ enum CollectionSpecifier {
 impl CollectionSpecifier {
     fn to_id(&self, database: &Database) -> anyhow::Result<CollectionId> {
         match self {
-            Self::Id(id) => Ok(*id),
+            Self::Id(id) => {
+                // Ensure the ID is actually in the DB
+                database.get_collection_metadata(*id)?;
+                Ok(*id)
+            }
             Self::Path(path) => database.get_collection_id(path),
+        }
+    }
+}
+
+impl Display for CollectionSpecifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Id(id) => write!(f, "{id}"),
+            Self::Path(path) => write!(f, "{}", path.display()),
         }
     }
 }
@@ -89,14 +115,5 @@ impl FromStr for CollectionSpecifier {
         Ok(s.parse::<CollectionId>()
             .map(Self::Id)
             .unwrap_or_else(|_| Self::Path(PathBuf::from(s))))
-    }
-}
-
-impl Display for CollectionSpecifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Id(id) => write!(f, "{id}"),
-            Self::Path(path) => write!(f, "{}", path.display()),
-        }
     }
 }

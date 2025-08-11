@@ -16,58 +16,58 @@ use slumber_core::{
 };
 use std::{ffi::OsStr, ops::Deref};
 
-/// Build a completer for profile IDs
+/// Build a completer for profile IDs from the default collection
 pub fn complete_profile() -> ArgValueCompleter {
-    fn inner(current: &OsStr) -> Vec<CompletionCandidate> {
-        let Ok(collection) = load_collection() else {
-            return Vec::new();
-        };
-
-        get_candidates(
-            collection.profiles.keys().map(ProfileId::to_string),
-            current,
-        )
-    }
-    ArgValueCompleter::new(inner)
+    ArgValueCompleter::new(|current: &OsStr| {
+        load_collection()
+            .map(|collection| {
+                get_candidates(
+                    collection.profiles.keys().map(ProfileId::to_string),
+                    current,
+                )
+            })
+            .unwrap_or_default()
+    })
 }
 
-/// Build a completer for recipe IDs
+/// Build a completer for recipe IDs from the default collection
 pub fn complete_recipe() -> ArgValueCompleter {
-    fn inner(current: &OsStr) -> Vec<CompletionCandidate> {
-        let Ok(collection) = load_collection() else {
-            return Vec::new();
-        };
-
-        get_candidates(
-            collection
-                .recipes
-                .iter()
-                // Include recipe IDs only. Folder IDs are never passed to the
-                // CLI
-                .filter_map(|(_, node)| Some(node.recipe()?.id.to_string())),
-            current,
-        )
-    }
-    ArgValueCompleter::new(inner)
+    ArgValueCompleter::new(|current: &OsStr| {
+        load_collection()
+            .map(|collection| {
+                get_candidates(
+                    collection
+                        .recipes
+                        .iter()
+                        // Include recipe IDs only. Folder IDs are never passed
+                        // to the CLI
+                        .filter_map(|(_, node)| {
+                            Some(node.recipe()?.id.to_string())
+                        }),
+                    current,
+                )
+            })
+            .unwrap_or_default()
+    })
 }
 
-/// Build a completer for request IDs
+/// Build a completer for request IDs from the DB
+///
+/// DB can be provided for tests
 pub fn complete_request_id() -> ArgValueCompleter {
-    fn inner(current: &OsStr) -> Vec<CompletionCandidate> {
-        let Ok(database) = Database::load() else {
-            return Vec::new();
-        };
-        let Ok(exchanges) = database.get_all_requests() else {
-            return Vec::new();
-        };
-        get_candidates(
-            exchanges
-                .into_iter()
-                .map(|exchange| exchange.id.to_string()),
-            current,
-        )
-    }
-    ArgValueCompleter::new(inner)
+    ArgValueCompleter::new(move |current: &OsStr| {
+        Database::load()
+            .and_then(|db| db.get_all_requests())
+            .map(|exchanges| {
+                get_candidates(
+                    exchanges
+                        .into_iter()
+                        .map(|exchange| exchange.id.to_string()),
+                    current,
+                )
+            })
+            .unwrap_or_default()
+    })
 }
 
 /// Build a completer for `.yml` and `.yaml` files
@@ -75,7 +75,9 @@ pub fn complete_collection_path() -> ArgValueCompleter {
     ArgValueCompleter::new(collection_path_completer())
 }
 
-/// Build a completer for collection IDs *and* paths
+/// Build a completer for collection IDs from the DB *and* YAML paths
+///
+/// DB can be provided for tests
 pub fn complete_collection_specifier() -> ArgValueCompleter {
     let path_completer = collection_path_completer();
     ArgValueCompleter::new(move |current: &OsStr| {
@@ -101,9 +103,13 @@ pub fn complete_collection_specifier() -> ArgValueCompleter {
     })
 }
 
+/// Load the default collection
+///
+/// For now we just lean on the default collection paths. In the future we
+/// should be able to look for a --file arg in the command and use that path,
+/// but clap doesn't support that yet
+/// https://github.com/clap-rs/clap/issues/5784
 fn load_collection() -> anyhow::Result<Collection> {
-    // For now we just lean on the default collection paths. In the future we
-    // should be able to look for a --file arg in the command and use that path
     let collection_file = CollectionFile::new(None)?;
     collection_file.load()
 }
@@ -131,4 +137,140 @@ fn get_candidates<T: Into<String>>(
         .filter(|value| value.starts_with(current))
         .map(|value| CompletionCandidate::new(value.deref()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use env_lock::{CurrentDirGuard, EnvGuard};
+    use rstest::{fixture, rstest};
+    use slumber_core::http::{Exchange, RequestId};
+    use slumber_util::{
+        Factory, TempDir, paths::DATA_DIRECTORY_ENV_VARIABLE, temp_dir,
+    };
+    use std::path::Path;
+
+    /// Complete profile IDs from the collection
+    #[rstest]
+    fn test_complete_profile(_current_dir: CurrentDirGuard) {
+        let completions = complete(complete_profile());
+        assert_eq!(&completions, &["profile1", "profile2"]);
+    }
+
+    /// Complete recipe IDs from the collection
+    #[rstest]
+    fn test_complete_recipe(_current_dir: CurrentDirGuard) {
+        let completions = complete(complete_recipe());
+        assert_eq!(&completions, &["getUser", "jsonBody", "chained"]);
+    }
+
+    /// Complete request IDs from the database
+    // #[from(database)] (database, _guard): (Database, EnvGuard),
+    #[rstest]
+    fn test_complete_request_id(database: TestDatabase) {
+        // Put two requests in the DB
+        let id1 = RequestId::new();
+        let id2 = RequestId::new();
+        let collection_db = database
+            .database
+            .into_collection(&CollectionFile::new(None).unwrap())
+            .unwrap();
+        for id in [id1, id2] {
+            collection_db
+                .insert_exchange(&Exchange::factory(id))
+                .unwrap();
+        }
+
+        let completions = complete(complete_request_id());
+        assert_eq!(&completions, &[id2.to_string(), id1.to_string()]);
+    }
+
+    /// Complete YAML file paths
+    #[rstest]
+    fn test_complete_collection_path(_current_dir: CurrentDirGuard) {
+        let completions = complete(complete_collection_path());
+        assert_eq!(&completions, &["other.yml", "slumber.yml"]);
+    }
+
+    /// Complete collection IDs from the DB and YAML file paths
+    #[rstest]
+    fn test_complete_collection_specifier(
+        _current_dir: CurrentDirGuard,
+        database: TestDatabase,
+    ) {
+        // Add a collection to the DB
+        let collection_db = database
+            .database
+            .into_collection(&CollectionFile::new(None).unwrap())
+            .unwrap();
+
+        let completions = complete(complete_collection_specifier());
+        assert_eq!(
+            &completions,
+            &[
+                "other.yml",
+                "slumber.yml",
+                &collection_db.collection_id().to_string()
+            ]
+        );
+    }
+
+    /// Test prefix filtering on candidates
+    #[test]
+    fn test_get_candidates() {
+        let candidates: Vec<String> = get_candidates(
+            ["abc123", "abc", "bca"].into_iter(),
+            OsStr::new("abc"),
+        )
+        .into_iter()
+        .map(|candidate| candidate.get_value().to_str().unwrap().to_owned())
+        .collect();
+        assert_eq!(candidates, &["abc123", "abc"]);
+    }
+
+    fn complete(completer: ArgValueCompleter) -> Vec<String> {
+        completer
+            .complete(OsStr::new(""))
+            .into_iter()
+            .map(|completion| {
+                completion.get_value().to_str().unwrap().to_owned()
+            })
+            .collect()
+    }
+
+    struct TestDatabase {
+        database: Database,
+        // Hang onto these so the env isn't reset/dir isn't deleted until the
+        // end of the test
+        _temp_dir: TempDir,
+        _env_guard: EnvGuard<'static>,
+    }
+
+    /// Create a DB in the temp dir. We don't want an in-memory DB because we
+    /// want to test real world behavior. Returns the env guard as well because
+    /// the env variable needs to remain set until the end of the test
+    #[fixture]
+    fn database(temp_dir: TempDir) -> TestDatabase {
+        let env_guard = env_lock::lock_env([(
+            DATA_DIRECTORY_ENV_VARIABLE,
+            Some(temp_dir.to_str().unwrap()),
+        )]);
+        let database = Database::load().unwrap();
+        TestDatabase {
+            database,
+            _temp_dir: temp_dir,
+            _env_guard: env_guard,
+        }
+    }
+
+    /// Set the current directory to the directory containing test collection
+    /// files. Return a guard that will reset the directory on drop. The cwd is
+    /// global mutable state so this uses a mutex to prevent concurrent runs
+    /// using the cwd.
+    #[fixture]
+    fn current_dir() -> CurrentDirGuard {
+        let tests_dir =
+            Path::new(dbg!(env!("CARGO_MANIFEST_DIR"))).join("tests");
+        env_lock::lock_current_dir(tests_dir).unwrap()
+    }
 }

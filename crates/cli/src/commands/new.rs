@@ -62,7 +62,7 @@ mod tests {
         test_util::by_id,
     };
     use slumber_util::{Factory, TempDir, temp_dir};
-    use std::{env, fs};
+    use std::fs;
 
     /// Test creating a new collection file, specifying the path in various ways
     #[rstest]
@@ -78,8 +78,8 @@ mod tests {
     ) {
         // Lock an empty env as a proxy for the cwd. We can't just construct
         // full paths because the default value will always be relative to cwd
-        let _guard = env_lock::lock_env([] as [(&str, Option<&str>); 0]);
-        env::set_current_dir(&*temp_dir).unwrap();
+        let _env_guard = env_lock::lock_env([] as [(&str, Option<&str>); 0]);
+        let _dir_guard = env_lock::lock_current_dir(&*temp_dir).unwrap();
 
         let command = NewCommand {
             file: file_arg.map(PathBuf::from),

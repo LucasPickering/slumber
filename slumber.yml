@@ -166,7 +166,7 @@ requests:
     method: GET
     url: "{{host}}/delay/5"
 
-  dynamic_repsonse_type: !request
+  dynamic_response_type: !request
     name: Dynamic Response Type
     method: GET
     url: "{{host}}/{{chains.response_type}}"

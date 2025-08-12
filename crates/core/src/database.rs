@@ -100,7 +100,7 @@ impl Database {
     }
 
     /// Get a list of all collections
-    pub fn collections(&self) -> anyhow::Result<Vec<CollectionMetadata>> {
+    pub fn get_collections(&self) -> anyhow::Result<Vec<CollectionMetadata>> {
         self.connection()
             .prepare("SELECT * FROM collections")?
             .query_map([], |row| row.try_into())
@@ -118,7 +118,7 @@ impl Database {
         path: &Path,
     ) -> anyhow::Result<CollectionId> {
         // Convert to canonicalize and make serializable
-        let path: CollectionPath = path.try_into()?;
+        let path = CollectionPath::try_from_path_maybe_missing(path)?;
 
         self.connection()
             .query_row(
@@ -273,7 +273,7 @@ impl Database {
         file: &CollectionFile,
     ) -> anyhow::Result<CollectionDatabase> {
         // Convert to canonicalize and make serializable
-        let path: CollectionPath = file.path().try_into()?;
+        let path = CollectionPath::try_from_path(file.path())?;
 
         // We have to set/get in two separate queries, because RETURNING doesn't
         // return anything if the insert didn't modify

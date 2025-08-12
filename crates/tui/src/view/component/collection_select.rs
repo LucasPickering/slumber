@@ -33,7 +33,7 @@ impl CollectionSelect {
         // Build the collection list from the DB's collections table. Preselect
         // the current collection
         let collections =
-            ViewContext::with_database(|db| db.root().collections())
+            ViewContext::with_database(|db| db.root().get_collections())
                 .reported(&ViewContext::messages_tx())
                 .unwrap_or_default();
         let current_collection =

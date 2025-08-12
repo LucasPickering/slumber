@@ -35,7 +35,7 @@ There are a few ways to delete requests from history:
 
 ### Migrating Collections
 
-As all Slumber collections' histories are stored in the same SQLite database, each collection gets a unique UUID generated when it is first accessed. This UUID is used to persist request history and other data related to the collection. This UUID is bound to the collection's path. If you move a collection file, a new UUID will be generated and it will be unlinked from its previous history. If you want to retain that history, you can migrate data from the old ID to the new one like so:
+As all Slumber collections' histories are stored in the same SQLite database, each collection gets a unique [UUID](https://en.wikipedia.org/wiki/Universally_unique_identifier) generated when it is first accessed. This UUID is used to persist request history and other data related to the collection. This UUID is bound to the collection's path. If you move a collection file, a new UUID will be generated and it will be unlinked from its previous history. If you want to retain that history, you can migrate data from the old ID to the new one like so:
 
 ```sh
 slumber collections migrate slumber-old.yml slumber-new.yml

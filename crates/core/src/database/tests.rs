@@ -116,7 +116,7 @@ fn test_collection_delete(collection_file: CollectionFile) {
         .unwrap();
 
     // All gone!
-    assert_eq!(database.collections().unwrap(), []);
+    assert_eq!(database.get_collections().unwrap(), []);
     assert_eq!(database.get_all_requests().unwrap(), []);
     assert_eq!(
         collection.get_ui::<_, String>(key_type, ui_key).unwrap(),
@@ -198,7 +198,7 @@ fn test_collection_merge(
     // Make sure collection2 was deleted
     assert_eq!(
         database
-            .collections()
+            .get_collections()
             .unwrap()
             .into_iter()
             .map(|collection| collection.path)

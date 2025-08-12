@@ -11,7 +11,7 @@ use slumber_core::{
     http::Exchange,
 };
 use slumber_util::Factory;
-use std::path::Path;
+use std::{fs, path::Path};
 use uuid::Uuid;
 
 /// `slumber collections list`
@@ -40,7 +40,7 @@ fn test_collections_migrate_paths() {
     let database = init_db(&data_dir);
 
     // Verify we start with 2 collections
-    let collections = database.collections().unwrap();
+    let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 2);
     // Grab the first collection so we can ensure it's the only one left later.
     // Do a sanity check to make sure this is the one we're migrating TO
@@ -58,7 +58,7 @@ fn test_collections_migrate_paths() {
         .stdout("Migrated other.yml into slumber.yml\n");
 
     // 1 collection now, all the requests are under that collection
-    let collections = database.collections().unwrap();
+    let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 1);
     assert_eq!(collections[0].id, first_collection.id);
     assert_eq!(database.get_all_requests().unwrap().len(), 3);
@@ -71,7 +71,7 @@ fn test_collections_migrate_ids() {
     let database = init_db(&data_dir);
 
     // Verify we start with 2 collections
-    let collections = database.collections().unwrap();
+    let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 2);
     let id1 = collections[0].id;
     let id2 = collections[1].id;
@@ -84,7 +84,7 @@ fn test_collections_migrate_ids() {
         .stdout(format!("Migrated {id2} into {id1}\n"));
 
     // 1 collection now, all the requests are under that collection
-    let collections = database.collections().unwrap();
+    let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 1);
     assert_eq!(collections[0].id, id1);
     assert_eq!(database.get_all_requests().unwrap().len(), 3);
@@ -97,7 +97,7 @@ fn test_collections_delete() {
     let database = init_db(&data_dir);
 
     // Verify we start with 2 collections and 3 requests
-    let collections = database.collections().unwrap();
+    let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 2);
     let id = collections[0].id;
     assert_eq!(database.get_all_requests().unwrap().len(), 3);
@@ -110,10 +110,51 @@ fn test_collections_delete() {
         .stdout(format!("Deleted collection {id}\n"));
 
     // 1 collection now. The requests of the deleted collection are gone
-    let collections = database.collections().unwrap();
+    let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 1);
     assert_ne!(collections[0].id, id); // Deleted collection is NOT present
     assert_eq!(database.get_all_requests().unwrap().len(), 1);
+}
+
+/// Test collection deletion when the file is already gone. Should still work
+#[test]
+fn test_collections_delete_file_missing() {
+    let (mut command, data_dir) = common::slumber();
+    let database = Database::from_directory(&data_dir).unwrap();
+
+    // Make a new collection file and add it to the DB. Pre-canonicalize it
+    // because we won't be able to canonicalize after deletion. This is relevant
+    // because some systems use symlinks in the tmp file system
+    let collection_path = data_dir.join("slumber.yml");
+    fs::write(&collection_path, "").unwrap();
+    let collection_path = collection_path.canonicalize().unwrap();
+    let collection_file =
+        CollectionFile::new(Some(collection_path.clone())).unwrap();
+    let id = database
+        .clone()
+        .into_collection(&collection_file)
+        .unwrap()
+        .collection_id();
+
+    // Sanity check
+    assert_eq!(
+        database
+            .get_collections()
+            .unwrap()
+            .into_iter()
+            .map(|collection| collection.id)
+            .collect::<Vec<_>>(),
+        [id]
+    );
+
+    // Delete the file before deleting from the DB
+    fs::remove_file(&collection_path).unwrap();
+    command
+        .args(["collections", "delete", collection_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    assert_eq!(database.get_collections().unwrap(), []);
 }
 
 /// Passing an unknown ID to `slumber collections delete` gives an error

@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Shell completion for the global `--file`/`-f` flag only suggests `.yml`/`.yaml` files
+- `slumber collections migrate` now accepts paths for files that don't exist on disk (as long as they existed as collections at some point)
 
 <!-- This anchor makes it easy for the site to include the content of the changelog -->
 <!-- ANCHOR: changelog -->

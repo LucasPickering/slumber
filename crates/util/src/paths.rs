@@ -1,4 +1,5 @@
 use anyhow::{Context, anyhow};
+use path_clean::PathClean;
 use std::{
     borrow::Cow,
     fs,
@@ -119,6 +120,18 @@ pub fn expand_home<'a>(path: impl Into<Cow<'a, Path>>) -> Cow<'a, Path> {
         }
         Err(_) => path,
     }
+}
+
+/// Normalize a referenced file path, ensuring it is absolute and cannot have
+/// any equivalent aliases (barring the existence of symlinks). This will:
+/// - Make the path absolute by joining it with the given base path. If it's
+///   already absolute, this will have no effect
+/// - Expand a leading `~` to the home directory
+/// - "Clean" the path by resolving `.` and `..` segments
+///
+/// This will *not* touch the filesystem in any way and therefore is infallible.
+pub fn normalize_path(base_dir: &Path, file: &Path) -> PathBuf {
+    base_dir.join(expand_home(file)).clean()
 }
 
 #[cfg(test)]

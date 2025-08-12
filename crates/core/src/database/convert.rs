@@ -21,8 +21,9 @@ use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
 };
 use serde::{Serialize, de::DeserializeOwned};
-use slumber_util::ResultTraced;
+use slumber_util::{ResultTraced, paths};
 use std::{
+    env,
     fmt::Debug,
     ops::Deref,
     path::{Path, PathBuf},
@@ -124,10 +125,41 @@ impl FromSql for HttpMethod {
 pub struct CollectionPath(PathBuf);
 
 impl CollectionPath {
-    /// Create a `CollectionPath` from a path known to already be canonicalized.
-    /// Useful when decoding from an existing DB row.
-    pub fn from_canonical(path: PathBuf) -> Self {
-        Self(path)
+    /// Get the canonical path for a collection file.
+    ///
+    /// This is fallible because it requires the path to exist. The path is
+    /// canonicalized to deduplicate potential differences due to symlinks, cwd,
+    /// etc. This ensures that any two references to the same file will always
+    /// match the same
+    pub fn try_from_path(path: &Path) -> anyhow::Result<Self> {
+        path.canonicalize()
+            .context(format!("Error canonicalizing path `{}`", path.display()))
+            .traced()
+            .map(Self)
+    }
+
+    /// Get the canonical path for a collection file, falling back to its
+    /// normalized path if the file doesn't exist. The different between
+    /// canonical and normalized is that canonical will resolve symlinks. This
+    /// should only be used for collection lookups, and not inserts into the
+    /// `collections` table. It provides a best guess at a match for collection
+    /// files that may no longer be present.
+    ///
+    /// ## Errors
+    ///
+    /// Fails if the path is relative and the current working directory does not
+    /// exist.
+    pub fn try_from_path_maybe_missing(path: &Path) -> anyhow::Result<Self> {
+        // Try to canonicalize first
+        Self::try_from_path(path).or_else(|_| {
+            let base = if path.is_relative() {
+                env::current_dir().context("Error getting current directory")?
+            } else {
+                // Path is absolute - no need to append it to a base path
+                PathBuf::new()
+            };
+            Ok(Self(paths::normalize_path(&base, path)))
+        })
     }
 }
 
@@ -141,19 +173,6 @@ impl From<CollectionPath> for PathBuf {
 impl From<PathBuf> for CollectionPath {
     fn from(path: PathBuf) -> Self {
         Self(path)
-    }
-}
-
-/// Canonicalize paths during creation to deduplicate potential differences due
-/// to symlinks, cwd, etc.
-impl TryFrom<&Path> for CollectionPath {
-    type Error = anyhow::Error;
-
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        path.canonicalize()
-            .context(format!("Error canonicalizing path `{}`", path.display()))
-            .traced()
-            .map(Self)
     }
 }
 

@@ -16,6 +16,7 @@ tag = false
 [dependencies]
 anyhow = {workspace = true}
 dirs = {workspace = true}
+path-clean = "1.0.1"
 rstest = {workspace = true, optional = true}
 serde = {workspace = true}
 serde_path_to_error = "0.1.16"

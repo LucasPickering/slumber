@@ -87,7 +87,7 @@ pub fn complete_collection_specifier() -> ArgValueCompleter {
         // Suggest all matching collection IDs
         completions.extend(
             Database::load()
-                .and_then(|db| db.collections())
+                .and_then(|db| db.get_collections())
                 .map(|collections| {
                     // Get all matching collection IDs
                     get_candidates(

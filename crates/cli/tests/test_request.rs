@@ -172,14 +172,14 @@ async fn test_set_collection_name() {
 
     // Sanity check: no collections in the DB
     let database = Database::from_directory(&data_dir).unwrap();
-    assert_eq!(database.collections().unwrap().as_slice(), &[]);
+    assert_eq!(database.get_collections().unwrap().as_slice(), &[]);
 
     command.args(["request", "jsonBody", "--dry-run"]);
     command.assert().success();
 
     // Collection name was updated in the DB
     assert_eq!(
-        database.collections().unwrap()[0].name.as_deref(),
+        database.get_collections().unwrap()[0].name.as_deref(),
         Some("CLI Tests")
     );
 }

@@ -51,7 +51,7 @@ impl Subcommand for CollectionsCommand {
         match self.subcommand {
             CollectionsSubcommand::List => {
                 let rows = database
-                    .collections()?
+                    .get_collections()?
                     .into_iter()
                     .map(|collection| {
                         [

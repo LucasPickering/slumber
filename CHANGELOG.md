@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add `slumber collections delete` subcommand to remove collections from history
 - Add `slumber history rm` as an alias for `slumber history delete`
+- Add filter box to collection select dialog. Less scrolling, more typing!
 
 ### Changed
 

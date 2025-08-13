@@ -58,7 +58,8 @@ impl<T> SelectItem<T> {
 pub struct SelectStateBuilder<Item, State> {
     items: Vec<SelectItem<Item>>,
     /// Store preselected value as an index, so we don't need to care about the
-    /// type of the value. Defaults to 0.
+    /// type of the value. Defaults to 0. If a filter is give, this will be
+    /// the index *after* the filter is applied.
     preselect_index: usize,
     subscribed_events: Vec<SelectStateEventType>,
     _state: PhantomData<State>,
@@ -117,6 +118,24 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         } else {
             self
         }
+    }
+
+    /// Apply a case-insensitive text filter to the list. Any item whose label
+    /// does not contain the text will be excluded from the list. During the
+    /// build, this should be called *before* and `preselect` functions to
+    /// ensure you don't select a value that will then be filtered out.
+    pub fn filter(mut self, filter: &str) -> Self
+    where
+        Item: ToString,
+    {
+        let filter = filter.trim();
+        if !filter.is_empty() {
+            let filter = filter.to_lowercase();
+            self.items.retain(|item| {
+                item.value.to_string().to_lowercase().contains(&filter)
+            });
+        }
+        self
     }
 
     pub fn build(self) -> SelectState<Item, State>
@@ -305,7 +324,6 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
 
 impl<Item, State> Default for SelectState<Item, State>
 where
-    Item: PartialEq,
     State: SelectStateData,
 {
     fn default() -> Self {
@@ -494,6 +512,31 @@ mod tests {
     use slumber_core::collection::ProfileId;
     use slumber_util::assert_matches;
     use terminput::KeyCode;
+
+    /// Apply a filter during build
+    #[rstest]
+    #[case::no_match("mango", None, &[], None)]
+    #[case::no_preselect("pl", None, &["apple", "APPLE"], Some(0))]
+    #[case::preselect_visible("pl", Some("APPLE"), &["apple", "APPLE"], Some(1))]
+    #[case::preselect_hidden("pl", Some("banana"), &["apple", "APPLE"], Some(0))]
+    fn test_filter(
+        #[case] filter: &str,
+        #[case] preselect: Option<&str>,
+        #[case] expected_visible: &[&str],
+        #[case] expected_selected: Option<usize>,
+    ) {
+        let items = ["apple", "APPLE", "banana"];
+        let select: SelectState<&str, ListState> =
+            SelectState::builder(items.into_iter().collect())
+                .filter(filter)
+                .preselect_opt(preselect.as_ref())
+                .build();
+        assert_eq!(
+            select.items().copied().collect::<Vec<_>>(),
+            expected_visible
+        );
+        assert_eq!(select.selected_index(), expected_selected);
+    }
 
     /// Test going up and down in the list
     #[rstest]

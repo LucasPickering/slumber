@@ -684,8 +684,10 @@ impl CollectionDatabase {
 
 /// A unique ID for a collection. This is generated when the collection is
 /// inserted into the DB.
-#[derive(Copy, Clone, Debug, derive_more::Display, derive_more::FromStr)]
-#[cfg_attr(any(test, feature = "test"), derive(Eq, Hash, PartialEq))]
+#[derive(
+    Copy, Clone, Debug, derive_more::Display, derive_more::FromStr, PartialEq,
+)]
+#[cfg_attr(any(test, feature = "test"), derive(Eq, Hash))]
 pub struct CollectionId(Uuid);
 
 impl CollectionId {

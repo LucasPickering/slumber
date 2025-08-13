@@ -106,8 +106,6 @@ pub struct TextStyle {
     pub edited: Style,
     /// Text that means BAD BUSINESS
     pub error: Style,
-    /// Informational notes
-    pub note: Style,
     /// Text at the top of something
     pub title: Style,
 }
@@ -191,7 +189,6 @@ impl Styles {
                 primary: Style::default().fg(theme.primary_color),
                 edited: Style::default().add_modifier(Modifier::ITALIC),
                 error: Style::default().bg(theme.error_color),
-                note: Style::default().add_modifier(Modifier::ITALIC),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
             text_box: TextBoxStyle {

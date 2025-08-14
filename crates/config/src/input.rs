@@ -5,7 +5,10 @@ use derive_more::{Deref, Display};
 use indexmap::{IndexMap, indexmap};
 use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize};
-use slumber_util::Mapping;
+use slumber_util::{
+    Mapping,
+    yaml::{self, DeserializeYaml, Expected, SourcedYaml},
+};
 use std::{
     borrow::Cow,
     fmt::{self, Debug},
@@ -473,6 +476,18 @@ impl<'de> Deserialize<'de> for InputMap {
     where
         D: Deserializer<'de>,
     {
+        let user_bindings: IndexMap<Action, InputBinding> =
+            IndexMap::deserialize(deserializer)?;
+        Ok(Self::new(user_bindings))
+    }
+}
+
+impl DeserializeYaml for InputMap {
+    fn expected() -> Expected {
+        Expected::Mapping
+    }
+
+    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
         let user_bindings: IndexMap<Action, InputBinding> =
             IndexMap::deserialize(deserializer)?;
         Ok(Self::new(user_bindings))

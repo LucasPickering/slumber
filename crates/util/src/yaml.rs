@@ -27,7 +27,7 @@ use std::{
 };
 use thiserror::Error;
 
-type Result<T> = std::result::Result<T, LocatedError<Error>>;
+pub type Result<T> = std::result::Result<T, LocatedError<Error>>;
 
 /// Load YAML from a file and deserialize it into type `T`.
 ///
@@ -183,6 +183,16 @@ impl DeserializeYaml for bool {
     }
 }
 
+impl DeserializeYaml for usize {
+    fn expected() -> Expected {
+        Expected::Integer
+    }
+
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+        yaml.try_into_usize()
+    }
+}
+
 impl DeserializeYaml for String {
     fn expected() -> Expected {
         Expected::String
@@ -332,6 +342,16 @@ impl<'input> SourcedYaml<'input> {
         }
     }
 
+    /// Unpack the YAML as an usize
+    pub fn try_into_usize(self) -> Result<usize> {
+        if let YamlData::Value(Scalar::Integer(i)) = self.data {
+            i.try_into()
+                .map_err(|error| LocatedError::other(error, self.location))
+        } else {
+            Err(LocatedError::unexpected(Expected::Integer, self))
+        }
+    }
+
     /// Unpack the YAML as a string
     pub fn try_into_string(self) -> Result<String> {
         if let YamlData::Value(Scalar::String(s)) = self.data {
@@ -381,6 +401,16 @@ impl<'input> SourcedYaml<'input> {
         Self {
             data: YamlData::Value(Scalar::parse_from_cow(value.into())),
             location: SourceLocation::default(),
+        }
+    }
+
+    /// If this YAML value is a mapping, drop all entries whose keys start with
+    /// the `.` character
+    pub fn drop_dot_fields(&mut self) {
+        if let YamlData::Mapping(mapping) = &mut self.data {
+            mapping.retain(|key, _| {
+                !key.data.as_str().is_some_and(|s| s.starts_with('.'))
+            });
         }
     }
 }
@@ -673,9 +703,12 @@ pub enum Expected {
     /// Expected a boolean
     #[display("boolean")]
     Boolean,
-    /// Expected a number
-    #[display("number")]
-    Number,
+    /// Expected an integer
+    #[display("integer")]
+    Integer,
+    /// Expected an float
+    #[display("float")]
+    Float,
     /// Expected a sequence
     #[display("sequence")]
     Sequence,
@@ -800,6 +833,7 @@ mod test_util {
 
     /// Deserialize a [serde_yaml::Value] using saphyr. Serde values are easier
     /// to construct than saphyr values
+    /// TODO can we ditch this and just use YAML strings in the tests?
     pub fn deserialize_yaml<T: DeserializeYaml>(
         yaml: serde_yaml::Value,
     ) -> Result<T> {

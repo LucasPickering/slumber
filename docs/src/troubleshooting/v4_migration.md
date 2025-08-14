@@ -47,14 +47,122 @@ requests:
       response: "{{ response('login') | jsonpath('$.token') }}"
 ```
 
-The v3 chain sources map to functions like so:
+The v3 chain sources (and their parameters) have each been replaced by a corresponding function.
 
-- `!command` -> [`command`](../api/template_functions.md#command)
-- `!env` -> [`env`](../api/template_functions.md#env)
-- `!file` -> [`file`](../api/template_functions.md#file)
-- `!prompt` -> [`prompt`](../api/template_functions.md#prompt)
-- `!request` -> [`response`](../api/template_functions.md#response) or [`response_header`](../api/template_functions.md#response_header), depending on the `section` field
-- `!select` -> [`select`](../api/template_functions.md#select)
+> In the new template language, required arguments are passed as positional arguments (`file("my/path")`) while optional arguments are passed as keywords (`prompt(default="Default")`).
+
+**`!command`**
+
+is now the [`command`](../api/template_functions.md#command) function.
+
+```yaml
+source: !command
+  command: ["echo", "test"]
+  stdin: "{{host}}"
+```
+
+is now
+
+```
+command(["echo", "test"], stdin=host)
+```
+
+**`!env`**
+
+is now the [`env`](../api/template_functions.md#env) function.
+
+```yaml
+source: !env
+  variable: MY_VAR
+```
+
+is now
+
+```
+env("MY_VAR")
+```
+
+**`!file`**
+
+is now the [`file`](../api/template_functions.md#file) function.
+
+```yaml
+source: !file
+  path: my/file
+```
+
+is now
+
+```
+file("my/file")
+```
+
+**`!prompt`**
+
+is now the [`prompt`](../api/template_functions.md#prompt) function.
+
+```yaml
+source: !prompt
+  message: "Enter data"
+  default: "Default"
+sensitive: true
+```
+
+is now
+
+```
+prompt(message="Enter data", default="Default", sensitive=true)
+```
+
+**!request**
+
+is now the [`response`](../api/template_functions.md#response) and [`response_header`](../api/template_functions.md#response_header) functions.
+
+```yaml
+source: !request
+  recipe: "login"
+  trigger: !expire 12h
+  section: !body
+```
+
+is now
+
+```
+response("login", trigger="12h")
+```
+
+and
+
+```yaml
+source: !request
+  recipe: "login"
+  trigger: !expire 12h
+  section: !header Content-Type
+```
+
+is now
+
+```
+response_header("login", "Content-Type", trigger="12h")
+```
+
+**!select**
+
+is now the [`select`](../api/template_functions.md#select) function.
+
+```yaml
+source: !select
+  options:
+    - option1
+    - option2
+  message: "Message"
+```
+
+is now
+
+```
+select(options=["option1", "option2"], message="Message")
+```
 
 In addition, the following chain fields have been replaced by utility functions:
 
@@ -62,6 +170,23 @@ In addition, the following chain fields have been replaced by utility functions:
 - `sensitive` -> [`sensitive`](../api/template_functions.md#sensitive)
 - `trim` -> [`trim`](../api/template_functions.md#trim)
 - `content_type` is no longer needed, as only JSON was ever supported
+
+These functions can be used via the pipe operator:
+
+```yaml
+source: !file
+  path: "file.json"
+trim: both
+selector: "$.items"
+selector_mode: array
+sensitive: true
+```
+
+is now
+
+```
+file("file.json") | trim(mode="both") | jsonpath("$.items", mode="array") | sensitive()
+```
 
 ### Replace Anchors with `$ref`
 
@@ -164,4 +289,8 @@ query:
 query:
   param1: [value1, value2]
   param2: value7
+```
+
+```
+
 ```

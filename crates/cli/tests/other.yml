@@ -7,6 +7,6 @@ profiles:
       username: username1
 
 requests:
-  get: !request
+  get:
     method: GET
     url: "{{host}}/users/{{username}}"

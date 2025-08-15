@@ -30,7 +30,6 @@
     - [Query Parameters](./api/request_collection/query_parameters.md)
     - [Authentication](./api/request_collection/authentication.md)
     - [Recipe Body](./api/request_collection/recipe_body.md)
-  - [Content Type](./api/request_collection/content_type.md)
 - [Configuration](./api/configuration/index.md)
   - [Input Bindings](./api/configuration/input_bindings.md)
   - [MIME Maps](./api/configuration/mime.md)

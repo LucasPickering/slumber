@@ -6,6 +6,7 @@ use crate::{
 };
 use bytes::Bytes;
 use derive_more::FromStr;
+use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
@@ -88,6 +89,24 @@ pub async fn command(
     );
 
     Ok(output.stdout.into())
+}
+
+/// Concatenate any number of strings together
+///
+/// **Parameters**
+///
+/// - `elements`: Strings to concatenate together. Any non-string values will be
+///   stringified
+///
+/// **Examples**
+///
+/// ```sh
+/// {{ concat(['My name is ', name, ' and I am ', age]) }} => "My name is Ted and I am 37"
+/// {{ file("data.json") | jsonpath("$.users[*].name") | concat() }} => Concatenate all names in the JSON together
+/// ```
+#[template(TemplateContext)]
+pub fn concat(elements: Vec<String>) -> String {
+    elements.into_iter().join("")
 }
 
 /// Print a value to stdout, returning the same value. This isn't very useful

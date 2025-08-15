@@ -108,9 +108,9 @@ You can automatically migrate your collection to the new v4 format with:
 slumber import v3 <old file> <new file>
 ```
 
-The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/lucaspickering/slumber/issues/new).
+The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/LucasPickering/slumber/issues/new).
 
-[**See the migration guide for more details**](https://slumber.lucaspickering.me/book/troubleshooting/v4_migration.html)
+[**See the migration guide for more details**](https://slumber.lucaspickering.me/book/other/v4_migration.html)
 
 - Replace template chains with a more intuitive function syntax
   - Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: `{{ response('login') | jsonpath('$.token') }}`

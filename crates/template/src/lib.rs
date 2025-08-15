@@ -19,9 +19,11 @@ use bytes::{Bytes, BytesMut};
 use derive_more::From;
 use futures::future;
 use indexmap::IndexMap;
+use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
+use slumber_util::NEW_ISSUE_LINK;
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
@@ -59,7 +61,8 @@ pub trait Context: Sized + Send + Sync {
 /// Invariants:
 /// - Two templates with the same source string will have the same set of
 ///   chunks, and vice versa
-/// - No two raw segments will ever be consecutive
+/// - No two raw chunks will ever be consecutive
+/// - Raw chunks cannot not be empty
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Template {
@@ -77,6 +80,36 @@ pub struct Template {
 }
 
 impl Template {
+    /// Compile a template from its composite chunks
+    ///
+    /// ## Panics
+    ///
+    /// Panic if the chunk list is invalid:
+    ///
+    /// - If there are consecutive raw chunks
+    /// - If any raw chunk is empty
+    ///
+    /// These panics are necessary to maintain the invariants documented on the
+    /// struct definition.
+    pub fn from_chunks(chunks: Vec<TemplateChunk>) -> Self {
+        // Since the chunks are constructed externally, we need to enforce our
+        // invariants. This will short-circuit any bugs in chunk construction
+        assert!(
+            // Look for empty raw chunks
+            !chunks.iter().any(
+                |chunk| matches!(chunk, TemplateChunk::Raw(s) if s.is_empty())
+            )
+            // Look for consecutive raw chunks
+            && !chunks.iter().tuple_windows().any(|pair| matches!(
+                pair,
+                (TemplateChunk::Raw(_), TemplateChunk::Raw(_))
+            )),
+            "Invalid chunks in generated template {chunks:?} This is a bug! \
+            Please report it. {NEW_ISSUE_LINK}"
+        );
+        Self { chunks }
+    }
+
     /// Create a new template from a raw string, without parsing it at all.
     /// Useful when importing from external formats where the string isn't
     /// expected to be a valid Slumber template

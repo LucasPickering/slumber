@@ -37,6 +37,8 @@ enum Format {
     // https://github.com/clap-rs/clap/pull/5480
     #[value(alias = "vscode", alias = "jetbrains")]
     Rest,
+    /// Slumber v3 format (chains & YAML !tags)
+    V3,
 }
 
 impl Subcommand for ImportCommand {
@@ -52,6 +54,7 @@ impl Subcommand for ImportCommand {
                 slumber_import::from_openapi(&self.input).await?
             }
             Format::Rest => slumber_import::from_rest(&self.input).await?,
+            Format::V3 => slumber_import::from_v3(&self.input).await?,
         };
 
         // Write the output

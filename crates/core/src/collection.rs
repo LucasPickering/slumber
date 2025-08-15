@@ -272,6 +272,17 @@ mod tests {
         assert_err!(Collection::parse(yaml), expected_error);
     }
 
+    /// Should detect a v3 collection and provide a helpful error message about
+    /// migration
+    #[rstest]
+    fn test_v3_detect(test_data_dir: PathBuf) {
+        assert_err!(
+            Collection::load(&test_data_dir.join("v3.yml")),
+            "This looks like a collection from Slumber v3. Migrate to v4 or \
+            downgrade your installation to 3.x"
+        );
+    }
+
     /// A catch-all regression test, to make sure we don't break anything in the
     /// collection format. This lives at the bottom because it's huge.
     #[rstest]

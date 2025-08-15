@@ -79,7 +79,7 @@ So much easier to follow!
 
 #### Share configuration between collection files with `$ref`
 
-YAML merge syntax (`>>: *alias`) is no longer supported. Instead, the more flexible JSON reference (`$ref`) format is supported. This allows you to reuse any portion of the current collection _without having to declare it as an alias_. Even better though, **you can import components from other files:**
+YAML merge syntax (`<<: *alias`) is no longer supported. Instead, the more flexible JSON reference (`$ref`) format is supported. This allows you to reuse any portion of the current collection _without having to declare it as an alias_. Even better though, **you can import components from other files:**
 
 ```yaml
 # slumber.yml

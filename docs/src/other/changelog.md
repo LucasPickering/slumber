@@ -4,4 +4,4 @@ You can also browse release history via the [GitHub Releases page](https://githu
 
 <!-- Changelog uses an anchor to identify its content -->
 
-{{#include ../../CHANGELOG.md:changelog}}
+{{#include ../../../CHANGELOG.md:changelog}}

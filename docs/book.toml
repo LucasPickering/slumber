@@ -11,14 +11,14 @@ title = "Slumber"
 extra-watch-dirs = ["../crates/doc_utils/", "../crates/core/src/render/functions.rs"]
 
 [preprocessor.template_functions]
-command = "./scripts/mdbook.rs --mode template-functions"
+command = "./mise-tasks/mdbook.rs --mode template-functions"
 renderer = ["html"]
 
 [preprocessor.pagetoc]
 after = ["template_functions"]
 
 [preprocessor.version]
-command = "./scripts/mdbook.rs --mode version"
+command = "./mise-tasks/mdbook.rs --mode version"
 
 [output.html]
 additional-css = ["theme/pagetoc.css"]
@@ -36,15 +36,16 @@ preferred-dark-theme = "coal"
 "/book/api/configuration/input_bindings.html" = "/api/configuration/input_bindings.html"
 "/book/api/configuration/mime.html" = "/api/configuration/mime.html"
 "/book/api/configuration/theme.html" = "/api/configuration/theme.html"
-"/book/api/request_collection/chain.html" = "/api/request_collection/chain.html"
-"/book/api/request_collection/chain_source.html" = "/api/request_collection/chain_source.html"
 "/book/api/request_collection/content_type.html" = "/api/request_collection/content_type.html"
 "/book/api/request_collection/index.html" = "/api/request_collection/index.html"
 "/book/api/request_collection/profile.html" = "/api/request_collection/profile.html"
 "/book/api/request_collection/recipe_body.html" = "/api/request_collection/recipe_body.html"
 "/book/api/request_collection/request_recipe.html" = "/api/request_collection/request_recipe.html"
-"/book/api/request_collection/template.html" = "/api/request_collection/template.html"
 "/book/troubleshooting/shell_completions.html" = "/install.html#shell-completions"
 "/book/user_guide/database.html" = "/user_guide/database.html"
 "/book/user_guide/tui/editor.html" = "/user_guide/tui/editor.html"
 "/book/user_guide/tui/filter_query.md" = "/user_guide/tui/filter_query.md"
+# Only concepts: no equivalent page anymore
+"/book/api/request_collection/chain.html" = "/other/v4_migration.html"
+"/book/api/request_collection/chain_source.html" = "/other/v4_migration.html"
+"/book/api/request_collection/template.html" = "/other/v4_migration.html"

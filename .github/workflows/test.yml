@@ -85,7 +85,7 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       - name: Generate schemas
-        run: mise run schema
+        run: ./mise-tasks/schema.rs
 
       - name: Check for uncommitted schema changes
         run: |

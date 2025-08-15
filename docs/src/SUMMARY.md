@@ -49,5 +49,5 @@
 
 # Other
 
-- [v3 to v4 Migration](./troubleshooting/v4_migration.md)
-- [Changelog](./changelog.md)
+- [v3 to v4 Migration](./other/v4_migration.md)
+- [Changelog](./other/changelog.md)

@@ -28,7 +28,6 @@ ratatui = {version = "0.30.0-alpha.5", default-features = false, features = ["cr
 reqwest = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}
-serde_yaml = {workspace = true}
 shell-words = "1.1.0"
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}

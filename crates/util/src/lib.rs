@@ -149,7 +149,7 @@ pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
 /// A newtype for [Duration] that provides formatting, parsing, and
 /// deserialization. The name is meant to make it harder to confuse with
 /// [Duration].
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, derive_more::From, PartialEq)]
 pub struct TimeSpan(Duration);
 
 impl TimeSpan {

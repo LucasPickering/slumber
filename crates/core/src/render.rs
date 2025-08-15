@@ -187,8 +187,8 @@ impl slumber_template::Context for TemplateContext {
         arguments: Arguments<'_, Self>,
     ) -> Result<slumber_template::Value, RenderError> {
         match function_name.as_str() {
-            // vv If you add a function, update the docs!! vv
             "command" => functions::command(arguments).await,
+            "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
             "file" => functions::file(arguments).await,
@@ -199,7 +199,6 @@ impl slumber_template::Context for TemplateContext {
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
             "trim" => functions::trim(arguments),
-            // ^^ If you add a function, update the docs!! ^^
             _ => Err(RenderError::UnknownFunction {
                 name: function_name.clone(),
             }),

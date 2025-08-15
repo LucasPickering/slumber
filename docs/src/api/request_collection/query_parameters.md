@@ -10,7 +10,7 @@ query:
 
 A single query parameter can repeat multiple times in a URL; The above example will generate the query string `?one=value&many=value1&many=value2`.
 
-> Note: Prior to version 4.0, Slumber supported a string-based query parameter format like `[one=value, many=value1, many=value2]`. This has been removed in 4.0 along with other breaking changes to the collection format. To migrate your collection file, see [v3 to v4 Migration](../../troubleshooting/v4_migration.md).
+> Note: Prior to version 4.0, Slumber supported a string-based query parameter format like `[one=value, many=value1, many=value2]`. This has been removed in 4.0 along with other breaking changes to the collection format. To migrate your collection file, see [v3 to v4 Migration](../../other/v4_migration.md).
 
 ## Examples
 

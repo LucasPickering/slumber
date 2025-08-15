@@ -123,7 +123,9 @@ requests:
     headers:
       $ref: "#/.base_request/headers"
       Host: myfishes.fish
-    body: !json { "kind": "barracuda", "name": "Barry" }
+    body:
+      type: json
+      data: { "kind": "barracuda", "name": "Barry" }
 ```
 
 ## Cross-File Composition

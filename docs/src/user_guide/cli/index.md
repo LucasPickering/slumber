@@ -25,7 +25,7 @@ Let's say you want to fetch the name of each fish from your fish-tracking servic
 
 ```yaml
 requests:
-  list_fish: !request
+  list_fish:
     method: GET
     url: "https://myfishes.fish/fishes"
 ```
@@ -68,26 +68,25 @@ Maureen
 Building on [the previous example](#filtering-responses-with-jq), let's say you want to fetch details on each fish returned from the list response. We'll add a `get_fish` recipe to the collection. By default, the fish name will come from a prompt:
 
 ```yaml
-chains:
-  fish_name:
-    source: !prompt
-      message: "Which fish?"
+profiles:
+  prd:
+    fish_name: "{{ prompt(message='Which fish?') }}"
 
 requests:
-  list_fish: !request
+  list_fish:
     method: GET
     url: "https://myfishes.fish/fishes"
 
-  get_fish: !request
+  get_fish:
     method: GET
-    url: "https://myfishes.fish/fishes/{{chains.fish_name}}"
+    url: "https://myfishes.fish/fishes/{{ fish_name }}"
 ```
 
 We can use `xargs` and the `-o` flag of `slumber request` to fetch details for each fish in parallel:
 
 ```sh
 slumber rq list_fish | jq -r '.[].name' > fish.txt
-cat fish.txt | xargs -L1 -I'{}' -P3 slumber rq get_fish -o chains.fish_name={} --output {}.json
+cat fish.txt | xargs -L1 -I'{}' -P3 slumber rq get_fish --override fish_name={} --output {}.json
 ```
 
 Let's break this down:
@@ -96,5 +95,5 @@ Let's break this down:
 - `-I{}` sets the substitution string, i.e. the string that will be replaced with each argument
 - `-P3` tells `xargs` the maximum number of processes to run concurrently, which in this case means the maximum number of concurrent requests
 - Everything else is the `slumber` command
-  - `-o chains.fish_name={} `chains.fish_name` with the argument from the file, so it doesn't prompt for a name
+  - `--override fish_name={}`: `xargs` replaces `fish_name` with the argument from the file, so it doesn't prompt for a name
   - `--output {}.json` writes to a JSON file with the fish's name (e.g. `Jimmy.json`)

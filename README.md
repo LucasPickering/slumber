@@ -33,14 +33,16 @@ Slumber is based around **collections**. A collection is a group of request **re
 ```yaml
 # slumber.yml
 requests:
-  get: !request
+  get:
     method: GET
     url: https://httpbin.org/get
 
-  post: !request
+  post:
     method: POST
     url: https://httpbin.org/post
-    body: !json { "id": 3, "name": "Slumber" }
+    body:
+      type: json
+      data: { "id": 3, "name": "Slumber" }
 ```
 
 Create this file, then run the TUI with `slumber`.

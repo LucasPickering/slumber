@@ -1,45 +1,47 @@
 # Authentication
 
-Authentication provides shortcuts for common HTTP authentication schemes. It populates the `authentication` field of a recipe. There are multiple source types, and the type is specified using [YAML's tag syntax](https://yaml.org/spec/1.2.2/#24-tags).
+Authentication provides shortcuts for common HTTP authentication schemes. It populates the `authentication` field of a recipe. There are multiple source types, and the type is specified using the `type` field.
 
-## Variants
+## Authentication Types
 
-| Variant   | Type                                            | Value                                                                                                          |
-| --------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `!basic`  | [`Basic Authentication`](#basic-authentication) | [Basic authentication](https://swagger.io/docs/specification/authentication/basic-authentication/) credentials |
-| `!bearer` | `string`                                        | [Bearer token](https://swagger.io/docs/specification/authentication/bearer-authentication/)                    |
+| Variant  | Value                                         |
+| -------- | --------------------------------------------- |
+| `basic`  | [Basic authentication](#basic-authentication) |
+| `bearer` | [Bearer token](#bearer-token)                 |
 
 ### Basic Authentication
 
-Basic authentication contains a username and optional password.
+[Basic authentication](https://swagger.io/docs/specification/authentication/basic-authentication/) contains a username and optional password.
 
 | Field      | Type     | Description | Default  |
 | ---------- | -------- | ----------- | -------- |
 | `username` | `string` | Username    | Required |
 | `password` | `string` | Password    | `""`     |
 
+### Bearer Token
+
+[Bearer token authentication](https://swagger.io/docs/specification/authentication/bearer-authentication/) takes a single token.
+
+| Field   | Type     | Description | Default  |
+| ------- | -------- | ----------- | -------- |
+| `token` | `string` | Token       | Required |
+
 ## Examples
 
 ```yaml
-# Basic auth
 requests:
-  create_fish: !request
-    method: POST
+  basic_auth:
+    method: GET
     url: "{{host}}/fishes"
-    body: !json { "kind": "barracuda", "name": "Jimmy" }
-    authentication: !basic
+    authentication:
+      type: basic
       username: user
-      password: pass
----
-# Bearer token auth
-chains:
-  token:
-    source: !file
-      path: ./token.txt
-requests:
-  create_fish: !request
-    method: POST
+      password: "{{ prompt() }}"
+
+  bearer_auth:
+    method: GET
     url: "{{host}}/fishes"
-    body: !json { "kind": "barracuda", "name": "Jimmy" }
-    authentication: !bearer "{{chains.token}}"
+    authentication:
+      type: bearer
+      token: "{{ file('token.txt') }}"
 ```

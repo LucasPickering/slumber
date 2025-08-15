@@ -353,7 +353,16 @@ impl<'input> SourcedYaml<'input> {
     /// Unpack the YAML as a mapping
     pub fn try_into_mapping(self) -> Result<AnnotatedMapping<'input, Self>> {
         if let YamlData::Mapping(mapping) = self.data {
-            Ok(mapping)
+            // We don't support YAML merges. Detect the key proactively to
+            // provide a helpful error
+            if mapping.contains_key(&SourcedYaml::value_from_str("<<")) {
+                Err(LocatedError {
+                    error: Error::UnsupportedMerge,
+                    location: self.location,
+                })
+            } else {
+                Ok(mapping)
+            }
         } else {
             Err(LocatedError::unexpected(Expected::Mapping, self))
         }
@@ -640,8 +649,15 @@ pub enum Error {
         actual: String,
     },
 
+    /// Struct received an extra field
     #[error("Unexpected field `{0}`")]
     UnexpectedField(String),
+
+    /// Special error case to identify the `<<` key. We want to report this in
+    /// both static and dynamic mappings because the user almost definitely
+    /// doesn't want the literal key `<<`.
+    #[error("YAML merge syntax `<<` is not supported")]
+    UnsupportedMerge,
 }
 
 /// When a value is expected but is either incorrect or missing, this type

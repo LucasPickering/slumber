@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=../schemas/collection.json
+# This collection contains one of everything. This is a regression test for
+# deserialization, to make sure we don't accidentally introduce breaking changes
+# to the format
+
+name: Regression Test
+
+.base_recipe:
+  headers:
+    Accept: application/json
+
+profiles:
+  profile1:
+    name: Profile 1
+    data:
+      host: https://httpbin.org
+      username: xX{{ command(['whoami']) }}Xx
+      user_guid: abc123
+  profile2:
+    name: Profile 2
+    default: true
+    data:
+      host: https://httpbin.org
+
+requests:
+  text_body:
+    method: POST
+    # Missing name
+    url: "{{ host }}/anything/login"
+    query:
+      sudo: yes_please
+      fast: no_thanks
+    headers:
+      Accept: application/json
+    # Text body
+    body: >-
+      {"username": "my name is {{ username }}", "password": "{{ prompt(message='Password', sensitive=true) }}"}
+
+  users:
+    name: Users
+    requests:
+      simple:
+        name: Get User
+        method: GET
+        # No headers or authentication
+        url: "{{ host }}/anything/{{ user_guid }}"
+        query:
+          one: "{{ field1 }}"
+          many: ["{{ field1 }}", "{{ field2 }}"]
+
+      json_body:
+        method: PUT
+        url: "{{ host }}/anything/{{ user_guid }}"
+        authentication:
+          type: bearer
+          token: "{{ response('login') | jsonpath('$.data') }}"
+        headers:
+          Accept: application/json
+        body:
+          type: json
+          data: { "username": "new username" }
+
+      json_body_but_not:
+        method: PUT
+        url: "{{ host }}/anything/{{ user_guid }}"
+        authentication:
+          type: basic
+          username: "{{ username }}"
+          password: "{{password}}"
+        headers:
+          Accept: application/json
+        body:
+          type: json
+          data: '{"warning": "NOT an object"}'
+
+      form_urlencoded_body:
+        method: PUT
+        url: "{{ host }}/anything/{{ user_guid }}"
+        headers:
+          Accept: application/json
+        body:
+          type: form_urlencoded
+          data:
+            username: "new username"
+
+  chains:
+    method: POST
+    url: "{{ host }}/anything/chains"
+    body:
+      type: json
+      data: {
+          "command": "{{ command(['whoami']) }}",
+          "command_stdin": "{{ command(['head', '-c', '1'], stdin='abcdef') }}",
+          "command_trim_none": "{{ command(['whoami']) }}",
+          "command_trim_start": "{{ command(['whoami']) | trim(mode='start') }}",
+          "command_trim_end": "{{ command(['whoami']) | trim(mode='end') }}",
+          "command_trim_both": "{{ command(['whoami']) | trim() }}",
+          "prompt_sensitive": "{{ prompt(message='Password', sensitive=true) }}",
+          "prompt_default": "{{ prompt(default=user_guid) }}",
+          "prompt_string_concat": "{{ prompt(default=concat(['My Name is ', user_name, '!'])) }}",
+          "file": "{{ file('./README.md') }}",
+          # content_type is thrown away, we don't need it anymore
+          "file_content_type": "{{ file('./data.json') }}",
+          "request_selector_auto": "{{ response('login') | jsonpath('$.data') }}",
+          "request_selector_single": "{{ response('login') | jsonpath('$.data', mode='single') }}",
+          "request_selector_array": "{{ response('login') | jsonpath('$.data', mode='array') }}",
+          "request_trigger_never": "{{ response('login') }}",
+          "request_trigger_no_history": "{{ response('login', trigger='no_history') }}",
+          "request_trigger_expire": "{{ response('login', trigger='12h') }}",
+          "request_trigger_always": "{{ response('login', trigger='always') }}",
+          "request_section_body": "{{ response('login') }}",
+          "request_section_header": "{{ response_header('login', 'content-type', trigger='always') }}",
+          "sensitive": "{{ command(['echo', 'hunter2']) | trim() | sensitive() }}",
+        }

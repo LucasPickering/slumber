@@ -1,12 +1,29 @@
 # v3 to v4 Migration
 
-Slumber 4.0 introduced a [set of breaking changes](https://github.com/LucasPickering/slumber/releases/tag/v4.0.0) to the collection format, requiring migration of your collection files to the new format. Migration is simple using the included importer:
+Slumber 4.0 introduced a [set of breaking changes](https://github.com/LucasPickering/slumber/releases/tag/v4.0.0) to the collection format, requiring migration of your collection files to the new format. You have two options to migrate automatically:
+
+**CLI Migration Tool**
+
+You can upgrade with the migration tool included in the v4 CLI:
 
 ```sh
 slumber import v3 <old file> <new file>
 ```
 
-The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/lucaspickering/slumber/issues/new).
+The generated collection will be _functionally_ equivalent to the old collection, but due to limitations in the Rust YAML ecosystem, non-semantic content such as whitespace, comments, and anchors/aliases will be lost. Depending on the complexity of your collection, this migration may be 100% of what you need, or it may provide a good starting point for you to finish cleaning up by hand. You can also use an LLM to do the touch-ups, but in that case it may just be easier to do the entire migration via LLM (see next section).
+
+> "Functionally equivalent" means loading the TUI on the new collection should show you the exact same set of profiles/requests that you saw in v3. If this isn't the case (e.g. if a new template doesn't function the same as it did before), please [file a bug](https://github.com/lucaspickering/slumber/issues/new)!
+
+**LLM Migration**
+
+If you're open to using an LLM, you can provide it this guide and it should generate a v4 collection that is functionally equivalent, retain comments and deduplicate content via `$ref`. Provide it this prompt:
+
+```
+Migrate this file from Slumber v3 to Slumber v4 using this guide:
+https://slumber.lucaspickering.me/book/other/v4_migration.html
+```
+
+> Some AI Agents won't follow URLs or only fetch snippets of the page rather than the entire content. If your new collection doesn't work, try copying the entire page content below into the prompt.
 
 ## Manual Migration
 
@@ -49,106 +66,68 @@ requests:
 
 The v3 chain sources (and their parameters) have each been replaced by a corresponding function.
 
-> In the new template language, required arguments are passed as positional arguments (`file("my/path")`) while optional arguments are passed as keywords (`prompt(default="Default")`).
+> In the new template language, required arguments are passed as positional arguments `file("my/path")` while optional arguments are passed as keywords `prompt(default="Default")`. These examples include all optional arguments for completeness, but they can be omitted if not needed.
 
-**`!command`**
-
-is now the [`command`](../api/template_functions.md#command) function.
+**`!command` becomes [`command`](../api/template_functions.md#command)**
 
 ```yaml
 source: !command
   command: ["echo", "test"]
   stdin: "{{host}}"
-```
-
-is now
-
-```
+# becomes
 command(["echo", "test"], stdin=host)
 ```
 
-**`!env`**
-
-is now the [`env`](../api/template_functions.md#env) function.
+**`!env` becomes [`env`](../api/template_functions.md#env)**
 
 ```yaml
 source: !env
   variable: MY_VAR
-```
-
-is now
-
-```
+# becomes
 env("MY_VAR")
 ```
 
-**`!file`**
-
-is now the [`file`](../api/template_functions.md#file) function.
+**`!file` becomes [`file`](../api/template_functions.md#file)**
 
 ```yaml
 source: !file
   path: my/file
-```
-
-is now
-
-```
+# becomes
 file("my/file")
 ```
 
-**`!prompt`**
-
-is now the [`prompt`](../api/template_functions.md#prompt) function.
+**`!prompt` becomes [`prompt`](../api/template_functions.md#prompt)**
 
 ```yaml
 source: !prompt
   message: "Enter data"
   default: "Default"
 sensitive: true
-```
-
-is now
-
-```
+# becomes
 prompt(message="Enter data", default="Default", sensitive=true)
 ```
 
-**!request**
-
-is now the [`response`](../api/template_functions.md#response) and [`response_header`](../api/template_functions.md#response_header) functions.
+**`!request` split into [`response`](../api/template_functions.md#response) and [`response_header`](../api/template_functions.md#response_header)**
 
 ```yaml
 source: !request
   recipe: "login"
   trigger: !expire 12h
   section: !body
-```
-
-is now
-
-```
+# becomes
 response("login", trigger="12h")
 ```
-
-and
 
 ```yaml
 source: !request
   recipe: "login"
   trigger: !expire 12h
   section: !header Content-Type
-```
-
-is now
-
-```
+# becomes
 response_header("login", "Content-Type", trigger="12h")
 ```
 
-**!select**
-
-is now the [`select`](../api/template_functions.md#select) function.
+**`!select` becomes [`select`](../api/template_functions.md#select)**
 
 ```yaml
 source: !select
@@ -156,11 +135,7 @@ source: !select
     - option1
     - option2
   message: "Message"
-```
-
-is now
-
-```
+# becomes
 select(options=["option1", "option2"], message="Message")
 ```
 
@@ -180,13 +155,27 @@ trim: both
 selector: "$.items"
 selector_mode: array
 sensitive: true
-```
-
-is now
-
-```
+# becomes
 file("file.json") | trim(mode="both") | jsonpath("$.items", mode="array") | sensitive()
 ```
+
+Finally, there is a function `concat()` that can be used to replicate the behavior of nested templates within chain config:
+
+```yaml
+chains:
+  file_name:
+    source: !prompt
+      message: File name
+  path:
+    source: !file
+      path: "data/{{file_name}}.json"
+# becomes
+"{{ file(concat(['data/', prompt(message='File name'), '.json']))"
+```
+
+> `concat()` takes a single array argument!
+
+This is only necessary if you have nested templates **with multiple components**. In other words, if you do this conversion but the array passed to `concat()` only has one element, you can just omit the `concat()`.
 
 ### Replace Anchors with `$ref`
 
@@ -289,8 +278,4 @@ query:
 query:
   param1: [value1, value2]
   param2: value7
-```
-
-```
-
 ```

@@ -1,0 +1,197 @@
+# This collection contains one of everything. This is a regression test for
+# deserialization, to make sure we don't accidentally introduce breaking changes
+# to the format
+
+name: Regression Test
+
+.base_profile_data: &base_profile_data
+  host: https://httpbin.org
+.base_recipe: &base_recipe
+  headers:
+    Accept: application/json
+
+profiles:
+  profile1:
+    name: Profile 1
+    data:
+      <<: *base_profile_data
+      username: xX{{chains.command}}Xx
+      user_guid: abc123
+  profile2:
+    name: Profile 2
+    default: true
+    data:
+      <<: *base_profile_data
+
+chains:
+  command:
+    source: !command
+      command: [whoami]
+  command_stdin:
+    source: !command
+      command: [head, -c, 1]
+      stdin: abcdef
+  command_trim_none:
+    source: !command
+      command: [whoami]
+    trim: none
+  command_trim_start:
+    source: !command
+      command: [whoami]
+    trim: start
+  command_trim_end:
+    source: !command
+      command: [whoami]
+    trim: end
+  command_trim_both:
+    source: !command
+      command: [whoami]
+    trim: both
+
+  prompt_sensitive:
+    source: !prompt
+      message: Password
+    sensitive: true
+  prompt_default:
+    # Nested template within a chain should be flattened into an expression
+    source: !prompt
+      default: "{{user_guid}}"
+  prompt_string_concat:
+    # Multi-chunk nested template requires string concatenation
+    source: !prompt
+      default: "My Name is {{user_name}}!"
+
+  file:
+    source: !file
+      path: ./README.md
+  file_content_type:
+    source: !file
+      path: ./data.json
+    content_type: json
+
+  request_selector_auto:
+    source: !request
+      recipe: login
+    selector: $.data
+  request_selector_single:
+    source: !request
+      recipe: login
+    selector: $.data
+    selector_mode: single
+  request_selector_array:
+    source: !request
+      recipe: login
+    selector: $.data
+    selector_mode: array
+  request_trigger_never:
+    source: !request
+      recipe: login
+      trigger: !never
+  request_trigger_no_history:
+    source: !request
+      recipe: login
+      trigger: !no_history
+  request_trigger_expire:
+    source: !request
+      recipe: login
+      trigger: !expire 12h
+  request_trigger_always:
+    source: !request
+      recipe: login
+      trigger: !always
+  request_section_body:
+    source: !request
+      recipe: login
+      section: !body
+  request_section_header:
+    source: !request
+      recipe: login
+      section: !header content-type
+      trigger: !always
+
+  sensitive:
+    source: !command
+      command: ["echo", "hunter2"]
+    trim: both
+    sensitive: true
+
+requests:
+  text_body: !request
+    method: POST
+    # Missing name
+    url: "{{host}}/anything/login"
+    query:
+      sudo: yes_please
+      fast: no_thanks
+    headers:
+      Accept: application/json
+    # Text body
+    body: '{"username": "my name is {{username}}", "password": "{{chains.prompt_sensitive}}"}'
+
+  users: !folder
+    name: Users
+    requests:
+      simple: !request
+        name: Get User
+        method: GET
+        # No headers or authentication
+        url: "{{host}}/anything/{{user_guid}}"
+        query:
+          - one={{field1}}
+          - many={{field1}}
+          - many={{field2}}
+        headers: # Should parse as an empty map
+
+      json_body: !request
+        <<: *base_recipe
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        authentication: !bearer "{{chains.request_selector_auto}}"
+        body: !json { "username": "new username" }
+        query: # Should parse as an empty map
+
+      json_body_but_not: !request
+        <<: *base_recipe
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        authentication: !basic
+          username: "{{username}}"
+          password: "{{password}}"
+        # Nested JSON is *not* parsed
+        body: !json '{"warning": "NOT an object"}'
+
+      form_urlencoded_body: !request
+        <<: *base_recipe
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        body: !form_urlencoded
+          username: "new username"
+
+  # Chonker that uses all the chains
+  chains: !request
+    method: POST
+    url: "{{host}}/anything/chains"
+    body:
+      !json {
+        "command": "{{chains.command}}",
+        "command_stdin": "{{chains.command_stdin}}",
+        "command_trim_none": "{{chains.command_trim_none}}",
+        "command_trim_start": "{{chains.command_trim_start}}",
+        "command_trim_end": "{{chains.command_trim_end}}",
+        "command_trim_both": "{{chains.command_trim_both}}",
+        "prompt_sensitive": "{{chains.prompt_sensitive}}",
+        "prompt_default": "{{chains.prompt_default}}",
+        "prompt_string_concat": "{{chains.prompt_string_concat}}",
+        "file": "{{chains.file}}",
+        "file_content_type": "{{chains.file_content_type}}",
+        "request_selector_auto": "{{chains.request_selector_auto}}",
+        "request_selector_single": "{{chains.request_selector_single}}",
+        "request_selector_array": "{{chains.request_selector_array}}",
+        "request_trigger_never": "{{chains.request_trigger_never}}",
+        "request_trigger_no_history": "{{chains.request_trigger_no_history}}",
+        "request_trigger_expire": "{{chains.request_trigger_expire}}",
+        "request_trigger_always": "{{chains.request_trigger_always}}",
+        "request_section_body": "{{chains.request_section_body}}",
+        "request_section_header": "{{chains.request_section_header}}",
+        "sensitive": "{{chains.sensitive}}",
+      }

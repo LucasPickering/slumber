@@ -8,20 +8,22 @@ mod common;
 mod insomnia;
 mod openapi;
 mod rest;
+mod v3;
 
+pub use insomnia::from_insomnia;
+pub use openapi::from_openapi;
+pub use rest::from_rest;
+pub use v3::from_v3;
+
+use anyhow::Context;
+use futures::TryFutureExt;
+use reqwest::{Response, Url};
 use std::{
     convert::Infallible,
     ffi::OsStr,
     path::{Path, PathBuf},
     str::FromStr,
 };
-
-use anyhow::Context;
-use futures::TryFutureExt;
-pub use insomnia::from_insomnia;
-pub use openapi::from_openapi;
-use reqwest::{Response, Url};
-pub use rest::from_rest;
 use tokio::{
     fs,
     io::{self, AsyncReadExt, BufReader},

@@ -23,6 +23,7 @@ reqwest = {workspace = true}
 rest_parser = "0.1.7"
 serde = {workspace = true}
 serde_json = {workspace = true}
+serde_json_path = {workspace = true}
 serde_yaml = {workspace = true}
 slumber_core = {workspace = true}
 slumber_template = {workspace = true}

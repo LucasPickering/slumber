@@ -50,6 +50,16 @@ const FILE: &str = "config.yml";
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(default, deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "schema",
+    schemars(
+        // Allow any top-level property beginning with .
+        extend("patternProperties" = {
+            "^\\.": { "description": "Ignore any property beginning with `.`" }
+        }),
+        example = Config::default(),
+    )
+)]
 pub struct Config {
     /// Configuration for in-app query and export commands
     pub commands: CommandsConfig,

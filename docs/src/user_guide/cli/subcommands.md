@@ -43,9 +43,9 @@ profiles:
       host: https://myfishes.fish
 
 requests:
-  list_fish: !request
+  list_fish:
     method: GET
-    url: "{{host}}/fishes"
+    url: "{{ host }}/fishes"
     query:
       big: true
 ```
@@ -173,16 +173,10 @@ See `slumber request --help` for more options.
 
 **Overrides**
 
-You can manually override template values using CLI arguments. This means the template renderer will use the override value in place of calculating it. For example:
+You can manually override profile values using CLI arguments. This means the template renderer will use the override value in place of rendering the profile field. For example:
 
 ```sh
 slumber request list_fishes --override host=https://dev.myfishes.fish
-```
-
-This can also be used to override chained values:
-
-```sh
-slumber request login --override chains.password=hunter2
 ```
 
 **Exit Code**
@@ -208,9 +202,9 @@ profiles:
       host: https://myfishes.fish
 
 requests:
-  list_fish: !request
+  list_fish:
     method: GET
-    url: "{{host}}/fishes"
+    url: "{{ host }}/fishes"
     query:
       big: true
 ```

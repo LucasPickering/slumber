@@ -13,7 +13,7 @@ use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_template::{Template, TemplateParseError};
-use slumber_util::{ResultTraced, yaml};
+use slumber_util::{ResultTraced, doc_link, yaml};
 use std::{iter, path::Path};
 use tracing::info;
 
@@ -48,7 +48,38 @@ impl Collection {
     /// Load collection from a file
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         info!(?path, "Loading collection file");
-        yaml::deserialize_file(path).traced()
+        yaml::deserialize_file(path)
+            .map_err(|error| {
+                // If this looks like a v3 collection, give some extra help
+                if error
+                    .chain()
+                    .filter_map(|error| error.downcast_ref::<yaml::Error>())
+                    .any(|error| match error {
+                        // Look for:
+                        // - `chains` field
+                        // - `<<` merge key
+                        // - `!tag`
+                        yaml::Error::UnexpectedField(field) => {
+                            field == "chains"
+                        }
+                        yaml::Error::UnsupportedMerge => true,
+                        yaml::Error::Unexpected { actual, .. } => {
+                            actual.starts_with("tag")
+                        }
+                        _ => false,
+                    })
+                {
+                    error.context(format!(
+                        "This looks like a collection from Slumber v3. \
+                        Migrate to v4 or downgrade your installation to 3.x.\
+                        \n{}",
+                        doc_link("other/v4_migration")
+                    ))
+                } else {
+                    error
+                }
+            })
+            .traced()
     }
 
     /// Load collection from a YAML string

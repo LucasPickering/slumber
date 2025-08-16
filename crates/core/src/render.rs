@@ -3,7 +3,11 @@
 //! requests.
 
 mod functions;
+#[cfg(test)]
+mod tests;
 
+#[cfg(any(test, feature = "test"))]
+use crate::collection::Recipe;
 use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
     http::{Exchange, RequestSeed, ResponseRecord, TriggeredRequestError},
@@ -63,6 +67,16 @@ impl TemplateContext {
         recipe_id: &RecipeId,
         trigger: RequestTrigger,
     ) -> Result<Arc<ResponseRecord>, FunctionError> {
+        // First, make sure it's a valid recipe. Technically it's possible to
+        // return a cached response for a recipe that's no longer in the
+        // collection if it existed historically, but this is most likely a
+        // mistake by the user. Return an error eagerly to make it easy to debug
+        if self.collection.recipes.get_recipe(recipe_id).is_none() {
+            return Err(FunctionError::RecipeUnknown {
+                recipe_id: recipe_id.clone(),
+            });
+        }
+
         // Defer loading the most recent exchange until we know we'll need it
         let get_latest = || async {
             self.http_provider
@@ -199,23 +213,50 @@ impl slumber_template::Context for TemplateContext {
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
             "trim" => functions::trim(arguments),
-            _ => Err(RenderError::UnknownFunction {
+            _ => Err(RenderError::FunctionUnknown {
                 name: function_name.clone(),
             }),
         }
     }
 }
 
+/// Initialize template context with an empty collection
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for TemplateContext {
     fn factory((): ()) -> Self {
+        Self::factory((IndexMap::new(), IndexMap::new()))
+    }
+}
+
+/// Initialize template context with some profiles and recipes. The first
+/// profile will be selected
+#[cfg(any(test, feature = "test"))]
+impl
+    slumber_util::Factory<(
+        IndexMap<ProfileId, Profile>,
+        IndexMap<RecipeId, Recipe>,
+    )> for TemplateContext
+{
+    fn factory(
+        (profiles, recipes): (
+            IndexMap<ProfileId, Profile>,
+            IndexMap<RecipeId, Recipe>,
+        ),
+    ) -> Self {
         use crate::{
             database::CollectionDatabase,
             test_util::{TestHttpProvider, TestPrompter},
         };
+
+        let selected_profile = profiles.first().map(|(id, _)| id.clone());
         Self {
-            collection: Default::default(),
-            selected_profile: None,
+            collection: Collection {
+                name: None,
+                recipes: recipes.into(),
+                profiles,
+            }
+            .into(),
+            selected_profile,
             http_provider: Box::new(TestHttpProvider::new(
                 CollectionDatabase::factory(()),
                 None,
@@ -385,16 +426,30 @@ pub enum FunctionError {
 
     /// Never got a reply from the prompt channel. Do *not* store the
     /// `RecvError` here, because it provides useless extra output to the user.
-    #[error("No reply from prompt/select")]
+    #[error("No reply from prompt")]
     PromptNoReply,
 
-    /// Recipe for `response()` has no history
+    /// Recipe for `response()`/`response_header()` is not in the collection
+    #[error("Unknown recipe `{recipe_id}`")]
+    RecipeUnknown { recipe_id: RecipeId },
+
+    /// Recipe for `response()`/`response_header()` has no history
     #[error("No response available")]
     ResponseMissing,
 
     /// Specified header did not exist in the response
     #[error("Header `{header}` not in response")]
     ResponseMissingHeader { header: String },
+
+    /// `select()` was given no options to display. There's no way for us to
+    /// return a meaningful reply
+    #[error("Select has no options")]
+    SelectNoOptions,
+
+    /// Never got a reply from the select channel. Do *not* store the
+    /// `RecvError` here, because it provides useless extra output to the user.
+    #[error("No reply from select")]
+    SelectNoReply,
 
     /// Something bad happened while triggering a request dependency
     #[error("Triggering upstream recipe `{recipe_id}`")]

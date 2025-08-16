@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::{
-    collection::{Authentication, Collection, Profile},
+    collection::{Authentication, Profile},
     test_util::{TestPrompter, by_id, header_map, http_engine, invalid_utf8},
 };
 use indexmap::{IndexMap, indexmap};
@@ -15,8 +15,8 @@ use slumber_util::{Factory, assert_err};
 use std::ptr;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
-/// Create a template context. Take a set of extra recipes and chains to
-/// add to the created collection
+/// Create a template context. Take a set of extra recipes to add to the created
+/// collection
 fn template_context(recipe: Recipe) -> TemplateContext {
     let profile_data = indexmap! {
         "host".into() => "http://localhost".into(),
@@ -33,17 +33,9 @@ fn template_context(recipe: Recipe) -> TemplateContext {
         data: profile_data,
         ..Profile::factory(())
     };
-    let profile_id = profile.id.clone();
     TemplateContext {
-        collection: Collection {
-            name: None,
-            recipes: by_id([recipe]).into(),
-            profiles: by_id([profile]),
-        }
-        .into(),
-        selected_profile: Some(profile_id.clone()),
         prompter: Box::new(TestPrompter::new(["first", "second"])),
-        ..TemplateContext::factory(())
+        ..TemplateContext::factory((by_id([profile]), by_id([recipe])))
     }
 }
 

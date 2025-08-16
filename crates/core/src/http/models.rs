@@ -500,17 +500,14 @@ impl RequestRecord {
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for RequestRecord {
     fn factory((): ()) -> Self {
-        Self::factory(RequestId::new())
+        Self::factory((RequestId::new(), None, RecipeId::factory(())))
     }
 }
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory<RequestId> for RequestRecord {
     fn factory(id: RequestId) -> Self {
-        Self {
-            id,
-            ..Self::factory((None, RecipeId::factory(())))
-        }
+        Self::factory((id, None, RecipeId::factory(())))
     }
 }
 
@@ -518,9 +515,21 @@ impl slumber_util::Factory<RequestId> for RequestRecord {
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory<(Option<ProfileId>, RecipeId)> for RequestRecord {
     fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
+        Self::factory((RequestId::new(), profile_id, recipe_id))
+    }
+}
+
+/// Customize request, profile and recipe ID
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<(RequestId, Option<ProfileId>, RecipeId)>
+    for RequestRecord
+{
+    fn factory(
+        (id, profile_id, recipe_id): (RequestId, Option<ProfileId>, RecipeId),
+    ) -> Self {
         use crate::test_util::header_map;
         Self {
-            id: RequestId::new(),
+            id,
             profile_id,
             recipe_id,
             method: HttpMethod::Get,

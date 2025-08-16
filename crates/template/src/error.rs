@@ -50,6 +50,10 @@ pub enum RenderError {
         error: Box<Self>,
     },
 
+    /// No function by this name
+    #[error("Unknown function `{name}`")]
+    FunctionUnknown { name: Identifier },
+
     /// In many contexts, the render output needs to be usable as a string.
     /// This error occurs when we wanted to render to a string, but whatever
     /// bytes we got were not valid UTF-8. The underlying error message is
@@ -88,10 +92,6 @@ pub enum RenderError {
         expected: &'static str,
         actual: Value,
     },
-
-    /// No function by this name
-    #[error("Unknown function `{name}`")]
-    UnknownFunction { name: Identifier },
 }
 
 impl RenderError {

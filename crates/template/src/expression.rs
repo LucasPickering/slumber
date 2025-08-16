@@ -103,6 +103,12 @@ impl From<bool> for Expression {
     }
 }
 
+impl From<Literal> for Expression {
+    fn from(literal: Literal) -> Self {
+        Self::Literal(literal)
+    }
+}
+
 impl From<String> for Expression {
     fn from(value: String) -> Self {
         Self::Literal(Literal::from(value))
@@ -112,6 +118,18 @@ impl From<String> for Expression {
 impl From<&str> for Expression {
     fn from(value: &str) -> Self {
         Self::Literal(Literal::from(value))
+    }
+}
+
+impl From<&'static [u8]> for Expression {
+    fn from(value: &'static [u8]) -> Self {
+        Self::Literal(Literal::Bytes(Bytes::from(value.to_vec())))
+    }
+}
+
+impl<const N: usize> From<&'static [u8; N]> for Expression {
+    fn from(value: &'static [u8; N]) -> Self {
+        value.as_slice().into()
     }
 }
 

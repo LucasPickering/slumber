@@ -134,33 +134,30 @@ impl Template {
     /// assert_eq!(template.display(), "{{ file('path/to/file') }}");
     /// ```
     pub fn file(path: String) -> Template {
-        Self::function_call("file", [path], [] as [(&str, Expression); 0])
+        Self::function_call("file", [path.into()], [])
     }
 
     /// Create a new template that contains a single chunk, which is an
-    /// expression that invokes a function with arguments.
+    /// expression that invokes a function with position arguments and optional
+    /// keyword arguments.
     ///
     /// ```
-    /// use slumber_template::Template;
-    ///
-    /// let template =
-    ///     Template::function_call("hello", ["john"], [("mode", "caps")]);
+    /// # use slumber_template::Template;
+    /// let template = Template::function_call(
+    ///     "hello",
+    ///     ["john".into()],
+    ///     [("mode", Some("caps".into()))],
+    /// );
     /// assert_eq!(template.display(), "{{ hello('john', mode='caps') }}");
     /// ```
     pub fn function_call(
         name: &'static str,
-        position: impl IntoIterator<Item = impl Into<Expression>>,
-        keyword: impl IntoIterator<Item = (&'static str, impl Into<Expression>)>,
+        position: impl IntoIterator<Item = Expression>,
+        keyword: impl IntoIterator<Item = (&'static str, Option<Expression>)>,
     ) -> Self {
-        let chunks =
-            vec![TemplateChunk::Expression(Expression::Call(FunctionCall {
-                function: name.into(),
-                position: position.into_iter().map(Into::into).collect(),
-                keyword: keyword
-                    .into_iter()
-                    .map(|(key, value)| (key.into(), value.into()))
-                    .collect(),
-            }))];
+        let chunks = vec![TemplateChunk::Expression(Expression::call(
+            name, position, keyword,
+        ))];
         Self { chunks }
     }
 
@@ -373,6 +370,22 @@ impl Value {
         }
     }
 
+    /// Convert this value to a byte string. Bytes values are returned as is.
+    /// Anything else is converted to a string first, then encoded as UTF-8.
+    pub fn into_bytes(self) -> Bytes {
+        match self {
+            Self::Null => NULL.into(),
+            Self::Bool(false) => FALSE.into(),
+            Self::Bool(true) => TRUE.into(),
+            Self::Int(i) => i.to_string().into(),
+            Self::Float(f) => f.to_string().into(),
+            Self::String(s) => s.into(),
+            Self::Bytes(bytes) => bytes,
+            // Use the display impl
+            Self::Array(_) | Self::Object(_) => self.to_string().into(),
+        }
+    }
+
     /// Convert a JSON value to a template value. This is infallible because
     /// [Value] is a superset of JSON
     pub fn from_json(json: serde_json::Value) -> Self {
@@ -516,6 +529,12 @@ impl TryFromValue for String {
     fn try_from_value(value: Value) -> Result<Self, RenderError> {
         // This will succeed for anything other than invalid UTF-8 bytes
         value.try_into_string()
+    }
+}
+
+impl TryFromValue for Bytes {
+    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+        Ok(value.into_bytes())
     }
 }
 

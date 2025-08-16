@@ -46,7 +46,7 @@ use tracing::{debug, debug_span};
 #[template(TemplateContext)]
 pub async fn command(
     command: Vec<String>,
-    #[kwarg] stdin: Option<String>,
+    #[kwarg] stdin: Option<Bytes>,
 ) -> Result<Bytes, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
@@ -68,7 +68,7 @@ pub async fn command(
                 .stdin
                 .as_mut()
                 .expect("Process missing stdin")
-                .write_all(stdin.as_bytes())
+                .write_all(&stdin)
                 .await?;
         }
 
@@ -129,7 +129,7 @@ pub fn debug(value: slumber_template::Value) -> slumber_template::Value {
     value
 }
 
-/// Get the value of an environment variable, or `null` if not set.
+/// Get the value of an environment variable, or `""` if not set.
 ///
 /// **Parameters**
 ///
@@ -142,8 +142,8 @@ pub fn debug(value: slumber_template::Value) -> slumber_template::Value {
 /// {{ env("NONEXISTENT") }} => null
 /// ```
 #[template(TemplateContext)]
-pub fn env(variable: String) -> Option<String> {
-    env::var(variable).ok()
+pub fn env(variable: String) -> String {
+    env::var(variable).unwrap_or_default()
 }
 
 /// Load contents of a file. While the output type is `bytes`,
@@ -330,9 +330,9 @@ pub async fn prompt(
     // If the input was sensitive, we should mask the output as well. This only
     // impacts previews as show_sensitive is enabled for request renders. This
     // means the only string that's actually impacted by this masking is the
-    // static output string from the preview prompter, but it's "technically"
-    // right and plays well in tests. Also it reminds users that a prompt is
-    // sensitive in the TUI :)
+    // static output string from the preview prompter, i.e. instead of showing
+    // "<prompt>", we show "••••••••". It's "technically" right and plays well
+    // in tests. Also it reminds users that a prompt is sensitive in the TUI
     if sensitive {
         Ok(mask_sensitive(context, output))
     } else {
@@ -456,6 +456,13 @@ pub async fn select(
     options: Vec<String>,
     #[kwarg] message: Option<String>,
 ) -> Result<String, FunctionError> {
+    // If there are no options, we can't show anything meaningful to the user.
+    // We *could* just return an empty string but that may be confusing.
+    // Something probably went wrong upstream so return an error.
+    if options.is_empty() {
+        return Err(FunctionError::SelectNoOptions);
+    }
+
     let (tx, rx) = oneshot::channel();
     context.prompter.select(Select {
         message: message.unwrap_or_default(),
@@ -600,3 +607,7 @@ impl TryFromValue for RecipeId {
         String::try_from_value(value).map(RecipeId::from)
     }
 }
+
+// There are no unit tests for these functions. Instead we use integration-ish
+// tests in render/tests.rs because they're able to test input/output conversion
+// as well, which is a core part of the function operation.

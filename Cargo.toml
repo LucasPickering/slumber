@@ -113,9 +113,9 @@ inherits = "release"
 lto = "thin"
 
 [package.metadata.release]
-pre-release-hook = ["python", "./gifs.py", "--check"]
+pre-release-hook = ["mise", "run", "gifs", "--check"]
 pre-release-replacements = [
-    {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n## [{{version}}] - {{date}}"},
+    {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n<!-- ANCHOR: changelog -->\n\n## [{{version}}] - {{date}}"},
 ]
 
 # Config for 'dist'

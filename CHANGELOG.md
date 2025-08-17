@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+This release focuses on improving collection history management. The `slumber collections` subcommand is fairly niche, but is now a bit more powerful and user friendly.
+
 ### Added
 
 - Add `slumber collections delete` subcommand to remove collections from history
@@ -19,10 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- Shell completion for the global `--file`/`-f` flag only suggests `.yml`/`.yaml` files
+- Shell completion for the global `--file`/`-f` flag will now only `.yml`/`.yaml` files
 - `slumber collections migrate` now accepts paths for files that don't exist on disk (as long as they existed as collections at some point)
 
-<!-- This anchor makes it easy for the site to include the content of the changelog -->
 <!-- ANCHOR: changelog -->
 
 ## [3.3.0] - 2025-07-23

@@ -55,7 +55,7 @@ def generate_all(tapes: list[str]) -> None:
 def generate(tape_path: str) -> str:
     """Generate a single GIF. Return the path to the generated GIF"""
     print("Deleting data/")
-    shutil.rmtree("data/")
+    shutil.rmtree("data/", ignore_errors=True)
     run(["vhs", tape_path])
     return get_gif_path(tape_path)
 

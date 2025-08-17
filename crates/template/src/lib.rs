@@ -716,4 +716,59 @@ mod tests {
         let actual = Value::from_json(json);
         assert_eq!(actual, expected);
     }
+
+    #[rstest]
+    #[case::one_arg("{{ 1 | identity() }}", "1")]
+    #[case::multiple_args("{{ 'cd' | concat('ab') }}", "abcd")]
+    // Piped value is the last positional arg, before kwargs
+    #[case::kwargs("{{ 'cd' | concat('ab', reverse=true) }}", "dcba")]
+    #[tokio::test]
+    async fn test_pipe(#[case] template: Template, #[case] expected: &str) {
+        assert_eq!(
+            template.render_string(&TestContext).await.unwrap(),
+            expected
+        );
+    }
+
+    struct TestContext;
+
+    impl Context for TestContext {
+        async fn get(
+            &self,
+            identifier: &Identifier,
+        ) -> Result<Value, RenderError> {
+            Err(RenderError::FieldUnknown {
+                field: identifier.clone(),
+            })
+        }
+
+        async fn call(
+            &self,
+            function_name: &Identifier,
+            mut arguments: Arguments<'_, Self>,
+        ) -> Result<Value, RenderError> {
+            match function_name.as_str() {
+                "identity" => {
+                    let value: Value = arguments.pop_position()?;
+                    arguments.ensure_consumed()?;
+                    Ok(value)
+                }
+                "concat" => {
+                    let mut a: String = arguments.pop_position()?;
+                    let b: String = arguments.pop_position()?;
+                    let reverse: bool = arguments.pop_keyword("reverse")?;
+                    arguments.ensure_consumed()?;
+                    a.push_str(&b);
+                    if reverse {
+                        Ok(a.chars().rev().collect::<String>().into())
+                    } else {
+                        Ok(a.into())
+                    }
+                }
+                _ => Err(RenderError::FunctionUnknown {
+                    name: function_name.clone(),
+                }),
+            }
+        }
+    }
 }

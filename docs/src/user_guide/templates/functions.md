@@ -62,7 +62,7 @@ It's common to take the output of one function and pass it to another. This is e
 trim(command(["echo", "hello"]))
 ```
 
-This works, but it's a bit backward: we run the `command`, _then_ `trim` it. To make these types of composed operations easier to read and write, Slumber supports the pipe operator `|`. The left-hand side of the operator can be any expression, but is typically a function call. The right-hand side **must be a function call**. The left-hand side is evaluated, then the result is passed as the **first** argument to the right-hand side. We can rewrite the same expression from above with the pipe:
+This works, but it's a bit backward: we run the `command`, _then_ `trim` it. To make these types of composed operations easier to read and write, Slumber supports the pipe operator `|`. The left-hand side of the operator can be any expression, but is typically a function call. The right-hand side **must be a function call**. The left-hand side is evaluated, then the result is passed as the **last** argument to the right-hand side. We can rewrite the same expression from above with the pipe:
 
 ```python
 # Equivalent to the above expression
@@ -73,9 +73,10 @@ This is equivalent, but easier to read because the lexical ordering of calls mat
 
 > Unlike other template languages such as Jinja and Tera, the right-hand side of a pipe **must include parentheses**, even if they argument list is empty. Additionally, other languages have a distinction between "functions" and "filters", and only filters can be used on the right-hand side of a pipe operation. This distinction does **not** exist in Slumber; any function can be used on the right-hand side of a pipe, as long as it takes at least one positional argument.
 
-Remember: the piped value is passed as the **first** argument to the right-hand side. You can pass additional arguments as well. Here's another example, using [`response`](../../api/template_functions.md#response) and [`jsonpath`](../../api/template_functions.md#jsonpath).
+Remember: the piped value is passed as the **last** positional argument to the right-hand side. That means it will be inserted after other positional arguments but before any keyword arguments. Here's another example, using [`response`](../../api/template_functions.md#response) and [`jsonpath`](../../api/template_functions.md#jsonpath).
 
 ```python
-# Output of response is passed as the first arg
 response('login') | jsonpath("$.token", mode="single")
+# is equivalent to
+jsonpath("$.token", response('login'), mode="single")
 ```

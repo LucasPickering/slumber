@@ -40,7 +40,7 @@ pub enum RenderError {
 
     /// A profile field key contained an unknown field
     #[error("Unknown field `{field}`")]
-    FieldUnknown { field: String },
+    FieldUnknown { field: Identifier },
 
     /// An bubbled-up error from rendering a profile field value
     #[error("Rendering nested template for field `{field}`")]

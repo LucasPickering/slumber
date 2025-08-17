@@ -3563,6 +3563,7 @@ dependencies = [
  "serde_yaml",
  "slumber_util",
  "thiserror 2.0.12",
+ "tokio",
  "tracing",
  "winnow",
 ]

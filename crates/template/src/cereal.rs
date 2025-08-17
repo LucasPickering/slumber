@@ -1,3 +1,8 @@
+//! Deserialization for the config. This uses saphyr-based deserialization. It
+//! would be great to use serde for this, but saphyr doesn't have serde support
+//! yet. Once saphyr supports serde, we can delete all of this and delete any
+//! `DeserializeYaml` implementations.
+
 use crate::{RenderError, Template, Value};
 use saphyr::{Scalar, YamlData};
 use serde::{

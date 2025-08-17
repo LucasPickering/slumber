@@ -4,8 +4,14 @@ use anyhow::{anyhow, bail};
 use derive_more::{Deref, Display};
 use indexmap::{IndexMap, indexmap};
 use itertools::Itertools;
-use serde::{Deserialize, Deserializer, Serialize};
-use slumber_util::Mapping;
+use serde::{
+    Deserialize, Serialize,
+    de::{self, value::StringDeserializer},
+};
+use slumber_util::{
+    Mapping,
+    yaml::{self, DeserializeYaml, Expected, LocatedError, SourcedYaml},
+};
 use std::{
     borrow::Cow,
     fmt::{self, Debug},
@@ -209,8 +215,23 @@ impl Action {
     }
 }
 
+impl DeserializeYaml for Action {
+    fn expected() -> Expected {
+        Expected::String
+    }
+
+    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        let location = yaml.location;
+        let s = yaml.try_into_string()?;
+        // Use serde's implementation for consistency with serialization
+        <Self as Deserialize>::deserialize(StringDeserializer::new(s)).map_err(
+            |error: de::value::Error| LocatedError::other(error, location),
+        )
+    }
+}
+
 /// One or more key combinations, which should correspond to a single action
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
@@ -240,6 +261,17 @@ impl Display for InputBinding {
     }
 }
 
+impl DeserializeYaml for InputBinding {
+    fn expected() -> Expected {
+        Expected::Sequence
+    }
+
+    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        // Deserialize a list of key combinations
+        DeserializeYaml::deserialize(yaml).map(Self)
+    }
+}
+
 impl From<Vec<KeyCombination>> for InputBinding {
     fn from(combo: Vec<KeyCombination>) -> Self {
         Self(combo)
@@ -259,7 +291,7 @@ impl From<KeyCode> for InputBinding {
 }
 
 /// Key input sequence, which can trigger an action
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(into = "String", try_from = "String")]
@@ -374,12 +406,17 @@ impl From<KeyCombination> for String {
     }
 }
 
-/// For deserialization
-impl TryFrom<String> for KeyCombination {
-    type Error = anyhow::Error;
+/// Deserialize via FromStr
+impl DeserializeYaml for KeyCombination {
+    fn expected() -> Expected {
+        Expected::String
+    }
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value.parse()
+    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        let location = yaml.location;
+        let s = yaml.try_into_string()?;
+        s.parse()
+            .map_err(|error| LocatedError::other(error, location))
     }
 }
 
@@ -465,16 +502,17 @@ impl Default for InputMap {
     }
 }
 
-impl<'de> Deserialize<'de> for InputMap {
+impl DeserializeYaml for InputMap {
+    fn expected() -> Expected {
+        Expected::Mapping
+    }
+
     /// Deserialize an input map. First we deserialize the user's provided
     /// bindings, then we'll populate the map with the defaults so the consumer
     /// has access to all the bindings in one place
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
+    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
         let user_bindings: IndexMap<Action, InputBinding> =
-            IndexMap::deserialize(deserializer)?;
+            DeserializeYaml::deserialize(yaml)?;
         Ok(Self::new(user_bindings))
     }
 }
@@ -523,8 +561,7 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 mod tests {
     use super::*;
     use rstest::rstest;
-    use serde_test::{Token, assert_de_tokens, assert_de_tokens_error};
-    use slumber_util::assert_err;
+    use slumber_util::{assert_err, yaml::deserialize_yaml};
     use terminput::{KeyEventKind, KeyEventState};
 
     #[rstest]
@@ -706,46 +743,37 @@ mod tests {
     /// that string/lists are both supported
     #[test]
     fn test_deserialize_input_binding() {
-        assert_de_tokens(
-            &InputBinding(vec![KeyCode::F(2).into(), KeyCode::F(3).into()]),
-            &[
-                Token::Seq { len: Some(2) },
-                Token::Str("f2"),
-                Token::Str("f3"),
-                Token::SeqEnd,
-            ],
+        assert_eq!(
+            deserialize_yaml::<InputBinding>(vec!["f2", "f3"].into()).unwrap(),
+            InputBinding(vec![KeyCode::F(2).into(), KeyCode::F(3).into()])
         );
 
-        assert_de_tokens_error::<InputBinding>(
-            &[Token::Seq { len: Some(1) }, Token::Str("no"), Token::SeqEnd],
-            "Invalid key code \"no\"; key combinations should be space-separated",
+        assert_err!(
+            deserialize_yaml::<InputBinding>(vec!["no"].into())
+                .map_err(LocatedError::into_error),
+            "Invalid key code \"no\""
         );
-        assert_de_tokens_error::<InputBinding>(
-            &[
-                Token::Seq { len: Some(1) },
-                Token::Str("shart f2"),
-                Token::SeqEnd,
-            ],
+        assert_err!(
+            deserialize_yaml::<InputBinding>(vec!["shart f2"].into())
+                .map_err(LocatedError::into_error),
             "Invalid key modifier \"shart\"; must be one of \
-             [\"shift\", \"alt\", \"ctrl\", \"super\", \"hyper\", \"meta\"]",
+             [\"shift\", \"alt\", \"ctrl\", \"super\", \"hyper\", \"meta\"]"
         );
-        assert_de_tokens_error::<InputBinding>(
-            &[
-                Token::Seq { len: Some(2) },
-                Token::Str("f2"),
-                Token::Str("cortl f3"),
-                Token::SeqEnd,
-            ],
+        assert_err!(
+            deserialize_yaml::<InputBinding>(vec!["f2", "cortl f3"].into())
+                .map_err(LocatedError::into_error),
             "Invalid key modifier \"cortl\"; must be one of \
-            [\"shift\", \"alt\", \"ctrl\", \"super\", \"hyper\", \"meta\"]",
+            [\"shift\", \"alt\", \"ctrl\", \"super\", \"hyper\", \"meta\"]"
         );
-        assert_de_tokens_error::<InputBinding>(
-            &[Token::Str("f3")],
-            "invalid type: string \"f3\", expected a sequence",
+        assert_err!(
+            deserialize_yaml::<InputBinding>("f3".into())
+                .map_err(LocatedError::into_error),
+            "Expected sequence, received \"f3\""
         );
-        assert_de_tokens_error::<InputBinding>(
-            &[Token::I64(3)],
-            "invalid type: integer `3`, expected a sequence",
+        assert_err!(
+            deserialize_yaml::<InputBinding>(3.into())
+                .map_err(LocatedError::into_error),
+            "Expected sequence, received `3`"
         );
     }
 

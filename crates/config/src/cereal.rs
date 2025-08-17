@@ -28,7 +28,19 @@ impl DeserializeYaml for Config {
             commands: deserializer.get(Field::new("commands").opt())?,
             editor: deserializer.get(Field::new("editor").opt())?,
             pager: deserializer.get(Field::new("pager").opt())?,
-            http: deserializer.get(Field::new("http").opt())?,
+            // HTTP config is flattened into the top
+            http: HttpEngineConfig {
+                ignore_certificate_hosts: deserializer
+                    .get(Field::new("ignore_certificate_hosts").opt())?,
+                large_body_size: deserializer.get(
+                    Field::new("large_body_size")
+                        .or(HttpEngineConfig::default().large_body_size),
+                )?,
+                follow_redirects: deserializer.get(
+                    Field::new("follow_redirects")
+                        .or(HttpEngineConfig::default().follow_redirects),
+                )?,
+            },
             preview_templates: deserializer
                 .get(Field::new("preview_templates").or(true))?,
             input_bindings: deserializer

@@ -56,19 +56,13 @@ impl<'a, T: Copy> Mapping<'a, T> {
     }
 
     /// Get the label mapped to a value. If it has multiple labels, use the
-    /// first. Panic if the value has no mapped labels
-    pub fn get_label(&self, value: T) -> &str
+    /// first. Return `None` if the value isn't in the map or has no labels
+    pub fn get_label(&self, value: T) -> Option<&str>
     where
         T: Debug + PartialEq,
     {
-        let (_, strings) = self
-            .0
-            .iter()
-            .find(|(v, _)| v == &value)
-            .unwrap_or_else(|| panic!("Unknown value {value:?}"));
-        strings
-            .first()
-            .unwrap_or_else(|| panic!("No mapped strings for value {value:?}"))
+        let (_, strings) = self.0.iter().find(|(v, _)| v == &value)?;
+        strings.first().copied()
     }
 
     /// Get all available mapped strings

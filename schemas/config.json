@@ -124,7 +124,7 @@
           "enter"
         ],
         "toggle": [
-          " "
+          "space"
         ],
         "cancel": [
           "escape"
@@ -258,7 +258,7 @@
           "enter"
         ],
         "toggle": [
-          " "
+          "space"
         ],
         "cancel": [
           "escape"

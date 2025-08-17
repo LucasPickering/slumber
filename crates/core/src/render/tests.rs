@@ -218,7 +218,7 @@ async fn test_jsonpath(
     });
     let template = Template::function_call(
         "jsonpath",
-        [json, query.into()],
+        [query.into(), json],
         [("mode", mode.map(Expression::from))],
     );
     assert_result(

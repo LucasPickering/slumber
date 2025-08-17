@@ -20,8 +20,8 @@ Slumber templates in 60 seconds or less:
 - Function calls: `g(f(), 1)`
   - [See all available functions](../../api/template_functions.md)
 - Pipes: `f() | g(1)`
-  - Result of `f()` is passed as the _first_ argument to `g`
-  - `f() | g(1)` is equivalent to `g(f(), 1)`
+  - Result of `f()` is passed as the _last_ argument to `g`
+  - `f() | g(1)` is equivalent to `g(1, f())`
 
 Put it all together and you can build collections like this:
 

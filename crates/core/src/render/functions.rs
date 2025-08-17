@@ -249,9 +249,8 @@ impl_try_from_value_str!(JsonPathMode);
 /// ```
 #[template(TemplateContext)]
 pub fn jsonpath(
-    // Value first so it can be piped in
-    value: serde_json::Value,
     query: JsonPath,
+    value: serde_json::Value, // Value last so it can be piped in
     #[kwarg] mode: JsonPathMode,
 ) -> Result<slumber_template::Value, FunctionError> {
     fn node_list_to_value(node_list: NodeList) -> slumber_template::Value {

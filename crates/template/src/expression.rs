@@ -24,8 +24,8 @@ pub enum Expression {
     /// Call to a plain function (**not** a filter)
     Call(FunctionCall),
     /// Data piped to another function: `name | trim()`. The expression on the
-    /// left will be passed as the first argument to the function call on the
-    /// right
+    /// left will be passed as the last positional argument to the function call
+    /// on the right
     Pipe {
         expression: Box<Self>,
         call: FunctionCall,
@@ -63,8 +63,8 @@ impl Expression {
                     // Box for recursion
                     let value = expression.render(context).boxed().await?;
                     let mut arguments = call.render_arguments(context).await?;
-                    // Pipe the filter value in as the first positional argument
-                    arguments.position.push_front(value);
+                    // Pipe the filter value in as the last positional argument
+                    arguments.position.push_back(value);
                     context.call(&call.function, arguments).await
                 }
             }

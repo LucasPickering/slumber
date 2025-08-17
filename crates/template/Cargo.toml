@@ -34,6 +34,7 @@ rstest = {workspace = true}
 serde_json = {workspace = true}
 serde_yaml = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}
+tokio = {workspace = true, features = ["macros", "rt"]}
 
 [features]
 schema = ["dep:schemars"]

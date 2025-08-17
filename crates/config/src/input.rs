@@ -9,7 +9,7 @@ use serde::{
     de::{self, value::StringDeserializer},
 };
 use slumber_util::{
-    Mapping,
+    Mapping, NEW_ISSUE_LINK,
     yaml::{self, DeserializeYaml, Expected, LocatedError, SourcedYaml},
 };
 use std::{
@@ -534,11 +534,18 @@ fn parse_key_code(s: &str) -> anyhow::Result<KeyCode> {
 
 /// Convert key code to string. Inverse of parsing
 fn stringify_key_code(code: KeyCode) -> Cow<'static, str> {
-    // ASCII chars aren't in the mapping, they're handled specially
-    if let KeyCode::Char(c) = code {
+    if let Some(label) = KEY_CODES.get_label(code) {
+        // If it's mapped, use the mapped label
+        label.into()
+    } else if let KeyCode::Char(c) = code {
+        // Otherwise we hope it's an ASCII char
         c.to_string().into()
     } else {
-        KEY_CODES.get_label(code).into()
+        // Indicates a bug: something that isn't mapped should be
+        panic!(
+            "Unmapped key code {code:?}; \
+            this is a bug, please open an issue: {NEW_ISSUE_LINK}"
+        )
     }
 }
 
@@ -554,7 +561,8 @@ fn parse_key_modifier(s: &str) -> anyhow::Result<KeyModifiers> {
 
 /// Convert key modifier to string. Inverse of parsing
 fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
-    KEY_MODIFIERS.get_label(modifier).into()
+    // unwrap() is safe because all possible modifiers are mapped
+    KEY_MODIFIERS.get_label(modifier).unwrap().into()
 }
 
 #[cfg(test)]

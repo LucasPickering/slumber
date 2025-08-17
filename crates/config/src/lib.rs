@@ -419,6 +419,10 @@ mod tests {
 
         // File should now exist
         assert!(config_path.path.exists());
+
+        // Should contain default values
+        let config = Config::load().unwrap();
+        assert_eq!(config, Config::default());
     }
 
     /// If the config file doesn't already exist, we'll attempt to create it.

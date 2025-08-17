@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+<!-- ANCHOR: changelog -->
+
+## [3.4.0] - 2025-08-17
+
 This release focuses on improving collection history management. The `slumber collections` subcommand is fairly niche, but is now a bit more powerful and user friendly.
 
 ### Added

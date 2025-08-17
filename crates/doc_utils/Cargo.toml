@@ -8,7 +8,7 @@ license = {workspace = true}
 name = "doc_utils"
 repository = {workspace = true}
 rust-version = {workspace = true}
-version = {workspace = true}
+version = "0.0.1"
 
 [package.metadata.release]
 tag = false

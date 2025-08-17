@@ -29,6 +29,7 @@ tracing = {workspace = true}
 [dev-dependencies]
 dirs = {workspace = true}
 env-lock = {workspace = true}
+pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}

@@ -13,6 +13,7 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
+mod cereal;
 mod input;
 mod mime;
 mod theme;
@@ -24,10 +25,11 @@ use crate::mime::MimeMap;
 use ::mime::Mime;
 use anyhow::Context;
 use editor_command::EditorBuilder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use slumber_util::{
-    ResultTraced, doc_link, git_link, parse_yaml,
+    ResultTraced, doc_link, git_link,
     paths::{self, create_parent, expand_home},
+    yaml,
 };
 use std::{
     env,
@@ -46,13 +48,13 @@ const FILE: &str = "config.yml";
 /// collections. This is *not* meant to modifiable during a session. If changes
 /// are made to the config file while a TUI session is running, they won't be
 /// picked up until the app restarts.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[serde(default, deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(
     feature = "schema",
     schemars(
+        default,
         // Allow any top-level property beginning with .
         extend("patternProperties" = {
             "^\\.": { "description": "Ignore any property beginning with `.`" }
@@ -125,53 +127,33 @@ impl Config {
         let path = Self::path();
         info!(?path, "Loading configuration file");
 
-        match File::open(&path) {
-            // File loaded - deserialize it. Error here will be fatal because
-            // it probably indicates the user made a mistake in their config and
-            // they want to fix it.
-            Ok(file) => parse_yaml::<Self>(&file)
-                .context(format!(
-                    "Error loading configuration from `{}`",
-                    path.display()
-                ))
-                .traced(),
+        match yaml::deserialize_file::<Config>(&path) {
+            Ok(config) => Ok(config),
+            Err(error) => {
+                // Filesystem error shouldn't be fatal because it may be a
+                // weird fs error the user can't or doesn't want tofix. Just use
+                // a default config.
+                if let Some(yaml::Error::Io { error, .. }) =
+                    error.downcast_ref::<yaml::Error>()
+                {
+                    error!(
+                        error = error as &dyn Error,
+                        "Error opening config file {path:?}"
+                    );
 
-            // File failed to open. This shouldn't stop the program because it
-            // may be a weird fs error the user can't or doesn't want to fix.
-            // Just use a default config.
-            Err(err) => {
-                error!(
-                    error = &err as &dyn Error,
-                    "Error opening config file {path:?}"
-                );
+                    // If the file doesn't exist, try to create a placeholder.
+                    // If this fails, silently move on since we don't actually
+                    // need it
+                    if error.kind() == io::ErrorKind::NotFound {
+                        let _ = Self::create_new(&path).traced();
+                    }
 
-                // File failed to open. Attempt to create it. Whether or not the
-                // create succeeds, we're going to just log the error and use a
-                // default config.
-                //
-                // You could do this read/create all in one operation using
-                // OpenOptions::new().create(true).append(true).read(true),
-                // but that requires write permission on the file even if it
-                // doesn't exist, which may not be the case (e.g. NixOS)
-                // https://github.com/LucasPickering/slumber/issues/504
-                //
-                // This two step approach does have the risk of a race
-                // condition, but it's exceptionally unlikely and worst case
-                // scenario we show an error and continue with the default
-                // config
-                if let io::ErrorKind::NotFound = err.kind() {
-                    let _ = create_parent(&path)
-                        .and_then(|()| {
-                            let mut file = File::create_new(&path)?;
-                            // Prepopulate with contents
-                            file.write_all(&Self::default_content())?;
-                            Ok(())
-                        })
-                        .context("Error creating config file {path:?}")
-                        .traced();
+                    Ok(Self::default())
+                } else {
+                    // Error occurred during deserialization - the user probably
+                    // wants to fix this
+                    Err(error)
                 }
-
-                Ok(Self::default())
             }
         }
     }
@@ -226,6 +208,31 @@ impl Config {
             })
     }
 
+    /// When the config file fails to open, we'll attempt to create a new one
+    /// with placeholder content. Whether or not the
+    // create succeeds, we're going to just log the error and use a
+    // default config.
+    fn create_new(path: &Path) -> anyhow::Result<()> {
+        // You could do this read/create all in one operation using
+        // OpenOptions::new().create(true).append(true).read(true),
+        // but that requires write permission on the file even if it
+        // doesn't exist, which may not be the case (e.g. NixOS)
+        // https://github.com/LucasPickering/slumber/issues/504
+        //
+        // This two step approach does have the risk of a race
+        // condition, but it's exceptionally unlikely and worst case
+        // scenario we show an error and continue with the default
+        // config
+        create_parent(path)
+            .and_then(|()| {
+                let mut file = File::create_new(path)?;
+                // Prepopulate with contents
+                file.write_all(&Self::default_content())?;
+                Ok(())
+            })
+            .context("Error creating config file {path:?}")
+    }
+
     /// Pre-populated content for a new config file. Include all default values
     /// for discoverability, as well as a comment to enable LSP completion based
     /// on the schema
@@ -262,10 +269,10 @@ impl Default for Config {
 }
 
 /// Configuration for the engine that handles HTTP requests
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(default)]
+#[cfg_attr(feature = "schema", schemars(default))]
 pub struct HttpEngineConfig {
     /// TLS cert errors on these hostnames are ignored. Be careful!
     pub ignore_certificate_hosts: Vec<String>,
@@ -296,10 +303,10 @@ impl Default for HttpEngineConfig {
 }
 
 /// Configuration for in-app query and export commands
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(default, deny_unknown_fields)]
+#[cfg_attr(feature = "schema", schemars(default))]
 pub struct CommandsConfig {
     /// Wrapping shell to parse and execute commands
     /// If empty, commands will be parsed with shell-words and run natievly
@@ -331,6 +338,7 @@ impl Default for CommandsConfig {
 mod tests {
     use super::*;
     use env_lock::EnvGuard;
+    use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use slumber_util::{TempDir, assert_err, temp_dir};
     use std::fs;
@@ -367,6 +375,16 @@ mod tests {
             Config::path(),
             dirs::home_dir().unwrap().join("dotfiles/slumber.yml")
         );
+    }
+
+    /// File exists but it's empty. The default deserialized value should match
+    /// `Config::default()`
+    #[rstest]
+    fn test_load_file_empty(config_path: ConfigPath) {
+        fs::write(&config_path.path, "").unwrap();
+
+        let config = Config::load().unwrap();
+        assert_eq!(config, Config::default());
     }
 
     /// We can load the config when the config file already exists but is
@@ -428,6 +446,6 @@ mod tests {
     #[rstest]
     fn test_load_file_invalid(config_path: ConfigPath) {
         fs::write(&config_path.path, "fake_field: true\n").unwrap();
-        assert_err!(Config::load(), "unknown field `fake_field`");
+        assert_err!(Config::load(), "Unexpected field `fake_field`");
     }
 }

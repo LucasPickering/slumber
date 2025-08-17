@@ -20,6 +20,7 @@ use saphyr::{
     Scalar, ScanError, YamlData,
 };
 use std::{
+    error::Error as StdError,
     fs,
     hash::{Hash, Hasher},
     io,
@@ -27,7 +28,7 @@ use std::{
 };
 use thiserror::Error;
 
-type Result<T> = std::result::Result<T, LocatedError<Error>>;
+pub type Result<T> = std::result::Result<T, LocatedError<Error>>;
 
 /// Load YAML from a file and deserialize it into type `T`.
 ///
@@ -122,7 +123,7 @@ macro_rules! impl_deserialize_from {
 
             fn deserialize(
                 yaml: slumber_util::yaml::SourcedYaml,
-            ) -> Result<Self> {
+            ) -> slumber_util::yaml::Result<Self> {
                 <$u as DeserializeYaml>::deserialize(yaml).map(<$t>::from)
             }
         }
@@ -183,6 +184,16 @@ impl DeserializeYaml for bool {
     }
 }
 
+impl DeserializeYaml for usize {
+    fn expected() -> Expected {
+        Expected::Number
+    }
+
+    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+        yaml.try_into_usize()
+    }
+}
+
 impl DeserializeYaml for String {
     fn expected() -> Expected {
         Expected::String
@@ -226,8 +237,9 @@ where
 }
 
 /// Deserialize a plain map with string keys
-impl<V> DeserializeYaml for IndexMap<String, V>
+impl<K, V> DeserializeYaml for IndexMap<K, V>
 where
+    K: Eq + Hash + DeserializeYaml,
     V: DeserializeYaml,
 {
     fn expected() -> Expected {
@@ -237,7 +249,7 @@ where
     fn deserialize(yaml: SourcedYaml) -> Result<Self> {
         yaml.try_into_mapping()?
             .into_iter()
-            .map(|(k, v)| Ok((k.try_into_string()?, V::deserialize(v)?)))
+            .map(|(k, v)| Ok((K::deserialize(k)?, V::deserialize(v)?)))
             .collect()
     }
 }
@@ -332,6 +344,16 @@ impl<'input> SourcedYaml<'input> {
         }
     }
 
+    /// Unpack the YAML as an usize
+    pub fn try_into_usize(self) -> Result<usize> {
+        if let YamlData::Value(Scalar::Integer(i)) = self.data {
+            i.try_into()
+                .map_err(|error| LocatedError::other(error, self.location))
+        } else {
+            Err(LocatedError::unexpected(Expected::Number, self))
+        }
+    }
+
     /// Unpack the YAML as a string
     pub fn try_into_string(self) -> Result<String> {
         if let YamlData::Value(Scalar::String(s)) = self.data {
@@ -381,6 +403,16 @@ impl<'input> SourcedYaml<'input> {
         Self {
             data: YamlData::Value(Scalar::parse_from_cow(value.into())),
             location: SourceLocation::default(),
+        }
+    }
+
+    /// If this YAML value is a mapping, drop all entries whose keys start with
+    /// the `.` character
+    pub fn drop_dot_fields(&mut self) {
+        if let YamlData::Mapping(mapping) = &mut self.data {
+            mapping.retain(|key, _| {
+                !key.data.as_str().is_some_and(|s| s.starts_with('.'))
+            });
         }
     }
 }
@@ -564,7 +596,7 @@ impl<E> LocatedError<E> {
 impl LocatedError<Error> {
     /// Create a new [Other](Self::Other) from any error type
     pub fn other(
-        error: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+        error: impl Into<Box<dyn StdError + Send + Sync>>,
         location: SourceLocation,
     ) -> Self {
         Self {
@@ -629,7 +661,7 @@ pub enum Error {
 
     /// External error type
     #[error(transparent)]
-    Other(Box<dyn 'static + std::error::Error + Send + Sync>),
+    Other(Box<dyn 'static + StdError + Send + Sync>),
 
     /// Error parsing or resolving a reference under a `$ref` tag
     #[error(transparent)]
@@ -673,7 +705,7 @@ pub enum Expected {
     /// Expected a boolean
     #[display("boolean")]
     Boolean,
-    /// Expected a number
+    /// Expected an integer or float
     #[display("number")]
     Number,
     /// Expected a sequence

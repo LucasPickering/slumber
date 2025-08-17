@@ -2,6 +2,9 @@ use glob::{Pattern, PatternError};
 use indexmap::{IndexMap, indexmap};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
+use slumber_util::yaml::{
+    self, DeserializeYaml, Expected, LocatedError, SourcedYaml,
+};
 use std::str::FromStr;
 
 /// A map of content type patterns to values. Use this when you need to select a
@@ -42,26 +45,19 @@ impl<V> Default for MimeMap<V> {
     }
 }
 
-impl<'de, V: Deserialize<'de>> Deserialize<'de> for MimeMap<V> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        // Deserialize a single value as a map of {"*/*": value}
+impl DeserializeYaml for MimeMap<String> {
+    fn expected() -> Expected {
+        Expected::OneOf(&[&Expected::String, &Expected::Mapping])
+    }
 
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum MimeMapDeserialize<V> {
-            One(V),
-            Map(IndexMap<MimePattern, V>),
-        }
-
-        let wrapper = MimeMapDeserialize::deserialize(deserializer)?;
-        let patterns = match wrapper {
-            MimeMapDeserialize::One(v) => indexmap! {
-                MimePattern::default() => v
-            },
-            MimeMapDeserialize::Map(map) => map,
+    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        let patterns: IndexMap<MimePattern, String> = if yaml.data.is_mapping()
+        {
+            DeserializeYaml::deserialize(yaml)?
+        } else {
+            // Deserialize a single value as a map of {"*/*": value}
+            let s = yaml.try_into_string()?;
+            indexmap! { MimePattern::default() => s }
         };
         Ok(Self { patterns })
     }
@@ -119,11 +115,26 @@ impl TryFrom<String> for MimePattern {
     }
 }
 
+/// Deserialize via FromStr
+impl DeserializeYaml for MimePattern {
+    fn expected() -> Expected {
+        Expected::String
+    }
+
+    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        let location = yaml.location;
+        let s = yaml.try_into_string()?;
+        s.parse()
+            .map_err(|error| LocatedError::other(error, location))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-    use serde_test::{Token, assert_de_tokens};
+    use serde_yaml::Mapping;
+    use slumber_util::yaml::deserialize_yaml;
 
     fn map(entries: &[(&str, &str)]) -> MimeMap<String> {
         MimeMap {
@@ -137,18 +148,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case::string(&[Token::Str("test")], map(&[("*/*", "test")]))]
-    #[case::empty_map(&[Token::Map { len: None }, Token::MapEnd], map(&[]))]
-    #[case::aliases(&[
-            Token::Map { len: Some(2) },
-            Token::Str("json"),
-            Token::Str("json-value"),
-            Token::Str("image"),
-            Token::Str("image-value"),
-            Token::Str("default"),
-            Token::Str("default-value"),
-            Token::MapEnd,
-        ],
+    #[case::string("test", map(&[("*/*", "test")]))]
+    #[case::empty_map(serde_yaml::Value::Mapping(Mapping::default()), map(&[]))]
+    #[case::aliases(serde_yaml::Value::Mapping([
+            ("json".into(), "json-value".into()),
+            ("image".into(), "image-value".into()),
+            ("default".into(), "default-value".into()),
+        ].into_iter().collect()),
         map(&[
             ("application/*json", "json-value"),
             ("image/*","image-value"),
@@ -156,10 +162,13 @@ mod tests {
         ]),
     )]
     fn test_deserialize(
-        #[case] tokens: &[Token],
+        #[case] yaml: impl Into<serde_yaml::Value>,
         #[case] expected: MimeMap<String>,
     ) {
-        assert_de_tokens(&expected, tokens);
+        assert_eq!(
+            deserialize_yaml::<MimeMap<String>>(yaml.into()).unwrap(),
+            expected
+        );
     }
 
     #[rstest]

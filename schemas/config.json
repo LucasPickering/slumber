@@ -175,7 +175,6 @@
       "default": true
     }
   },
-  "additionalProperties": false,
   "examples": [
     {
       "commands": {
@@ -328,8 +327,7 @@
           "$ref": "#/$defs/MimeMap",
           "default": {}
         }
-      },
-      "additionalProperties": false
+      }
     },
     "MimeMap": {
       "description": "A map of content type patterns to values. Use this when you need to select a\nvalue based on the `Content-Type` header of a request/response. The patterns\nuse [glob] for matching, so technically it's trying to match a Unix\npath-like string, but that happens to look the same as a MIME type.",

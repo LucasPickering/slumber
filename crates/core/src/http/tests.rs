@@ -655,7 +655,7 @@ async fn test_profile_duplicate_error(http_engine: HttpEngine) {
             .await
             // Include full error chain in the message
             .map_err(anyhow::Error::from),
-        "Unknown function `fake_fn`"
+        "fake_fn(): Unknown function"
     );
 }
 

@@ -2,7 +2,9 @@
 
 #[cfg(test)]
 use crate::test_util;
-use crate::{Arguments, Context, RenderError, Value};
+use crate::{
+    Arguments, Context, RenderError, Value, error::RenderErrorContext,
+};
 use bytes::Bytes;
 use derive_more::{Deref, Display, From};
 use futures::{FutureExt, future};
@@ -55,17 +57,11 @@ impl Expression {
                     Ok(Value::Array(values))
                 }
                 Self::Field(identifier) => context.get(identifier).await,
-                Self::Call(call) => {
-                    let arguments = call.render_arguments(context).await?;
-                    context.call(&call.function, arguments).await
-                }
+                Self::Call(call) => call.call(context, None).await,
                 Self::Pipe { expression, call } => {
-                    // Box for recursion
+                    // Compute the left hand side first. Box for recursion
                     let value = expression.render(context).boxed().await?;
-                    let mut arguments = call.render_arguments(context).await?;
-                    // Pipe the filter value in as the last positional argument
-                    arguments.position.push_back(value);
-                    context.call(&call.function, arguments).await
+                    call.call(context, Some(value)).await
                 }
             }
         }
@@ -212,19 +208,57 @@ impl FunctionCall {
         }
     }
 
+    /// Render arguments and call the function
+    async fn call<Ctx: Context>(
+        &self,
+        context: &Ctx,
+        piped_argument: Option<Value>,
+    ) -> Result<Value, RenderError> {
+        // Provide context to the error
+        let map_error = |error: RenderError| {
+            error.context(RenderErrorContext::Function(self.function.clone()))
+        };
+
+        let mut arguments =
+            self.render_arguments(context).await.map_err(map_error)?;
+        if let Some(piped_argument) = piped_argument {
+            // Pipe the filter value in as the last positional argument
+            arguments.position.push_back(piped_argument);
+        }
+        context
+            .call(&self.function, arguments)
+            .await
+            .map_err(map_error)
+    }
+
+    /// Render each argument passed in this function call
     async fn render_arguments<'ctx, Ctx: Context>(
         &self,
         context: &'ctx Ctx,
     ) -> Result<Arguments<'ctx, Ctx>, RenderError> {
-        // Render all position and keyword arguments concurrently
-        let position_future = future::try_join_all(
-            self.position
-                .iter()
-                .map(|expression| expression.render(context)),
-        );
+        // Render all position and keyword arguments concurrently. We attach
+        // error context to any failures so the user know which arg failed to
+        // render
+        let position_future =
+            future::try_join_all(self.position.iter().enumerate().map(
+                |(index, expression)| async move {
+                    expression.render(context).await.map_err(|error| {
+                        error.context(RenderErrorContext::ArgumentRender {
+                            argument: index.to_string(),
+                            expression: expression.clone(),
+                        })
+                    })
+                },
+            ));
         let keyword_future = future::try_join_all(self.keyword.iter().map(
             |(name, expression)| async {
-                let value = expression.render(context).await?;
+                let value =
+                    expression.render(context).await.map_err(|error| {
+                        error.context(RenderErrorContext::ArgumentRender {
+                            argument: name.to_string(),
+                            expression: expression.clone(),
+                        })
+                    })?;
                 Ok((name.to_string(), value))
             },
         ));
@@ -233,11 +267,11 @@ impl FunctionCall {
                 // Box for recursion
                 .boxed()
                 .await?;
-        Ok(Arguments {
+        Ok(Arguments::new(
             context,
-            position: position.into(),
-            keyword: keyword.into_iter().collect(),
-        })
+            position.into(),
+            keyword.into_iter().collect(),
+        ))
     }
 }
 

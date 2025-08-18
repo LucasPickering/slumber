@@ -1,11 +1,12 @@
-use bytes::Bytes;
-use std::{collections::HashMap, fmt::Display, string::FromUtf8Error};
+use crate::{Expression, Identifier, Value};
+use derive_more::derive::Display;
+use indexmap::IndexMap;
+use itertools::Itertools;
+use serde::de;
+use std::{fmt::Display, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
 use winnow::error::{ContextError, ParseError};
-
-use crate::{Identifier, Value};
-use serde::de;
 
 /// An error while parsing a template. The string is provided by winnow
 #[derive(Debug, Error)]
@@ -50,47 +51,37 @@ pub enum RenderError {
         error: Box<Self>,
     },
 
-    /// No function by this name
-    #[error("Unknown function `{name}`")]
-    FunctionUnknown { name: Identifier },
-
-    /// In many contexts, the render output needs to be usable as a string.
-    /// This error occurs when we wanted to render to a string, but whatever
-    /// bytes we got were not valid UTF-8. The underlying error message is
-    /// descriptive enough so we don't need to give additional context.
-    #[error(transparent)]
-    InvalidUtf8(#[from] FromUtf8Error),
-
-    /// Error parsing JSON data
-    #[error("Error parsing bytes as JSON: `{data:?}`")]
-    JsonDeserialize {
-        data: Bytes,
-        #[source]
-        error: serde_json::Error,
-    },
-
-    /// Not enough arguments provided to a function call
-    #[error("Not enough arguments")]
-    NotEnoughArguments,
+    /// No function by this name. Name doesn't need to be given because this
+    /// will be wrapped in the `Function` variant
+    #[error("Unknown function")]
+    FunctionUnknown,
 
     /// External error type from a function call
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
 
+    /// Not enough arguments provided to a function call
+    #[error("Not enough arguments")]
+    TooFewArguments,
+
     /// Unexpected arguments passed to function
-    #[error(
-        "Unexpected arguments passed to function: {position:?}, {keyword:?}"
-    )]
+    #[error("Extra arguments {}", extra_args(.position, .keyword))]
     TooManyArguments {
         position: Vec<Value>,
-        keyword: HashMap<String, Value>,
+        keyword: IndexMap<String, Value>,
     },
 
-    /// Function expected one type but a value of a different type was given
-    #[error("Type error; expected `{expected}`, got `{actual}`")]
-    Type {
-        expected: &'static str,
-        actual: Value,
+    /// Error converting a [Value] to another type
+    #[error(transparent)]
+    Value(ValueError),
+
+    /// An error with additional context attached. Used to locate errors in
+    /// function calls that could be deeply nested
+    #[error("{context}")]
+    WithContext {
+        context: Box<RenderErrorContext>,
+        #[source]
+        error: Box<Self>,
     },
 }
 
@@ -101,6 +92,15 @@ impl RenderError {
     ) -> Self {
         Self::Other(error.into())
     }
+
+    /// Attach context to this error
+    #[must_use]
+    pub fn context(self, context: RenderErrorContext) -> Self {
+        Self::WithContext {
+            context: Box::new(context),
+            error: Box::new(self),
+        }
+    }
 }
 
 impl de::Error for RenderError {
@@ -109,5 +109,108 @@ impl de::Error for RenderError {
         T: Display,
     {
         RenderError::Other(msg.to_string().into())
+    }
+}
+
+/// Information about where an error occurred
+#[derive(Debug, Display)]
+pub enum RenderErrorContext {
+    /// Error in a function call expression
+    #[display("{_0}()")]
+    Function(Identifier),
+
+    /// Error rendering an argument expression
+    #[display("argument {argument}={expression}")]
+    ArgumentRender {
+        argument: String,
+        expression: Expression,
+    },
+
+    /// Error while converting an argument value into whatever type the function
+    /// wants
+    #[display("argument {argument}={value}")]
+    ArgumentConvert { argument: String, value: Value },
+}
+
+/// Format the extra positional and/or keyword arguments given in a function
+/// call
+fn extra_args<'a>(
+    position: &'a [Value],
+    keyword: &'a IndexMap<String, Value>,
+) -> impl 'a + Display {
+    // Build a list like `1, 2, a=3, b=4`
+    position
+        .iter()
+        .map(|arg| format!("{arg}"))
+        .chain(
+            keyword
+                .iter()
+                .map(|(name, value)| format!("{name}={value}")),
+        )
+        .format(", ")
+}
+
+/// An error with a value attached. Use this for errors that originated from a
+/// particular value, so that the offending value can be included in the error
+/// message. This does not implement `Error` itself as it's just meant as a
+/// container to pass an error+value together. It should be unpacked into
+/// another error variant to provide better context to the user.
+#[derive(Debug)]
+pub struct WithValue<E> {
+    /// Value that failed to convert
+    pub value: Value,
+    /// The error that occurred during conversion. This error is transparent,
+    /// meaning we include its message in our own `Display` impl and
+    /// [StdError::source] returns its source
+    pub error: E,
+}
+
+impl<E> WithValue<E> {
+    /// Pair a value with the error it generated
+    pub fn new(value: Value, error: impl Into<E>) -> Self {
+        Self {
+            value,
+            error: error.into(),
+        }
+    }
+}
+
+/// An error that can occur while converting from [Value] to some other type.
+/// This is returned from [TryFromValue].
+#[derive(Debug, Error)]
+pub enum ValueError {
+    /// In many contexts, the render output needs to be usable as a string.
+    /// This error occurs when we wanted to render to a string, but whatever
+    /// bytes we got were not valid UTF-8. The underlying error message is
+    /// descriptive enough so we don't need to give additional context.
+    #[error(transparent)]
+    InvalidUtf8(#[from] FromUtf8Error),
+
+    /// Error parsing JSON data
+    #[error("Error parsing JSON")]
+    Json(
+        #[from]
+        #[source]
+        serde_json::Error,
+    ),
+
+    /// External error type
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync>),
+
+    /// Function expected one type but a value of a different type was given
+    ///
+    /// This should probably take an `Expected` enum instead of a static string
+    /// to ensure the values are standardized
+    #[error("Expected {expected}")]
+    Type { expected: &'static str },
+}
+
+impl ValueError {
+    /// Create a [Self::Other] from another error
+    pub fn other(
+        error: impl 'static + Into<Box<dyn std::error::Error + Send + Sync>>,
+    ) -> Self {
+        Self::Other(error.into())
     }
 }

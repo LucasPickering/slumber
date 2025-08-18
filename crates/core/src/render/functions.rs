@@ -10,7 +10,9 @@ use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
-use slumber_template::{RenderError, TryFromValue, impl_try_from_value_str};
+use slumber_template::{
+    TryFromValue, ValueError, WithValue, impl_try_from_value_str,
+};
 use slumber_util::TimeSpan;
 use std::{env, fmt::Debug, process::Stdio, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
@@ -558,8 +560,9 @@ impl FromStr for RequestTrigger {
             // Anything else is parsed as a duration
             _ => {
                 let duration = s.parse::<TimeSpan>().map_err(|_| {
-                    "\"never\", \"no_history\", \"always\", or a duration \
-                    string such as \"1h\"; duration units are `s`, `m`, `h`, or `d`"
+                    "Expected \"never\", \"no_history\", \"always\", or a \
+                    duration string such as \"1h\" \
+                    (units are \"s\", \"m\", \"h\", or \"d\")"
                 })?;
                 Ok(Self::Expire { duration })
             }
@@ -602,7 +605,7 @@ impl_try_from_value_str!(TrimMode);
 impl TryFromValue for RecipeId {
     fn try_from_value(
         value: slumber_template::Value,
-    ) -> Result<Self, slumber_template::RenderError> {
+    ) -> Result<Self, WithValue<ValueError>> {
         String::try_from_value(value).map(RecipeId::from)
     }
 }

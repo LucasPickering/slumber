@@ -132,6 +132,7 @@ requests:
     name: Users
     requests:
       simple: !request
+        persist: false # Non-default value
         name: Get User
         method: GET
         # No headers or authentication

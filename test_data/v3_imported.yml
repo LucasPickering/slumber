@@ -40,6 +40,7 @@ requests:
     name: Users
     requests:
       simple:
+        persist: false
         name: Get User
         method: GET
         # No headers or authentication

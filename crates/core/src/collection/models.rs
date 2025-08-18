@@ -2,6 +2,7 @@
 
 use crate::{
     collection::{
+        cereal,
         json::JsonTemplate,
         recipe_tree::{RecipeNode, RecipeTree},
     },
@@ -101,6 +102,7 @@ pub struct Profile {
     /// the TUI, select this profile by default from the list. Only one profile
     /// in the collection can be marked as default. This is enforced by a
     /// custom deserializer function.
+    #[serde(skip_serializing_if = "cereal::is_false")] // Skip if default
     #[cfg_attr(feature = "schema", schemars(default))]
     pub default: bool,
     pub data: IndexMap<String, Template>,
@@ -210,6 +212,7 @@ pub struct Recipe {
     /// Slumber database?
     /// [See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)
     /// for more info
+    #[serde(skip_serializing_if = "cereal::is_true")] // Skip if default
     #[cfg_attr(feature = "schema", schemars(default = "persist_default"))]
     pub persist: bool,
     /// Display name

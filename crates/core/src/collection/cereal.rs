@@ -468,6 +468,18 @@ impl HasId for Recipe {
 #[derive(Debug, Default)]
 struct Adopt<T>(T);
 
+/// Predicate for skip_serializing_if
+#[expect(clippy::trivially_copy_pass_by_ref)]
+pub fn is_true(b: &bool) -> bool {
+    *b
+}
+
+/// Predicate for skip_serializing_if
+#[expect(clippy::trivially_copy_pass_by_ref)]
+pub fn is_false(b: &bool) -> bool {
+    !b
+}
+
 /// Expose this for RecipeTree's tests
 #[cfg(test)]
 pub use tests::deserialize_recipe_tree;

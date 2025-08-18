@@ -40,7 +40,6 @@
         },
         "remote": {
           "name": "Remote",
-          "default": false,
           "data": {
             "host": "https://myfishes.fish"
           }
@@ -48,7 +47,6 @@
       },
       "requests": {
         "my_recipe": {
-          "persist": true,
           "name": "My Recipe",
           "method": "POST",
           "url": "http://localhost:8000/fish",
@@ -79,12 +77,10 @@
           "name": "My Folder",
           "requests": {
             "recipe1": {
-              "persist": true,
               "method": "GET",
               "url": "http://localhost/url"
             },
             "recipe2": {
-              "persist": true,
               "method": "GET",
               "url": "http://localhost/url"
             }
@@ -111,8 +107,7 @@
         },
         "default": {
           "description": "For the CLI, use this profile when no `--profile` flag is passed. For\nthe TUI, select this profile by default from the list. Only one profile\nin the collection can be marked as default. This is enforced by a\ncustom deserializer function.",
-          "type": "boolean",
-          "default": false
+          "type": "boolean"
         },
         "data": {
           "type": "object",
@@ -186,7 +181,6 @@
           "name": "My Folder",
           "requests": {
             "my_recipe": {
-              "persist": true,
               "name": "My Recipe",
               "method": "POST",
               "url": "http://localhost:8000/fish",
@@ -223,8 +217,7 @@
       "properties": {
         "persist": {
           "description": "Should requests and responses of this recipe be persisted in the local\nSlumber database?\n[See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)\nfor more info",
-          "type": "boolean",
-          "default": true
+          "type": "boolean"
         },
         "name": {
           "description": "Display name",
@@ -284,7 +277,6 @@
       ],
       "examples": [
         {
-          "persist": true,
           "name": "My Recipe",
           "method": "POST",
           "url": "http://localhost:8000/fish",

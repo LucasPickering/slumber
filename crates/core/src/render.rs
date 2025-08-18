@@ -213,9 +213,7 @@ impl slumber_template::Context for TemplateContext {
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
             "trim" => functions::trim(arguments),
-            _ => Err(RenderError::FunctionUnknown {
-                name: function_name.clone(),
-            }),
+            _ => Err(RenderError::FunctionUnknown),
         }
     }
 }

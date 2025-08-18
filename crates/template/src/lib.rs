@@ -11,10 +11,13 @@ mod parse;
 #[cfg(test)]
 mod test_util;
 
-pub use error::{RenderError, TemplateParseError};
+pub use error::{RenderError, TemplateParseError, ValueError, WithValue};
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
 
-use crate::parse::{FALSE, NULL, TRUE};
+use crate::{
+    error::RenderErrorContext,
+    parse::{FALSE, NULL, TRUE},
+};
 use bytes::{Bytes, BytesMut};
 use derive_more::From;
 use futures::future;
@@ -24,11 +27,7 @@ use itertools::Itertools;
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
 use slumber_util::NEW_ISSUE_LINK;
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Debug,
-    sync::Arc,
-};
+use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
@@ -192,12 +191,8 @@ impl Template {
             .try_fold(BytesMut::with_capacity(capacity), |mut acc, chunk| {
                 match chunk {
                     RenderedChunk::Raw(s) => acc.extend(s.as_bytes()),
-                    RenderedChunk::Rendered(Value::Bytes(bytes)) => {
-                        acc.extend(bytes);
-                    }
                     RenderedChunk::Rendered(value) => {
-                        let s = value.try_into_string()?;
-                        acc.extend(s.into_bytes());
+                        acc.extend(value.into_bytes());
                     }
                     RenderedChunk::Error(error) => return Err(error),
                 }
@@ -354,7 +349,7 @@ impl Value {
     /// Attempt to convert this value to a string. This can fail only if the
     /// value contains non-UTF-8 bytes, or if it is a collection that contains
     /// non-UTF-8 bytes.
-    pub fn try_into_string(self) -> Result<String, RenderError> {
+    pub fn try_into_string(self) -> Result<String, WithValue<ValueError>> {
         match self {
             Self::Null => Ok(NULL.into()),
             Self::Bool(false) => Ok(FALSE.into()),
@@ -362,9 +357,15 @@ impl Value {
             Self::Int(i) => Ok(i.to_string()),
             Self::Float(f) => Ok(f.to_string()),
             Self::String(s) => Ok(s),
-            Self::Bytes(bytes) => {
-                String::from_utf8(bytes.into()).map_err(RenderError::from)
-            }
+            Self::Bytes(bytes) => String::from_utf8(bytes.into())
+                // We moved the value to convert it, so we have to reconstruct
+                // it for the error
+                .map_err(|error| {
+                    WithValue::new(
+                        Self::Bytes(error.as_bytes().to_owned().into()),
+                        error,
+                    )
+                }),
             // Use the display impl
             Self::Array(_) | Self::Object(_) => Ok(self.to_string()),
         }
@@ -448,18 +449,34 @@ impl PartialEq for RenderedChunk {
 pub struct Arguments<'ctx, Ctx> {
     /// Arbitrary user-provided context available to every template render and
     /// function call
-    pub(crate) context: &'ctx Ctx,
+    context: &'ctx Ctx,
     /// Position arguments. This queue will be drained from the front as
     /// arguments are converted, and additional arguments not accepted by the
     /// function will trigger an error.
-    pub(crate) position: VecDeque<Value>,
-    /// Keyword arguments. These will be converted wholesale as a single map,
-    /// as there's no Rust support for kwargs. All keyword arguments are
-    /// optional.
-    pub(crate) keyword: HashMap<String, Value>,
+    position: VecDeque<Value>,
+    /// Number of arguments that have been popped off so far. Used to provide
+    /// better error messages
+    num_popped: usize,
+    /// Keyword arguments. All keyword arguments are optional. Ordering has no
+    /// impact on semantics, but we use an `IndexMap` so the order in error
+    /// messages will match what the user passed.
+    keyword: IndexMap<String, Value>,
 }
 
 impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
+    pub fn new(
+        context: &'ctx Ctx,
+        position: VecDeque<Value>,
+        keyword: IndexMap<String, Value>,
+    ) -> Self {
+        Self {
+            context,
+            position,
+            num_popped: 0,
+            keyword,
+        }
+    }
+
     /// Get a reference to the template context
     pub fn context(&self) -> &'ctx Ctx {
         self.context
@@ -472,8 +489,17 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         let value = self
             .position
             .pop_front()
-            .ok_or(RenderError::NotEnoughArguments)?;
-        T::try_from_value(value)
+            .ok_or(RenderError::TooFewArguments)?;
+        let arg_index = self.num_popped;
+        self.num_popped += 1;
+        T::try_from_value(value).map_err(|error| {
+            RenderError::Value(error.error).context(
+                RenderErrorContext::ArgumentConvert {
+                    argument: arg_index.to_string(),
+                    value: error.value,
+                },
+            )
+        })
     }
 
     /// Remove a keyword argument from the argument set, converting it to type
@@ -483,8 +509,15 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         &mut self,
         name: &str,
     ) -> Result<T, RenderError> {
-        match self.keyword.remove(name) {
-            Some(value) => T::try_from_value(value),
+        match self.keyword.shift_remove(name) {
+            Some(value) => T::try_from_value(value).map_err(|error| {
+                RenderError::Value(error.error).context(
+                    RenderErrorContext::ArgumentConvert {
+                        argument: name.to_owned(),
+                        value: error.value,
+                    },
+                )
+            }),
             // Kwarg not provided - use the default value
             None => Ok(T::default()),
         }
@@ -510,30 +543,56 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
 /// This is used for converting function arguments to the static types expected
 /// by the function implementations.
 pub trait TryFromValue: Sized {
-    fn try_from_value(value: Value) -> Result<Self, RenderError>;
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>>;
 }
 
 impl TryFromValue for Value {
-    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         Ok(value)
     }
 }
 
 impl TryFromValue for bool {
-    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         Ok(value.to_bool())
     }
 }
 
+impl TryFromValue for f64 {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
+        match value {
+            Value::Float(f) => Ok(f),
+            _ => Err(WithValue::new(
+                value,
+                ValueError::Type { expected: "float" },
+            )),
+        }
+    }
+}
+
+impl TryFromValue for i64 {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
+        match value {
+            Value::Int(i) => Ok(i),
+            _ => Err(WithValue::new(
+                value,
+                ValueError::Type {
+                    expected: "integer",
+                },
+            )),
+        }
+    }
+}
+
 impl TryFromValue for String {
-    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         // This will succeed for anything other than invalid UTF-8 bytes
         value.try_into_string()
     }
 }
 
 impl TryFromValue for Bytes {
-    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         Ok(value.into_bytes())
     }
 }
@@ -542,7 +601,7 @@ impl<T> TryFromValue for Option<T>
 where
     T: TryFromValue,
 {
-    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         if let Value::Null = value {
             Ok(None)
         } else {
@@ -556,14 +615,14 @@ impl<T> TryFromValue for Vec<T>
 where
     T: TryFromValue,
 {
-    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         if let Value::Array(array) = value {
             array.into_iter().map(T::try_from_value).collect()
         } else {
-            Err(RenderError::Type {
-                expected: "array",
-                actual: value,
-            })
+            Err(WithValue::new(
+                value,
+                ValueError::Type { expected: "array" },
+            ))
         }
     }
 }
@@ -573,7 +632,7 @@ where
 /// to parse response bodies as JSON while accepting anything else as a native
 /// JSON value
 impl TryFromValue for serde_json::Value {
-    fn try_from_value(value: Value) -> Result<Self, RenderError> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         match value {
             Value::Null => Ok(serde_json::Value::Null),
             Value::Bool(b) => Ok(b.into()),
@@ -590,9 +649,8 @@ impl TryFromValue for serde_json::Value {
                 .collect(),
             Value::Bytes(bytes) => {
                 // Assume this is an encoded JSON string and deserialize it
-                serde_json::from_slice(&bytes).map_err(|error| {
-                    RenderError::JsonDeserialize { data: bytes, error }
-                })
+                serde_json::from_slice(&bytes)
+                    .map_err(|error| WithValue::new(Value::Bytes(bytes), error))
             }
         }
     }
@@ -608,9 +666,14 @@ macro_rules! impl_try_from_value_str {
         impl TryFromValue for $type {
             fn try_from_value(
                 value: $crate::Value,
-            ) -> Result<Self, RenderError> {
+            ) -> Result<Self, $crate::WithValue<$crate::ValueError>> {
                 let s = String::try_from_value(value)?;
-                s.parse().map_err(RenderError::other)
+                s.parse().map_err(|error| {
+                    $crate::WithValue::new(
+                        s.into(),
+                        $crate::ValueError::other(error),
+                    )
+                })
             }
         }
     };
@@ -653,6 +716,7 @@ mod tests {
     use super::*;
     use indexmap::indexmap;
     use rstest::rstest;
+    use slumber_util::assert_err;
 
     /// Convert JSON values to template values
     #[rstest]
@@ -730,6 +794,39 @@ mod tests {
         );
     }
 
+    /// Test error context on a variety of error cases in function calls
+    #[rstest]
+    #[case::unknown_function("{{ fake() }}", "fake(): Unknown function")]
+    #[case::extra_arg(
+        "{{ identity('a', 'b') }}",
+        "identity(): Extra arguments 'b'"
+    )]
+    #[case::missing_arg("{{ add(1) }}", "add(): Not enough arguments")]
+    #[case::arg_render(
+        // Argument fails to render
+        "{{ add(f(), 2) }}",
+        "add(): argument 0=f(): f(): Unknown function"
+    )]
+    #[case::arg_convert(
+        // Argument renders but doesn't convert to what the func wants
+        "{{ add(1, 'b') }}",
+        "add(): argument 1='b': Expected integer"
+    )]
+    #[tokio::test]
+    async fn test_function_error(
+        #[case] template: Template,
+        #[case] expected_error: &str,
+    ) {
+        assert_err!(
+            // Use anyhow to get the error message to include the whole chain
+            template
+                .render_string(&TestContext)
+                .await
+                .map_err(anyhow::Error::from),
+            expected_error
+        );
+    }
+
     struct TestContext;
 
     impl Context for TestContext {
@@ -753,6 +850,12 @@ mod tests {
                     arguments.ensure_consumed()?;
                     Ok(value)
                 }
+                "add" => {
+                    let a: i64 = arguments.pop_position()?;
+                    let b: i64 = arguments.pop_position()?;
+                    arguments.ensure_consumed()?;
+                    Ok((a + b).into())
+                }
                 "concat" => {
                     let mut a: String = arguments.pop_position()?;
                     let b: String = arguments.pop_position()?;
@@ -765,9 +868,7 @@ mod tests {
                         Ok(a.into())
                     }
                 }
-                _ => Err(RenderError::FunctionUnknown {
-                    name: function_name.clone(),
-                }),
+                _ => Err(RenderError::FunctionUnknown),
             }
         }
     }

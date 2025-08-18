@@ -201,7 +201,7 @@ async fn test_file(
     "$[1]",
     None,
     Some(invalid_utf8().into()),
-    Err("Error parsing bytes as JSON")
+    Err("Error parsing JSON")
 )]
 #[tokio::test]
 async fn test_jsonpath(

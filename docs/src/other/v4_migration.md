@@ -75,8 +75,10 @@ source: !command
   command: ["echo", "test"]
   stdin: "{{host}}"
 # becomes
-command(["echo", "test"], stdin=host)
+"{{ command(['echo', 'test'], stdin=host) }}"
 ```
+
+> Previously, an error was not triggered if the command failed with a non-zero status code. This will now trigger an error. If you want the template to render even if the command fails, you can use something like `['sh', '-c', ]
 
 **`!env` becomes [`env`](../api/template_functions.md#env)**
 
@@ -84,7 +86,7 @@ command(["echo", "test"], stdin=host)
 source: !env
   variable: MY_VAR
 # becomes
-env("MY_VAR")
+"{{ env('MY_VAR') }}"
 ```
 
 **`!file` becomes [`file`](../api/template_functions.md#file)**
@@ -93,7 +95,7 @@ env("MY_VAR")
 source: !file
   path: my/file
 # becomes
-file("my/file")
+"{{ file('my/file') }}"
 ```
 
 **`!prompt` becomes [`prompt`](../api/template_functions.md#prompt)**
@@ -104,7 +106,7 @@ source: !prompt
   default: "Default"
 sensitive: true
 # becomes
-prompt(message="Enter data", default="Default", sensitive=true)
+"{{ prompt(message='Enter data', default='Default', sensitive=true) }}"
 ```
 
 **`!request` split into [`response`](../api/template_functions.md#response) and [`response_header`](../api/template_functions.md#response_header)**
@@ -115,7 +117,7 @@ source: !request
   trigger: !expire 12h
   section: !body
 # becomes
-response("login", trigger="12h")
+"{{ response('login', trigger='12h') }}"
 ```
 
 ```yaml
@@ -124,7 +126,7 @@ source: !request
   trigger: !expire 12h
   section: !header Content-Type
 # becomes
-response_header("login", "Content-Type", trigger="12h")
+"{{ response_header('login', 'Content-Type', trigger='12h') }}"
 ```
 
 **`!select` becomes [`select`](../api/template_functions.md#select)**
@@ -136,7 +138,7 @@ source: !select
     - option2
   message: "Message"
 # becomes
-select(options=["option1", "option2"], message="Message")
+"{{ select(options=['option1', 'option2'], message='Message') }}"
 ```
 
 In addition, the following chain fields have been replaced by utility functions:
@@ -156,7 +158,7 @@ selector: "$.items"
 selector_mode: array
 sensitive: true
 # becomes
-file("file.json") | trim(mode="both") | jsonpath("$.items", mode="array") | sensitive()
+"{{ file('file.json') | trim(mode='both') | jsonpath('$.items', mode='array') | sensitive() }}"
 ```
 
 Finally, there is a function `concat()` that can be used to replicate the behavior of nested templates within chain config:

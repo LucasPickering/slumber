@@ -74,6 +74,11 @@ async fn test_override() {
 #[case::binary_output(vec!["cat", "-"], Some(invalid_utf8()), Ok(invalid_utf8()))]
 #[case::error_empty(vec![], None, Err("Command must have at least one element"))]
 #[case::error_bad_command(vec!["fake"], None, Err("Executing command `fake`"))]
+#[case::error_exit_code(
+    vec!["ls", "--fake"],
+    None,
+    Err(if cfg!(unix) { "unrecognized option" } else { "unknown option" }),
+)]
 #[tokio::test]
 async fn test_command(
     #[case] command: Vec<&str>,

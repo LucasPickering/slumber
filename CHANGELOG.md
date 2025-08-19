@@ -112,6 +112,7 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
 - YAML anchor/alias/merge syntax has been replaced with `$ref` references, similar to OpenAPI [#290](https://github.com/LucasPickering/slumber/issues/290)
   - These references are much more flexible, including the ability to import from other files
   - [See docs](https://slumber.lucaspickering.me/book/user_guide/composition.html) for examples
+- Commands in templates (previously `!command`, now `command()`) now fail if the command exits with a non-zero status code
 
 ## Added
 

@@ -23,7 +23,9 @@ use itertools::Itertools;
 use serde_json_path::JsonPath;
 use slumber_template::{Arguments, Identifier, RenderError};
 use slumber_util::ResultTraced;
-use std::{fmt::Debug, io, iter, path::PathBuf, sync::Arc};
+use std::{
+    fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
+};
 use thiserror::Error;
 use tokio::sync::oneshot;
 
@@ -368,15 +370,32 @@ impl<T> ResponseChannel<T> {
 /// An error that can occur within a template function
 #[derive(Debug, Error)]
 pub enum FunctionError {
-    /// Error executing an external command
+    /// Error creating or spawning a subprocess
     #[error(
         "Executing command `{}`", iter::once(program).chain(args).format(" ")
     )]
-    Command {
+    CommandInit {
         program: String,
         args: Vec<String>,
         #[source]
         error: io::Error,
+    },
+
+    /// Command exited with a non-zero status code
+    #[error(
+        "Command `{command}` exited with {status}\n{stderr}",
+        command = iter::once(program).chain(args).format(" "),
+        stderr = String::from_utf8_lossy(stderr),
+    )]
+    CommandStatus {
+        program: String,
+        args: Vec<String>,
+        status: ExitStatus,
+        // Storing stdout+stderr because I like symmetry. It's not easy to
+        // print both because we don't know how they're supposed to be
+        // interleaved. The error should be in stderr so we'll just print that.
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
     },
 
     /// User passed an empty command arrary

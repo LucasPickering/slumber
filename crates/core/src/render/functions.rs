@@ -29,7 +29,9 @@ use tracing::{debug, debug_span};
 
 /// Run a command in a subprocess and return its stdout output. While the output
 /// type is `bytes`, [in most cases you can use it interchangeably as a
-/// string](../user_guide/templates/values.md#bytes-vs-string).
+/// string](../user_guide/templates/values.md#bytes-vs-string). Fails if the
+/// command fails to initialize (e.g. the program is unknown) or it exits with
+/// a non-zero status code.
 ///
 /// **Parameters**
 ///
@@ -56,12 +58,14 @@ pub async fn command(
     let _ = debug_span!("Executing command", ?program, ?args).entered();
 
     let output = async {
+        // TODO exit status should cause failure
         // Spawn the command process
         let mut process = Command::new(program)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .kill_on_drop(true)
             .spawn()?;
 
         // Write the stdin to the process
@@ -78,19 +82,31 @@ pub async fn command(
         process.wait_with_output().await
     }
     .await
-    .map_err(|error| FunctionError::Command {
+    .map_err(|error| FunctionError::CommandInit {
         program: program.clone(),
         args: args.into(),
         error,
     })?;
 
     debug!(
+        status = %output.status,
         stdout = %String::from_utf8_lossy(&output.stdout),
         stderr = %String::from_utf8_lossy(&output.stderr),
-        "Command success"
+        "Command finished"
     );
 
-    Ok(output.stdout.into())
+    // Check status code
+    if output.status.success() {
+        Ok(output.stdout.into())
+    } else {
+        Err(FunctionError::CommandStatus {
+            program: program.clone(),
+            args: args.into(),
+            status: output.status,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        })
+    }
 }
 
 /// Concatenate any number of strings together

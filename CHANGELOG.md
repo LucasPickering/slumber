@@ -113,6 +113,9 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
   - These references are much more flexible, including the ability to import from other files
   - [See docs](https://slumber.lucaspickering.me/book/user_guide/composition.html) for examples
 - Commands in templates (previously `!command`, now `command()`) now fail if the command exits with a non-zero status code
+- Templates in a JSON body with a single dynamic chunk (such as `{{ username }}`) will now be unpacked into their inner value rather than always being stringified
+  - This means you can now create dynamic non-string values within a JSON body
+  - [See docs](https://slumber.lucaspickering.me/book/user_guide/recipes.html#body) for more
 
 ## Added
 

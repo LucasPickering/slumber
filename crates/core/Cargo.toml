@@ -13,6 +13,7 @@ version = {workspace = true}
 [dependencies]
 anyhow = {workspace = true}
 async-trait = {workspace = true}
+base64 = "0.22.1"
 bytes = {workspace = true, features = ["serde"]}
 chrono = {workspace = true, features = ["clock", "serde", "std"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str", "into", "std"]}

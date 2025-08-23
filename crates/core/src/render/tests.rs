@@ -14,6 +14,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
+use serde_json::json;
 use slumber_template::{Expression, Template};
 use slumber_util::{Factory, TempDir, assert_result, temp_dir};
 use std::time::Duration;
@@ -64,6 +65,30 @@ async fn test_override() {
     assert_eq!(
         template.render_bytes(&context).await.unwrap(),
         "http://override/users/1"
+    );
+}
+
+/// `base64()`
+#[rstest]
+#[case::encode_string(b"test", false, Ok(b"dGVzdA==" as _))]
+#[case::encode_bytes(invalid_utf8(), false, Ok(b"wyg=" as _))]
+#[case::decode_string(b"dGVzdA==", true, Ok(b"test" as _))]
+#[case::decode_bytes(b"wyg=", true, Ok(invalid_utf8()))]
+#[case::error_invalid_base64(b"not base64", true, Err("Invalid symbol"))]
+#[tokio::test]
+async fn test_base64(
+    #[case] input: &'static [u8],
+    #[case] decode: bool,
+    #[case] expected: Result<&'static [u8], &str>,
+) {
+    let template = Template::function_call(
+        "base64",
+        [input.into()],
+        [("decode", Some(decode.into()))],
+    );
+    assert_result(
+        template.render_bytes(&TemplateContext::factory(())).await,
+        expected,
     );
 }
 
@@ -168,6 +193,25 @@ async fn test_file(
     );
     assert_result(
         template.render_bytes(&TemplateContext::factory(())).await,
+        expected,
+    );
+}
+
+/// `json()`
+#[rstest]
+#[case::object(br#"{"a": 1, "b": 2}"#, Ok(json!({"a": 1, "b": 2}).into()))]
+#[case::string(br#""json string""#, Ok(json!("json string").into()))]
+#[case::error_invalid_json(br#""unclosed"#, Err("EOF while parsing a string"))]
+// Binary content can't be parsed
+#[case::error_binary(invalid_utf8(), Err("invalid utf-8 sequence"))]
+#[tokio::test]
+async fn test_json(
+    #[case] json: &'static [u8],
+    #[case] expected: Result<slumber_template::Value, &str>,
+) {
+    let template = Template::function_call("json", [json.into()], []);
+    assert_result(
+        template.render_value(&TemplateContext::factory(())).await,
         expected,
     );
 }
@@ -530,6 +574,25 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
         ..TemplateContext::factory(())
     };
     assert_eq!(template.render_bytes(&context).await.unwrap(), expected);
+}
+
+/// `string()`
+#[rstest]
+#[case::primitive(true.into(), Ok("true"))]
+#[case::string("test".into(), Ok("test"))]
+#[case::bytes(b"test".into(), Ok("test"))]
+#[case::array(vec!["a".into(), "b".into()].into(), Ok("['a', 'b']"))]
+#[case::error_invalid_utf8(invalid_utf8().into(), Err("invalid utf-8"))]
+#[tokio::test]
+async fn test_string(
+    #[case] input: Expression,
+    #[case] expected: Result<&str, &str>,
+) {
+    let template = Template::function_call("string", [input], []);
+    assert_result(
+        template.render_string(&TemplateContext::factory(())).await,
+        expected,
+    );
 }
 
 /// `trim()`

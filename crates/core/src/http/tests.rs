@@ -11,7 +11,7 @@ use regex::Regex;
 use reqwest::{Body, StatusCode, header};
 use rstest::rstest;
 use serde_json::json;
-use slumber_util::{Factory, assert_err};
+use slumber_util::{Factory, assert_err, test_data_dir};
 use std::ptr;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
@@ -26,6 +26,7 @@ fn template_context(recipe: Recipe) -> TemplateContext {
         "username".into() => "user".into(),
         "password".into() => "hunter2".into(),
         "token".into() => "tokenzzz".into(),
+        "test_data_dir".into() => test_data_dir().to_str().unwrap().into(),
         "prompt".into() => "{{ prompt() }}".into(),
         "error".into() => "{{ fake_fn() }}".into(),
     };
@@ -267,7 +268,7 @@ async fn test_authentication(
 #[case::json(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     None,
-    Some(b"{\"group_id\":\"3\"}".as_slice()),
+    Some(r#"{"group_id":"3"}"#),
     "^application/json$",
     &[],
 )]
@@ -275,8 +276,48 @@ async fn test_authentication(
 #[case::json_content_type_override(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     Some("text/plain"),
-    Some(br#"{"group_id":"3"}"#.as_slice()),
+    Some(r#"{"group_id":"3"}"#),
     "^text/plain$",
+    &[],
+)]
+#[case::json_unpack(
+    // Single-chunk templates should get unpacked to the actual JSON value
+    // instead of returned as a string
+    RecipeBody::json(json!("{{ [1,2,3] }}")).unwrap(),
+    None,
+    Some("[1,2,3]"),
+    "^application/json$",
+    &[],
+)]
+#[case::json_no_unpack(
+    // This template doesn't get unpacked because it is multiple chunks
+    RecipeBody::json(json!("no: {{ [1,2,3] }}")).unwrap(),
+    None,
+    // Spaces are added because this uses the template Value stringification
+    // instead of serde_json stringification
+    Some(r#""no: [1, 2, 3]""#),
+    "^application/json$",
+    &[],
+)]
+#[case::json_string_from_file(
+    // JSON data is loaded as a string and NOT unpacked. file() returns bytes
+    // which automatically get interpreted as a string.
+    RecipeBody::json(json!(
+        "{{ file(concat([test_data_dir, '/data.json'])) | trim() }}"
+    )).unwrap(),
+    None,
+    Some(r#""{ \"a\": 1, \"b\": 2 }""#),
+    "^application/json$",
+    &[],
+)]
+#[case::json_from_file_parsed(
+    // Pipe to json() to parse it
+    RecipeBody::json(json!(
+        "{{ file(concat([test_data_dir, '/data.json'])) | json() }}"
+    )).unwrap(),
+    None,
+    Some(r#"{"a":1,"b":2}"#),
+    "^application/json$",
     &[],
 )]
 #[case::form_urlencoded(
@@ -285,7 +326,7 @@ async fn test_authentication(
         "token".into() => "{{ token }}".into()
     }),
     None,
-    Some(b"user_id=1&token=tokenzzz".as_slice()),
+    Some("user_id=1&token=tokenzzz"),
     "^application/x-www-form-urlencoded$",
     &[],
 )]
@@ -294,7 +335,7 @@ async fn test_authentication(
 #[case::form_urlencoded_content_type_override(
     RecipeBody::FormUrlencoded(Default::default()),
     Some("text/plain"),
-    Some(b"".as_slice()),
+    Some(""),
     "^text/plain$",
     &[],
 )]
@@ -316,7 +357,7 @@ async fn test_structured_body(
     http_engine: HttpEngine,
     #[case] body: RecipeBody,
     #[case] content_type: Option<&str>,
-    #[case] expected_body: Option<&'static [u8]>,
+    #[case] expected_body: Option<&'static str>,
     // For multipart bodies, the content type includes random content
     #[case] expected_content_type: Regex,
     #[case] extra_headers: &[(&str, &str)],
@@ -352,7 +393,12 @@ async fn test_structured_body(
             to match `{expected_content_type}`"
     );
     assert_eq!(
-        ticket.request.body().and_then(Body::as_bytes),
+        ticket
+            .request
+            .body()
+            .and_then(Body::as_bytes)
+            // We know all the bodies are UTF-8. This gives better errors
+            .map(|bytes| std::str::from_utf8(bytes).unwrap()),
         expected_body
     );
 

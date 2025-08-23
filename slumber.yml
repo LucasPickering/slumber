@@ -71,7 +71,7 @@ requests:
         persist: false
         authentication:
           type: bearer
-          token: "{{ response('login', trigger='12h') | jsonpath('$.form') }}"
+          token: "{{ response('login', trigger='12h') | jsonpath('$.form') | base64() }}"
         query:
           sudo: yes_please
           fast: [no_thanks, actually_maybe]
@@ -114,6 +114,7 @@ requests:
               "bool": true,
               "null": null,
               "array": [1, 2, false, 3.3, "www.www"],
+              "dynamic_array": "{{ response('get_users', trigger='no_history') | jsonpath('$.headers', mode='array') }}",
             }
 
   get_image:

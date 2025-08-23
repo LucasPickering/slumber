@@ -4,7 +4,9 @@ use crate::render::TemplateContext;
 use futures::future;
 use indexmap::IndexMap;
 use serde::Serialize;
-use slumber_template::{RenderError, Template, TemplateParseError};
+use slumber_template::{
+    RenderError, Template, TemplateParseError, TryFromValue,
+};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -50,9 +52,16 @@ impl JsonTemplate {
             Self::Null => serde_json::Value::Null,
             Self::Bool(b) => serde_json::Value::Bool(*b),
             Self::Number(number) => serde_json::Value::Number(number.clone()),
-            Self::String(template) => serde_json::Value::String(
-                template.render_string(context).await?,
-            ),
+            Self::String(template) => {
+                // Render to a JSON value instead of just a string. If the
+                // template is a single chunk that returns a non-string value
+                // (e.g. a number or array), use that value directly. This
+                // enables non-string values
+                serde_json::Value::try_from_value(
+                    template.render_value(context).await?,
+                )
+                .map_err(|error| RenderError::Value(error.error))?
+            }
             Self::Array(array) => {
                 let array = future::try_join_all(
                     array.iter().map(|item| item.render(context)),

@@ -165,7 +165,45 @@ impl Template {
     }
 
     /// Render the template using values from the given context. If any chunk
-    /// failed to render, return an error. The template is rendered as bytes,
+    /// failed to render, return an error. The render output is converted to a
+    /// [Value] by these rules:
+    /// - If the template is a single dynamic chunk, the output value will be
+    ///   directly converted to JSON, allowing non-string JSON values
+    /// - Any other template will be rendered to a string by stringifying each
+    ///   dynamic chunk and concatenating them all together
+    /// - If rendering to a string fails because the bytes are not valid UTF-8,
+    ///   concatenate into a bytes object instead
+    ///
+    /// Return an error iff any chunk failed to render. This will never fail on
+    /// output conversion because it can always fall back to returning raw
+    /// bytes.
+    pub async fn render_value<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Result<Value, RenderError> {
+        let mut chunks = self.render_chunks(context).await;
+
+        // If we have a single dynamic chunk, return its value directly instead
+        // of stringifying
+        if let &[RenderedChunk::Rendered(_)] = chunks.as_slice() {
+            let Some(RenderedChunk::Rendered(value)) = chunks.pop() else {
+                // Checked pattern above
+                unreachable!()
+            };
+            return Ok(value);
+        }
+
+        // Stitch together into bytes. Attempt to convert that UTF-8, but if
+        // that fails fall back to just returning the bytes
+        let bytes = chunks_to_bytes(chunks)?;
+        match String::from_utf8(bytes.into()) {
+            Ok(s) => Ok(Value::String(s)),
+            Err(error) => Ok(Value::Bytes(error.into_bytes().into())),
+        }
+    }
+
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The output is returned as bytes,
     /// meaning it can safely render to non-UTF-8 content. Use
     /// [Self::render_string] if you want the bytes converted to a string.
     pub async fn render_bytes<Ctx: Context>(
@@ -173,38 +211,12 @@ impl Template {
         context: &Ctx,
     ) -> Result<Bytes, RenderError> {
         let chunks = self.render_chunks(context).await;
-
-        // Take an educated guess at the needed capacity to avoid reallocations
-        let capacity = chunks
-            .iter()
-            .map(|chunk| match chunk {
-                RenderedChunk::Raw(s) => s.len(),
-                RenderedChunk::Rendered(Value::Bytes(bytes)) => bytes.len(),
-                RenderedChunk::Rendered(Value::String(s)) => s.len(),
-                // Take a rough guess for anything other than bytes/string
-                RenderedChunk::Rendered(_) => 5,
-                RenderedChunk::Error(_) => 0,
-            })
-            .sum();
-        chunks
-            .into_iter()
-            .try_fold(BytesMut::with_capacity(capacity), |mut acc, chunk| {
-                match chunk {
-                    RenderedChunk::Raw(s) => acc.extend(s.as_bytes()),
-                    RenderedChunk::Rendered(value) => {
-                        acc.extend(value.into_bytes());
-                    }
-                    RenderedChunk::Error(error) => return Err(error),
-                }
-                Ok(acc)
-            })
-            .map(Bytes::from)
+        chunks_to_bytes(chunks)
     }
 
     /// Render the template using values from the given context. If any chunk
-    /// failed to render, return an error. The rendered template will be
-    /// converted from raw bytes to UTF-8. If it is not valid UTF-8, return an
-    /// error.
+    /// failed to render, return an error. The output will be converted from raw
+    /// bytes to UTF-8. If it is not valid UTF-8, return an error.
     pub async fn render_string<Ctx: Context>(
         &self,
         context: &Ctx,
@@ -265,13 +277,6 @@ impl<const N: usize> From<[TemplateChunk; N]> for Template {
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-impl From<serde_json::Value> for Template {
-    fn from(value: serde_json::Value) -> Self {
-        format!("{value:#}").into()
-    }
-}
-
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
 #[derive(Clone, Debug, PartialEq)]
@@ -314,6 +319,7 @@ pub enum Value {
     Int(i64),
     Float(f64),
     String(String),
+    #[from(skip)] // We use a generic impl instead
     Array(Vec<Self>),
     Object(IndexMap<String, Self>),
     // Put this at the end so int arrays deserialize as Array instead of Bytes
@@ -404,6 +410,21 @@ impl From<&Literal> for Value {
             Literal::String(s) => Value::String(s.clone()),
             Literal::Bytes(bytes) => Value::Bytes(bytes.clone()),
         }
+    }
+}
+
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        Self::String(value.into())
+    }
+}
+
+impl<T> From<Vec<T>> for Value
+where
+    Value: From<T>,
+{
+    fn from(value: Vec<T>) -> Self {
+        Self::Array(value.into_iter().map(Self::from).collect())
     }
 }
 
@@ -627,6 +648,12 @@ where
     }
 }
 
+impl From<serde_json::Value> for Value {
+    fn from(value: serde_json::Value) -> Self {
+        Self::from_json(value)
+    }
+}
+
 /// Convert a template value to JSON. If the value is bytes, this will
 /// deserialize it as JSON, otherwise it will convert directly. This allows us
 /// to parse response bodies as JSON while accepting anything else as a native
@@ -647,10 +674,10 @@ impl TryFromValue for serde_json::Value {
                 .into_iter()
                 .map(|(k, v)| Ok((k, serde_json::Value::try_from_value(v)?)))
                 .collect(),
-            Value::Bytes(bytes) => {
-                // Assume this is an encoded JSON string and deserialize it
-                serde_json::from_slice(&bytes)
-                    .map_err(|error| WithValue::new(Value::Bytes(bytes), error))
+            Value::Bytes(_) => {
+                // Bytes are probably a string. If it's not UTF-8 there's no way
+                // to make JSON from it
+                value.try_into_string().map(serde_json::Value::String)
             }
         }
     }
@@ -711,12 +738,62 @@ impl<T: FunctionOutput> FunctionOutput for Option<T> {
     }
 }
 
+/// Concatenate rendered chunks into bytes. If any chunk is an error, return an
+/// error
+fn chunks_to_bytes(chunks: Vec<RenderedChunk>) -> Result<Bytes, RenderError> {
+    // Take an educated guess at the needed capacity to avoid reallocations
+    let capacity = chunks
+        .iter()
+        .map(|chunk| match chunk {
+            RenderedChunk::Raw(s) => s.len(),
+            RenderedChunk::Rendered(Value::Bytes(bytes)) => bytes.len(),
+            RenderedChunk::Rendered(Value::String(s)) => s.len(),
+            // Take a rough guess for anything other than bytes/string
+            RenderedChunk::Rendered(_) => 5,
+            RenderedChunk::Error(_) => 0,
+        })
+        .sum();
+    chunks
+        .into_iter()
+        .try_fold(BytesMut::with_capacity(capacity), |mut acc, chunk| {
+            match chunk {
+                RenderedChunk::Raw(s) => acc.extend(s.as_bytes()),
+                RenderedChunk::Rendered(value) => {
+                    acc.extend(value.into_bytes());
+                }
+                RenderedChunk::Error(error) => return Err(error),
+            }
+            Ok(acc)
+        })
+        .map(Bytes::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use indexmap::indexmap;
     use rstest::rstest;
     use slumber_util::assert_err;
+
+    /// Render to a value. Templates with a single dynamic chunk are allowed to
+    /// produce non-string values
+    #[rstest]
+    #[case::unpack("{{ array }}", vec!["a", "b", "c"].into())]
+    #[case::string("my name is {{ name }}", "my name is Mike".into())]
+    #[case::bytes(
+        "my name is {{ invalid_utf8 }}",
+        Value::Bytes(b"my name is \xc3\x28".as_slice().into(),
+    ))]
+    #[tokio::test]
+    async fn test_render_value(
+        #[case] template: Template,
+        #[case] expected: Value,
+    ) {
+        assert_eq!(
+            template.render_value(&TestContext).await.unwrap(),
+            expected
+        );
+    }
 
     /// Convert JSON values to template values
     #[rstest]
@@ -729,36 +806,30 @@ mod tests {
     #[case::number_float(serde_json::json!(1.23), Value::Float(1.23))]
     #[case::number_negative_float(serde_json::json!(-2.5), Value::Float(-2.5))]
     #[case::number_zero_float(serde_json::json!(0.0), Value::Float(0.0))]
-    #[case::string_empty(serde_json::json!(""), Value::String(String::new()))]
-    #[case::string_simple(serde_json::json!("hello"), Value::String("hello".to_string()))]
-    #[case::string_with_spaces(serde_json::json!("hello world"), Value::String("hello world".to_string()))]
-    #[case::string_with_unicode(serde_json::json!("héllo 🌍"), Value::String("héllo 🌍".to_string()))]
-    #[case::string_with_escapes(serde_json::json!("line1\nline2\ttab"), Value::String("line1\nline2\ttab".to_string()))]
+    #[case::string_empty(serde_json::json!(""), "".into())]
+    #[case::string_simple(serde_json::json!("hello"), "hello".into())]
+    #[case::string_with_spaces(serde_json::json!("hello world"), "hello world".into())]
+    #[case::string_with_unicode(serde_json::json!("héllo 🌍"), "héllo 🌍".into())]
+    #[case::string_with_escapes(serde_json::json!("line1\nline2\ttab"), "line1\nline2\ttab".into())]
     #[case::array(
         serde_json::json!([null, true, 42, "hello"]),
         Value::Array(vec![
             Value::Null,
             Value::Bool(true),
             Value::Int(42),
-            Value::String("hello".to_string())
+            "hello".into(),
         ])
     )]
     // Array of numbers should *not* be interpreted as bytes
-    #[case::array_numbers(
-        serde_json::json!([1, 2, 3]),
-        Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
-    )]
+    #[case::array_numbers(serde_json::json!([1, 2, 3]), vec![1, 2, 3].into())]
     #[case::array_nested(
         serde_json::json!([[1, 2], [3, 4]]),
-        Value::Array(vec![
-            Value::Array(vec![Value::Int(1), Value::Int(2)]),
-            Value::Array(vec![Value::Int(3), Value::Int(4)])
-        ])
+        vec![Value::from(vec![1, 2]), Value::from(vec![3, 4])].into()
     )]
     #[case::object(
         serde_json::json!({"name": "John", "age": 30, "active": true}),
         Value::Object(indexmap! {
-            "name".into() => Value::String("John".into()),
+            "name".into() => "John".into(),
             "age".into() => Value::Int(30),
             "active".into() => Value::Bool(true),
         })
@@ -767,7 +838,7 @@ mod tests {
         serde_json::json!({"user": {"name": "Alice", "scores": [95, 87]}}),
         Value::Object(indexmap! {
             "user".into() => Value::Object(indexmap! {
-                "name".into() => Value::String("Alice".into()),
+                "name".into() => "Alice".into(),
                 "scores".into() =>
                     Value::Array(vec![Value::Int(95), Value::Int(87)]),
             })
@@ -834,9 +905,16 @@ mod tests {
             &self,
             identifier: &Identifier,
         ) -> Result<Value, RenderError> {
-            Err(RenderError::FieldUnknown {
-                field: identifier.clone(),
-            })
+            match identifier.as_str() {
+                "name" => Ok("Mike".into()),
+                "array" => Ok(vec!["a", "b", "c"].into()),
+                "invalid_utf8" => {
+                    Ok(Value::Bytes(b"\xc3\x28".as_slice().into()))
+                }
+                _ => Err(RenderError::FieldUnknown {
+                    field: identifier.clone(),
+                }),
+            }
         }
 
         async fn call(

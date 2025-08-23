@@ -203,17 +203,20 @@ impl slumber_template::Context for TemplateContext {
         arguments: Arguments<'_, Self>,
     ) -> Result<slumber_template::Value, RenderError> {
         match function_name.as_str() {
+            "base64" => functions::base64(arguments),
             "command" => functions::command(arguments).await,
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
             "file" => functions::file(arguments).await,
+            "json" => functions::json(arguments),
             "jsonpath" => functions::jsonpath(arguments),
             "prompt" => functions::prompt(arguments).await,
             "response" => functions::response(arguments).await,
             "response_header" => functions::response_header(arguments).await,
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
+            "string" => functions::string(arguments),
             "trim" => functions::trim(arguments),
             _ => Err(RenderError::FunctionUnknown),
         }
@@ -370,6 +373,10 @@ impl<T> ResponseChannel<T> {
 /// An error that can occur within a template function
 #[derive(Debug, Error)]
 pub enum FunctionError {
+    /// Error decoding a base64 string
+    #[error(transparent)]
+    Base64Decode(#[from] base64::DecodeError),
+
     /// Error creating or spawning a subprocess
     #[error(
         "Executing command `{}`", iter::once(program).chain(args).format(" ")
@@ -418,6 +425,14 @@ pub enum FunctionError {
     /// Error decoding bytes as UTF-8
     #[error(transparent)]
     InvalidUtf8(#[from] std::string::FromUtf8Error),
+
+    /// Error parsing JSON data
+    #[error("Error parsing JSON")]
+    JsonParse(
+        #[from]
+        #[source]
+        serde_json::Error,
+    ),
 
     /// JSONPath query returned 0 or 2+ results when we expected 1
     #[error(

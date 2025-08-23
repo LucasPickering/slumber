@@ -294,6 +294,7 @@ fn type_map() -> HashMap<Type, TypeDef> {
         (parse_quote!(bool), TypeDef::Boolean),
         (parse_quote!(Bytes), TypeDef::Bytes),
         (parse_quote!(JsonPath), TypeDef::Custom("JsonPath")),
+        (parse_quote!(JsonPathValue), TypeDef::Value),
         (
             parse_quote!(JsonPathMode),
             union!("auto" | "single" | "array"),

@@ -3464,6 +3464,7 @@ version = "3.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "derive_more 1.0.0",

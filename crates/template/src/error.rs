@@ -73,7 +73,7 @@ pub enum RenderError {
 
     /// Error converting a [Value] to another type
     #[error(transparent)]
-    Value(ValueError),
+    Value(#[from] ValueError),
 
     /// An error with additional context attached. Used to locate errors in
     /// function calls that could be deeply nested

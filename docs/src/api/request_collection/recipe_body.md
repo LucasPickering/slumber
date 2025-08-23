@@ -22,6 +22,8 @@ JSON bodies can contain any data. All strings in the JSON are treated as [templa
 | ------ | ---- | ------------ | -------- |
 | `data` | Any  | JSON content | Required |
 
+See [the guide](../../user_guide/recipes.md#body) for more detail on how to use JSON bodies.
+
 ### URL-encoded Form
 
 [URL forms](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) can only pass text data.
@@ -30,6 +32,8 @@ JSON bodies can contain any data. All strings in the JSON are treated as [templa
 | ------ | ------------------------------------------------------------------- | ----------- | -------- |
 | `data` | [`mapping[string, Template]`](../../user_guide/templates/index.md)` | Form fields | Required |
 
+See [the guide](../../user_guide/recipes.md#body) for more detail on how to use form bodies.
+
 ### Multipart Form
 
 [Multipart forms](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) can pass text or binary data.
@@ -37,6 +41,8 @@ JSON bodies can contain any data. All strings in the JSON are treated as [templa
 | Field  | Type                                                                | Description | Default  |
 | ------ | ------------------------------------------------------------------- | ----------- | -------- |
 | `data` | [`mapping[string, Template]`](../../user_guide/templates/index.md)` | Form fields | Required |
+
+See [the guide](../../user_guide/recipes.md#body) for more detail on how to use form bodies.
 
 ## Examples
 

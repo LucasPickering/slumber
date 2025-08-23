@@ -1,4 +1,4 @@
-≈# Request Recipe
+# Request Recipe
 
 A request recipe defines how to make a particular request. For a REST API, you'll typically create one request recipe per endpoint. Other HTTP tools often call this just a "request", but that name can be confusing because "request" can also refer to a single instance of an HTTP request. Slumber uses the term "recipe" because it's used to render many requests. The word "template" would work as a synonym here, although we avoid that term here because it also refers to [string templates](../../user_guide/templates/index.md).
 

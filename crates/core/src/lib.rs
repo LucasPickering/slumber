@@ -11,3 +11,10 @@ pub mod render;
 #[cfg(any(test, feature = "test"))]
 pub mod test_util;
 pub mod util;
+
+#[cfg(target_arch = "wasm32")]
+pub fn main() -> String {
+    use collection::CollectionFile;
+    let collection = CollectionFile::new(None).unwrap().load().unwrap();
+    format!("{collection:?}")
+}

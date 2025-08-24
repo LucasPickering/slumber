@@ -60,7 +60,6 @@ use reqwest::{
     Client, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
-    redirect,
 };
 use slumber_config::HttpEngineConfig;
 use slumber_template::Template;
@@ -89,36 +88,43 @@ pub struct HttpEngine {
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
     pub fn new(config: &HttpEngineConfig) -> Self {
-        let make_builder = || {
-            let redirect_policy = if config.follow_redirects {
-                redirect::Policy::default()
-            } else {
-                redirect::Policy::none()
-            };
+        let make_client = |accept_invalid_certs: bool| {
+            let mut builder = Client::builder().user_agent(USER_AGENT);
+            // Extra config that isn't supported in WASM
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                use reqwest::redirect::Policy;
 
-            Client::builder()
-                .user_agent(USER_AGENT)
-                .redirect(redirect_policy)
-                // Disabling loading native certs in tests. It adds 100-300ms
-                // per test and we never need them because we only make requests
-                // to localhost
+                // Disabling loading native certs in tests. It adds
+                // 100-300ms per test and we never need them because we only
+                // make requests to localhost
                 //
                 // Why we use native certs:
                 // https://github.com/LucasPickering/slumber/issues/275
-                .tls_built_in_native_certs(!cfg!(any(test, feature = "test")))
+                let use_native_certs = !cfg!(any(test, feature = "test"));
+                let redirect_policy = if config.follow_redirects {
+                    Policy::default()
+                } else {
+                    Policy::none()
+                };
+
+                builder = builder
+                    .tls_built_in_native_certs(use_native_certs)
+                    .danger_accept_invalid_certs(accept_invalid_certs)
+                    .redirect(redirect_policy);
+            }
+            builder.build().expect("Error building reqwest client")
         };
 
-        let client = make_builder()
-            .build()
-            .expect("Error building reqwest client");
+        // Base client for all hosts
+        let client = make_client(false);
+        // If there are any hosts that we want to ignore certs, create a
+        // separate client for those
         let danger_client = if config.ignore_certificate_hosts.is_empty() {
             None
         } else {
             Some((
-                make_builder()
-                    .danger_accept_invalid_certs(true)
-                    .build()
-                    .expect("Error building reqwest client"),
+                make_client(true),
                 config.ignore_certificate_hosts.iter().cloned().collect(),
             ))
         };

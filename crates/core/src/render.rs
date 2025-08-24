@@ -205,11 +205,27 @@ impl slumber_template::Context for TemplateContext {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
-            "command" => functions::command(arguments).await,
+            "command" => {
+                cfg_if::cfg_if! {
+                    if #[cfg(target_arch = "wasm32")] {
+                        Err(FunctionError::NotSupportedWasm.into())
+                    } else {
+                        functions::command(arguments).await
+                    }
+                }
+            }
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
-            "file" => functions::file(arguments).await,
+            "file" => {
+                cfg_if::cfg_if! {
+                    if #[cfg(target_arch = "wasm32")] {
+                        Err(FunctionError::NotSupportedWasm.into())
+                    } else {
+                        functions::file(arguments).await
+                    }
+                }
+            }
             "float" => functions::float(arguments),
             "integer" => functions::integer(arguments),
             "json" => functions::json(arguments),
@@ -450,6 +466,11 @@ pub enum FunctionError {
     /// JSONPath query returned no results when it should have
     #[error("No results from JSONPath query `{query}`")]
     JsonPathNoResults { query: JsonPath },
+
+    #[cfg(target_arch = "wasm32")]
+    /// This function isn't supported in WASM targets
+    #[error("Not supported in the browser")]
+    NotSupportedWasm,
 
     /// An bubbled-up error from rendering a profile field value
     #[error("Rendering profile field `{field}`")]

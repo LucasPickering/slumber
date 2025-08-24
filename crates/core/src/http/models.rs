@@ -459,7 +459,11 @@ impl RequestRecord {
             profile_id,
             recipe_id: seed.recipe_id,
 
+            // TODO maybe there's a way to get the version?
+            #[cfg(not(target_arch = "wasm32"))]
             http_version: request.version().into(),
+            #[cfg(target_arch = "wasm32")]
+            http_version: HttpVersion::default(),
             method: request.method().into(),
             url: request.url().clone(),
             headers: request.headers().clone(),

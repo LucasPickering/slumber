@@ -16,9 +16,8 @@ use slumber_template::{
     impl_try_from_value_str,
 };
 use slumber_util::TimeSpan;
-use std::{env, fmt::Debug, process::Stdio, sync::Arc};
-use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
-use tracing::{debug, debug_span};
+use std::{env, fmt::Debug, sync::Arc};
+use tokio::sync::oneshot;
 
 // ===========================================================
 // Documentation for these functions is generated automatically by an mdbook
@@ -107,11 +106,16 @@ pub fn boolean(value: Value) -> bool {
 ///
 /// > `command` is commonly paired with [`trim`](#trim) to remove trailing
 /// newlines from command output: `{{ command(["echo", "hello"]) | trim() }}`
+#[cfg(not(target_arch = "wasm32"))] // Subprocesses don't exist in WASM
 #[template(TemplateContext)]
 pub async fn command(
     command: Vec<String>,
     #[kwarg] stdin: Option<Bytes>,
 ) -> Result<Bytes, FunctionError> {
+    use std::process::Stdio;
+    use tokio::{io::AsyncWriteExt, process::Command};
+    use tracing::{debug, debug_span};
+
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
     };
@@ -243,8 +247,11 @@ pub fn env(variable: String) -> String {
 /// ```sh
 /// {{ file("config.json") }} => Contents of config.json file
 /// ```
+#[cfg(not(target_arch = "wasm32"))] // No fs in WASM
 #[template(TemplateContext)]
 pub async fn file(path: String) -> Result<Bytes, FunctionError> {
+    use tokio::fs;
+
     let bytes = fs::read(&path).await.map_err(|error| FunctionError::File {
         path: path.into(),
         error,

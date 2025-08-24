@@ -15,6 +15,7 @@ anyhow = {workspace = true}
 async-trait = {workspace = true}
 base64 = "0.22.1"
 bytes = {workspace = true, features = ["serde"]}
+cfg-if = "1.0.3"
 chrono = {workspace = true, features = ["clock", "serde", "std"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str", "into", "std"]}
 dialoguer = {workspace = true}
@@ -38,11 +39,14 @@ slumber_template = {workspace = true}
 slumber_util = {workspace = true}
 strum = {workspace = true, features = ["derive"]}
 thiserror = {workspace = true}
-tokio = {workspace = true, features = ["fs", "process"]}
 tracing = {workspace = true}
 url = {workspace = true, features = ["serde"]}
 uuid = {workspace = true, features = ["serde", "v4"]}
 winnow = {workspace = true}
+
+# Non-WASM deps
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = {workspace = true, features = ["fs", "process"]}
 
 [dev-dependencies]
 env-lock = {workspace = true}
@@ -59,6 +63,14 @@ wiremock = {workspace = true}
 [features]
 schema = ["dep:schemars", "slumber_template/schema", "test"]
 test = ["dep:rstest", "slumber_template/test", "slumber_util/test"]
+
+# Wasm config
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = {workspace = true, features = ["sync"]}
+wasm-bindgen = "0.2.100"
 
 [lints]
 workspace = true

@@ -14,10 +14,11 @@ The function `f` accepts two required positional arguments (`arg1` and `arg2`) a
 
 `value` is the top-level type. It represents any [template value](../user_guide/templates/values.md).
 
-The following types represent a single variant of the `value` type:
+The following types are scalar (i.e. not collections):
 
 - `boolean`
-- `number`
+- `float`
+- `integer`
 - `string`
 - `bytes`
 

@@ -12,7 +12,8 @@ use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
-    TryFromValue, ValueError, WithValue, impl_try_from_value_str,
+    Expected, TryFromValue, Value, ValueError, WithValue,
+    impl_try_from_value_str,
 };
 use slumber_util::TimeSpan;
 use std::{env, fmt::Debug, process::Stdio, sync::Arc};
@@ -58,6 +59,29 @@ pub fn base64(
     } else {
         Ok(BASE64_STANDARD.encode(&value).into())
     }
+}
+
+/// Convert a value to a boolean. Empty values such as `0`, `""` or `[]`
+/// convert to `false`. Anything else converts to `true`.
+///
+/// **Parameters**
+///
+/// - `value`: Value to convert
+///
+/// **Examples**
+///
+/// ```sh
+/// {{ boolean(null) }} => false
+/// {{ boolean(0) }} => false
+/// {{ boolean(1) }} => true
+/// {{ boolean('') }} => false
+/// {{ boolean('0') }} => true
+/// {{ boolean([]) }} => false
+/// {{ boolean([0]) }} => true
+/// ```
+#[template(TemplateContext)]
+pub fn boolean(value: Value) -> bool {
+    value.to_bool()
 }
 
 /// Run a command in a subprocess and return its stdout output. While the output
@@ -177,7 +201,7 @@ pub fn concat(elements: Vec<String>) -> String {
 /// {{ file("data.json") | debug() | jsonpath("$.data") }} => Extract data field and print intermediate result
 /// ```
 #[template(TemplateContext)]
-pub fn debug(value: slumber_template::Value) -> slumber_template::Value {
+pub fn debug(value: Value) -> Value {
     println!("{value:?}");
     value
 }
@@ -226,6 +250,88 @@ pub async fn file(path: String) -> Result<Bytes, FunctionError> {
         error,
     })?;
     Ok(bytes.into())
+}
+
+/// Convert a value to a float
+///
+/// **Parameters**
+///
+/// - `value`: Value to convert
+///
+/// **Errors**
+///
+/// - If `value` is a string or byte string that doesn't parse to a float, or an
+///   inconvertible type such as an array
+///
+/// **Examples**
+///
+/// ```sh
+/// {{ float('3.5') }} => 3.5
+/// {{ float(b'3.5') }} => 3.5
+/// {{ float(3) }} => 3.0
+/// {{ float(null) }} => 0.0
+/// {{ float(false) }} => 0.0
+/// {{ float(true) }} => 1.0
+/// ```
+#[template(TemplateContext)]
+pub fn float(value: Value) -> Result<f64, ValueError> {
+    match value {
+        Value::Null => Ok(0.0),
+        Value::Boolean(b) => Ok((b).into()),
+        Value::Float(f) => Ok(f),
+        Value::Integer(i) => Ok(i as f64),
+        Value::String(s) => Ok(s.parse()?),
+        Value::Bytes(bytes) => Ok(std::str::from_utf8(&bytes)?.parse()?),
+        Value::Array(_) | Value::Object(_) => Err(ValueError::Type {
+            expected: Expected::OneOf(&[
+                &Expected::Float,
+                &Expected::Integer,
+                &Expected::Boolean,
+                &Expected::Custom("string/bytes that parse to a float"),
+            ]),
+        }),
+    }
+}
+
+/// Convert a value to an int
+///
+/// **Parameters**
+///
+/// - `value`: Value to convert
+///
+/// **Errors**
+///
+/// - If `value` is a string or byte string that doesn't parse to an integer, or
+///   an inconvertible type such as an array
+///
+/// **Examples**
+///
+/// ```sh
+/// {{ integer('3') }} => 3
+/// {{ integer(b'3') }} => 3
+/// {{ integer(3.5) }} => 3
+/// {{ integer(null) }} => 0
+/// {{ integer(false) }} => 0
+/// {{ integer(true) }} => 1
+/// ```
+#[template(TemplateContext)]
+pub fn integer(value: Value) -> Result<i64, ValueError> {
+    match value {
+        Value::Null => Ok(0),
+        Value::Boolean(b) => Ok(b.into()),
+        Value::Float(f) => Ok(f as i64),
+        Value::Integer(i) => Ok(i),
+        Value::String(s) => Ok(s.parse()?),
+        Value::Bytes(bytes) => Ok(std::str::from_utf8(&bytes)?.parse()?),
+        Value::Array(_) | Value::Object(_) => Err(ValueError::Type {
+            expected: Expected::OneOf(&[
+                &Expected::Integer,
+                &Expected::Float,
+                &Expected::Boolean,
+                &Expected::Custom("string/bytes that parse to an integer"),
+            ]),
+        }),
+    }
 }
 
 /// Parse a value as JSON.
@@ -311,14 +417,12 @@ pub fn jsonpath(
     query: JsonPath,
     value: JsonPathValue, // Value last so it can be piped in
     #[kwarg] mode: JsonPathMode,
-) -> Result<slumber_template::Value, FunctionError> {
-    fn node_list_to_value(node_list: NodeList) -> slumber_template::Value {
-        slumber_template::Value::deserialize(SeqDeserializer::new(
-            node_list.into_iter(),
-        ))
-        // This conversion is infallible because JSON is a subset of Value and
-        // the NodeList produces an array of JSON values
-        .unwrap()
+) -> Result<Value, FunctionError> {
+    fn node_list_to_value(node_list: NodeList) -> Value {
+        Value::deserialize(SeqDeserializer::new(node_list.into_iter()))
+            // This conversion is infallible because JSON is a subset of Value
+            // and the NodeList produces an array of JSON values
+            .unwrap()
     }
 
     let query = query.0;
@@ -330,7 +434,7 @@ pub fn jsonpath(
             0 => Err(FunctionError::JsonPathNoResults { query }),
             1 => {
                 let json = node_list.exactly_one().unwrap().clone();
-                Ok(slumber_template::Value::from_json(json))
+                Ok(Value::from_json(json))
             }
             2.. => Ok(node_list_to_value(node_list)),
         },
@@ -342,7 +446,7 @@ pub fn jsonpath(
                     actual_count: node_list.len(),
                 })?
                 .clone();
-            Ok(slumber_template::Value::from_json(json))
+            Ok(Value::from_json(json))
         }
         JsonPathMode::Array => Ok(node_list_to_value(node_list)),
     }
@@ -573,7 +677,8 @@ pub fn sensitive(
     mask_sensitive(context, value)
 }
 
-/// Stringify a value
+/// Stringify a value. Any value can be converted to a string except for
+/// non-UTF-8 bytes
 ///
 /// **Parameters**
 ///
@@ -591,8 +696,8 @@ pub fn sensitive(
 /// {{ string([1, 2, 3]) }} => "[1, 2, 3]"
 /// ```
 #[template(TemplateContext)]
-pub fn string(value: slumber_template::Value) -> Result<String, ValueError> {
-    String::try_from_value(value).map_err(|error| error.error)
+pub fn string(value: Value) -> Result<String, ValueError> {
+    String::try_from_value(value).map_err(WithValue::into_error)
 }
 
 /// Trim whitespace from the beginning and/or end of a string.
@@ -643,27 +748,25 @@ impl_try_from_value_str!(JsonPath);
 pub struct JsonPathValue(serde_json::Value);
 
 impl TryFromValue for JsonPathValue {
-    fn try_from_value(
-        value: slumber_template::Value,
-    ) -> Result<Self, WithValue<ValueError>> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         let json_value = match value {
             // Strings and bytes are treated as encoded JSON and parsed.
             // See struct doc for explanation
-            slumber_template::Value::String(s) => serde_json::from_str(&s)
+            Value::String(s) => serde_json::from_str(&s)
                 .map_err(|error| WithValue::new(s.into(), error))?,
-            slumber_template::Value::Bytes(b) => serde_json::from_slice(&b)
+            Value::Bytes(b) => serde_json::from_slice(&b)
                 .map_err(|error| WithValue::new(b.into(), error))?,
             // Everything else is mapped literally
-            slumber_template::Value::Null => serde_json::Value::Null,
-            slumber_template::Value::Bool(b) => b.into(),
-            slumber_template::Value::Int(i) => i.into(),
-            slumber_template::Value::Float(f) => f.into(),
+            Value::Null => serde_json::Value::Null,
+            Value::Boolean(b) => b.into(),
+            Value::Integer(i) => i.into(),
+            Value::Float(f) => f.into(),
             // Strings nested within an object/array will *not* be parsed
-            slumber_template::Value::Array(array) => array
+            Value::Array(array) => array
                 .into_iter()
                 .map(serde_json::Value::try_from_value)
                 .collect::<Result<_, _>>()?,
-            slumber_template::Value::Object(map) => map
+            Value::Object(map) => map
                 .into_iter()
                 .map(|(k, v)| Ok((k, serde_json::Value::try_from_value(v)?)))
                 .collect::<Result<_, _>>()?,
@@ -784,9 +887,7 @@ impl FromStr for TrimMode {
 impl_try_from_value_str!(TrimMode);
 
 impl TryFromValue for RecipeId {
-    fn try_from_value(
-        value: slumber_template::Value,
-    ) -> Result<Self, WithValue<ValueError>> {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         String::try_from_value(value).map(RecipeId::from)
     }
 }

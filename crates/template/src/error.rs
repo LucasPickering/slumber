@@ -3,7 +3,11 @@ use derive_more::derive::Display;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::de;
-use std::{fmt::Display, string::FromUtf8Error};
+use std::{
+    fmt::Display,
+    num::{ParseFloatError, ParseIntError},
+    str::Utf8Error,
+};
 use thiserror::Error;
 use tracing::error;
 use winnow::error::{ContextError, ParseError};
@@ -173,18 +177,31 @@ impl<E> WithValue<E> {
             error: error.into(),
         }
     }
+
+    /// Move the inner error out
+    pub fn into_error(self) -> E {
+        self.error
+    }
 }
 
 /// An error that can occur while converting from [Value] to some other type.
 /// This is returned from [TryFromValue].
 #[derive(Debug, Error)]
 pub enum ValueError {
+    /// Failed to parse a string to a float
+    #[error(transparent)]
+    Float(#[from] ParseFloatError),
+
+    /// Failed to parse a string to an integer
+    #[error(transparent)]
+    Integer(#[from] ParseIntError),
+
     /// In many contexts, the render output needs to be usable as a string.
     /// This error occurs when we wanted to render to a string, but whatever
     /// bytes we got were not valid UTF-8. The underlying error message is
     /// descriptive enough so we don't need to give additional context.
     #[error(transparent)]
-    InvalidUtf8(#[from] FromUtf8Error),
+    InvalidUtf8(#[from] Utf8Error),
 
     /// Error parsing JSON data
     #[error("Error parsing JSON")]
@@ -199,11 +216,8 @@ pub enum ValueError {
     Other(Box<dyn std::error::Error + Send + Sync>),
 
     /// Function expected one type but a value of a different type was given
-    ///
-    /// This should probably take an `Expected` enum instead of a static string
-    /// to ensure the values are standardized
     #[error("Expected {expected}")]
-    Type { expected: &'static str },
+    Type { expected: Expected },
 }
 
 impl ValueError {
@@ -212,5 +226,54 @@ impl ValueError {
         error: impl 'static + Into<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Self {
         Self::Other(error.into())
+    }
+}
+
+/// When a value of a particular type is expected but something else is given
+#[derive(Debug, derive_more::Display)]
+pub enum Expected {
+    #[display("null")]
+    Null,
+    #[display("boolean")]
+    Boolean,
+    #[display("integer")]
+    Integer,
+    #[display("float")]
+    Float,
+    #[display("string")]
+    String,
+    /// Array of any type
+    #[display("array")]
+    Array,
+    /// Union
+    #[display("one of {}", display_union(_0))]
+    OneOf(&'static [&'static Self]),
+    /// User-provided descriptor of what they wanted
+    #[display("{_0}")]
+    Custom(&'static str),
+}
+
+/// Display a union list of values
+fn display_union(values: &[impl Display]) -> String {
+    match values {
+        [] => String::new(),
+        [value] => value.to_string(),
+        [a, b] => format!("{a} or {b}"),
+        [head @ .., tail] => format!("{}, or {tail}", head.iter().join(", ")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::empty(&[], "")]
+    #[case::one(&["a"], "a")]
+    #[case::two(&["a", "b"], "a or b")]
+    #[case::three(&["a", "b", "c"], "a, b, or c")]
+    fn test_display_union(#[case] values: &[&str], #[case] expected: &str) {
+        assert_eq!(display_union(values), expected);
     }
 }

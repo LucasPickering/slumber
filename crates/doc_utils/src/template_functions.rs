@@ -222,6 +222,8 @@ fn has_attr(attrs: &[Attribute], target: &str) -> bool {
 enum TypeDef {
     /// Verdad o falso
     Boolean,
+    Float,
+    Integer,
     /// Collection of bytes
     Bytes,
     /// Any string
@@ -265,6 +267,8 @@ impl Display for TypeDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Boolean => write!(f, "boolean"),
+            Self::Float => write!(f, "float"),
+            Self::Integer => write!(f, "integer"),
             Self::Bytes => write!(f, "bytes"),
             Self::String => write!(f, "string"),
             Self::Literal(literal) => write!(f, "\"{literal}\""),
@@ -292,6 +296,8 @@ fn type_map() -> HashMap<Type, TypeDef> {
 
     HashMap::from_iter([
         (parse_quote!(bool), TypeDef::Boolean),
+        (parse_quote!(f64), TypeDef::Float),
+        (parse_quote!(i64), TypeDef::Integer),
         (parse_quote!(Bytes), TypeDef::Bytes),
         (parse_quote!(JsonPath), TypeDef::Custom("JsonPath")),
         (parse_quote!(JsonPathValue), TypeDef::Value),
@@ -312,6 +318,7 @@ fn type_map() -> HashMap<Type, TypeDef> {
         (parse_quote!(String), TypeDef::String),
         (parse_quote!(TrimMode), union!("start" | "end" | "both")),
         (parse_quote!(slumber_template::Value), TypeDef::Value),
+        (parse_quote!(Value), TypeDef::Value),
         (parse_quote!(serde_json::Value), TypeDef::Value),
         (parse_quote!(Vec<String>), TypeDef::List(&TypeDef::String)),
     ])

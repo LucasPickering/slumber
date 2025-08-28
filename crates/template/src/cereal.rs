@@ -90,8 +90,8 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
     {
         match self.0 {
             Value::Null => visitor.visit_none(),
-            Value::Bool(b) => visitor.visit_bool(b),
-            Value::Int(i) => visitor.visit_i64(i),
+            Value::Boolean(b) => visitor.visit_bool(b),
+            Value::Integer(i) => visitor.visit_i64(i),
             Value::Float(f) => visitor.visit_f64(f),
             Value::String(string) => visitor.visit_string(string),
             Value::Bytes(buffer) => {
@@ -123,8 +123,8 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
             Value::Bytes(buffer) => return visitor.visit_bytes(&buffer),
             Value::String(s) => return visitor.visit_bytes(s.as_bytes()),
             Value::Null => Unexpected::Unit,
-            Value::Bool(b) => Unexpected::Bool(b),
-            Value::Int(i) => Unexpected::Signed(i),
+            Value::Boolean(b) => Unexpected::Bool(b),
+            Value::Integer(i) => Unexpected::Signed(i),
             Value::Float(f) => Unexpected::Float(f),
             Value::Array(_) => Unexpected::Seq,
             Value::Object(_) => Unexpected::Map,
@@ -145,8 +145,8 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
             }
             Value::String(s) => return visitor.visit_byte_buf(s.into_bytes()),
             Value::Null => Unexpected::Unit,
-            Value::Bool(b) => Unexpected::Bool(b),
-            Value::Int(i) => Unexpected::Signed(i),
+            Value::Boolean(b) => Unexpected::Bool(b),
+            Value::Integer(i) => Unexpected::Signed(i),
             Value::Float(f) => Unexpected::Float(f),
             Value::Array(_) => Unexpected::Seq,
             Value::Object(_) => Unexpected::Map,

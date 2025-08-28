@@ -717,7 +717,7 @@ pub enum Expected {
     /// Expected a string literal
     #[display("{_0:?}")]
     Literal(&'static str),
-    /// Expected one of a static set of strings (for enum discriminants)
+    /// Expected one of a static set of types (for enum discriminants)
     #[display("one of {}", _0.iter().format(", "))]
     OneOf(&'static [&'static Self]),
 }

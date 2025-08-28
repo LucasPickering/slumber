@@ -11,7 +11,9 @@ mod parse;
 #[cfg(test)]
 mod test_util;
 
-pub use error::{RenderError, TemplateParseError, ValueError, WithValue};
+pub use error::{
+    Expected, RenderError, TemplateParseError, ValueError, WithValue,
+};
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
 
 use crate::{
@@ -315,8 +317,8 @@ impl From<Expression> for TemplateChunk {
 #[serde(untagged)]
 pub enum Value {
     Null,
-    Bool(bool),
-    Int(i64),
+    Boolean(bool),
+    Integer(i64),
     Float(f64),
     String(String),
     #[from(skip)] // We use a generic impl instead
@@ -331,7 +333,7 @@ impl Value {
     /// Truthiness/falsiness is defined for each type as:
     /// - `null` - `false`
     /// - `bool` - Own value
-    /// - `int` - `false` if zero
+    /// - `integer` - `false` if zero
     /// - `float` - `false` if zero
     /// - `string` - `false` if empty
     /// - `bytes` - `false` if empty
@@ -342,8 +344,8 @@ impl Value {
     pub fn to_bool(&self) -> bool {
         match self {
             Self::Null => false,
-            Self::Bool(b) => *b,
-            Self::Int(i) => *i != 0,
+            Self::Boolean(b) => *b,
+            Self::Integer(i) => *i != 0,
             Self::Float(f) => *f != 0.0,
             Self::String(s) => !s.is_empty(),
             Self::Bytes(bytes) => !bytes.is_empty(),
@@ -358,9 +360,9 @@ impl Value {
     pub fn try_into_string(self) -> Result<String, WithValue<ValueError>> {
         match self {
             Self::Null => Ok(NULL.into()),
-            Self::Bool(false) => Ok(FALSE.into()),
-            Self::Bool(true) => Ok(TRUE.into()),
-            Self::Int(i) => Ok(i.to_string()),
+            Self::Boolean(false) => Ok(FALSE.into()),
+            Self::Boolean(true) => Ok(TRUE.into()),
+            Self::Integer(i) => Ok(i.to_string()),
             Self::Float(f) => Ok(f.to_string()),
             Self::String(s) => Ok(s),
             Self::Bytes(bytes) => String::from_utf8(bytes.into())
@@ -369,7 +371,7 @@ impl Value {
                 .map_err(|error| {
                     WithValue::new(
                         Self::Bytes(error.as_bytes().to_owned().into()),
-                        error,
+                        error.utf8_error(),
                     )
                 }),
             // Use the display impl
@@ -382,9 +384,9 @@ impl Value {
     pub fn into_bytes(self) -> Bytes {
         match self {
             Self::Null => NULL.into(),
-            Self::Bool(false) => FALSE.into(),
-            Self::Bool(true) => TRUE.into(),
-            Self::Int(i) => i.to_string().into(),
+            Self::Boolean(false) => FALSE.into(),
+            Self::Boolean(true) => TRUE.into(),
+            Self::Integer(i) => i.to_string().into(),
             Self::Float(f) => f.to_string().into(),
             Self::String(s) => s.into(),
             Self::Bytes(bytes) => bytes,
@@ -404,8 +406,8 @@ impl From<&Literal> for Value {
     fn from(literal: &Literal) -> Self {
         match literal {
             Literal::Null => Value::Null,
-            Literal::Bool(b) => Value::Bool(*b),
-            Literal::Int(i) => Value::Int(*i),
+            Literal::Boolean(b) => Value::Boolean(*b),
+            Literal::Integer(i) => Value::Integer(*i),
             Literal::Float(f) => Value::Float(*f),
             Literal::String(s) => Value::String(s.clone()),
             Literal::Bytes(bytes) => Value::Bytes(bytes.clone()),
@@ -585,7 +587,9 @@ impl TryFromValue for f64 {
             Value::Float(f) => Ok(f),
             _ => Err(WithValue::new(
                 value,
-                ValueError::Type { expected: "float" },
+                ValueError::Type {
+                    expected: Expected::Float,
+                },
             )),
         }
     }
@@ -594,11 +598,11 @@ impl TryFromValue for f64 {
 impl TryFromValue for i64 {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         match value {
-            Value::Int(i) => Ok(i),
+            Value::Integer(i) => Ok(i),
             _ => Err(WithValue::new(
                 value,
                 ValueError::Type {
-                    expected: "integer",
+                    expected: Expected::Integer,
                 },
             )),
         }
@@ -642,7 +646,9 @@ where
         } else {
             Err(WithValue::new(
                 value,
-                ValueError::Type { expected: "array" },
+                ValueError::Type {
+                    expected: Expected::Array,
+                },
             ))
         }
     }
@@ -662,8 +668,8 @@ impl TryFromValue for serde_json::Value {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         match value {
             Value::Null => Ok(serde_json::Value::Null),
-            Value::Bool(b) => Ok(b.into()),
-            Value::Int(i) => Ok(i.into()),
+            Value::Boolean(b) => Ok(b.into()),
+            Value::Integer(i) => Ok(i.into()),
             Value::Float(f) => Ok(f.into()),
             Value::String(s) => Ok(s.into()),
             Value::Array(array) => array
@@ -798,11 +804,11 @@ mod tests {
     /// Convert JSON values to template values
     #[rstest]
     #[case::null(serde_json::Value::Null, Value::Null)]
-    #[case::bool_true(serde_json::Value::Bool(true), Value::Bool(true))]
-    #[case::bool_false(serde_json::Value::Bool(false), Value::Bool(false))]
-    #[case::number_positive_int(serde_json::json!(42), Value::Int(42))]
-    #[case::number_negative_int(serde_json::json!(-17), Value::Int(-17))]
-    #[case::number_zero(serde_json::json!(0), Value::Int(0))]
+    #[case::bool_true(serde_json::Value::Bool(true), Value::Boolean(true))]
+    #[case::bool_false(serde_json::Value::Bool(false), Value::Boolean(false))]
+    #[case::number_positive_int(serde_json::json!(42), Value::Integer(42))]
+    #[case::number_negative_int(serde_json::json!(-17), Value::Integer(-17))]
+    #[case::number_zero(serde_json::json!(0), Value::Integer(0))]
     #[case::number_float(serde_json::json!(1.23), Value::Float(1.23))]
     #[case::number_negative_float(serde_json::json!(-2.5), Value::Float(-2.5))]
     #[case::number_zero_float(serde_json::json!(0.0), Value::Float(0.0))]
@@ -815,8 +821,8 @@ mod tests {
         serde_json::json!([null, true, 42, "hello"]),
         Value::Array(vec![
             Value::Null,
-            Value::Bool(true),
-            Value::Int(42),
+            Value::Boolean(true),
+            Value::Integer(42),
             "hello".into(),
         ])
     )]
@@ -830,8 +836,8 @@ mod tests {
         serde_json::json!({"name": "John", "age": 30, "active": true}),
         Value::Object(indexmap! {
             "name".into() => "John".into(),
-            "age".into() => Value::Int(30),
-            "active".into() => Value::Bool(true),
+            "age".into() => Value::Integer(30),
+            "active".into() => Value::Boolean(true),
         })
     )]
     #[case::object_nested(
@@ -840,7 +846,7 @@ mod tests {
             "user".into() => Value::Object(indexmap! {
                 "name".into() => "Alice".into(),
                 "scores".into() =>
-                    Value::Array(vec![Value::Int(95), Value::Int(87)]),
+                    Value::Array(vec![Value::Integer(95), Value::Integer(87)]),
             })
         })
     )]

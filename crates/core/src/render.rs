@@ -204,11 +204,14 @@ impl slumber_template::Context for TemplateContext {
     ) -> Result<slumber_template::Value, RenderError> {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
+            "boolean" => functions::boolean(arguments),
             "command" => functions::command(arguments).await,
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
             "file" => functions::file(arguments).await,
+            "float" => functions::float(arguments),
+            "integer" => functions::integer(arguments),
             "json" => functions::json(arguments),
             "jsonpath" => functions::jsonpath(arguments),
             "prompt" => functions::prompt(arguments).await,

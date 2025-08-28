@@ -95,7 +95,19 @@ impl Expression {
 
 impl From<bool> for Expression {
     fn from(b: bool) -> Self {
-        Self::Literal(Literal::Bool(b))
+        Self::Literal(Literal::Boolean(b))
+    }
+}
+
+impl From<f64> for Expression {
+    fn from(f: f64) -> Self {
+        Self::Literal(Literal::Float(f))
+    }
+}
+
+impl From<i64> for Expression {
+    fn from(i: i64) -> Self {
+        Self::Literal(Literal::Integer(i))
     }
 }
 
@@ -146,8 +158,8 @@ impl FromIterator<Expression> for Expression {
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Literal {
     Null,
-    Bool(bool),
-    Int(i64),
+    Boolean(bool),
+    Integer(i64),
     Float(f64),
     String(String),
     Bytes(#[cfg_attr(test, proptest(strategy = "test_util::bytes()"))] Bytes),

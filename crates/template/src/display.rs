@@ -102,8 +102,8 @@ impl Display for Literal {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Literal::Null => write!(fmt, "null"),
-            Literal::Bool(b) => write!(fmt, "{b}"),
-            Literal::Int(i) => write!(fmt, "{i}"),
+            Literal::Boolean(b) => write!(fmt, "{b}"),
+            Literal::Integer(i) => write!(fmt, "{i}"),
             // Always show ".0" for floats that are whole numbers to
             // distinguish from ints
             Literal::Float(f) => {
@@ -156,8 +156,8 @@ impl Display for Value {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Null => write!(fmt, "{NULL}"),
-            Self::Bool(b) => write!(fmt, "{b}"),
-            Self::Int(i) => write!(fmt, "{i}"),
+            Self::Boolean(b) => write!(fmt, "{b}"),
+            Self::Integer(i) => write!(fmt, "{i}"),
             Self::Float(f) => write!(fmt, "{f}"),
             Self::String(s) => fmt_string(fmt, s),
             Self::Bytes(bytes) => fmt_bytes(fmt, bytes),

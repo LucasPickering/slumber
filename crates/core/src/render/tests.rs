@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{Expression, Template};
+use slumber_template::{Expression, Literal, Template};
 use slumber_util::{Factory, TempDir, assert_result, temp_dir};
 use std::time::Duration;
 use tokio::fs;
@@ -89,6 +89,30 @@ async fn test_base64(
     assert_result(
         template.render_bytes(&TemplateContext::factory(())).await,
         expected,
+    );
+}
+
+/// `boolean()`
+#[rstest]
+#[case::null(Expression::Literal(Literal::Null), false)]
+#[case::bool_false(false.into(), false)]
+#[case::bool_true(true.into(), true)]
+#[case::float_zero(0.0.into(), false)]
+#[case::float_one(1.0.into(), true)]
+#[case::int_zero(0.into(), false)]
+#[case::int_one(1.into(), true)]
+#[case::string_empty("".into(), false)]
+#[case::string_zero("0".into(), true)]
+#[case::bytes_empty(b"".into(), false)]
+#[case::bytes_invalid(invalid_utf8().into(), true)]
+#[case::array_empty(vec![].into(), false)]
+#[case::array_filled(vec!["1".into(), "2".into()].into(), true)]
+#[tokio::test]
+async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
+    let template = Template::function_call("boolean", [input], []);
+    assert_result(
+        template.render_value(&TemplateContext::factory(())).await,
+        Ok(slumber_template::Value::Boolean(expected)),
     );
 }
 
@@ -194,6 +218,62 @@ async fn test_file(
     assert_result(
         template.render_bytes(&TemplateContext::factory(())).await,
         expected,
+    );
+}
+
+/// `float()`
+#[rstest]
+#[case::null(Expression::Literal(Literal::Null), Ok(0.0))]
+#[case::float(42.5.into(), Ok(42.5))]
+#[case::int(42.into(), Ok(42.0))]
+#[case::string("42.5".into(), Ok(42.5))]
+#[case::string_int("42".into(), Ok(42.0))]
+#[case::string_invalid("  42.5  ".into(), Err("invalid float literal"))]
+#[case::bytes(b"42.5".into(), Ok(42.5))]
+#[case::bytes_invalid(invalid_utf8().into(), Err("invalid utf-8 sequence"))]
+#[case::bool_false(false.into(), Ok(0.0))]
+#[case::bool_true(true.into(), Ok(1.0))]
+#[case::array(
+    vec!["1".into(), "2".into()].into(),
+    Err("Expected one of float, integer, boolean, or string/bytes"),
+)]
+#[tokio::test]
+async fn test_float(
+    #[case] input: Expression,
+    #[case] expected: Result<f64, &str>,
+) {
+    let template = Template::function_call("float", [input], []);
+    assert_result(
+        template.render_value(&TemplateContext::factory(())).await,
+        expected.map(slumber_template::Value::from),
+    );
+}
+
+/// `integer()`
+#[rstest]
+#[case::null(Expression::Literal(Literal::Null), Ok(0))]
+#[case::float(42.5.into(), Ok(42))]
+#[case::int(42.into(), Ok(42))]
+#[case::string("42".into(), Ok(42))]
+#[case::string_float("42.5".into(), Err("invalid digit"))]
+#[case::string_invalid("  42  ".into(), Err("invalid digit"))]
+#[case::bytes(b"42".into(), Ok(42))]
+#[case::bytes_invalid(invalid_utf8().into(), Err("invalid utf-8 sequence"))]
+#[case::bool_false(false.into(), Ok(0))]
+#[case::bool_true(true.into(), Ok(1))]
+#[case::array(
+    vec!["1".into(), "2".into()].into(),
+    Err("Expected one of integer, float, boolean, or string/bytes"),
+)]
+#[tokio::test]
+async fn test_integer(
+    #[case] input: Expression,
+    #[case] expected: Result<i64, &str>,
+) {
+    let template = Template::function_call("integer", [input], []);
+    assert_result(
+        template.render_value(&TemplateContext::factory(())).await,
+        expected.map(slumber_template::Value::from),
     );
 }
 

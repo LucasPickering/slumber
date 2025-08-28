@@ -4,8 +4,10 @@ Templates contain expressions, and expressions evaluate to values. Template valu
 
 - `null`
 - `boolean`: `true` or `false`
-- `number` (signed integer or float)
-  - Slumber uses Rust's [u64](https://doc.rust-lang.org/std/primitive.u64.html) and [f64](https://doc.rust-lang.org/std/primitive.f64.html) types internally. See docs for those two types for information on min/max values.
+- `float`
+  - Uses [f64](https://doc.rust-lang.org/std/primitive.f64.html) internally. See docs for information on min/max values.
+- `integer` (signed integer)
+  - Uses [i64](https://doc.rust-lang.org/std/primitive.i64.html) internally. See docs for information on min/max values.
 - `string`: `"hello!"`
 - `bytes`: `b"hello!"`
 - `array`: `[1, false, "hello!"]`

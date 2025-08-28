@@ -212,8 +212,8 @@ fn primary_expression(input: &mut &str) -> ModalResult<Expression> {
 fn literal(input: &mut &str) -> ModalResult<Literal> {
     alt((
         NULL.map(|_| Literal::Null),
-        FALSE.map(|_| Literal::Bool(false)),
-        TRUE.map(|_| Literal::Bool(true)),
+        FALSE.map(|_| Literal::Boolean(false)),
+        TRUE.map(|_| Literal::Boolean(true)),
         // If we see a number with a . or e/E (for scientific notation), it's a
         // float. Otherwise it's an int. We need to do this peek check to
         // prevent the int parser from eating the first half of a float and
@@ -227,7 +227,7 @@ fn literal(input: &mut &str) -> ModalResult<Literal> {
             )),
             float.map(Literal::Float).context(ctx_label("float")),
         ),
-        dec_int.map(Literal::Int).context(ctx_label("int")),
+        dec_int.map(Literal::Integer).context(ctx_label("int")),
         string_literal,
         byte_literal,
     ))

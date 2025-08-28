@@ -45,7 +45,8 @@ func("hello", true, "world") # Optional arguments must be given by name
 If a keyword argument is omitted, it will be replaced by a default value. In most cases, the default will be based on the type of the argument:
 
 - `boolean`: `false`
-- `number`: `0`
+- `float`: `0.0`
+- `integer`: `0`
 - `string`: `""`
 - `bytes`: `b""`
 - `array`: `[]`

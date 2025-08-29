@@ -22,32 +22,40 @@ impl DeserializeYaml for Config {
         // Drop all fields starting with `.`
         yaml.drop_dot_fields();
 
+        let default = Self::default();
+        let http_default = HttpEngineConfig::default();
         let mut deserializer = StructDeserializer::new(yaml)?;
 
         let config = Self {
-            commands: deserializer.get(Field::new("commands").opt())?,
-            editor: deserializer.get(Field::new("editor").opt())?,
-            pager: deserializer.get(Field::new("pager").opt())?,
+            commands: deserializer
+                .get(Field::new("commands").or(default.commands))?,
+            editor: deserializer
+                .get(Field::new("editor").or(default.editor))?,
+            pager: deserializer.get(Field::new("pager").or(default.pager))?,
             // HTTP config is flattened into the top
             http: HttpEngineConfig {
-                ignore_certificate_hosts: deserializer
-                    .get(Field::new("ignore_certificate_hosts").opt())?,
+                ignore_certificate_hosts: deserializer.get(
+                    Field::new("ignore_certificate_hosts")
+                        .or(http_default.ignore_certificate_hosts),
+                )?,
                 large_body_size: deserializer.get(
                     Field::new("large_body_size")
-                        .or(HttpEngineConfig::default().large_body_size),
+                        .or(http_default.large_body_size),
                 )?,
                 follow_redirects: deserializer.get(
                     Field::new("follow_redirects")
-                        .or(HttpEngineConfig::default().follow_redirects),
+                        .or(http_default.follow_redirects),
                 )?,
             },
-            preview_templates: deserializer
-                .get(Field::new("preview_templates").or(true))?,
+            preview_templates: deserializer.get(
+                Field::new("preview_templates").or(default.preview_templates),
+            )?,
             input_bindings: deserializer
-                .get(Field::new("input_bindings").opt())?,
-            theme: deserializer.get(Field::new("theme").opt())?,
-            debug: deserializer.get(Field::new("debug").opt())?,
-            persist: deserializer.get(Field::new("persist").or(true))?,
+                .get(Field::new("input_bindings").or(default.input_bindings))?,
+            theme: deserializer.get(Field::new("theme").or(default.theme))?,
+            debug: deserializer.get(Field::new("debug").or(default.debug))?,
+            persist: deserializer
+                .get(Field::new("persist").or(default.persist))?,
         };
         deserializer.done()?;
         Ok(config)
@@ -60,31 +68,12 @@ impl DeserializeYaml for CommandsConfig {
     }
 
     fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        let default = Self::default();
         let mut deserializer = StructDeserializer::new(yaml)?;
         let config = Self {
-            shell: deserializer.get(Field::new("shell").opt())?,
+            shell: deserializer.get(Field::new("shell").or(default.shell))?,
             default_query: deserializer
-                .get(Field::new("default_query").opt())?,
-        };
-        deserializer.done()?;
-        Ok(config)
-    }
-}
-
-impl DeserializeYaml for HttpEngineConfig {
-    fn expected() -> Expected {
-        Expected::Mapping
-    }
-
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
-        let mut deserializer = StructDeserializer::new(yaml)?;
-        let config = Self {
-            ignore_certificate_hosts: deserializer
-                .get(Field::new("ignore_certificate_hosts").opt())?,
-            large_body_size: deserializer
-                .get(Field::new("large_body_size").opt())?,
-            follow_redirects: deserializer
-                .get(Field::new("follow_redirects").opt())?,
+                .get(Field::new("default_query").or(default.default_query))?,
         };
         deserializer.done()?;
         Ok(config)
@@ -97,22 +86,37 @@ impl DeserializeYaml for Theme {
     }
 
     fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        let default = Self::default();
         let mut deserializer = StructDeserializer::new(yaml)?;
         let config = Self {
             primary_color: deserializer
-                .get::<Adopt<_>>(Field::new("primary_color").opt())?
+                .get::<Adopt<_>>(
+                    Field::new("primary_color")
+                        .or(Adopt(default.primary_color)),
+                )?
                 .0,
             primary_text_color: deserializer
-                .get::<Adopt<_>>(Field::new("primary_text_color").opt())?
+                .get::<Adopt<_>>(
+                    Field::new("primary_text_color")
+                        .or(Adopt(default.primary_text_color)),
+                )?
                 .0,
             secondary_color: deserializer
-                .get::<Adopt<_>>(Field::new("secondary_color").opt())?
+                .get::<Adopt<_>>(
+                    Field::new("secondary_color")
+                        .or(Adopt(default.secondary_color)),
+                )?
                 .0,
             success_color: deserializer
-                .get::<Adopt<_>>(Field::new("success_color").opt())?
+                .get::<Adopt<_>>(
+                    Field::new("success_color")
+                        .or(Adopt(default.success_color)),
+                )?
                 .0,
             error_color: deserializer
-                .get::<Adopt<_>>(Field::new("error_color").opt())?
+                .get::<Adopt<_>>(
+                    Field::new("error_color").or(Adopt(default.error_color)),
+                )?
                 .0,
         };
         deserializer.done()?;

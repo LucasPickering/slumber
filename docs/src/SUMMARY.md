@@ -7,12 +7,12 @@
 # User Guide
 
 - [Key Concepts](./user_guide/key_concepts.md)
-  - [Profiles](./user_guide/profiles.md)
+  - [Recipes](./user_guide/recipes.md)
   - [Templates](./user_guide/templates/index.md)
     - [Values](./user_guide/templates/values.md)
     - [Functions](./user_guide/templates/functions.md)
     - [Examples](./user_guide/templates/examples.md)
-  - [Recipes](./user_guide/recipes.md)
+  - [Profiles](./user_guide/profiles.md)
 - [Collection Reuse with `$ref`](./user_guide/composition.md)
 - [Importing External Collections](./user_guide/import.md)
 - [Terminal User Interface (TUI)](./user_guide/tui/index.md)

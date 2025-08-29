@@ -1,6 +1,6 @@
 # Recipes
 
-Recipes are the core feature of Slumber; they define how to generate HTTP requests. The terms "recipe" and "request" are often used interchangeably by users and documentation alike, but there is a technical distinction:
+Recipes are the core feature of Slumber; they define how to generate HTTP requests. The terms "recipe" and "request" are often used interchangeably by users, but there is a technical distinction:
 
 - A recipe is a definition for how to generate any number of requests
 - A request is a single chunk of data (URL+headers+body) to send to a server
@@ -9,7 +9,7 @@ The distinction isn't that important; generally it's easy to figure out what "re
 
 ## Method & URL
 
-A request's [HTTP method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods) is defined by the `method` field. Unlike other request fields, `method` is **not** a template. It must be a static string containing one of the supported methods:
+A recipe's [HTTP method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods) is defined by the `method` field. Unlike other recipe fields, `method` is **not** a template. It must be a static string containing one of the supported methods (case insensitive):
 
 - `CONNECT`
 - `DELETE`
@@ -21,41 +21,30 @@ A request's [HTTP method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Refe
 - `PUT`
 - `TRACE`
 
-The request URL is defined by the `url` field and _can_ be a template.
+The recipe URL is defined by the `url` field:
 
 ```yaml
-profiles:
-  default:
-    data:
-      host: https://myfishes.fish
-
 requests:
   get_fishes:
     method: GET
-    url: "{{ host }}/fishes"
+    url: "https://myfishes.fish/fishes"
 ```
 
 ## Query Parameters
 
 > See the [API docs](../api/request_collection/query_parameters.md) for more detailed info.
 
-Query parameters are specified via the `query` field. They form a component of a request URL and provide additional information to the server about a request. In a request recipe, query parameters are defined as a map of `parameter: value`. The value can be a singular template (string/boolean/etc.) or a list of values.
+Query parameters are specified via the `query` field. They form a component of a request URL and provide additional information to the server about a request. In a request recipe, query parameters are defined as a map of `parameter: value`. The value can be a singular value (string/boolean/etc.) or a list of values.
 
 ```yaml
-profiles:
-  default:
-    data:
-      host: https://myfishes.fish
-      name: Barry
-
 recipes:
   get_fishes:
     method: GET
-    url: "{{ host }}/fishes"
+    url: "https://myfishes.fish/fishes"
     query:
       big: true
       color: [red, blue] # This parameter has multiple values
-      name: "{{ name }}"
+      name: "Barry"
 ```
 
 This will generate the URL `https://myfishes.fish/fishes?big=true&color=red&color=blue&name=Barry`.
@@ -73,9 +62,9 @@ profiles:
 recipes:
   get_fishes:
     method: GET
-    url: "{{ host }}/fishes"
+    url: "https://myfishes.fish/fishes"
     headers:
-      X-Custom-Header: "You are {{ host }}"
+      X-Custom-Header: "You are https://myfishes.fish"
 ```
 
 > Before manually specifying headers, read the sections below on [authentication](#authentication) and [request bodies](#body). Slumber has first-class support for common request features that may make it unnecessary to specify headers such as `Content-Type` or `Authorization`.
@@ -95,18 +84,18 @@ If you'd like support for a new authentication scheme, please [file an issue](ht
 requests:
   basic_auth:
     method: GET
-    url: "{{host}}/fishes"
+    url: "https://myfishes.fish/fishes"
     authentication:
       type: basic
       username: user
-      password: "{{ prompt() }}"
+      password: hunter2
 
   bearer_auth:
     method: GET
-    url: "{{host}}/fishes"
+    url: "https://myfishes.fish/fishes"
     authentication:
       type: bearer
-      token: "{{ file('token.txt') }}"
+      token: my-token
 ```
 
 ## Body
@@ -126,30 +115,30 @@ Here's an example of each one in practice:
 requests:
   text_body:
     method: POST
-    url: "{{ host }}/fishes/{{ fish_id }}/name"
+    url: "https://myfishes.fish/fishes/42/name"
     headers:
       Content-Type: text/plain
     body: Alfonso
 
   binary_body:
     method: POST
-    url: "{{ host }}/fishes/{{ fish_id }}/image"
+    url: "https://myfishes.fish/fishes/42/image"
     headers:
       Content-Type: image/jpg
     body: "{{ file('./fish.png') }}"
 
   json_body:
     method: POST
-    url: "{{ host }}/fishes/{{ fish_id }}"
-    # Content-Type header will be set automatically based on the body type
+    url: "https://myfishes.fish/fishes/42"
+    # Content-Type header will be set to `application/json` automatically
     body:
       type: json
       data: { "name": "Alfonso" }
 
   urlencoded_body:
     method: POST
-    url: "{{ host }}/fishes/{{ fish_id }}"
-    # Content-Type header will be set automatically based on the body type
+    url: "https://myfishes.fish/fishes/42"
+    # Content-Type header will be set to `application/x-www-form-urlencoded` automatically
     body:
       type: form_urlencoded
       data:
@@ -157,74 +146,11 @@ requests:
 
   multipart_body:
     method: POST
-    url: "{{ host }}/fishes/{{ fish_id }}"
-    # Content-Type header will be set automatically based on the body type
+    url: "https://myfishes.fish/fishes/42"
+    # Content-Type header will be set to `multipart/form-data` automatically
     body:
       type: form_multipart
       data:
         name: Alfonso
-        image: "{{ file('./fish.png') }}"
-```
-
-### Non-string JSON templates
-
-JSON bodies support dynamic non-string values. By using a template with a single dynamic chunk (i.e. there's no next content, just a `{{ ... }}`), you can create non-string values. Let's say we have a JSON file `./friends.json` with this content:
-
-```json
-["Barry", "Dora"]
-```
-
-We can use this file in a request body:
-
-```yaml
-requests:
-  json_body:
-    method: POST
-    url: "{{ host }}/fishes/{{ fish_id }}"
-    body:
-      type: json
-      data:
-        {
-          "name": "Alfonso",
-          "friends": "{{ file('./friends.json') | json() }}",
-        }
-```
-
-The request body will render as:
-
-```json
-{
-  "name": "Alfonso",
-  "friends": ["Barry", "Dora"]
-}
-```
-
-A few things to notice here:
-
-- We had to explicitly parse the contents of the file with `json()`. By default the content loaded is just artbirary bytes; Slumber doesn't know it's supposed to be JSON.
-- The parsed JSON is included directly into the JSON body, _without_ the surrounding quotes from the template. In other words, the value was **unpacked**.
-
-In some cases this behavior may not be desired, e.g. when combined with `jsonpath()`. You can pipe to `string()` to **disable this behavior**:
-
-```yaml
-requests:
-  json_body:
-    method: POST
-    url: "{{ host }}/fishes/{{ fish_id }}"
-    body:
-      type: json
-      data:
-        {
-          "name": "Alfonso",
-          "friends": "{{ file('./friends.json') | jsonpath('$[*]') | string() }}",
-        }
-```
-
-This will render to:
-
-```json
-{
-  "name": "Alfonso",
-  "friends": "[\"Barry\", \"Dora\"]"
-}
+        image: b"\x12\x34"
 ```

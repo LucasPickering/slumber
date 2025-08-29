@@ -51,8 +51,6 @@ requests:
       big: true
 ```
 
-` tag tells Slumber that this node is a request recipe, not a folder.
-
 This request collection uses [templates](./user_guide/templates/index.md) and [profiles](./user_guide/profiles.md), allowing you to dynamically change the target host.
 
 To learn more about the powerful features of Slumber you can use in your collections, keep reading with [Key Concepts](./user_guide/key_concepts.md).

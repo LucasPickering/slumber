@@ -42,11 +42,11 @@ requests:
     url: "{{ host }}/fish"
 ```
 
-Most values in a request collection (e.g. URL, request body, etc.) are templates. [Even profile values are templates!](../profiles.md#dynamic-profile-values). Map keys (e.g. recipe ID, profile ID) are _not_ templates; they must be static strings.
+Most values in a request collection (e.g. URL, request body, etc.) are templates. [Even profile values are templates!](../profiles.md#dynamic-profile-values) Map keys (e.g. recipe ID, profile ID) are _not_ templates; they must be static strings.
 
 > **A note on YAML string syntax**
 >
-> One of the advantages (and disadvantages) of YAML is that it has a number of different string syntaxes. This enables you to customize your templates according to your specific needs around the behavior of whitespace and newlines. See [YAML's string syntaxes](https://www.educative.io/answers/how-to-represent-strings-in-yaml) and [yaml-multiline.info](https://yaml-multiline.info/) for more info on YAML strings.
+> One of the advantages (and disadvantages) of YAML is that it has a number of different string syntaxes. This enables you to customize your templates according to your specific needs around the behavior of whitespace and newlines. **In most cases, you should just use `""` on all strings.** See [YAML's string syntaxes](https://www.educative.io/answers/how-to-represent-strings-in-yaml) and [yaml-multiline.info](https://yaml-multiline.info/) for more info.
 
 Not all template are dynamic. Static strings are also valid templates and just render to themselves:
 

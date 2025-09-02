@@ -15,21 +15,21 @@ profiles:
   example:
     name: Example Profile
     data:
-      host: https://httpbin.org
+      host: https://my-host
 
 requests:
-  example1:
-    name: Example Request 1
+  example_get:
+    name: Example GET
     method: GET
-    url: "{{ host }}/anything"
+    url: "{{ host }}/get"
 
   example_folder:
     name: Example Folder
     requests:
-      example2:
-        name: Example Request 2
+      example_post:
+        name: Example POST
         method: POST
-        url: "{{ host }}/anything"
+        url: "{{ host }}/post"
         body:
           type: json
-          data: { "data": "{{ response('example1') | jsonpath('$.data') }}" }
+          data: { "data": "{{ response('example_get') | jsonpath('$.data') }}" }

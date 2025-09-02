@@ -119,28 +119,28 @@ mod tests {
                 name: Some("Example Profile".into()),
                 default: false,
                 data: indexmap! {
-                    "host".into() => "https://httpbin.org".into()
+                    "host".into() => "https://my-host".into()
                 },
             }]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
-                    id: "example1".into(),
-                    name: Some("Example Request 1".into()),
+                    id: "example_get".into(),
+                    name: Some("Example GET".into()),
                     method: HttpMethod::Get,
-                    url: "{{ host }}/anything".into(),
+                    url: "{{ host }}/get".into(),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
                     id: "example_folder".into(),
                     name: Some("Example Folder".into()),
                     children: by_id([RecipeNode::Recipe(Recipe {
-                        id: "example2".into(),
-                        name: Some("Example Request 2".into()),
+                        id: "example_post".into(),
+                        name: Some("Example POST".into()),
                         method: HttpMethod::Post,
-                        url: "{{ host }}/anything".into(),
+                        url: "{{ host }}/post".into(),
                         body: Some(
                             RecipeBody::json(
-                                json!({"data": "{{ response('example1') \
+                                json!({"data": "{{ response('example_get') \
                                 | jsonpath('$.data') }}"}),
                             )
                             .unwrap(),

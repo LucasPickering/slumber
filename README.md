@@ -35,14 +35,15 @@ Slumber is based around **collections**. A collection is a group of request **re
 requests:
   get:
     method: GET
-    url: https://httpbin.org/get
+    url: https://shoal.lucaspickering.me/fish
 
   post:
     method: POST
-    url: https://httpbin.org/post
+    url: https://shoal.lucaspickering.me/fish
     body:
       type: json
-      data: { "id": 3, "name": "Slumber" }
+      data:
+        { "name": "Barry", "species": "Barracuda", "age": 3, "weight_kg": 6.2 }
 ```
 
 Create this file, then run the TUI with `slumber`.

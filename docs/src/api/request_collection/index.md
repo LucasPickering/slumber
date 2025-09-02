@@ -38,9 +38,9 @@ In addition to these fields, any top-level field beginning with `.` will be igno
 # Use YAML anchors for de-duplication. Normally unknown fields in the
 # collection trigger an error; the . prefix tells Slumber to ignore this field
 .base_profile:
-  username: "{{ file('username.txt') }}"
-  password: "{{ prompt(message='Password', sensitive=true) }}"
-  auth_token: "{{ response('login') | jsonpath('$.token') }}"
+  session_id: "{{ response('login') | jsonpath('$.id') }}"
+  # User can select the fish ID from a list of IDs returned by /fish
+  fish_id: "{{ response('list_fish') | jsonpath('$[*].id') | select() }}"
 
 profiles:
   local:
@@ -53,44 +53,36 @@ profiles:
     name: Production
     data:
       $ref: "#/.base_profile"
-      host: https://httpbin.org
+      host: https://shoal.lucaspickering.me
       user_guid: abc123
 
 .base_request:
   headers:
     Accept: application/json
+    Shoal-Session-ID: "{{ session_id }}"
 
 requests:
   login:
     $ref: "#/.base_request"
     method: POST
-    url: "{{ host }}/anything/login"
-    body:
-      type: json
-      data: { "username": "{{ username }}", "password": "{{ password }}" }
+    url: "{{ host }}/login"
 
   # Folders can be used to keep your recipes organized
-  users:
-    name: Users
+  fish:
+    name: Fish
     requests:
-      get_user:
+      list_fish:
         $ref: "#/.base_request"
-        name: Get User
+        name: List Fish
         method: GET
-        url: "{{ host }}/anything/current-user"
-        authentication:
-          type: token
-          token: "{{ auth_token }}"
+        url: "{{ host }}/fish"
 
-      update_user:
+      update_fish:
         $ref: "#/.base_request"
-        name: Update User
-        method: PUT
-        url: "{{ host }}/anything/current-user"
-        authentication:
-          type: token
-          token: "{{ auth_token }}"
+        name: Update Fish
+        method: PATCH
+        url: "{{ host }}/fish/{{ fish_id }}"
         body:
           type: json
-          data: { "username": "Kenny" }
+          data: { "name": "Kenny" }
 ```

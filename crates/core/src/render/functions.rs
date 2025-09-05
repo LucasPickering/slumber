@@ -15,8 +15,8 @@ use slumber_template::{
     Expected, TryFromValue, Value, ValueError, WithValue,
     impl_try_from_value_str,
 };
-use slumber_util::TimeSpan;
-use std::{env, fmt::Debug, process::Stdio, sync::Arc};
+use slumber_util::{TimeSpan, paths::expand_home};
+use std::{env, fmt::Debug, path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span};
 
@@ -91,6 +91,11 @@ pub fn boolean(value: Value) -> bool {
 /// **Parameters**
 ///
 /// - `command`: Command to run, in the form `[program, arg1, arg2, ...]`
+/// - `cwd`: Directory to execute the subprocess in. Defaults to the directory
+///   containing the collection file. For example, if the collection is
+///   `/data/slumber.yml`, the subprocess will execute in `/data` regardless of
+///   where Slumber is invoked from. The given path will be resolved relative to
+///   that default.
 /// - `stdin`: Data to pipe to the subprocess's stdin
 ///
 /// **Errors**
@@ -109,7 +114,9 @@ pub fn boolean(value: Value) -> bool {
 /// newlines from command output: `{{ command(["echo", "hello"]) | trim() }}`
 #[template(TemplateContext)]
 pub async fn command(
+    #[context] context: &TemplateContext,
     command: Vec<String>,
+    #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
 ) -> Result<Bytes, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
@@ -124,6 +131,7 @@ pub async fn command(
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .current_dir(context.root_dir.join(cwd.unwrap_or_default()))
             .kill_on_drop(true)
             .spawn()?;
 
@@ -232,7 +240,8 @@ pub fn env(variable: String) -> String {
 /// **Parameters**
 ///
 /// - `path`: Path to the file to read, relative to the collection file
-///   (`slumber.yml`) in use
+///   (`slumber.yml`) in use. A leading `~` will be expanded to your home
+///   directory (`$HOME`).
 ///
 /// **Errors**
 ///
@@ -244,11 +253,14 @@ pub fn env(variable: String) -> String {
 /// {{ file("config.json") }} => Contents of config.json file
 /// ```
 #[template(TemplateContext)]
-pub async fn file(path: String) -> Result<Bytes, FunctionError> {
-    let bytes = fs::read(&path).await.map_err(|error| FunctionError::File {
-        path: path.into(),
-        error,
-    })?;
+pub async fn file(
+    #[context] context: &TemplateContext,
+    path: String,
+) -> Result<Bytes, FunctionError> {
+    let path = context.root_dir.join(expand_home(PathBuf::from(path)));
+    let bytes = fs::read(&path)
+        .await
+        .map_err(|error| FunctionError::File { path, error })?;
     Ok(bytes.into())
 }
 

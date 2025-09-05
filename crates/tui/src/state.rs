@@ -680,6 +680,7 @@ impl LoadedState {
             prompter,
             overrides: Default::default(),
             show_sensitive: !is_preview,
+            root_dir: self.collection_file.parent().to_owned(),
             state: Default::default(),
         }
     }

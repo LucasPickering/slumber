@@ -34,7 +34,11 @@ const CONFIG_FILES: &[&str] = &[
 ];
 
 /// A handle for a collection file. This makes it easy to load and reload
-/// the collection in the file. This is just a path that we've confirmed exists.
+/// the collection in the file.
+///
+/// Invariants:
+/// - The path exists
+/// - The path points to a file
 #[derive(Clone, Debug)]
 pub struct CollectionFile(PathBuf);
 
@@ -46,8 +50,8 @@ impl CollectionFile {
         Self::with_dir(env::current_dir()?, override_path)
     }
 
-    /// Get a handle to the collection file, seaching a specific directory. This
-    /// is only useful for testing. Typically you just want [Self::new].
+    /// Get a handle to the collection file, searching a specific directory.
+    /// This is only useful for testing. Typically you just want [Self::new].
     pub fn with_dir(
         mut dir: PathBuf,
         override_path: Option<PathBuf>,
@@ -87,6 +91,13 @@ impl CollectionFile {
     /// Get the path of the file that this collection was loaded from
     pub fn path(&self) -> &Path {
         &self.0
+    }
+
+    /// Get the directory that contains this file
+    pub fn parent(&self) -> &Path {
+        // This is safe because of the invariants: the path always points to a
+        // file
+        self.0.parent().expect("Collection file does not exist")
     }
 }
 

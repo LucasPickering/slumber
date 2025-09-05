@@ -16,7 +16,9 @@ use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
 use slumber_template::{Expression, Literal, Template};
-use slumber_util::{Factory, TempDir, assert_result, temp_dir};
+use slumber_util::{
+    Factory, TempDir, assert_result, paths::get_repo_root, temp_dir,
+};
 use std::time::Duration;
 use tokio::fs;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
@@ -70,9 +72,9 @@ async fn test_override() {
 
 /// `base64()`
 #[rstest]
-#[case::encode_string(b"test", false, Ok(b"dGVzdA==" as _))]
-#[case::encode_bytes(invalid_utf8(), false, Ok(b"wyg=" as _))]
-#[case::decode_string(b"dGVzdA==", true, Ok(b"test" as _))]
+#[case::encode_string(b"test", false, Ok("dGVzdA==".as_bytes()))]
+#[case::encode_bytes(invalid_utf8(), false, Ok("wyg=".as_bytes()))]
+#[case::decode_string(b"dGVzdA==", true, Ok("test".as_bytes()))]
 #[case::decode_bytes(b"wyg=", true, Ok(invalid_utf8()))]
 #[case::error_invalid_base64(b"not base64", true, Err("Invalid symbol"))]
 #[tokio::test]
@@ -118,31 +120,81 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
 
 /// `command()`
 #[rstest]
-#[case::no_stdin(vec!["echo", "test"], None, Ok(b"test\n" as _))]
-#[case::stdin(vec!["cat", "-"], Some(b"test" as _), Ok(b"test" as _))]
-#[case::binary_output(vec!["cat", "-"], Some(invalid_utf8()), Ok(invalid_utf8()))]
-#[case::error_empty(vec![], None, Err("Command must have at least one element"))]
-#[case::error_bad_command(vec!["fake"], None, Err("Executing command `fake`"))]
+#[case::basic(vec!["echo", "test"], None, None, Ok("test\n".as_bytes()))]
+// The command and output is platform-specific, and it's annoying to test both
+// Unix and Windows. Since we don't have any platform-specific logic in our own
+// code, there isn't much value in testing all platforms.
+#[cfg_attr(
+    unix,
+    case::root_dir(vec!["pwd"], None, None, Ok("{ROOT}\n".as_bytes())),
+)]
+#[cfg_attr(
+    unix,
+    case::cwd(
+        vec!["pwd"],
+        Some("test_data"),
+        None,
+        Ok("{ROOT}/test_data\n".as_bytes()),
+    ),
+)]
+#[case::stdin(
+    vec!["cat", "-"], None, Some("test".as_bytes()), Ok("test".as_bytes()),
+)]
+#[case::binary_output(
+    vec!["cat", "-"],
+    None,
+    Some(invalid_utf8()),
+    Ok(invalid_utf8()),
+)]
+#[case::error_empty(
+    vec![],
+    None,
+    None,
+    Err("Command must have at least one element"),
+)]
+#[case::error_bad_command(
+    vec!["fake"],
+    None,
+    None,
+    Err("Executing command `fake`"),
+)]
 #[case::error_exit_code(
     vec!["ls", "--fake"],
     None,
+    None,
+    // Error message varies by platform
     Err(if cfg!(unix) { "unrecognized option" } else { "unknown option" }),
 )]
 #[tokio::test]
 async fn test_command(
     #[case] command: Vec<&str>,
+    #[case] cwd: Option<&str>,
     #[case] stdin: Option<&'static [u8]>,
     #[case] expected: Result<&[u8], &str>,
 ) {
     let template = Template::function_call(
         "command",
         [command.into_iter().map(Expression::from).collect()],
-        [("stdin", stdin.map(Expression::from))],
+        [
+            ("cwd", cwd.map(Expression::from)),
+            ("stdin", stdin.map(Expression::from)),
+        ],
     );
-    assert_result(
-        template.render_bytes(&TemplateContext::factory(())).await,
-        expected,
-    );
+    let root_dir = get_repo_root();
+    let context = TemplateContext {
+        root_dir: root_dir.to_owned(),
+        ..TemplateContext::factory(())
+    };
+    // Replace {ROOT} with the root dir
+    let expected = expected.map(|bytes| {
+        if let Ok(s) = std::str::from_utf8(bytes) {
+            s.replace("{ROOT}", &root_dir.to_string_lossy())
+                .into_bytes()
+        } else {
+            bytes.to_owned()
+        }
+    });
+    assert_result(template.render_bytes(&context).await, expected);
 }
 
 /// `concat()`
@@ -183,7 +235,7 @@ async fn test_env(
 
 /// `file()`
 #[rstest]
-#[case::text("data.txt", Ok(b"text" as _))]
+#[case::text("data.txt", Ok("text".as_bytes()))]
 #[case::binary("data.bin", Ok(invalid_utf8()))]
 #[case::error_not_exists(
     "fake.txt",
@@ -205,20 +257,36 @@ async fn test_file(
         .await
         .unwrap();
 
-    let template = Template::function_call(
-        "file",
-        [temp_dir
-            .join(path)
-            .into_os_string()
-            .into_string()
-            .unwrap()
-            .into()],
-        [],
-    );
-    assert_result(
-        template.render_bytes(&TemplateContext::factory(())).await,
-        expected,
-    );
+    // Path should be relative to the context's root dir
+    let template = Template::function_call("file", [path.into()], []);
+    let context = TemplateContext {
+        root_dir: temp_dir.to_owned(),
+        ..TemplateContext::factory(())
+    };
+
+    assert_result(template.render_bytes(&context).await, expected);
+}
+
+/// Bonus test case for ~ expansion in file(). Only test on Linux because
+/// setting the home dir on Windows is annoying. As long as we call expand_home
+/// we can trust it will work
+#[cfg(unix)]
+#[rstest]
+#[tokio::test]
+async fn test_file_tilde(temp_dir: TempDir) {
+    fs::write(temp_dir.join("data.txt"), "text").await.unwrap();
+
+    // Path should be relative to the context's root dir
+    let template = Template::function_call("file", ["~/data.txt".into()], []);
+    let context = TemplateContext {
+        root_dir: temp_dir.to_owned(),
+        ..TemplateContext::factory(())
+    };
+
+    let guard =
+        env_lock::lock_env([("HOME", Some(temp_dir.to_str().unwrap()))]);
+    assert_result(template.render_string(&context).await, Ok("text"));
+    drop(guard);
 }
 
 /// `float()`

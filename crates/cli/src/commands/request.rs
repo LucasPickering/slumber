@@ -221,6 +221,7 @@ impl BuildRequestCommand {
             overrides,
             prompter: Box::new(CliPrompter),
             show_sensitive: true,
+            root_dir: collection_file.parent().to_owned(),
             state: Default::default(),
         };
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());

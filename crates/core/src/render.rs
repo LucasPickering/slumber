@@ -50,6 +50,9 @@ pub struct TemplateContext {
     /// Should sensitive values be shown normally or masked? Enabled for
     /// request renders, disabled for previews
     pub show_sensitive: bool,
+    /// Directory in which to run file system operations. Should be the
+    /// directory containing the collection file.
+    pub root_dir: PathBuf,
     /// State that should be shared across all renders that use this context.
     /// This is meant to be opaque; just use [Default::default] to initialize.
     pub state: RenderGroupState,
@@ -253,6 +256,7 @@ impl
             database::CollectionDatabase,
             test_util::{TestHttpProvider, TestPrompter},
         };
+        use slumber_util::paths::get_repo_root;
 
         let selected_profile = profiles.first().map(|(id, _)| id.clone());
         Self {
@@ -269,6 +273,7 @@ impl
             )),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
+            root_dir: get_repo_root().to_owned(),
             show_sensitive: true,
             state: Default::default(),
         }

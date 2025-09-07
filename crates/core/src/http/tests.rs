@@ -311,9 +311,9 @@ async fn test_authentication(
     &[],
 )]
 #[case::json_from_file_parsed(
-    // Pipe to json() to parse it
+    // Pipe to json_parse() to parse it
     RecipeBody::json(json!(
-        "{{ file(concat([test_data_dir, '/data.json'])) | json() }}"
+        "{{ file(concat([test_data_dir, '/data.json'])) | json_parse() }}"
     )).unwrap(),
     None,
     Some(r#"{"a":1,"b":2}"#),

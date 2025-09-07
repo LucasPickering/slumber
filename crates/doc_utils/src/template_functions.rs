@@ -299,6 +299,10 @@ fn type_map() -> HashMap<Type, TypeDef> {
         (parse_quote!(f64), TypeDef::Float),
         (parse_quote!(i64), TypeDef::Integer),
         (parse_quote!(Bytes), TypeDef::Bytes),
+        (
+            parse_quote!(CommandOutputMode),
+            union!("stdout" | "stderr" | "both"),
+        ),
         (parse_quote!(JsonPath), TypeDef::Custom("JsonPath")),
         (parse_quote!(JsonPathValue), TypeDef::Value),
         (

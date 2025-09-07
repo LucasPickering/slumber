@@ -345,7 +345,7 @@ async fn test_integer(
     );
 }
 
-/// `json()`
+/// `json_parse()`
 #[rstest]
 #[case::object(br#"{"a": 1, "b": 2}"#, Ok(json!({"a": 1, "b": 2}).into()))]
 #[case::string(br#""json string""#, Ok(json!("json string").into()))]
@@ -353,11 +353,11 @@ async fn test_integer(
 // Binary content can't be parsed
 #[case::error_binary(invalid_utf8(), Err("invalid utf-8 sequence"))]
 #[tokio::test]
-async fn test_json(
+async fn test_json_parse(
     #[case] json: &'static [u8],
     #[case] expected: Result<slumber_template::Value, &str>,
 ) {
-    let template = Template::function_call("json", [json.into()], []);
+    let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
         template.render_value(&TemplateContext::factory(())).await,
         expected,

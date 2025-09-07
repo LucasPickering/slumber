@@ -120,13 +120,13 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
 
 /// `command()`
 #[rstest]
-#[case::basic(vec!["echo", "test"], None, None, Ok("test\n".as_bytes()))]
+#[case::basic(vec!["echo", "test"], None, None, None, Ok("test\n".as_bytes()))]
 // The command and output is platform-specific, and it's annoying to test both
 // Unix and Windows. Since we don't have any platform-specific logic in our own
 // code, there isn't much value in testing all platforms.
 #[cfg_attr(
     unix,
-    case::root_dir(vec!["pwd"], None, None, Ok("{ROOT}\n".as_bytes())),
+    case::root_dir(vec!["pwd"], None, None, None, Ok("{ROOT}\n".as_bytes())),
 )]
 #[cfg_attr(
     unix,
@@ -134,20 +134,42 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
         vec!["pwd"],
         Some("test_data"),
         None,
+        None,
         Ok("{ROOT}/test_data\n".as_bytes()),
     ),
 )]
 #[case::stdin(
-    vec!["cat", "-"], None, Some("test".as_bytes()), Ok("test".as_bytes()),
+    vec!["cat", "-"],
+    None,
+    Some("test".as_bytes()),
+    None,
+    Ok("test".as_bytes()),
 )]
 #[case::binary_output(
     vec!["cat", "-"],
     None,
     Some(invalid_utf8()),
+    None,
     Ok(invalid_utf8()),
+)]
+#[case::output_stderr(
+    vec!["sh", "-c", "echo test >&2"],
+    None,
+    None,
+    Some("stderr"),
+    Ok("test\n".as_bytes()),
+)]
+#[case::output_both(
+    // Results should be interleaved
+    vec!["sh", "-c", "echo stdout; echo stderr >&2; echo stdout"],
+    None,
+    None,
+    Some("both"),
+    Ok("stdout\nstderr\nstdout\n".as_bytes()),
 )]
 #[case::error_empty(
     vec![],
+    None,
     None,
     None,
     Err("Command must have at least one element"),
@@ -156,10 +178,12 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     vec!["fake"],
     None,
     None,
+    None,
     Err("Executing command `fake`"),
 )]
 #[case::error_exit_code(
     vec!["ls", "--fake"],
+    None,
     None,
     None,
     // Error message varies by platform
@@ -170,6 +194,7 @@ async fn test_command(
     #[case] command: Vec<&str>,
     #[case] cwd: Option<&str>,
     #[case] stdin: Option<&'static [u8]>,
+    #[case] output: Option<&str>,
     #[case] expected: Result<&[u8], &str>,
 ) {
     let template = Template::function_call(
@@ -178,6 +203,7 @@ async fn test_command(
         [
             ("cwd", cwd.map(Expression::from)),
             ("stdin", stdin.map(Expression::from)),
+            ("output", output.map(Expression::from)),
         ],
     );
     let root_dir = get_repo_root();

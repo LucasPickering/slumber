@@ -16,8 +16,15 @@ use slumber_template::{
     impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
-use std::{env, fmt::Debug, path::PathBuf, process::Stdio, sync::Arc};
-use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
+use std::{
+    env, fmt::Debug, path::PathBuf, pin::Pin, process::Stdio, sync::Arc,
+};
+use tokio::{
+    fs,
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
+    process::Command,
+    sync::oneshot,
+};
 use tracing::{debug, debug_span};
 
 // ===========================================================
@@ -130,7 +137,7 @@ pub async fn command(
 
     let command_output = async {
         // Spawn the command process
-        let mut process = Command::new(program)
+        let mut child = Command::new(program)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -141,7 +148,7 @@ pub async fn command(
 
         // Write the stdin to the process
         if let Some(stdin) = stdin {
-            process
+            child
                 .stdin
                 .as_mut()
                 .expect("Process missing stdin")
@@ -149,8 +156,16 @@ pub async fn command(
                 .await?;
         }
 
-        // Wait for the process to finish
-        process.wait_with_output().await
+        // TODO explain
+        let output_stream: Pin<Box<dyn AsyncRead>> = match output {
+            CommandOutputMode::Stdout => Box::pin(child.stdout.take().unwrap()),
+            CommandOutputMode::Stderr => Box::pin(child.stderr.take().unwrap()),
+            CommandOutputMode::Both => todo!("merge streams"),
+        };
+
+        let mut output_data = Vec::new();
+        output_stream.read_to_end(&mut output_data).await?;
+        Ok(output_data)
     }
     .await
     .map_err(|error| FunctionError::CommandInit {

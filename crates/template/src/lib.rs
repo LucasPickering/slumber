@@ -430,6 +430,21 @@ where
     }
 }
 
+impl<K, V> From<Vec<(K, V)>> for Value
+where
+    String: From<K>,
+    Value: From<V>,
+{
+    fn from(value: Vec<(K, V)>) -> Self {
+        Self::Object(
+            value
+                .into_iter()
+                .map(|(key, value)| (key.into(), value.into()))
+                .collect(),
+        )
+    }
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
@@ -781,8 +796,36 @@ mod tests {
     use rstest::rstest;
     use slumber_util::assert_err;
 
+    /// Test simple expression rendering
+    #[rstest]
+    #[case::object(
+        "{{ {'a': 1, 1: 2, ['a',1]: ['b',2]} }}",
+        vec![
+            ("a", Value::from(1)),
+            ("1", 2.into()),
+            // Note the whitespace in the key: it was parsed and restringified
+            ("['a', 1]", vec![Value::from("b"), 2.into()].into()),
+        ].into(),
+    )]
+    #[case::object_dupe_key(
+        // Latest entry takes precedence
+        "{{ {'Mike': 1, name: 2, 10: 3, '10': 4} }}",
+        vec![("Mike", 2), ("10", 4)].into(),
+    )]
+    #[tokio::test]
+    async fn test_expression(
+        #[case] template: Template,
+        #[case] expected: Value,
+    ) {
+        assert_eq!(
+            template.render_value(&TestContext).await.unwrap(),
+            expected
+        );
+    }
+
     /// Render to a value. Templates with a single dynamic chunk are allowed to
-    /// produce non-string values
+    /// produce non-string values. This is specifically testing the behavior
+    /// of [Template::render_value], rather than expression evaluation.
     #[rstest]
     #[case::unpack("{{ array }}", vec!["a", "b", "c"].into())]
     #[case::string("my name is {{ name }}", "my name is Mike".into())]

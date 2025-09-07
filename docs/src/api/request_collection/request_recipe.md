@@ -4,7 +4,7 @@ A request recipe defines how to make a particular request. For a REST API, you'l
 
 **The IDs of your folders/recipes must be globally unique.** This means you can't have two recipes (or two folders, or one recipe and one folder) with the same associated key, even if they are in different folders. This restriction makes it easy to refer to recipes unambiguously using a single ID, which is helpful for CLI usage and data storage.
 
-> There is no need to explicitly declare whether an object is a folder or a recipe. Slumber infers based on the presence/absence of the `url` or `method` fields.
+> There is no need to explicitly declare whether a node is a folder or a recipe. Slumber infers based on the presence/absence of the `url` or `method` fields.
 
 ## Recipe Fields
 

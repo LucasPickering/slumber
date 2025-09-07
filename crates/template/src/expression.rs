@@ -7,7 +7,10 @@ use crate::{
 };
 use bytes::Bytes;
 use derive_more::{Deref, Display, From};
-use futures::{FutureExt, future};
+use futures::{
+    FutureExt,
+    future::{self, try_join},
+};
 use indexmap::IndexMap;
 
 type RenderResult = Result<Value, RenderError>;
@@ -23,6 +26,9 @@ pub enum Expression {
     Field(Identifier),
     /// Array literal: `[1, "hello", f()]`
     Array(Vec<Self>),
+    /// Object literal: `{"a": 1}`. Store a vec here instead of a map because
+    /// we don't want to deduplicate keys until after evaluating them
+    Object(Vec<(Self, Self)>),
     /// Call to a plain function (**not** a filter)
     Call(FunctionCall),
     /// Data piped to another function: `name | trim()`. The expression on the
@@ -51,10 +57,27 @@ impl Expression {
                             .iter()
                             .map(|expression| expression.render(context)),
                     )
-                    // Box for recursion
-                    .boxed()
+                    .boxed() // Box for recursion
                     .await?;
                     Ok(Value::Array(values))
+                }
+                Self::Object(entries) => {
+                    let pairs: Vec<(String, Value)> = future::try_join_all(
+                        entries.iter().map(|(key, value)| {
+                            let key_future = async move {
+                                let key = key.render(context).await?;
+                                // Keys must be strings, so convert here
+                                key.try_into_string().map_err(|error| {
+                                    RenderError::Value(error.error)
+                                })
+                            };
+                            try_join(key_future, value.render(context))
+                        }),
+                    )
+                    .boxed() // Box for recursion
+                    .await?;
+                    // Keys will be deduped here, with the last taking priority
+                    Ok(Value::Object(IndexMap::from_iter(pairs)))
                 }
                 Self::Field(identifier) => context.get(identifier).await,
                 Self::Call(call) => call.call(context, None).await,

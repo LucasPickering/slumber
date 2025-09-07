@@ -191,6 +191,7 @@ fn primary_expression(input: &mut &str) -> ModalResult<Expression> {
         alt((
             literal.map(Expression::Literal),
             array.map(Expression::Array),
+            object.map(Expression::Object),
             // Look for a fn call before a field to reduce backtracking. A fn
             // call will always parse as a field, but not vice versa
             call.map(Expression::Call),
@@ -284,6 +285,13 @@ fn byte_literal(input: &mut &str) -> ModalResult<Literal> {
 fn array(input: &mut &str) -> ModalResult<Vec<Expression>> {
     (delimited_list('[', expression, ']'))
         .context(ctx_label("array"))
+        .parse_next(input)
+}
+
+/// Parse an object: {"key": expr, ...}
+fn object(input: &mut &str) -> ModalResult<Vec<(Expression, Expression)>> {
+    (delimited_list('{', separated_pair(expression, ws(":"), expression), '}'))
+        .context(ctx_label("object"))
         .parse_next(input)
 }
 
@@ -501,9 +509,8 @@ fn ctx_expected(expected: &'static str) -> StrContext {
 
 #[cfg(test)]
 mod tests {
-    use crate::{FunctionCall, Literal};
-
     use super::*;
+    use crate::{FunctionCall, Literal};
     use proptest::proptest;
     use rstest::rstest;
     use slumber_util::{assert_err, assert_matches};
@@ -581,6 +588,9 @@ mod tests {
     #[rstest]
     #[case::no_whitespace("{{ field1 }}", [field_chunk("field1")])]
     #[case::bonus_whitespace("{{   field1   }}", [field_chunk("field1")])]
+    #[case::object(
+        "{{{'a': 1}}}", [object([(literal("a"), literal(1))]).into()],
+    )]
     fn test_parse_template(
         #[case] input: &'static str,
         #[case] expected: impl Into<Template>,
@@ -595,8 +605,9 @@ mod tests {
     #[case::empty_expression("{{}}", "invalid expression")]
     #[case::invalid_expression("{{.}}", "invalid expression")]
     #[case::trailing_dot("{{bogus.}}", "invalid expression")]
-    // the first { is escaped, 2nd and 3rd make the expression, 4th is a problem
-    #[case::bonus_braces(r"\\{{{{field}}", "invalid expression")]
+    // the first { is escaped, 2nd and 3rd make the expression, 4th opens an
+    // object that never gets closed
+    #[case::bonus_braces(r"\\{{{{field}}", "invalid object\nexpected `}`")]
     fn test_parse_template_error(
         #[case] template: &str,
         #[case] expected_error: &str,
@@ -674,6 +685,22 @@ mod tests {
         None,
     )]
     #[case::array_trailing_comma("[1,]", array([literal(1)]), Some("[1]"))]
+    // ===== Object literals =====
+    #[case::object(
+        "{1: 1, 'a': 'hi', field: field}",
+        object([
+            (literal(1), literal(1)),
+            (literal("a"), literal("hi")),
+            (field("field"), field("field")),
+        ]),
+        None,
+    )]
+    #[case::object_trailing_comma(
+        "{'a':1,}", object([(literal("a"), literal(1))]), Some("{'a': 1}"),
+    )]
+    #[case::object_whitespace(
+        " { 'a' : 1 } ", object([(literal("a"), literal(1))]), Some("{'a': 1}"),
+    )]
     // ===== Fields =====
     #[case::field("field1", field("field1"), None)]
     // ===== Function calls =====
@@ -828,6 +855,13 @@ mod tests {
     /// Shorthand for creating an array literal expression
     fn array<const N: usize>(expressions: [Expression; N]) -> Expression {
         Expression::Array(expressions.into())
+    }
+
+    /// Shorthand for creating an object literal expression
+    fn object<const N: usize>(
+        entries: [(Expression, Expression); N],
+    ) -> Expression {
+        Expression::Object(entries.into())
     }
 
     /// Shorthand for creating a function call expression

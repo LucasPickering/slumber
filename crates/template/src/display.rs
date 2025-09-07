@@ -90,6 +90,15 @@ impl Display for Expression {
             Self::Array(expressions) => {
                 write!(f, "[{}]", expressions.iter().format(", "))
             }
+            Self::Object(entries) => {
+                write!(
+                    f,
+                    "{{{}}}",
+                    entries.iter().format_with(", ", |(key, value), f| f(
+                        &format_args!("{key}: {value}")
+                    ))
+                )
+            }
             Self::Call(call) => write!(f, "{call}"),
             Self::Pipe { expression, call } => {
                 write!(f, "{expression} | {call}")

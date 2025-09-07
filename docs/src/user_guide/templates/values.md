@@ -8,12 +8,12 @@ Templates contain expressions, and expressions evaluate to values. Template valu
   - Uses [f64](https://doc.rust-lang.org/std/primitive.f64.html) internally. See docs for information on min/max values.
 - `integer` (signed integer)
   - Uses [i64](https://doc.rust-lang.org/std/primitive.i64.html) internally. See docs for information on min/max values.
-- `string`: `"hello!"`
-- `bytes`: `b"hello!"`
-- `array`: `[1, false, "hello!"]`
-- `object`: Currently not representable as a literal. Objects can be constructed in two ways:
-  - Output of the [`jsonpath`](../../api/template_functions.md#jsonpath) function
-  - From a `json` request body
+- `string`: `"hello!"` or `'hello!'`
+  - Single-quote format is more common because your templates will often be wrapped in `"` to denote a YAML string
+- `bytes`: `b"hello!"` or `b'hello!'`
+- `array`: `[1, false, 'hello!']`
+- `object`: `{ 'a': 1, 'b': 2 }`
+  - Object keys must be strings. If a non-string value is given, it will be stringified
 
 ## `bytes` vs `string`
 

@@ -215,7 +215,7 @@ impl slumber_template::Context for TemplateContext {
             "file" => functions::file(arguments).await,
             "float" => functions::float(arguments),
             "integer" => functions::integer(arguments),
-            "json" => functions::json(arguments),
+            "json_parse" => functions::json_parse(arguments),
             "jsonpath" => functions::jsonpath(arguments),
             "prompt" => functions::prompt(arguments).await,
             "response" => functions::response(arguments).await,

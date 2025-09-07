@@ -97,6 +97,8 @@ pub fn boolean(value: Value) -> bool {
 ///   where Slumber is invoked from. The given path will be resolved relative to
 ///   that default.
 /// - `stdin`: Data to pipe to the subprocess's stdin
+/// - `output` (default: `"stdout"`): Select which stream to return (stdout,
+///   stderr, or both)
 ///
 /// **Errors**
 ///
@@ -108,6 +110,7 @@ pub fn boolean(value: Value) -> bool {
 /// ```sh
 /// {{ command(["echo", "hello"]) }} => "hello\n"
 /// {{ command(["grep", "1"], stdin="line 1\nline2") }} => "line 1\n"
+/// {{ command(["sh", "-c", "echo hello >&2"], output="stderr") }} => "hello\n"
 /// ```
 ///
 /// > `command` is commonly paired with [`trim`](#trim) to remove trailing
@@ -118,13 +121,14 @@ pub async fn command(
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
+    #[kwarg] output: CommandOutputMode,
 ) -> Result<Bytes, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
     };
     let _ = debug_span!("Executing command", ?program, ?args).entered();
 
-    let output = async {
+    let command_output = async {
         // Spawn the command process
         let mut process = Command::new(program)
             .args(args)
@@ -156,25 +160,57 @@ pub async fn command(
     })?;
 
     debug!(
-        status = %output.status,
-        stdout = %String::from_utf8_lossy(&output.stdout),
-        stderr = %String::from_utf8_lossy(&output.stderr),
+        status = %command_output.status,
+        stdout = %String::from_utf8_lossy(&command_output.stdout),
+        stderr = %String::from_utf8_lossy(&command_output.stderr),
         "Command finished"
     );
 
     // Check status code
-    if output.status.success() {
-        Ok(output.stdout.into())
+    if command_output.status.success() {
+        let output_data = match output {
+            CommandOutputMode::Stdout => command_output.stdout,
+            CommandOutputMode::Stderr => command_output.stderr,
+            CommandOutputMode::Both => todo!(),
+        };
+        Ok(output_data.into())
     } else {
         Err(FunctionError::CommandStatus {
             program: program.clone(),
             args: args.into(),
-            status: output.status,
-            stdout: output.stdout,
-            stderr: output.stderr,
+            status: command_output.status,
+            stdout: command_output.stdout,
+            stderr: command_output.stderr,
         })
     }
 }
+
+/// Control the return value of a command
+#[derive(Debug, Default)]
+pub enum CommandOutputMode {
+    #[default]
+    Stdout,
+    Stderr,
+    Both,
+}
+
+// Manual implementation provides the best error messages
+impl FromStr for CommandOutputMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "stdout" => Ok(Self::Stdout),
+            "stderr" => Ok(Self::Stderr),
+            "both" => Ok(Self::Both),
+            _ => Err(format!(
+                "Invalid output mode `{s}`; must be `stdout`, `stderr`, or `both`"
+            )),
+        }
+    }
+}
+
+impl_try_from_value_str!(CommandOutputMode);
 
 /// Concatenate any number of strings together
 ///
@@ -346,7 +382,7 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
     }
 }
 
-/// Parse a value as JSON.
+/// Parse a JSON string to a template value.
 ///
 /// **Parameters**
 ///
@@ -359,8 +395,10 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
 /// **Examples**
 ///
 /// ```sh
-/// {{ response('get_user') }} => "{\"name\": \"Alice\"}"
-/// {{ response('get_user') | json() }} => {"name": "Alice"}"
+/// {{ json_parse('{"name": "Alice"}') }} => {"name": "Alice"}
+/// # Commonly combined with file() or response() because they spit out raw JSON
+/// {{ file('body.json') | json_parse() }} => {"name": "Alice"}"
+/// {{ response('get_user') | json_parse() }} => {"name": "Alice"}"
 /// ```
 ///
 /// This can be used in `json` request bodies to create dynamic non-string
@@ -370,7 +408,7 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
 /// body:
 ///   type: json
 ///   data: {
-///     "data": "{{ response('get_user') | json() }}"
+///     "data": "{{ response('get_user') | json_parse() }}"
 ///   }
 /// ```
 ///
@@ -380,7 +418,7 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
 /// {"data": {"name": "Alice"}}
 /// ```
 #[template(TemplateContext)]
-pub fn json(value: String) -> Result<serde_json::Value, FunctionError> {
+pub fn json_parse(value: String) -> Result<serde_json::Value, FunctionError> {
     serde_json::from_str(&value).map_err(FunctionError::JsonParse)
 }
 
@@ -398,8 +436,8 @@ pub fn json(value: String) -> Result<serde_json::Value, FunctionError> {
 ///   (bool, array, etc.), it will be mapped directly to JSON. This value is
 ///   typically piped in from the output of `response()` or `file()`.
 /// - `query`: JSONPath query string
-/// - `mode`: How to handle multiple results (see table below; default:
-///   `"auto"`)
+/// - `mode` (default: `"auto"`): How to handle multiple results (see table
+///   below)
 ///
 /// An explanation of `mode` using this object as an example:
 ///
@@ -463,6 +501,86 @@ pub fn jsonpath(
         JsonPathMode::Array => Ok(node_list_to_value(node_list)),
     }
 }
+
+/// Wrapper for [serde_json_path::JsonPath] to enable implementing
+/// [TryFromValue]
+#[derive(Debug, FromStr)]
+pub struct JsonPath(serde_json_path::JsonPath);
+
+impl_try_from_value_str!(JsonPath);
+
+/// Wrapper for a JSON value to customize decoding. Strings are parsed as JSON
+/// instead of being treated as a JSON string literal. You can't really do
+/// anything with a JSONPath on a string so when a user pipes a string (or
+/// bytes) in, it's probably the output of a response or file that needs to
+/// be parsed. By parsing here, we save them an intermediate call to
+/// `json_parse()`.
+pub struct JsonPathValue(serde_json::Value);
+
+impl TryFromValue for JsonPathValue {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
+        let json_value = match value {
+            // Strings and bytes are treated as encoded JSON and parsed.
+            // See struct doc for explanation
+            Value::String(s) => serde_json::from_str(&s)
+                .map_err(|error| WithValue::new(s.into(), error))?,
+            Value::Bytes(b) => serde_json::from_slice(&b)
+                .map_err(|error| WithValue::new(b.into(), error))?,
+            // Everything else is mapped literally
+            Value::Null => serde_json::Value::Null,
+            Value::Boolean(b) => b.into(),
+            Value::Integer(i) => i.into(),
+            Value::Float(f) => f.into(),
+            // Strings nested within an object/array will *not* be parsed
+            Value::Array(array) => array
+                .into_iter()
+                .map(serde_json::Value::try_from_value)
+                .collect::<Result<_, _>>()?,
+            Value::Object(map) => map
+                .into_iter()
+                .map(|(k, v)| Ok((k, serde_json::Value::try_from_value(v)?)))
+                .collect::<Result<_, _>>()?,
+        };
+        Ok(Self(json_value))
+    }
+}
+
+/// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
+#[derive(Copy, Clone, Debug, Default)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub enum JsonPathMode {
+    /// 0 - Error
+    /// 1 - Single result
+    /// 2 - Array of values
+    #[default]
+    Auto,
+    /// 0 - Error
+    /// 1 - Single result
+    /// 2 - Error
+    Single,
+    /// 0 - Array of values
+    /// 1 - Array of values
+    /// 2 - Array of values
+    Array,
+}
+
+// Manual implementation provides the best error messages
+impl FromStr for JsonPathMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            "single" => Ok(Self::Single),
+            "array" => Ok(Self::Array),
+            _ => Err(format!(
+                "Invalid mode `{s}`; must be `array`, `single`, or `auto`"
+            )),
+        }
+    }
+}
+
+impl_try_from_value_str!(JsonPathMode);
 
 /// Prompt the user to enter a text value.
 ///
@@ -744,85 +862,6 @@ fn mask_sensitive(context: &TemplateContext, value: String) -> String {
         "•".repeat(value.chars().count())
     }
 }
-
-/// Wrapper for [serde_json_path::JsonPath] to enable implementing
-/// [TryFromValue]
-#[derive(Debug, FromStr)]
-pub struct JsonPath(serde_json_path::JsonPath);
-
-impl_try_from_value_str!(JsonPath);
-
-/// Wrapper for a JSON value to customize decoding. Strings are parsed as JSON
-/// instead of being treated as a JSON string literal. You can't really do
-/// anything with a JSONPath on a string so when a user pipes a string (or
-/// bytes) in, it's probably the output of a response or file that needs to
-/// be parsed. By parsing here, we save them an intermediate call to `json()`.
-pub struct JsonPathValue(serde_json::Value);
-
-impl TryFromValue for JsonPathValue {
-    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
-        let json_value = match value {
-            // Strings and bytes are treated as encoded JSON and parsed.
-            // See struct doc for explanation
-            Value::String(s) => serde_json::from_str(&s)
-                .map_err(|error| WithValue::new(s.into(), error))?,
-            Value::Bytes(b) => serde_json::from_slice(&b)
-                .map_err(|error| WithValue::new(b.into(), error))?,
-            // Everything else is mapped literally
-            Value::Null => serde_json::Value::Null,
-            Value::Boolean(b) => b.into(),
-            Value::Integer(i) => i.into(),
-            Value::Float(f) => f.into(),
-            // Strings nested within an object/array will *not* be parsed
-            Value::Array(array) => array
-                .into_iter()
-                .map(serde_json::Value::try_from_value)
-                .collect::<Result<_, _>>()?,
-            Value::Object(map) => map
-                .into_iter()
-                .map(|(k, v)| Ok((k, serde_json::Value::try_from_value(v)?)))
-                .collect::<Result<_, _>>()?,
-        };
-        Ok(Self(json_value))
-    }
-}
-
-/// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
-#[derive(Copy, Clone, Debug, Default)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub enum JsonPathMode {
-    /// 0 - Error
-    /// 1 - Single result
-    /// 2 - Array of values
-    #[default]
-    Auto,
-    /// 0 - Error
-    /// 1 - Single result
-    /// 2 - Error
-    Single,
-    /// 0 - Array of values
-    /// 1 - Array of values
-    /// 2 - Array of values
-    Array,
-}
-
-// Manual implementation provides the best error messages
-impl FromStr for JsonPathMode {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "auto" => Ok(Self::Auto),
-            "single" => Ok(Self::Single),
-            "array" => Ok(Self::Array),
-            _ => Err(format!(
-                "Invalid mode `{s}`; must be `array`, `single`, or `auto`"
-            )),
-        }
-    }
-}
-
-impl_try_from_value_str!(JsonPathMode);
 
 /// Define when a recipe with a chained request should auto-execute the
 /// dependency request.

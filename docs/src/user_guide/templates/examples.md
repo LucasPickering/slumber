@@ -189,7 +189,7 @@ requests:
       data:
         {
           "name": "Alfonso",
-          "friends": "{{ file('./friends.json') | json() }}",
+          "friends": "{{ file('./friends.json') | json_parse() }}",
         }
 ```
 
@@ -204,7 +204,7 @@ The request body will render as:
 
 A few things to notice here:
 
-- We had to explicitly parse the contents of the file with `json()`. By default the content loaded is just artbirary bytes; Slumber doesn't know it's supposed to be JSON.
+- We had to explicitly parse the contents of the file with `json_parse()`. By default the content loaded is just artbirary bytes; Slumber doesn't know it's supposed to be JSON.
 - The parsed JSON is included directly into the JSON body, _without_ the surrounding quotes from the template. In other words, the value was **unpacked**.
 
 In some cases this behavior may not be desired, e.g. when combined with `jsonpath()`. You can pipe to `string()` to **disable this behavior**:

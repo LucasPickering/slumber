@@ -56,20 +56,7 @@ impl Collection {
                 if error
                     .chain()
                     .filter_map(|error| error.downcast_ref::<yaml::Error>())
-                    .any(|error| match error {
-                        // Look for:
-                        // - `chains` field
-                        // - `<<` merge key
-                        // - `!tag`
-                        yaml::Error::UnexpectedField(field) => {
-                            field == "chains"
-                        }
-                        yaml::Error::UnsupportedMerge => true,
-                        yaml::Error::Unexpected { actual, .. } => {
-                            actual.starts_with("tag")
-                        }
-                        _ => false,
-                    })
+                    .any(Self::is_v3_error)
                 {
                     error.context(format!(
                         "This looks like a collection from Slumber v3. \
@@ -87,6 +74,27 @@ impl Collection {
     /// Load collection from a YAML string
     pub fn parse(input: &str) -> anyhow::Result<Self> {
         yaml::deserialize_str(input).traced()
+    }
+
+    /// Does the deserialization error lead us to believe the collection is in
+    /// the v3 format? If so we'll give the user an extra message suggesting an
+    /// upgrade to v4
+    fn is_v3_error(error: &yaml::Error) -> bool {
+        match error {
+            // Look for:
+            // - `chains` field
+            // - `<<` merge key
+            // - `!tag`
+            // - `chains.` in a template
+            yaml::Error::UnexpectedField(field) => field == "chains",
+            yaml::Error::UnsupportedMerge => true,
+            yaml::Error::Unexpected { actual, .. } => actual.starts_with("tag"),
+            yaml::Error::Other(error) => error
+                // Check if there's a template containing a chain reference
+                .downcast_ref::<TemplateParseError>()
+                .is_some_and(|error| error.to_string().contains("{{chains.")),
+            _ => false,
+        }
     }
 }
 

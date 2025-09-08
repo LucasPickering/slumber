@@ -35,6 +35,7 @@ use tracing::info;
 )]
 pub struct Collection {
     /// Descriptive name for the collection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Map of profiles, keyed by their unique IDs
     pub profiles: IndexMap<ProfileId, Profile>,

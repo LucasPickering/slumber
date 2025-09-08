@@ -283,12 +283,40 @@ mod tests {
         assert_err!(Collection::parse(yaml), expected_error);
     }
 
-    /// Should detect a v3 collection and provide a helpful error message about
-    /// migration
+    /// Should detect various indicators that the collection is v3 collection
+    /// and provide a helpful error message about migration
     #[rstest]
-    fn test_v3_detect(test_data_dir: PathBuf) {
+    #[case::chain_template(
+        r#"
+profiles:
+    profile1:
+        data:
+            key: "{{chains.value}}"
+"#
+    )]
+    #[case::chains_field("chains: {}")]
+    #[case::merge_key(
+        "
+.profile_data: &profile_data {}
+profiles:
+    profile1:
+        data:
+            <<: *profile_data
+"
+    )]
+    #[case::request_tag(
+        "
+requests:
+    r1: !request
+        method: GET
+        url: http://localhost
+"
+    )]
+    fn test_v3_detect(temp_dir: TempDir, #[case] input: &str) {
+        let path = temp_dir.join("v3.yml");
+        fs::write(&path, input).unwrap();
         assert_err!(
-            Collection::load(&test_data_dir.join("v3.yml")),
+            Collection::load(&path),
             "This looks like a collection from Slumber v3. Migrate to v4 or \
             downgrade your installation to 3.x"
         );

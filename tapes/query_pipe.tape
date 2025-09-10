@@ -13,15 +13,15 @@ Type "cargo run"
 Enter
 Sleep 2s
 
-Enter # Send login request
-Type "hunter2"
+# Send List Fish request
+Down 2
 Enter
-Sleep 2s
+Sleep 1s
 Type "rf" # Fullscreen response pane
 Show
 
 Type "/"
 Sleep 1s
-Type "jq .args | head -n 3"
+Type "jq .[0] | head -n 3"
 Enter
 Sleep 2s

@@ -14,7 +14,6 @@ Enter
 Sleep 2s
 Show
 
-# Send login request
 Sleep 1s
 Type "x"
 Sleep 1s

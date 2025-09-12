@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+<!-- ANCHOR: changelog -->
+
+## [4.0.0] - 2025-09-12
+
 ### Highlights
 
 4.0 is Slumber's largest release to date, with a number of exciting improvements to the collection format. The overall goal of this release is to make collection files:

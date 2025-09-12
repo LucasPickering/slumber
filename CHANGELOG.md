@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [4.0.0] - 2025-09-12
 
+[Migration guide](https://slumber.lucaspickering.me/other/v4_migration.html)
+
 ### Highlights
 
 4.0 is Slumber's largest release to date, with a number of exciting improvements to the collection format. The overall goal of this release is to make collection files:
@@ -63,7 +65,7 @@ requests:
 
 So much easier to follow!
 
-[See docs for more](https://slumber.lucaspickering.me/book/user_guide/templates/functions.html).
+[See docs for more](https://slumber.lucaspickering.me/user_guide/templates/functions.html).
 
 #### Share configuration between collection files with `$ref`
 
@@ -76,13 +78,13 @@ requests:
     $ref: "./common.yml#/requests/login"
 ```
 
-[See docs for more](https://slumber.lucaspickering.me/book/user_guide/composition.html).
+[See docs for more](https://slumber.lucaspickering.me/user_guide/composition.html).
 
 #### JSON Schema
 
 Slumber now exports a [JSON Schema](https://jsonschema.com) for both its global config and request collection formats. This makes it possible to get validation and completion in your IDE. To make this possible we've ditched the YAML `!tag` syntax in favor of `type` fields within each block.
 
-[See docs for more](https://slumber.lucaspickering.me/book/user_guide/json_schema.md).
+[See docs for more](https://slumber.lucaspickering.me/user_guide/json_schema.md).
 
 [Thanks to @anussell5559 for this suggestion](https://github.com/LucasPickering/slumber/issues/374).
 
@@ -98,11 +100,11 @@ slumber import v3 <old file> <new file>
 
 The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/LucasPickering/slumber/issues/new).
 
-[**See the migration guide for more details**](https://slumber.lucaspickering.me/book/other/v4_migration.html)
+[**See the migration guide for more details**](https://slumber.lucaspickering.me/other/v4_migration.html)
 
 - Replace template chains with a more intuitive function syntax
   - Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: `{{ response('login') | jsonpath('$.token') }}`
-  - [See docs for more](https://slumber.lucaspickering.me/book/user_guide/templates/functions.html)
+  - [See docs for more](https://slumber.lucaspickering.me/user_guide/templates/functions.html)
 - Remove YAML `!tags` in favor of an inner `type` field
   - This change makes the format compatible with JSON Schema
   - Impacts these collection nodes:
@@ -112,19 +114,19 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
 - Represent query parameters as a map of `{parameter: value}` instead of a list of strings like `parameter=value`
   - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
   - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`
-  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html) for examples of the new format
+  - [See docs](https://slumber.lucaspickering.me/api/request_collection/query_parameters.html) for examples of the new format
 - YAML anchor/alias/merge syntax has been replaced with `$ref` references, similar to OpenAPI [#290](https://github.com/LucasPickering/slumber/issues/290)
   - These references are much more flexible, including the ability to import from other files
-  - [See docs](https://slumber.lucaspickering.me/book/user_guide/composition.html) for examples
+  - [See docs](https://slumber.lucaspickering.me/user_guide/composition.html) for examples
 - Commands in templates (previously `!command`, now `command()`) now fail if the command exits with a non-zero status code
 - Templates in a JSON body with a single dynamic chunk (such as `{{ username }}`) will now be unpacked into their inner value rather than always being stringified
   - This means you can now create dynamic non-string values within a JSON body
-  - [See docs](https://slumber.lucaspickering.me/book/user_guide/recipes.html#body) for more
+  - [See docs](https://slumber.lucaspickering.me/user_guide/recipes.html#body) for more
 
 ## Added
 
 - Generate JSON Schema for both the collection and config formats [#374](https://github.com/LucasPickering/slumber/issues/374)
-  - This enables better validation and completion in your IDE; [see docs for more](https://slumber.lucaspickering.me/book/user_guide/json_schema.md)
+  - This enables better validation and completion in your IDE; [see docs for more](https://slumber.lucaspickering.me/user_guide/json_schema.md)
 
 <!-- ANCHOR: changelog -->
 

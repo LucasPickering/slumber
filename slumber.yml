@@ -10,6 +10,7 @@
 profiles:
   prd:
     name: Production
+    default: true
     data:
       $ref: "#/.base_profile_data"
       host: https://shoal.lucaspickering.me
@@ -35,7 +36,7 @@ profiles:
   $ref: "#/.base_request"
   authentication:
     type: bearer
-    token: "{{ response('new_session') | jsonpath('$.id') }}"
+    token: "{{ response('new_session', trigger='1h') | jsonpath('$.id') }}"
 
 requests:
   new_session:
@@ -53,16 +54,18 @@ requests:
         method: GET
         url: "{{ host }}/fish"
         query:
+          foo: bar
+
+      get_fish:
+        $ref: "#/.authenticated"
+        name: Get Fish
+        method: GET
+        url: "{{ host }}/fish/{{ fish_id }}"
+        query:
           select: "{{ select(
             ['foo', 'bar', 'baz', 'a really really really really long option', username],
             message='Select a value'
             ) }}"
-
-      get_fish:
-        $ref: "#/.authenticated"
-        name: Get User
-        method: GET
-        url: "{{ host }}/fish/{{ fish_id }}"
 
       create_fish:
         $ref: "#/.authenticated"

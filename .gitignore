@@ -3,10 +3,11 @@ data/
 /.vscode/
 /.zed/
 .DS_Store
-response.json
 *.sqlite
-expand.rs
 *.prof
 __pycache__/
 *.swp
+expand.rs
+ids.txt
 gifs.md
+response.json

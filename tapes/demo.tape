@@ -18,14 +18,10 @@ Show
 # Send login request
 Sleep 1s
 Enter
-Sleep 0.5s
-Type "password"
-Sleep 0.5s
-Enter
 Sleep 2s
 Down 2
 
-# Edit param for get_users
+# Edit param for list_fish
 Sleep 1s
 Type "c"
 Sleep 0.5s
@@ -40,16 +36,12 @@ Sleep 0.5s
 Enter
 Sleep 0.5s
 
-# Send get_users request
-Enter
-Sleep 0.5s
-Down 1
-Sleep 0.5s
+# Send list_fish request
 Enter
 Type "r"
 Sleep 2s
 
 # Search response
-Type "/jq .headers"
+Type "/jq .[0]"
 Enter
 Sleep 2s

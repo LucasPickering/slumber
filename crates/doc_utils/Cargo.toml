@@ -6,11 +6,13 @@ homepage = {workspace = true}
 keywords = {workspace = true}
 license = {workspace = true}
 name = "doc_utils"
+publish = false
 repository = {workspace = true}
 rust-version = {workspace = true}
 version = "0.0.1"
 
 [package.metadata.release]
+release = false
 tag = false
 
 [dependencies]

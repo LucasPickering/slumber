@@ -97,8 +97,6 @@ pub fn boolean(value: Value) -> bool {
 ///   where Slumber is invoked from. The given path will be resolved relative to
 ///   that default.
 /// - `stdin`: Data to pipe to the subprocess's stdin
-/// - `output` (default: `"stdout"`): Select which stream to return (stdout,
-///   stderr, or both)
 ///
 /// **Errors**
 ///
@@ -110,7 +108,6 @@ pub fn boolean(value: Value) -> bool {
 /// ```sh
 /// {{ command(["echo", "hello"]) }} => "hello\n"
 /// {{ command(["grep", "1"], stdin="line 1\nline2") }} => "line 1\n"
-/// {{ command(["sh", "-c", "echo hello >&2"], output="stderr") }} => "hello\n"
 /// ```
 ///
 /// > `command` is commonly paired with [`trim`](#trim) to remove trailing
@@ -121,14 +118,13 @@ pub async fn command(
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
-    #[kwarg] output: CommandOutputMode,
 ) -> Result<Bytes, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
     };
     let _ = debug_span!("Executing command", ?program, ?args).entered();
 
-    let command_output = async {
+    let output = async {
         // Spawn the command process
         let mut process = Command::new(program)
             .args(args)
@@ -160,57 +156,25 @@ pub async fn command(
     })?;
 
     debug!(
-        status = %command_output.status,
-        stdout = %String::from_utf8_lossy(&command_output.stdout),
-        stderr = %String::from_utf8_lossy(&command_output.stderr),
+        status = %output.status,
+        stdout = %String::from_utf8_lossy(&output.stdout),
+        stderr = %String::from_utf8_lossy(&output.stderr),
         "Command finished"
     );
 
     // Check status code
-    if command_output.status.success() {
-        let output_data = match output {
-            CommandOutputMode::Stdout => command_output.stdout,
-            CommandOutputMode::Stderr => command_output.stderr,
-            CommandOutputMode::Both => todo!(),
-        };
-        Ok(output_data.into())
+    if output.status.success() {
+        Ok(output.stdout.into())
     } else {
         Err(FunctionError::CommandStatus {
             program: program.clone(),
             args: args.into(),
-            status: command_output.status,
-            stdout: command_output.stdout,
-            stderr: command_output.stderr,
+            status: output.status,
+            stdout: output.stdout,
+            stderr: output.stderr,
         })
     }
 }
-
-/// Control the return value of a command
-#[derive(Debug, Default)]
-pub enum CommandOutputMode {
-    #[default]
-    Stdout,
-    Stderr,
-    Both,
-}
-
-// Manual implementation provides the best error messages
-impl FromStr for CommandOutputMode {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "stdout" => Ok(Self::Stdout),
-            "stderr" => Ok(Self::Stderr),
-            "both" => Ok(Self::Both),
-            _ => Err(format!(
-                "Invalid output mode `{s}`; must be `stdout`, `stderr`, or `both`"
-            )),
-        }
-    }
-}
-
-impl_try_from_value_str!(CommandOutputMode);
 
 /// Concatenate any number of strings together
 ///

@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Fixed
+
+- Remove `output` argument for `command()`
+  - This wasn't intended to be released and didn't actually work
+
 ## [4.0.0] - 2025-09-12
 
 [Migration guide](https://slumber.lucaspickering.me/other/v4_migration.html)

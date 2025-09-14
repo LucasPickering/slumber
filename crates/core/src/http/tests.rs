@@ -48,29 +48,6 @@ fn seed(context: &TemplateContext, build_options: BuildOptions) -> RequestSeed {
     )
 }
 
-/// Create a mock HTTP server and return its URL
-async fn mock_server() -> String {
-    // Mock HTTP response
-    let server = MockServer::start().await;
-    let host = server.uri();
-    Mock::given(matchers::method("GET"))
-        .and(matchers::path("/get"))
-        .respond_with(
-            ResponseTemplate::new(StatusCode::OK).set_body_string("hello!"),
-        )
-        .mount(&server)
-        .await;
-    Mock::given(matchers::method("GET"))
-        .and(matchers::path("/redirect"))
-        .respond_with(
-            ResponseTemplate::new(StatusCode::MOVED_PERMANENTLY)
-                .insert_header("Location", format!("{host}/get")),
-        )
-        .mount(&server)
-        .await;
-    host
-}
-
 /// Make sure we only use the dangerous client when we really expect to.
 /// There's isn't an easy way to mock TLS errors, so the easiest way to
 /// test this is to just make sure [HttpEngine::get_client] returns the
@@ -709,9 +686,18 @@ async fn test_profile_duplicate_error(http_engine: HttpEngine) {
 #[rstest]
 #[tokio::test]
 async fn test_send_request(http_engine: HttpEngine) {
-    let host = mock_server().await;
+    // Mock HTTP response
+    let server = MockServer::start().await;
+    Mock::given(matchers::method("GET"))
+        .and(matchers::path("/get"))
+        .respond_with(
+            ResponseTemplate::new(StatusCode::OK).set_body_string("hello!"),
+        )
+        .mount(&server)
+        .await;
+
     let recipe = Recipe {
-        url: format!("{host}/get").as_str().into(),
+        url: format!("{host}/get", host = server.uri()).as_str().into(),
         ..Recipe::factory(())
     };
     let context = template_context(recipe);
@@ -892,35 +878,36 @@ async fn test_build_curl_body(
     assert_eq!(command, expected_command);
 }
 
-/// By default, the engine will follow 3xx redirects
-#[rstest]
-#[tokio::test]
-async fn test_follow_redirects(http_engine: HttpEngine) {
-    let host = mock_server().await;
-    let recipe = Recipe {
-        url: format!("{host}/redirect").as_str().into(),
-        ..Recipe::factory(())
-    };
-    let context = template_context(recipe);
-    let seed = seed(&context, BuildOptions::default());
-
-    // Build+send the request
-    let ticket = http_engine.build(seed, &context).await.unwrap();
-    let exchange = ticket.send().await.unwrap();
-
-    // Should hit /redirect which redirects to /get, which returns the body
-    assert_eq!(exchange.response.status, StatusCode::OK);
-    assert_eq!(exchange.response.body.bytes().as_ref(), b"hello!");
-}
-
 /// Client should not follow redirects when the config field is disabled
+#[rstest]
+#[case::enabled(true, StatusCode::OK)]
+#[case::disabled(false, StatusCode::MOVED_PERMANENTLY)]
 #[tokio::test]
-async fn test_follow_redirects_disabled() {
+async fn test_follow_redirects(
+    #[case] follow_redirects: bool,
+    #[case] expected_status: StatusCode,
+) {
+    // Mock HTTP responses
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("GET"))
+        .and(matchers::path("/get"))
+        .respond_with(ResponseTemplate::new(StatusCode::OK))
+        .mount(&server)
+        .await;
+    Mock::given(matchers::method("GET"))
+        .and(matchers::path("/redirect"))
+        .respond_with(
+            ResponseTemplate::new(StatusCode::MOVED_PERMANENTLY)
+                .insert_header("Location", format!("{host}/get")),
+        )
+        .mount(&server)
+        .await;
+
     let http_engine = HttpEngine::new(&HttpEngineConfig {
-        follow_redirects: false,
+        follow_redirects,
         ..Default::default()
     });
-    let host = mock_server().await;
     let recipe = Recipe {
         url: format!("{host}/redirect").as_str().into(),
         ..Recipe::factory(())
@@ -932,5 +919,5 @@ async fn test_follow_redirects_disabled() {
     let ticket = http_engine.build(seed, &context).await.unwrap();
     let exchange = ticket.send().await.unwrap();
 
-    assert_eq!(exchange.response.status, StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(exchange.response.status, expected_status);
 }

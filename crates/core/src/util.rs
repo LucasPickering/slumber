@@ -84,13 +84,15 @@ impl<K: Hash + Eq, V: 'static + Clone> FutureCache<K, V> {
             Entry::Vacant(entry) => {
                 let lock = Arc::new(RwLock::new(None));
                 entry.insert(Arc::clone(&lock));
-                drop(cache); // Drop the outer lock as quickly as possible
-
                 // Grab the write lock and hold it as long as the parent is
                 // working to compute the value
                 let guard = lock
                     .try_write_owned()
                     .expect("Lock was just created, who the hell grabbed it??");
+                // Drop the root cache lock *after* we acquire the lock for our
+                // own future, to prevent other tasks grabbing it first
+                drop(cache);
+
                 FutureCacheOutcome::Miss(FutureCacheGuard(guard))
             }
         }

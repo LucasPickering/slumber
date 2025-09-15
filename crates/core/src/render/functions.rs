@@ -7,12 +7,13 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
+use futures::FutureExt;
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
-    Expected, TryFromValue, Value, ValueError, WithValue,
+    Expected, Stream, TryFromValue, Value, ValueError, WithValue,
     impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
@@ -253,15 +254,25 @@ pub fn env(variable: String) -> String {
 /// {{ file("config.json") }} => Contents of config.json file
 /// ```
 #[template(TemplateContext)]
-pub async fn file(
-    #[context] context: &TemplateContext,
-    path: String,
-) -> Result<Bytes, FunctionError> {
+pub fn file(#[context] context: &TemplateContext, path: String) -> Stream {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
-    let bytes = fs::read(&path)
-        .await
-        .map_err(|error| FunctionError::File { path, error })?;
-    Ok(bytes.into())
+    // Return the file as a stream. If streaming isn't available here, it will
+    // be resolved immediately instead
+    Stream::File {
+        path: path.clone(),
+        f: Arc::new(move || {
+            // This possible this function gets called multiple times, and each
+            // future has to be 'static
+            let path = path.clone();
+            async move {
+                fs::read(&path)
+                    .await
+                    .map(Bytes::from)
+                    .map_err(|error| FunctionError::File { path, error }.into())
+            }
+            .boxed()
+        }),
+    }
 }
 
 /// Convert a value to a float
@@ -294,14 +305,16 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
         Value::Integer(i) => Ok(i as f64),
         Value::String(s) => Ok(s.parse()?),
         Value::Bytes(bytes) => Ok(std::str::from_utf8(&bytes)?.parse()?),
-        Value::Array(_) | Value::Object(_) => Err(ValueError::Type {
-            expected: Expected::OneOf(&[
-                &Expected::Float,
-                &Expected::Integer,
-                &Expected::Boolean,
-                &Expected::Custom("string/bytes that parse to a float"),
-            ]),
-        }),
+        Value::Array(_) | Value::Object(_) | Value::Stream(_) => {
+            Err(ValueError::Type {
+                expected: Expected::OneOf(&[
+                    &Expected::Float,
+                    &Expected::Integer,
+                    &Expected::Boolean,
+                    &Expected::Custom("string/bytes that parse to a float"),
+                ]),
+            })
+        }
     }
 }
 
@@ -335,14 +348,16 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
         Value::Integer(i) => Ok(i),
         Value::String(s) => Ok(s.parse()?),
         Value::Bytes(bytes) => Ok(std::str::from_utf8(&bytes)?.parse()?),
-        Value::Array(_) | Value::Object(_) => Err(ValueError::Type {
-            expected: Expected::OneOf(&[
-                &Expected::Integer,
-                &Expected::Float,
-                &Expected::Boolean,
-                &Expected::Custom("string/bytes that parse to an integer"),
-            ]),
-        }),
+        Value::Array(_) | Value::Object(_) | Value::Stream(_) => {
+            Err(ValueError::Type {
+                expected: Expected::OneOf(&[
+                    &Expected::Integer,
+                    &Expected::Float,
+                    &Expected::Boolean,
+                    &Expected::Custom("string/bytes that parse to an integer"),
+                ]),
+            })
+        }
     }
 }
 
@@ -504,6 +519,7 @@ impl TryFromValue for JsonPathValue {
                 .into_iter()
                 .map(|(k, v)| Ok((k, serde_json::Value::try_from_value(v)?)))
                 .collect::<Result<_, _>>()?,
+            Value::Stream(_) => todo!(),
         };
         Ok(Self(json_value))
     }

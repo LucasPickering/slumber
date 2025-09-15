@@ -18,18 +18,19 @@ pub use expression::{Expression, FunctionCall, Identifier, Literal};
 
 use crate::{
     error::RenderErrorContext,
+    expression::RenderStatus,
     parse::{FALSE, NULL, TRUE},
 };
 use bytes::{Bytes, BytesMut};
 use derive_more::From;
-use futures::future;
+use futures::future::{self, BoxFuture};
 use indexmap::IndexMap;
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
 use slumber_util::NEW_ISSUE_LINK;
-use std::{collections::VecDeque, fmt::Debug, sync::Arc};
+use std::{collections::VecDeque, fmt::Debug, path::PathBuf, ptr, sync::Arc};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
@@ -42,6 +43,7 @@ pub trait Context: Sized + Send + Sync {
     fn get(
         &self,
         identifier: &Identifier,
+        can_stream: bool, // TODO clean this up
     ) -> impl Future<Output = Result<Value, RenderError>> + Send;
 
     /// Call a function by name
@@ -179,11 +181,16 @@ impl Template {
     /// Return an error iff any chunk failed to render. This will never fail on
     /// output conversion because it can always fall back to returning raw
     /// bytes.
+    ///
+    /// TODO explain can_stream
     pub async fn render_value<Ctx: Context>(
         &self,
         context: &Ctx,
+        can_stream: bool,
     ) -> Result<Value, RenderError> {
-        let mut chunks = self.render_chunks(context).await;
+        let mut chunks = self
+            .render_chunks_inner(context, RenderStatus { can_stream })
+            .await;
 
         // If we have a single dynamic chunk, return its value directly instead
         // of stringifying
@@ -195,7 +202,7 @@ impl Template {
             return Ok(value);
         }
 
-        // Stitch together into bytes. Attempt to convert that UTF-8, but if
+        // Stitch together into bytes. Attempt to convert that to UTF-8, but if
         // that fails fall back to just returning the bytes
         let bytes = chunks_to_bytes(chunks)?;
         match String::from_utf8(bytes.into()) {
@@ -236,6 +243,20 @@ impl Template {
         &self,
         context: &Ctx,
     ) -> Vec<RenderedChunk> {
+        self.render_chunks_inner(context, RenderStatus { can_stream: false })
+            .await
+    }
+
+    /// TODO
+    pub async fn render_chunks_inner<Ctx: Context>(
+        &self,
+        context: &Ctx,
+        mut status: RenderStatus,
+    ) -> Vec<RenderedChunk> {
+        // TODO
+        status.can_stream &=
+            matches!(self.chunks.as_slice(), [TemplateChunk::Expression(_)]);
+
         // Map over each parsed chunk, and render the expressions into values.
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
@@ -245,7 +266,7 @@ impl Template {
                     RenderedChunk::Raw(Arc::clone(text))
                 }
                 TemplateChunk::Expression(expression) => expression
-                    .render(context)
+                    .render(context, &status)
                     .await
                     .map_or_else(RenderedChunk::Error, RenderedChunk::Rendered),
             }
@@ -326,6 +347,10 @@ pub enum Value {
     Object(IndexMap<String, Self>),
     // Put this at the end so int arrays deserialize as Array instead of Bytes
     Bytes(Bytes),
+    /// TODO
+    /// TODO explain when streams are allowed
+    #[serde(skip)]
+    Stream(Stream),
 }
 
 impl Value {
@@ -351,6 +376,7 @@ impl Value {
             Self::Bytes(bytes) => !bytes.is_empty(),
             Self::Array(array) => !array.is_empty(),
             Self::Object(object) => !object.is_empty(),
+            Self::Stream(_) => true,
         }
     }
 
@@ -376,6 +402,7 @@ impl Value {
                 }),
             // Use the display impl
             Self::Array(_) | Self::Object(_) => Ok(self.to_string()),
+            Self::Stream(_) => todo!(),
         }
     }
 
@@ -392,6 +419,7 @@ impl Value {
             Self::Bytes(bytes) => bytes,
             // Use the display impl
             Self::Array(_) | Self::Object(_) => self.to_string().into(),
+            Self::Stream(_) => todo!(),
         }
     }
 
@@ -445,6 +473,29 @@ where
     }
 }
 
+/// TODO
+#[derive(Clone, derive_more::Debug)]
+pub enum Stream {
+    /// TODO. Path must be absolute
+    File {
+        path: PathBuf,
+        /// TODO rename field
+        #[debug(skip)]
+        f: Arc<
+            dyn Fn() -> BoxFuture<'static, Result<Bytes, RenderError>>
+                + Send
+                + Sync,
+        >,
+    },
+}
+
+impl PartialEq for Stream {
+    fn eq(&self, other: &Self) -> bool {
+        // Streams are equal only if they're the same exact value
+        ptr::addr_eq(self, other)
+    }
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
@@ -488,6 +539,8 @@ pub struct Arguments<'ctx, Ctx> {
     /// Arbitrary user-provided context available to every template render and
     /// function call
     context: &'ctx Ctx,
+    /// TODO
+    status: RenderStatus,
     /// Position arguments. This queue will be drained from the front as
     /// arguments are converted, and additional arguments not accepted by the
     /// function will trigger an error.
@@ -504,11 +557,13 @@ pub struct Arguments<'ctx, Ctx> {
 impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
     pub fn new(
         context: &'ctx Ctx,
+        call_info: RenderStatus,
         position: VecDeque<Value>,
         keyword: IndexMap<String, Value>,
     ) -> Self {
         Self {
             context,
+            status: call_info,
             position,
             num_popped: 0,
             keyword,
@@ -518,6 +573,11 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
     /// Get a reference to the template context
     pub fn context(&self) -> &'ctx Ctx {
         self.context
+    }
+
+    /// TODO
+    pub fn status(&self) -> RenderStatus {
+        self.status
     }
 
     /// Pop the next positional argument off the front of the queue and convert
@@ -700,6 +760,7 @@ impl TryFromValue for serde_json::Value {
                 // to make JSON from it
                 value.try_into_string().map(serde_json::Value::String)
             }
+            Value::Stream(_) => todo!(),
         }
     }
 }
@@ -792,9 +853,11 @@ fn chunks_to_bytes(chunks: Vec<RenderedChunk>) -> Result<Bytes, RenderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::FutureExt;
     use indexmap::indexmap;
     use rstest::rstest;
-    use slumber_util::assert_err;
+    use slumber_util::{assert_err, assert_matches, test_data_dir};
+    use tokio::fs;
 
     /// Test simple expression rendering
     #[rstest]
@@ -818,7 +881,7 @@ mod tests {
         #[case] expected: Value,
     ) {
         assert_eq!(
-            template.render_value(&TestContext).await.unwrap(),
+            template.render_value(&TestContext, false).await.unwrap(),
             expected
         );
     }
@@ -839,9 +902,30 @@ mod tests {
         #[case] expected: Value,
     ) {
         assert_eq!(
-            template.render_value(&TestContext).await.unwrap(),
+            template.render_value(&TestContext, false).await.unwrap(),
             expected
         );
+    }
+
+    /// Render to a stream
+    #[rstest]
+    #[case::stream("{{ stream() }}", true, true)]
+    #[case::stream_disabled("{{ stream() }}", false, false)]
+    #[tokio::test]
+    async fn test_render_value_stream(
+        #[case] template: Template,
+        #[case] can_stream: bool,
+        #[case] expect_stream: bool,
+    ) {
+        let value = template
+            .render_value(&TestContext, can_stream)
+            .await
+            .unwrap();
+        if expect_stream {
+            assert_matches!(value, Value::Stream(_));
+        } else {
+            assert_matches!(value, Value::Bytes(_));
+        }
     }
 
     /// Convert JSON values to template values
@@ -953,6 +1037,7 @@ mod tests {
         async fn get(
             &self,
             identifier: &Identifier,
+            _can_stream: bool,
         ) -> Result<Value, RenderError> {
             match identifier.as_str() {
                 "name" => Ok("Mike".into()),
@@ -994,6 +1079,22 @@ mod tests {
                     } else {
                         Ok(a.into())
                     }
+                }
+                "stream" => {
+                    let path = test_data_dir().join("data.json");
+                    Ok(Value::Stream(Stream::File {
+                        path: path.clone(),
+                        f: Arc::new(move || {
+                            let path = path.clone();
+                            async move {
+                                fs::read(path)
+                                    .await
+                                    .map(Bytes::from)
+                                    .map_err(RenderError::other)
+                            }
+                            .boxed()
+                        }),
+                    }))
                 }
                 _ => Err(RenderError::FunctionUnknown),
             }

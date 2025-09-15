@@ -63,9 +63,9 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::Template;
+use slumber_template::{Stream, Template, Value};
 use slumber_util::ResultTraced;
-use std::{collections::HashSet, error::Error};
+use std::{collections::HashSet, error::Error, path::PathBuf};
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -157,6 +157,13 @@ impl HttpEngine {
                 recipe.render_query(options, template_context),
                 recipe.render_headers(options, template_context),
                 recipe.render_authentication(options, template_context),
+                // Body *has* to go last. Bodies are the only component that
+                // can be streamed. If a profile field is present in both the
+                // body and elsewhere, it should *never* be streamed. By
+                // starting every other component first, we ensure the body
+                // will never be the one to initiate the render for a multi-use
+                // profile field, meaning it won't get to render as a stream.
+                // This is kinda fragile but it's also a rare use case.
                 recipe.render_body(options, template_context),
             )?;
 
@@ -168,7 +175,7 @@ impl HttpEngine {
             let mut builder =
                 client.request(recipe.method.into(), url).query(&query);
             if let Some(body) = body {
-                builder = body.apply(builder);
+                builder = body.apply(builder).await?;
             }
             // Set headers *after* body so the use can override the Content-Type
             // header that was set if they want to
@@ -275,7 +282,7 @@ impl HttpEngine {
                     let url = Url::parse("http://localhost").unwrap();
                     let client = self.get_client(&url);
                     let mut builder = client.request(reqwest::Method::GET, url);
-                    builder = body.apply(builder);
+                    builder = body.apply(builder).await?;
                     let request = builder.build()?;
                     // We just added a body so we know it's present, and we
                     // know it's not a stream. This requires a clone which sucks
@@ -659,13 +666,14 @@ impl Recipe {
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
                             let value = template
-                                .render_bytes(template_context)
+                                .render_value(template_context, true)
                                 .await
                                 .context(format!(
                                     "Rendering form field `{field}`"
-                                ))?
-                                .into();
-                            Ok::<_, anyhow::Error>((field.clone(), value))
+                                ))?;
+
+                            let part = Self::value_to_part(value);
+                            Ok::<_, anyhow::Error>((field.clone(), part))
                         })
                     },
                 );
@@ -674,6 +682,16 @@ impl Recipe {
             }
         };
         Ok(Some(rendered))
+    }
+
+    /// Convert a template value to a multipart form part
+    fn value_to_part(value: Value) -> FormPart {
+        // If the value is a file stream, we can pass that
+        // directly to reqwest
+        match value {
+            Value::Stream(Stream::File { path, .. }) => FormPart::File(path),
+            _ => FormPart::Bytes(value.into_bytes()),
+        }
     }
 }
 
@@ -699,23 +717,56 @@ enum RenderedBody {
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
     /// Field:value mapping. Values can be arbitrary bytes
-    FormMultipart(Vec<(String, Vec<u8>)>),
+    FormMultipart(Vec<(String, FormPart)>),
 }
 
 impl RenderedBody {
-    fn apply(self, builder: RequestBuilder) -> RequestBuilder {
+    /// Add this body to the builder
+    async fn apply(
+        self,
+        builder: RequestBuilder,
+    ) -> anyhow::Result<RequestBuilder> {
         // Set body. The variant tells us _how_ to set it
         match self {
-            RenderedBody::Raw(bytes) => builder.body(bytes),
-            RenderedBody::Json(json) => builder.json(&json),
-            RenderedBody::FormUrlencoded(fields) => builder.form(&fields),
+            RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
+            RenderedBody::Json(json) => Ok(builder.json(&json)),
+            RenderedBody::FormUrlencoded(fields) => Ok(builder.form(&fields)),
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();
-                for (field, value) in fields {
-                    let part = Part::bytes(value);
-                    form = form.part(field, part);
+
+                // Use a static boundary in tests for assertions. Test-only
+                // code can be dangerous, but in non-test we're just using the
+                // default library behavior. There's also plenty of tests in
+                // other crates that hit this code path, and cfg(test) won't
+                // be enabled for those.
+                if cfg!(test) {
+                    form.set_boundary("BOUNDARY");
                 }
-                builder.multipart(form)
+
+                for (field, part) in fields {
+                    form = form.part(field, part.into_reqwest().await?);
+                }
+                Ok(builder.multipart(form))
+            }
+        }
+    }
+}
+
+/// Form field value for a multipart form
+#[derive(Debug)]
+pub enum FormPart {
+    /// Data will be raw bytes
+    Bytes(Bytes),
+    /// Data will be streamed from a file. The path should be absolute
+    File(PathBuf),
+}
+
+impl FormPart {
+    async fn into_reqwest(self) -> anyhow::Result<Part> {
+        match self {
+            Self::Bytes(bytes) => Ok(Part::bytes(<Vec<u8>>::from(bytes))),
+            Self::File(path) => {
+                Part::file(path).await.map_err(anyhow::Error::from)
             }
         }
     }

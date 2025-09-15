@@ -15,9 +15,10 @@ use chrono::{DateTime, Utc};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{Expression, Literal, Template};
+use slumber_template::{Expression, Literal, Template, Value};
 use slumber_util::{
-    Factory, TempDir, assert_result, paths::get_repo_root, temp_dir,
+    Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
+    temp_dir, test_data_dir,
 };
 use std::time::Duration;
 use tokio::fs;
@@ -113,8 +114,10 @@ async fn test_base64(
 async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     let template = Template::function_call("boolean", [input], []);
     assert_result(
-        template.render_value(&TemplateContext::factory(())).await,
-        Ok(slumber_template::Value::Boolean(expected)),
+        template
+            .render_value(&TemplateContext::factory(()), false)
+            .await,
+        Ok(Value::Boolean(expected)),
     );
 }
 
@@ -312,8 +315,10 @@ async fn test_float(
 ) {
     let template = Template::function_call("float", [input], []);
     assert_result(
-        template.render_value(&TemplateContext::factory(())).await,
-        expected.map(slumber_template::Value::from),
+        template
+            .render_value(&TemplateContext::factory(()), false)
+            .await,
+        expected.map(Value::from),
     );
 }
 
@@ -340,8 +345,10 @@ async fn test_integer(
 ) {
     let template = Template::function_call("integer", [input], []);
     assert_result(
-        template.render_value(&TemplateContext::factory(())).await,
-        expected.map(slumber_template::Value::from),
+        template
+            .render_value(&TemplateContext::factory(()), false)
+            .await,
+        expected.map(Value::from),
     );
 }
 
@@ -355,11 +362,13 @@ async fn test_integer(
 #[tokio::test]
 async fn test_json_parse(
     #[case] json: &'static [u8],
-    #[case] expected: Result<slumber_template::Value, &str>,
+    #[case] expected: Result<Value, &str>,
 ) {
     let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
-        template.render_value(&TemplateContext::factory(())).await,
+        template
+            .render_value(&TemplateContext::factory(()), false)
+            .await,
         expected,
     );
 }
@@ -767,6 +776,41 @@ async fn test_trim(
             .unwrap(),
         expected
     );
+}
+
+/// Test different conditions where streaming is/isn't allowed
+#[rstest]
+#[case::stream_direct("{{ file('data.json') }}", true, true)]
+#[case::stream_piped("{{ 'data.json' | file() }}", true, true)]
+#[case::stream_via_profile("{{ file_field }}", true, true)]
+#[case::no_stream_direct("{{ file('data.json') }}", false, false)]
+#[case::no_stream_via_profile("{{ file_field }}", false, false)]
+#[case::no_stream_not_root("data: {{ file('data.json') }}", true, false)]
+#[case::no_stream_not_root_via_profile("data: {{ file_field }}", true, false)]
+#[tokio::test]
+async fn test_stream(
+    #[case] template: Template,
+    #[case] can_stream: bool,
+    #[case] expect_stream: bool,
+) {
+    // Put some profile data in the context
+    let profile_data = indexmap! {
+        "file_field".into() => "{{ file('data.json') }}".into(),
+    };
+    let profile = Profile {
+        data: profile_data,
+        ..Profile::factory(())
+    };
+    let context = TemplateContext {
+        root_dir: test_data_dir(),
+        ..TemplateContext::factory((by_id([profile]), IndexMap::new()))
+    };
+    let value = template.render_value(&context, can_stream).await.unwrap();
+    if expect_stream {
+        assert_matches!(value, Value::Stream(_));
+    } else {
+        assert_matches!(value, Value::Bytes(_) | Value::String(_));
+    }
 }
 
 /// Bytes that can't be converted to a string

@@ -1,8 +1,8 @@
 //! Template and value stringification
 
 use crate::{
-    Expression, FunctionCall, Literal, NULL, Template, TemplateChunk, Value,
-    parse::{ESCAPE, EXPRESSION_CLOSE, EXPRESSION_OPEN},
+    Expression, FunctionCall, Literal, Template, TemplateChunk, Value,
+    parse::{ESCAPE, EXPRESSION_CLOSE, EXPRESSION_OPEN, NULL},
 };
 use itertools::Itertools;
 use regex::Regex;

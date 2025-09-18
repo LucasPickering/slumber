@@ -258,7 +258,7 @@ impl FunctionCall {
             self.render_arguments(context).await.map_err(map_error)?;
         if let Some(piped_argument) = piped_argument {
             // Pipe the filter value in as the last positional argument
-            arguments.position.push_back(piped_argument);
+            arguments.push_piped(piped_argument);
         }
         context
             .call(&self.function, arguments)

@@ -2,7 +2,7 @@
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{FnArg, Ident, ItemFn, Meta, Pat, PatType, parse_macro_input};
+use syn::{FnArg, Ident, ItemFn, Pat, PatType, parse_macro_input};
 
 /// Procedural macro to convert a plain function into a template function.
 ///
@@ -16,24 +16,16 @@ use syn::{FnArg, Ident, ItemFn, Meta, Pat, PatType, parse_macro_input};
 /// `TryFromValue` implementation to convert from `Value`. This can be
 /// customized using a set of attributes on each argument:
 /// - `#[context]` - Pass the template context value. Cannot be combined with
-///   other attributes.
+///   other attributes, and at most one argument can have this attribute.
 /// - `#[kwarg]` - Extract a keyword argument with the same name as the argument
 /// - `#[serde]` - Use the type's `Deserialize` implementation to convert from
 ///   `Value`, instead of `TryFromValue`. Can be used alone for positional
 ///   arguments, or combined with `#[kwarg]` for keyword arguments.
 #[proc_macro_attribute]
-pub fn template(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn template(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // The input fn will be replaced by a wrapper, and it will be moved into a
     // definition within the wrapper
     let mut inner_fn = parse_macro_input!(item as ItemFn);
-
-    // Parse attribute for context type
-    let meta = parse_macro_input!(attr as Meta);
-    let context_type: Ident = match meta {
-        Meta::Path(path) => path.get_ident().cloned(),
-        _ => None,
-    }
-    .expect("#[template] expects context type as a parameter");
 
     // Grab metadata from the input fn, then modify it
     let vis = inner_fn.vis.clone();
@@ -55,6 +47,33 @@ pub fn template(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
+    // Determine context type. If an arg has #[context], use that. Otherwise
+    // add a generic param because we can accept any context type.
+    let context_type_param = if let Some(context_info) = arg_infos
+        .iter()
+        .find(|info| matches!(info.kind, ArgumentKind::Context))
+    {
+        // Extract the type from the context parameter, handling references
+        let context_type = match &context_info.type_name {
+            syn::Type::Reference(type_ref) => &*type_ref.elem,
+            other_type => other_type,
+        };
+        quote! { #context_type }
+    } else {
+        // No context parameter found, use generic T
+        quote! { T }
+    };
+
+    // Add generic parameter if no context param exists
+    let generic_param = if arg_infos
+        .iter()
+        .any(|info| matches!(info.kind, ArgumentKind::Context))
+    {
+        quote! {}
+    } else {
+        quote! { <T> }
+    };
+
     // Generate one statement per argument to extract each one
     let argument_extracts = arg_infos.iter().map(ArgumentInfo::extract);
 
@@ -73,9 +92,9 @@ pub fn template(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     quote! {
-        #vis #asyncness fn #original_fn_ident(
+        #vis #asyncness fn #original_fn_ident #generic_param (
             #[allow(unused_mut)]
-            mut arguments: ::slumber_template::Arguments<'_, #context_type>
+            mut arguments: ::slumber_template::Arguments<'_, #context_type_param>
         ) -> ::core::result::Result<
             ::slumber_template::Value,
             ::slumber_template::RenderError
@@ -96,6 +115,7 @@ pub fn template(attr: TokenStream, item: TokenStream) -> TokenStream {
 struct ArgumentInfo {
     name: Ident,
     kind: ArgumentKind,
+    type_name: syn::Type,
 }
 
 impl ArgumentInfo {
@@ -123,6 +143,7 @@ impl ArgumentInfo {
         Some(Self {
             name: pat_ident,
             kind,
+            type_name: (*pat_type.ty).clone(),
         })
     }
 

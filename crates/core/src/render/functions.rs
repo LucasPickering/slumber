@@ -46,7 +46,7 @@ use tracing::{debug, debug_span};
 /// {{ base64("test") }} => "dGVzdA=="
 /// {{ base64("dGVzdA==", decode=true) }} => "test"
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn base64(
     value: Bytes,
     #[kwarg] decode: bool,
@@ -79,7 +79,7 @@ pub fn base64(
 /// {{ boolean([]) }} => false
 /// {{ boolean([0]) }} => true
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn boolean(value: Value) -> bool {
     value.to_bool()
 }
@@ -112,7 +112,7 @@ pub fn boolean(value: Value) -> bool {
 ///
 /// > `command` is commonly paired with [`trim`](#trim) to remove trailing
 /// newlines from command output: `{{ command(["echo", "hello"]) | trim() }}`
-#[template(TemplateContext)]
+#[template]
 pub async fn command(
     #[context] context: &TemplateContext,
     command: Vec<String>,
@@ -189,7 +189,7 @@ pub async fn command(
 /// {{ concat(['My name is ', name, ' and I am ', age]) }} => "My name is Ted and I am 37"
 /// {{ file("data.json") | jsonpath("$.users[*].name") | concat() }} => Concatenate all names in the JSON together
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn concat(elements: Vec<String>) -> String {
     elements.into_iter().join("")
 }
@@ -208,7 +208,7 @@ pub fn concat(elements: Vec<String>) -> String {
 /// {{ debug("hello") }} => "hello" (also prints "hello" to stdout)
 /// {{ file("data.json") | debug() | jsonpath("$.data") }} => Extract data field and print intermediate result
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn debug(value: Value) -> Value {
     println!("{value:?}");
     value
@@ -226,7 +226,7 @@ pub fn debug(value: Value) -> Value {
 /// {{ env("HOME") }} => "/home/username"
 /// {{ env("NONEXISTENT") }} => null
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn env(variable: String) -> String {
     env::var(variable).unwrap_or_default()
 }
@@ -252,7 +252,7 @@ pub fn env(variable: String) -> String {
 /// ```sh
 /// {{ file("config.json") }} => Contents of config.json file
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub async fn file(
     #[context] context: &TemplateContext,
     path: String,
@@ -285,7 +285,7 @@ pub async fn file(
 /// {{ float(false) }} => 0.0
 /// {{ float(true) }} => 1.0
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn float(value: Value) -> Result<f64, ValueError> {
     match value {
         Value::Null => Ok(0.0),
@@ -326,7 +326,7 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
 /// {{ integer(false) }} => 0
 /// {{ integer(true) }} => 1
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn integer(value: Value) -> Result<i64, ValueError> {
     match value {
         Value::Null => Ok(0),
@@ -381,7 +381,7 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
 /// ```json
 /// {"data": {"name": "Alice"}}
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn json_parse(value: String) -> Result<serde_json::Value, FunctionError> {
     serde_json::from_str(&value).map_err(FunctionError::JsonParse)
 }
@@ -426,7 +426,7 @@ pub fn json_parse(value: String) -> Result<serde_json::Value, FunctionError> {
 /// ```sh
 /// {{ response('get_user') | jsonpath("$.first_name") }} => "Alice"
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn jsonpath(
     query: JsonPath,
     value: JsonPathValue, // Value last so it can be piped in
@@ -571,7 +571,7 @@ impl_try_from_value_str!(JsonPathMode);
 /// # Mask input while the user types
 /// {{ prompt(message="Password", sensitive=true) }} => "hunter2"
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub async fn prompt(
     #[context] context: &TemplateContext,
     #[kwarg] message: Option<String>,
@@ -651,7 +651,7 @@ pub async fn prompt(
 ///
 /// > `response` is commonly combined with [`jsonpath`](#jsonpath) to extract
 /// > data from JSON responses
-#[template(TemplateContext)]
+#[template]
 pub async fn response(
     #[context] context: &TemplateContext,
     recipe_id: RecipeId,
@@ -689,7 +689,7 @@ pub async fn response(
 /// # Fetch current rate limit, refreshed if older than 5 minutes
 /// {{ response_header("get_rate_limit", "X-Rate-Limit", trigger="5m") }} => Value of X-Rate-Limit response header
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub async fn response_header(
     #[context] context: &TemplateContext,
     recipe_id: RecipeId,
@@ -727,7 +727,7 @@ pub async fn response_header(
 /// # Custom prompt message
 /// {{ select(["GET", "POST", "PUT"], message="HTTP method") }} => "POST"
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub async fn select(
     #[context] context: &TemplateContext,
     options: Vec<String>,
@@ -763,7 +763,7 @@ pub async fn select(
 /// ```sh
 /// {{ sensitive("hunter2") }} => "•••••••" (in preview)
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn sensitive(
     #[context] context: &TemplateContext,
     value: String,
@@ -789,7 +789,7 @@ pub fn sensitive(
 /// {{ string(b'hello') }} => "hello"
 /// {{ string([1, 2, 3]) }} => "[1, 2, 3]"
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn string(value: Value) -> Result<String, ValueError> {
     String::try_from_value(value).map_err(WithValue::into_error)
 }
@@ -810,7 +810,7 @@ pub fn string(value: Value) -> Result<String, ValueError> {
 /// # Remove trailing newline from command output
 /// {{ command(["echo", "hello"]) | trim() }} => "hello"
 /// ```
-#[template(TemplateContext)]
+#[template]
 pub fn trim(value: String, #[kwarg] mode: TrimMode) -> String {
     match mode {
         TrimMode::Start => value.trim_start().to_string(),

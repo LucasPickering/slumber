@@ -13,7 +13,7 @@ use futures::{
 };
 use indexmap::IndexMap;
 
-type RenderResult = Result<Value, RenderError>;
+type RenderResult = Result<Stream, RenderError>;
 
 /// A dynamic segment of a template that will be computed at render time.
 /// Expressions are derived from the template context and may include external
@@ -46,59 +46,58 @@ impl Expression {
     pub(crate) fn render<Ctx: Context>(
         &self,
         context: &Ctx,
-        status: &RenderStatus,
     ) -> impl Future<Output = RenderResult> + Send {
         async move {
             match self {
                 Self::Literal(literal) => Ok(literal.into()),
                 Self::Array(expressions) => {
-                    // These expressions aren't top-level so they can't stream
-                    let status = RenderStatus::default();
                     // Render each inner expression
                     let values =
                         future::try_join_all(expressions.iter().map(
-                            |expression| expression.render(context, &status),
+                            |expression| expression.render_value(context),
                         ))
                         // Box for recursion
                         .boxed()
                         .await?;
-                    Ok(Value::Array(values))
+                    Ok(Value::Array(values).into())
                 }
                 Self::Object(entries) => {
-                    // These expressions aren't top-level so they can't stream
-                    let status = RenderStatus::default();
                     let pairs: Vec<(String, Value)> = future::try_join_all(
                         entries.iter().map(|(key, value)| {
                             let key_future = async move {
-                                let key = key.render(context, &status).await?;
+                                let key = key.render_value(context).await?;
                                 // Keys must be strings, so convert here
                                 key.try_into_string().map_err(|error| {
                                     RenderError::Value(error.error)
                                 })
                             };
-                            try_join(key_future, value.render(context, &status))
+                            try_join(key_future, value.render_value(context))
                         }),
                     )
                     .boxed() // Box for recursion
                     .await?;
                     // Keys will be deduped here, with the last taking priority
-                    Ok(Value::Object(IndexMap::from_iter(pairs)))
+                    Ok(Value::Object(IndexMap::from_iter(pairs)).into())
                 }
-                Self::Field(identifier) => {
-                    context.get(identifier, status.can_stream).await
-                }
+                Self::Field(identifier) => context.get(identifier).await,
                 // TODO explain status stuff
-                Self::Call(call) => call.call(context, status, None).await,
+                Self::Call(call) => call.call(context, None).await,
                 Self::Pipe { expression, call } => {
                     // Compute the left hand side first. Box for recursion
-                    let value = expression
-                        .render(context, &RenderStatus::default())
-                        .boxed()
-                        .await?;
-                    call.call(context, status, Some(value)).await
+                    let value =
+                        expression.render_value(context).boxed().await?;
+                    call.call(context, Some(value)).await
                 }
             }
         }
+    }
+
+    /// TODO
+    async fn render_value<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Result<Value, RenderError> {
+        self.render(context).await?.into_value().await
     }
 
     /// Build a function call expression. Any keyword arguments with `None`
@@ -258,9 +257,8 @@ impl FunctionCall {
     async fn call<Ctx: Context>(
         &self,
         context: &Ctx,
-        status: &RenderStatus,
         piped_argument: Option<Value>,
-    ) -> Result<Value, RenderError> {
+    ) -> RenderResult {
         // Provide context to the error
         let map_error = |error: RenderError| {
             error.context(RenderErrorContext::Function(self.function.clone()))
@@ -272,20 +270,10 @@ impl FunctionCall {
             // Pipe the filter value in as the last positional argument
             arguments.position.push_back(piped_argument);
         }
-        let value = context
+        context
             .call(&self.function, arguments)
             .await
-            .map_err(map_error)?;
-
-        // If the function returned a stream but streaming isn't allowed,
-        // resolve the stream here
-        match value {
-            Value::Stream(stream) if !status.can_stream => {
-                // TODO make sure stack looks like were still in the fn
-                stream.render().await
-            }
-            _ => Ok(value),
-        }
+            .map_err(map_error)
     }
 
     /// Render each argument passed in this function call
@@ -299,28 +287,24 @@ impl FunctionCall {
         let position_future =
             future::try_join_all(self.position.iter().enumerate().map(
                 |(index, expression)| async move {
-                    expression
-                        .render(context, &RenderStatus::default())
-                        .await
-                        .map_err(|error| {
-                            error.context(RenderErrorContext::ArgumentRender {
-                                argument: index.to_string(),
-                                expression: expression.clone(),
-                            })
+                    expression.render_value(context).await.map_err(|error| {
+                        error.context(RenderErrorContext::ArgumentRender {
+                            argument: index.to_string(),
+                            expression: expression.clone(),
                         })
+                    })
                 },
             ));
         let keyword_future = future::try_join_all(self.keyword.iter().map(
             |(name, expression)| async {
-                let value = expression
-                    .render(context, &RenderStatus::default())
-                    .await
-                    .map_err(|error| {
+                let value = expression.render_value(context).await.map_err(
+                    |error| {
                         error.context(RenderErrorContext::ArgumentRender {
                             argument: name.to_string(),
                             expression: expression.clone(),
                         })
-                    })?;
+                    },
+                )?;
                 Ok((name.to_string(), value))
             },
         ));
@@ -331,7 +315,6 @@ impl FunctionCall {
                 .await?;
         Ok(Arguments::new(
             context,
-            RenderStatus { can_stream: true }, // TODO
             position.into(),
             keyword.into_iter().collect(),
         ))
@@ -372,8 +355,10 @@ impl From<&'static str> for Identifier {
 // TODO move into a render.rs?
 impl Stream {
     /// TODO
-    async fn render(self) -> Result<Value, RenderError> {
+    /// TODO rename
+    pub async fn into_value(self) -> Result<Value, RenderError> {
         match self {
+            Self::Value(value) => Ok(value),
             Self::File { f, .. } => f().await.map(Value::Bytes),
         }
     }

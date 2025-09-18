@@ -21,7 +21,7 @@ use derive_more::From;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
-use slumber_template::{Arguments, Identifier, RenderError};
+use slumber_template::{Arguments, Identifier, RenderError, Stream};
 use slumber_util::ResultTraced;
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -160,9 +160,7 @@ impl slumber_template::Context for TemplateContext {
     async fn get(
         &self,
         field: &slumber_template::Identifier,
-
-        can_stream: bool,
-    ) -> Result<slumber_template::Value, slumber_template::RenderError> {
+    ) -> Result<Stream, slumber_template::RenderError> {
         // Check overrides first. The override value is NOT treated as a
         // template
         if let Some(value) = self.overrides.get(field.as_str()) {
@@ -201,14 +199,12 @@ impl slumber_template::Context for TemplateContext {
             })?;
 
         // Render the nested template. TODO update comment
-        let value =
-            template
-                .render_value(self, can_stream)
-                .await
-                .map_err(|error| FunctionError::ProfileNested {
-                    field: field.clone(),
-                    error,
-                })?;
+        let value = template.render_stream(self).await.map_err(|error| {
+            FunctionError::ProfileNested {
+                field: field.clone(),
+                error,
+            }
+        })?;
 
         // Store value in the cache so other instances of this chain can use it
         guard.set(value.clone());
@@ -219,7 +215,7 @@ impl slumber_template::Context for TemplateContext {
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<slumber_template::Value, RenderError> {
+    ) -> Result<Stream, RenderError> {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
@@ -305,7 +301,7 @@ pub struct RenderGroupState {
     /// times. If a field fails to render, the guard holder should drop the
     /// guard without entering a result. This will kill the entire render so
     /// other renderers of that field will be cancelled.
-    profile_results: FutureCache<Identifier, slumber_template::Value>,
+    profile_results: FutureCache<Identifier, Stream>,
 }
 
 /// An abstraction that provides behavior for chained HTTP requests. This

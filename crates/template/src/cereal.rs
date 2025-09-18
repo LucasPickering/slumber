@@ -113,7 +113,6 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
             Value::Object(object) => {
                 visitor.visit_map(&mut MapDeserializer::new(object.into_iter()))
             }
-            Value::Stream(_) => todo!(),
         }
     }
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -129,7 +128,6 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
             Value::Float(f) => Unexpected::Float(f),
             Value::Array(_) => Unexpected::Seq,
             Value::Object(_) => Unexpected::Map,
-            Value::Stream(_) => Unexpected::Other("stream"),
         };
         Err(de::Error::invalid_type(unexpected, &"bytes"))
     }
@@ -152,7 +150,6 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
             Value::Float(f) => Unexpected::Float(f),
             Value::Array(_) => Unexpected::Seq,
             Value::Object(_) => Unexpected::Map,
-            Value::Stream(_) => Unexpected::Other("stream"),
         };
         Err(de::Error::invalid_type(unexpected, &"bytes"))
     }

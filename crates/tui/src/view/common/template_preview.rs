@@ -11,7 +11,7 @@ use ratatui::{
     widgets::Widget,
 };
 use slumber_core::http::content_type::ContentType;
-use slumber_template::{RenderedChunk, Template};
+use slumber_template::{RenderedChunk, Stream, Template};
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -213,7 +213,7 @@ impl TextStitcher {
     fn get_chunk_text(chunk: RenderedChunk) -> String {
         match chunk {
             RenderedChunk::Raw(text) => text.deref().into(),
-            RenderedChunk::Rendered(value) => {
+            RenderedChunk::Rendered(Stream::Value(value)) => {
                 // We could potentially use MaybeStr to show binary data as
                 // hex, but that could get weird if there's text data in the
                 // template as well. This is simpler and prevents giant
@@ -221,6 +221,10 @@ impl TextStitcher {
                 value
                     .try_into_string()
                     .unwrap_or_else(|_| "<binary>".into())
+            }
+            // TODO only show this is the value can actually be streamed
+            RenderedChunk::Rendered(Stream::File { path, .. }) => {
+                format!("<file {}>", path.display())
             }
             // There's no good way to render the entire error inline
             RenderedChunk::Error(_) => "Error".into(),

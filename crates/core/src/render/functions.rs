@@ -305,16 +305,14 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
         Value::Integer(i) => Ok(i as f64),
         Value::String(s) => Ok(s.parse()?),
         Value::Bytes(bytes) => Ok(std::str::from_utf8(&bytes)?.parse()?),
-        Value::Array(_) | Value::Object(_) | Value::Stream(_) => {
-            Err(ValueError::Type {
-                expected: Expected::OneOf(&[
-                    &Expected::Float,
-                    &Expected::Integer,
-                    &Expected::Boolean,
-                    &Expected::Custom("string/bytes that parse to a float"),
-                ]),
-            })
-        }
+        Value::Array(_) | Value::Object(_) => Err(ValueError::Type {
+            expected: Expected::OneOf(&[
+                &Expected::Float,
+                &Expected::Integer,
+                &Expected::Boolean,
+                &Expected::Custom("string/bytes that parse to a float"),
+            ]),
+        }),
     }
 }
 
@@ -348,16 +346,14 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
         Value::Integer(i) => Ok(i),
         Value::String(s) => Ok(s.parse()?),
         Value::Bytes(bytes) => Ok(std::str::from_utf8(&bytes)?.parse()?),
-        Value::Array(_) | Value::Object(_) | Value::Stream(_) => {
-            Err(ValueError::Type {
-                expected: Expected::OneOf(&[
-                    &Expected::Integer,
-                    &Expected::Float,
-                    &Expected::Boolean,
-                    &Expected::Custom("string/bytes that parse to an integer"),
-                ]),
-            })
-        }
+        Value::Array(_) | Value::Object(_) => Err(ValueError::Type {
+            expected: Expected::OneOf(&[
+                &Expected::Integer,
+                &Expected::Float,
+                &Expected::Boolean,
+                &Expected::Custom("string/bytes that parse to an integer"),
+            ]),
+        }),
     }
 }
 
@@ -519,7 +515,6 @@ impl TryFromValue for JsonPathValue {
                 .into_iter()
                 .map(|(k, v)| Ok((k, serde_json::Value::try_from_value(v)?)))
                 .collect::<Result<_, _>>()?,
-            Value::Stream(_) => todo!(),
         };
         Ok(Self(json_value))
     }

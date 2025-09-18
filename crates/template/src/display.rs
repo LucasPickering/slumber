@@ -182,7 +182,6 @@ impl Display for Value {
                     ))
                 )
             }
-            Self::Stream(_) => write!(fmt, "<stream>"),
         }
     }
 }

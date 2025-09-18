@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{Expression, Literal, Template, Value};
+use slumber_template::{Expression, Literal, Stream, Template, Value};
 use slumber_util::{
     Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
     temp_dir, test_data_dir,
@@ -114,9 +114,7 @@ async fn test_base64(
 async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     let template = Template::function_call("boolean", [input], []);
     assert_result(
-        template
-            .render_value(&TemplateContext::factory(()), false)
-            .await,
+        template.render_value(&TemplateContext::factory(())).await,
         Ok(Value::Boolean(expected)),
     );
 }
@@ -315,9 +313,7 @@ async fn test_float(
 ) {
     let template = Template::function_call("float", [input], []);
     assert_result(
-        template
-            .render_value(&TemplateContext::factory(()), false)
-            .await,
+        template.render_value(&TemplateContext::factory(())).await,
         expected.map(Value::from),
     );
 }
@@ -345,9 +341,7 @@ async fn test_integer(
 ) {
     let template = Template::function_call("integer", [input], []);
     assert_result(
-        template
-            .render_value(&TemplateContext::factory(()), false)
-            .await,
+        template.render_value(&TemplateContext::factory(())).await,
         expected.map(Value::from),
     );
 }
@@ -366,9 +360,7 @@ async fn test_json_parse(
 ) {
     let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
-        template
-            .render_value(&TemplateContext::factory(()), false)
-            .await,
+        template.render_value(&TemplateContext::factory(())).await,
         expected,
     );
 }
@@ -805,11 +797,17 @@ async fn test_stream(
         root_dir: test_data_dir(),
         ..TemplateContext::factory((by_id([profile]), IndexMap::new()))
     };
-    let value = template.render_value(&context, can_stream).await.unwrap();
-    if expect_stream {
-        assert_matches!(value, Value::Stream(_));
+
+    let stream = if can_stream {
+        template.render_stream(&context).await
     } else {
-        assert_matches!(value, Value::Bytes(_) | Value::String(_));
+        template.render_value(&context).await.map(Stream::Value)
+    }
+    .unwrap();
+    if expect_stream {
+        assert_matches!(stream, Stream::File { .. });
+    } else {
+        assert_matches!(stream, Stream::Value(_));
     }
 }
 

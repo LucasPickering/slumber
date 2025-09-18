@@ -63,7 +63,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{Stream, Template, Value};
+use slumber_template::{Stream, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, path::PathBuf};
 use tracing::{error, info, info_span};
@@ -666,13 +666,13 @@ impl Recipe {
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
                             let value = template
-                                .render_value(template_context, true)
+                                .render_stream(template_context)
                                 .await
                                 .context(format!(
                                     "Rendering form field `{field}`"
                                 ))?;
 
-                            let part = Self::value_to_part(value);
+                            let part = Self::stream(value);
                             Ok::<_, anyhow::Error>((field.clone(), part))
                         })
                     },
@@ -684,13 +684,12 @@ impl Recipe {
         Ok(Some(rendered))
     }
 
-    /// Convert a template value to a multipart form part
-    fn value_to_part(value: Value) -> FormPart {
-        // If the value is a file stream, we can pass that
-        // directly to reqwest
-        match value {
-            Value::Stream(Stream::File { path, .. }) => FormPart::File(path),
-            _ => FormPart::Bytes(value.into_bytes()),
+    /// Convert a template stream to a multipart form part
+    fn stream(stream: Stream) -> FormPart {
+        // If the stream is a file, we can pass that directly to reqwest
+        match stream {
+            Stream::Value(value) => FormPart::Bytes(value.into_bytes()),
+            Stream::File { path, .. } => FormPart::File(path),
         }
     }
 }

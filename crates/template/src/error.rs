@@ -35,11 +35,11 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 /// they should be pretty brief.
 #[derive(Debug, Error)]
 pub enum RenderError {
-    /// 2+ futures were rendering the same profile field. One future was doing
-    /// the actual rendering and the rest were waiting on the first. If the
-    /// first one fails, the rest will return this error. Theoretically this
-    /// will never actually be emitted because `try_join` should return after
-    /// the initial error, so this is a placeholder.
+    /// 2+ futures were rendering the same field. One future was doing the
+    /// actual rendering and the rest were waiting on the first. If the first
+    /// one fails, the rest will return this error. Theoretically this will
+    /// never actually be emitted because `try_join` should return after the
+    /// initial error, so this is a placeholder.
     #[error("Error rendering cached profile field `{field}`")]
     CacheFailed { field: Identifier },
 

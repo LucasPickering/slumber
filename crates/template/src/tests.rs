@@ -1,7 +1,10 @@
-use crate::{Arguments, Context, Identifier, RenderError, Template, Value};
+use crate::{
+    Arguments, Context, FieldCache, Identifier, RenderError, Template, Value,
+};
 use indexmap::indexmap;
 use rstest::rstest;
 use slumber_util::assert_err;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 /// Test simple expression rendering
 #[rstest]
@@ -21,7 +24,13 @@ use slumber_util::assert_err;
 )]
 #[tokio::test]
 async fn test_expression(#[case] template: Template, #[case] expected: Value) {
-    assert_eq!(template.render_value(&TestContext).await.unwrap(), expected);
+    assert_eq!(
+        template
+            .render_value(&TestContext::default())
+            .await
+            .unwrap(),
+        expected
+    );
 }
 
 /// Render to a value. Templates with a single dynamic chunk are allowed to
@@ -39,7 +48,13 @@ async fn test_render_value(
     #[case] template: Template,
     #[case] expected: Value,
 ) {
-    assert_eq!(template.render_value(&TestContext).await.unwrap(), expected);
+    assert_eq!(
+        template
+            .render_value(&TestContext::default())
+            .await
+            .unwrap(),
+        expected
+    );
 }
 
 /// Convert JSON values to template values
@@ -104,7 +119,10 @@ fn test_from_json(#[case] json: serde_json::Value, #[case] expected: Value) {
 #[tokio::test]
 async fn test_pipe(#[case] template: Template, #[case] expected: &str) {
     assert_eq!(
-        template.render_string(&TestContext).await.unwrap(),
+        template
+            .render_string(&TestContext::default())
+            .await
+            .unwrap(),
         expected
     );
 }
@@ -135,25 +153,58 @@ async fn test_function_error(
     assert_err!(
         // Use anyhow to get the error message to include the whole chain
         template
-            .render_string(&TestContext)
+            .render_string(&TestContext::default())
             .await
             .map_err(anyhow::Error::from),
         expected_error
     );
 }
 
-struct TestContext;
+/// Using the same field multiple times should be deduplicated, so that the
+/// expression is only evaluated once
+#[tokio::test]
+async fn test_field_duplicate() {
+    let context = TestContext::default();
+    let template: Template = "{{ increment }} + {{ increment }}".into();
+
+    // Should deduplicate multiple uses in the same template
+    assert_eq!(template.render_string(&context).await.unwrap(), "1 + 1");
+    // Rendering again with the same context should retain the caching
+    assert_eq!(template.render_string(&context).await.unwrap(), "1 + 1");
+}
+
+#[derive(Debug, Default)]
+struct TestContext {
+    increment: AtomicI64,
+    field_cache: FieldCache,
+}
 
 impl Context for TestContext {
-    async fn get(&self, identifier: &Identifier) -> Result<Value, RenderError> {
+    async fn get_field(
+        &self,
+        identifier: &Identifier,
+    ) -> Result<Value, RenderError> {
         match identifier.as_str() {
             "name" => Ok("Mike".into()),
             "array" => Ok(vec!["a", "b", "c"].into()),
+            // A field that increments each time it's evaluated, to test for
+            // deduplication
+            "increment" => {
+                let previous_incrs =
+                    self.increment.fetch_add(1, Ordering::Relaxed);
+                // Return the number of times this has been evaluated, including
+                // this call
+                Ok((previous_incrs + 1).into())
+            }
             "invalid_utf8" => Ok(Value::Bytes(b"\xc3\x28".as_slice().into())),
             _ => Err(RenderError::FieldUnknown {
                 field: identifier.clone(),
             }),
         }
+    }
+
+    fn field_cache(&self) -> &FieldCache {
+        &self.field_cache
     }
 
     async fn call(

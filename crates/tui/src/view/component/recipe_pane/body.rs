@@ -188,7 +188,7 @@ impl TextBody {
                 RecipeOverrideKey::body(recipe.id.clone()),
                 template,
                 content_type,
-                false,
+                true,
             ),
             mime,
             text_window: Component::default(),

@@ -242,23 +242,29 @@ async fn test_authentication(
     );
 }
 
-/// Test each possible type of body. Raw bodies are covered by
-/// [test_build_request]. This seems redundant with [test_build_body], but
-/// we need this to test that the `content-type` header is set correctly.
-/// This also allows us to test the actual built request, which could
-/// hypothetically vary from the request record.
+/// Test each possible type of body. This seems redundant with
+/// [test_build_body], but we need this to test that the `content-type` header
+/// is set correctly. This also allows us to test the actual built request,
+/// which could hypothetically vary from the request record.
 #[rstest]
+#[case::text(RecipeBody::Raw("hello!".into()), None, None, "hello!")]
+#[case::stream(
+    RecipeBody::Raw("{{ file('data.json') }}".into()),
+    None,
+    None, // Content-Type is intentionally *not* inferred from the extension
+    r#"{ "a": 1, "b": 2 }"#,
+)]
 #[case::json(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     None,
-    "application/json",
+    Some("application/json"),
     r#"{"group_id":"3"}"#,
 )]
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     Some("text/plain"),
-    "text/plain",
+    Some("text/plain"),
     r#"{"group_id":"3"}"#,
 )]
 #[case::json_unpack(
@@ -266,14 +272,14 @@ async fn test_authentication(
     // instead of returned as a string
     RecipeBody::json(json!("{{ [1,2,3] }}")).unwrap(),
     None,
-    "application/json",
+    Some("application/json"),
     "[1,2,3]",
 )]
 #[case::json_no_unpack(
     // This template doesn't get unpacked because it is multiple chunks
     RecipeBody::json(json!("no: {{ [1,2,3] }}")).unwrap(),
     None,
-    "application/json",
+    Some("application/json"),
     // Spaces are added because this uses the template Value stringification
     // instead of serde_json stringification
     r#""no: [1, 2, 3]""#,
@@ -285,7 +291,7 @@ async fn test_authentication(
         "{{ file(concat([test_data_dir, '/data.json'])) | trim() }}"
     )).unwrap(),
     None,
-    "application/json",
+    Some("application/json"),
     r#""{ \"a\": 1, \"b\": 2 }""#,
 )]
 #[case::json_from_file_parsed(
@@ -294,7 +300,7 @@ async fn test_authentication(
         "{{ file(concat([test_data_dir, '/data.json'])) | json_parse() }}"
     )).unwrap(),
     None,
-    "application/json",
+    Some("application/json"),
     r#"{"a":1,"b":2}"#,
 )]
 #[case::form_urlencoded(
@@ -303,7 +309,7 @@ async fn test_authentication(
         "token".into() => "{{ token }}".into()
     }),
     None,
-    "application/x-www-form-urlencoded",
+    Some("application/x-www-form-urlencoded"),
     "user_id=1&token=tokenzzz",
 )]
 // reqwest sets the content type when initializing the body, so make sure
@@ -311,7 +317,7 @@ async fn test_authentication(
 #[case::form_urlencoded_content_type_override(
     RecipeBody::FormUrlencoded(Default::default()),
     Some("text/plain"),
-    "text/plain",
+    Some("text/plain"),
     ""
 )]
 #[case::form_multipart(
@@ -320,7 +326,7 @@ async fn test_authentication(
     }),
     None,
     // Normally the boundary is random, but we make it static for testing
-    "multipart/form-data; boundary=BOUNDARY",
+    Some("multipart/form-data; boundary=BOUNDARY"),
     "--BOUNDARY\r
 Content-Disposition: form-data; name=\"user_id\"\r
 \r
@@ -334,7 +340,7 @@ Content-Disposition: form-data; name=\"user_id\"\r
             "{{ file(concat([test_data_dir, '/data.json'])) }}".into(),
     }),
     None,
-    "multipart/form-data; boundary=BOUNDARY",
+    Some("multipart/form-data; boundary=BOUNDARY"),
     "--BOUNDARY\r
 Content-Disposition: form-data; name=\"file\"; filename=\"data.json\"\r
 Content-Type: application/json\r
@@ -351,7 +357,7 @@ Content-Type: application/json\r
             "data: {{ file(concat([test_data_dir, '/data.json'])) }}".into(),
     }),
     None,
-    "multipart/form-data; boundary=BOUNDARY",
+    Some("multipart/form-data; boundary=BOUNDARY"),
     "--BOUNDARY\r
 Content-Disposition: form-data; name=\"file\"\r
 \r
@@ -360,11 +366,11 @@ data: { \"a\": 1, \"b\": 2 }\r
 ",
 )]
 #[tokio::test]
-async fn test_structured_body(
+async fn test_body(
     http_engine: HttpEngine,
     #[case] body: RecipeBody,
     #[case] content_type: Option<&str>,
-    #[case] expected_content_type: &str,
+    #[case] expected_content_type: Option<&str>,
     #[case] expected_body: &'static str,
 ) {
     // We're going to actually send the request so we can get the full body.
@@ -375,15 +381,15 @@ async fn test_structured_body(
         .and(matchers::path("/post"))
         .respond_with(move |request: &wiremock::Request| {
             // Echo back the Content-Type and body so we can assert on it
-            ResponseTemplate::new(StatusCode::OK)
-                .append_header(
-                    header::CONTENT_TYPE,
-                    request
-                        .headers
-                        .get(header::CONTENT_TYPE)
-                        .expect("Missing Content-Type header"),
-                )
-                .set_body_bytes(request.body.clone())
+            let mut response = ResponseTemplate::new(StatusCode::OK)
+                .set_body_bytes(request.body.clone());
+            if let Some(content_type) =
+                request.headers.get(header::CONTENT_TYPE)
+            {
+                response =
+                    response.append_header(header::CONTENT_TYPE, content_type);
+            }
+            response
         })
         .mount(&server)
         .await;
@@ -408,13 +414,12 @@ async fn test_structured_body(
 
     // Mocker echoes the Content-Type header and body, assert on them
     assert_eq!(exchange.response.status, StatusCode::OK);
-    let actual_content_type = exchange
-        .response
-        .headers
-        .get(header::CONTENT_TYPE)
-        .expect("Missing Content-Type header")
-        .to_str()
-        .expect("Invalid Content-Type header");
+    let actual_content_type =
+        exchange.response.headers.get(header::CONTENT_TYPE).map(
+            |content_type| {
+                content_type.to_str().expect("Invalid Content-Type header")
+            },
+        );
     assert_eq!(actual_content_type, expected_content_type);
     if let Some(body) = exchange.response.body.text() {
         assert_eq!(body, expected_body);
@@ -924,6 +929,11 @@ async fn test_build_curl_authentication(
 
 /// Build a curl command with each possible type of body
 #[rstest]
+#[case::text(RecipeBody::Raw("hello!".into()), "--data 'hello!'")]
+#[case::stream(
+    RecipeBody::Raw("{{ file('data.json') }}".into()),
+    "--data '@{ROOT}/data.json'",
+)]
 #[case::json(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     r#"--json '{"group_id":"3"}'"#
@@ -947,7 +957,7 @@ async fn test_build_curl_authentication(
     RecipeBody::FormMultipart(indexmap! {
         "file".into() => "{{ file('data.json') }}".into(),
     }),
-    "-F 'file=@{ROOT}{SEP}data.json'"
+    "-F 'file=@{ROOT}/data.json'"
 )]
 #[tokio::test]
 async fn test_build_curl_body(
@@ -965,8 +975,8 @@ async fn test_build_curl_body(
     let command = http_engine.build_curl(seed, &context).await.unwrap();
     let expected_arguments = expected_arguments
         // Dynamic replacements for system-specific contents
-        .replace("{ROOT}", &context.root_dir.to_string_lossy())
-        .replace("{SEP}", path::MAIN_SEPARATOR_STR);
+        .replace('/', path::MAIN_SEPARATOR_STR)
+        .replace("{ROOT}", &context.root_dir.to_string_lossy());
     let expected_command =
         format!("curl -XGET --url 'http://localhost/url' {expected_arguments}");
     assert_eq!(command, expected_command);

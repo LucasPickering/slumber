@@ -66,6 +66,7 @@ use slumber_config::HttpEngineConfig;
 use slumber_template::{Stream, StreamMetadata, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, path::PathBuf};
+use tokio::fs::File;
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -264,7 +265,10 @@ impl HttpEngine {
             match body {
                 // If we have the bytes, we don't need to bother building a
                 // request
-                RenderedBody::Raw(bytes) => Ok(Some(bytes)),
+                RenderedBody::Raw(stream) => {
+                    let value = stream.resolve().await?;
+                    Ok(Some(value.into_bytes()))
+                }
 
                 // The body is complex - offload the hard work to RequestBuilder
                 RenderedBody::Json(_)
@@ -334,7 +338,7 @@ impl HttpEngine {
                 builder = builder.authentication(&authentication);
             }
             if let Some(body) = body {
-                builder = builder.body(&body)?;
+                builder = builder.body(body)?;
             }
             Ok(builder.build())
         };
@@ -618,7 +622,9 @@ impl Recipe {
 
         let rendered = match body {
             RecipeBody::Raw(body) => RenderedBody::Raw(
-                body.render_bytes(context).await.context("Rendering body")?,
+                body.render_stream(context)
+                    .await
+                    .context("Rendering body")?,
             ),
             RecipeBody::Json(json) => RenderedBody::Json(
                 json.render(context).await.context("Rendering body")?,
@@ -691,7 +697,7 @@ impl Authentication<String> {
 /// by which we'll add it to the request. This means it is **not** 1:1 with
 /// [RecipeBody]
 enum RenderedBody {
-    Raw(Bytes),
+    Raw(Stream),
     /// JSON body
     Json(serde_json::Value),
     /// Field:value mapping. Value is `String` because only string data can be
@@ -709,7 +715,17 @@ impl RenderedBody {
     ) -> anyhow::Result<RequestBuilder> {
         // Set body. The variant tells us _how_ to set it
         match self {
-            RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
+            RenderedBody::Raw(Stream::Value(value)) => {
+                Ok(builder.body(value.into_bytes()))
+            }
+            RenderedBody::Raw(Stream::Stream {
+                metadata: StreamMetadata::File { path },
+                ..
+            }) => {
+                // Stream from a file
+                let file = File::open(&path).await?;
+                Ok(builder.body(file))
+            }
             RenderedBody::Json(json) => Ok(builder.json(&json)),
             RenderedBody::FormUrlencoded(fields) => Ok(builder.form(&fields)),
             RenderedBody::FormMultipart(fields) => {

@@ -4,10 +4,12 @@ use crate::{
 };
 use anyhow::Context;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
+use slumber_template::{Stream, StreamMetadata};
 use std::fmt::Write;
 
 /// Builder pattern for constructing cURL commands from a recipe
 pub struct CurlBuilder {
+    // TODO build as a vec of args instead of a string?
     command: String,
 }
 
@@ -80,11 +82,24 @@ impl CurlBuilder {
     }
 
     /// Add a body to the command
-    pub fn body(mut self, body: &RenderedBody) -> anyhow::Result<Self> {
+    pub fn body(mut self, body: RenderedBody) -> anyhow::Result<Self> {
         match body {
-            RenderedBody::Raw(body) => {
-                let body = as_text(body)?;
+            RenderedBody::Raw(Stream::Value(value)) => {
+                let bytes = value.into_bytes();
+                let body = as_text(&bytes)?;
                 write!(&mut self.command, " --data '{body}'").unwrap();
+            }
+            RenderedBody::Raw(Stream::Stream {
+                metadata: StreamMetadata::File { path },
+                ..
+            }) => {
+                // Stream the file
+                write!(
+                    &mut self.command,
+                    " --data '@{path}'",
+                    path = path.to_string_lossy()
+                )
+                .unwrap();
             }
             RenderedBody::Json(json) => {
                 write!(&mut self.command, " --json '{json}'").unwrap();
@@ -101,7 +116,7 @@ impl CurlBuilder {
             }
             RenderedBody::FormMultipart(form) => {
                 for (field, part) in form {
-                    let value = match part {
+                    let value = match &part {
                         FormPart::Bytes(bytes) => as_text(bytes)?,
                         // Use curl's file path syntax
                         FormPart::File(path) => {

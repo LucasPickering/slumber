@@ -12,12 +12,14 @@ mod parse;
 mod test_util;
 #[cfg(test)]
 mod tests;
+mod util;
 mod value;
 
 pub use error::{
     Expected, RenderError, TemplateParseError, ValueError, WithValue,
 };
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
+pub use util::FieldCache;
 pub use value::{Arguments, FunctionOutput, TryFromValue, Value};
 
 use bytes::{Bytes, BytesMut};
@@ -36,11 +38,16 @@ pub trait Context: Sized + Send + Sync {
     /// where fields are derived from. Fields can also be computed dynamically
     /// and be `async`. For example, fields can be loaded from a map of nested
     /// templates, in which case the nested template would need to be rendered
-    /// before this can be returned.
-    fn get(
+    /// before this can be returned. Rendered fields will be cached via the
+    /// cache returned by [Self::field_cache], so the same field will never be
+    /// requested twice for this context object.
+    fn get_field(
         &self,
         identifier: &Identifier,
     ) -> impl Future<Output = Result<Value, RenderError>> + Send;
+
+    /// A cache to store the outcome of rendered fields.
+    fn field_cache(&self) -> &FieldCache;
 
     /// Call a function by name
     fn call(

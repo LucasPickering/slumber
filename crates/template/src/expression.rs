@@ -4,6 +4,7 @@
 use crate::test_util;
 use crate::{
     Arguments, Context, RenderError, Value, error::RenderErrorContext,
+    util::FieldCacheOutcome,
 };
 use bytes::Bytes;
 use derive_more::{Deref, Display, From};
@@ -79,7 +80,7 @@ impl Expression {
                     // Keys will be deduped here, with the last taking priority
                     Ok(Value::Object(IndexMap::from_iter(pairs)))
                 }
-                Self::Field(identifier) => context.get(identifier).await,
+                Self::Field(field) => Self::render_field(field, context).await,
                 Self::Call(call) => call.call(context, None).await,
                 Self::Pipe { expression, call } => {
                     // Compute the left hand side first. Box for recursion
@@ -88,6 +89,40 @@ impl Expression {
                 }
             }
         }
+    }
+
+    /// Render the value of a field. This will apply caching, so that a field
+    /// never has to be rendered more than once for a given context.
+    async fn render_field<Ctx: Context>(
+        field: &Identifier,
+        context: &Ctx,
+    ) -> RenderResult {
+        // Check the field cache to see if this value is already being computed
+        // somewhere else. If it is, we'll block on that and re-use the result.
+        // If not, we get a guard back, meaning we're responsible for the
+        // computation. At the end, we'll write back to the guard so everyone
+        // else can copy our homework.
+        let cache = context.field_cache();
+        let guard = match cache.get_or_init(field.clone()).await {
+            FieldCacheOutcome::Hit(value) => return Ok(value),
+            FieldCacheOutcome::Miss(guard) => guard,
+            // The future responsible for writing to the guard failed. Cloning
+            // errors is annoying so we return an empty response here. The
+            // initial error should've been returned elsewhere so that can be
+            // used instead.
+            FieldCacheOutcome::NoResponse => {
+                return Err(RenderError::CacheFailed {
+                    field: field.clone(),
+                });
+            }
+        };
+
+        // This value hasn't been rendered yet - ask the context to evaluate it
+        let value = context.get_field(field).await?;
+
+        // Store value in the cache so other references to this field can use it
+        guard.set(value.clone());
+        Ok(value)
     }
 
     /// Build a function call expression. Any keyword arguments with `None`

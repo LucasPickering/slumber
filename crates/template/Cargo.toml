@@ -23,6 +23,7 @@ serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 slumber_util = {workspace = true}
 thiserror = {workspace = true}
+tokio = {workspace = true, features = ["sync"]}
 tracing = {workspace = true}
 winnow = {workspace = true}
 

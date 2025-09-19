@@ -12,7 +12,6 @@ use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
     http::{Exchange, RequestSeed, ResponseRecord, TriggeredRequestError},
     render::functions::RequestTrigger,
-    util::{FutureCache, FutureCacheOutcome},
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -21,7 +20,7 @@ use derive_more::From;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
-use slumber_template::{Arguments, Identifier, RenderError};
+use slumber_template::{Arguments, FieldCache, Identifier, RenderError, Value};
 use slumber_util::ResultTraced;
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -145,38 +144,15 @@ impl TemplateContext {
 }
 
 impl slumber_template::Context for TemplateContext {
-    async fn get(
+    async fn get_field(
         &self,
         field: &slumber_template::Identifier,
-    ) -> Result<slumber_template::Value, slumber_template::RenderError> {
+    ) -> Result<Value, slumber_template::RenderError> {
         // Check overrides first. The override value is NOT treated as a
         // template
         if let Some(value) = self.overrides.get(field.as_str()) {
             return Ok(value.clone().into());
         }
-
-        // Check the field cache to see if this value is already being computed
-        // somewhere else. If it is, we'll block on that and re-use the result.
-        // If not, we get a guard back, meaning we're responsible for the
-        // computation. At the end, we'll write back to the guard so everyone
-        // else can copy our homework.
-        let cache = &self.state.profile_results;
-        let guard = match cache.get_or_init(field.clone()).await {
-            FutureCacheOutcome::Hit(value) => return Ok(value),
-            FutureCacheOutcome::Miss(guard) => guard,
-            // The future responsible for writing to the guard failed. All the
-            // places that render multiple templates use try_join so one failure
-            // should cause all other futures to stop being polled. So
-            // theoretically this error will never be seen, but we return an
-            // error instead of panicking just to be safe. We could clone the
-            // error and share it between calls, but implementing Clone for an
-            // error type can be pretty annoying.
-            FutureCacheOutcome::NoResponse => {
-                return Err(RenderError::CacheFailed {
-                    field: field.clone(),
-                });
-            }
-        };
 
         // Then check the current profile
         let template = self
@@ -193,18 +169,18 @@ impl slumber_template::Context for TemplateContext {
                 error,
             }
         })?;
-        let value: slumber_template::Value = bytes.into();
+        Ok(bytes.into())
+    }
 
-        // Store value in the cache so other instances of this chain can use it
-        guard.set(value.clone());
-        Ok(value)
+    fn field_cache(&self) -> &FieldCache {
+        &self.state.field_cache
     }
 
     async fn call(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<slumber_template::Value, RenderError> {
+    ) -> Result<Value, RenderError> {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
@@ -290,7 +266,7 @@ pub struct RenderGroupState {
     /// times. If a field fails to render, the guard holder should drop the
     /// guard without entering a result. This will kill the entire render so
     /// other renderers of that field will be cancelled.
-    profile_results: FutureCache<Identifier, slumber_template::Value>,
+    field_cache: FieldCache,
 }
 
 /// An abstraction that provides behavior for chained HTTP requests. This

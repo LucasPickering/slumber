@@ -5,20 +5,20 @@ use crate::{
 use anyhow::Context;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use slumber_template::{Stream, StreamMetadata};
-use std::fmt::Write;
+use std::borrow::Cow;
 
 /// Builder pattern for constructing cURL commands from a recipe
 pub struct CurlBuilder {
-    // TODO build as a vec of args instead of a string?
-    command: String,
+    /// Command arguments. Built up as a list then joined into a string
+    command: Vec<Cow<'static, str>>,
 }
 
 impl CurlBuilder {
     /// Start building a new cURL command for an HTTP method
     pub fn new(method: HttpMethod) -> Self {
-        Self {
-            command: format!("curl -X{method}"),
-        }
+        let mut slf = Self { command: vec![] };
+        slf.push(["curl".into(), format!("-X{method}").into()]);
+        slf
     }
 
     /// Add the URL, with query parameters, to the command
@@ -32,7 +32,7 @@ impl CurlBuilder {
         if !query.is_empty() {
             url.query_pairs_mut().extend_pairs(query);
         }
-        write!(&mut self.command, " --url '{url}'").unwrap();
+        self.push(["--url".into(), format!("'{url}'").into()]);
         self
     }
 
@@ -51,7 +51,7 @@ impl CurlBuilder {
         value: &HeaderValue,
     ) -> anyhow::Result<Self> {
         let value = as_text(value.as_bytes())?;
-        write!(&mut self.command, " --header '{name}: {value}'").unwrap();
+        self.push(["--header".into(), format!("'{name}: {value}'").into()]);
         Ok(self)
     }
 
@@ -62,12 +62,14 @@ impl CurlBuilder {
     ) -> Self {
         match authentication {
             Authentication::Basic { username, password } => {
-                write!(
-                    &mut self.command,
-                    " --user '{username}:{password}'",
-                    password = password.as_deref().unwrap_or_default()
-                )
-                .unwrap();
+                self.push([
+                    "--user".into(),
+                    format!(
+                        "'{username}:{password}'",
+                        password = password.as_deref().unwrap_or_default()
+                    )
+                    .into(),
+                ]);
                 self
             }
             Authentication::Bearer { token } => self
@@ -87,31 +89,28 @@ impl CurlBuilder {
             RenderedBody::Raw(Stream::Value(value)) => {
                 let bytes = value.into_bytes();
                 let body = as_text(&bytes)?;
-                write!(&mut self.command, " --data '{body}'").unwrap();
+                self.push(["--data".into(), format!("'{body}'").into()]);
             }
             RenderedBody::Raw(Stream::Stream {
                 metadata: StreamMetadata::File { path },
                 ..
             }) => {
                 // Stream the file
-                write!(
-                    &mut self.command,
-                    " --data '@{path}'",
-                    path = path.to_string_lossy()
-                )
-                .unwrap();
+                self.push([
+                    "--data".into(),
+                    format!("'@{path}'", path = path.to_string_lossy()).into(),
+                ]);
             }
             RenderedBody::Json(json) => {
-                write!(&mut self.command, " --json '{json}'").unwrap();
+                self.push(["--json".into(), format!("'{json}'").into()]);
             }
             // Use the first-class form support where possible
             RenderedBody::FormUrlencoded(form) => {
                 for (field, value) in form {
-                    write!(
-                        &mut self.command,
-                        " --data-urlencode '{field}={value}'"
-                    )
-                    .unwrap();
+                    self.push([
+                        "--data-urlencode".into(),
+                        format!("'{field}={value}'").into(),
+                    ]);
                 }
             }
             RenderedBody::FormMultipart(form) => {
@@ -124,7 +123,10 @@ impl CurlBuilder {
                             &format!("@{path}")
                         }
                     };
-                    write!(&mut self.command, " -F '{field}={value}'").unwrap();
+                    self.push([
+                        "-F".into(),
+                        format!("'{field}={value}'").into(),
+                    ]);
                 }
             }
         }
@@ -133,7 +135,12 @@ impl CurlBuilder {
 
     /// Finalize and return the command
     pub fn build(self) -> String {
-        self.command
+        self.command.join(" ")
+    }
+
+    /// Push arguments onto the list
+    fn push<const N: usize>(&mut self, arguments: [Cow<'static, str>; N]) {
+        self.command.extend(arguments);
     }
 }
 

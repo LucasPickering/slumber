@@ -1,4 +1,4 @@
-use crate::{Identifier, Stream};
+use crate::{Identifier, RenderError, Stream};
 use std::{
     collections::{HashMap, hash_map::Entry},
     ops::DerefMut,
@@ -7,15 +7,20 @@ use std::{
 use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
 use tracing::error;
 
+/// `None`: Another writer is computing the value
+/// `Some(Ok(_))`: Render succeeded
+/// `Some(Err(_))`: Render failed
+type FieldCacheValue = Option<Result<Stream, RenderError>>;
+
 /// A cache of template values that either have been computed, or are
 /// asynchronously being computed. This allows multiple references to the same
 /// template field to share their work.
 #[derive(Debug, Default)]
 pub struct FieldCache {
-    /// Cache each value by key. The outer mutex will only be held open for as
+    /// Cache each result by key. The outer mutex will only be held open for as
     /// long as it takes to check if the value is in the cache or not. The
     /// inner lock will be blocked on until the value is available.
-    cache: Mutex<HashMap<Identifier, Arc<RwLock<Option<Stream>>>>>,
+    cache: Mutex<HashMap<Identifier, Arc<RwLock<FieldCacheValue>>>>,
 }
 
 impl FieldCache {
@@ -36,8 +41,10 @@ impl FieldCache {
                 drop(cache); // Drop the outer lock as quickly as possible
 
                 match &*lock.read_owned().await {
-                    Some(value) => FieldCacheOutcome::Hit(value.clone()),
-                    None => FieldCacheOutcome::NoResponse,
+                    Some(result) => FieldCacheOutcome::Hit(result.clone()),
+                    // Only possible if the writer panics or there's a bug in
+                    // the implementation where the guard is never written to
+                    None => panic!("Value not written to cache"),
                 }
             }
             Entry::Vacant(entry) => {
@@ -52,7 +59,7 @@ impl FieldCache {
                 // own future, to prevent other tasks grabbing it first
                 drop(cache);
 
-                FieldCacheOutcome::Miss(FutureCacheGuard(guard))
+                FieldCacheOutcome::Miss(FieldCacheGuard(guard))
             }
         }
     }
@@ -61,13 +68,10 @@ impl FieldCache {
 /// Outcome of check a future cache for a particular key
 pub(crate) enum FieldCacheOutcome {
     /// The value is already in the cache
-    Hit(Stream),
+    Hit(Result<Stream, RenderError>),
     /// The value is not in the cache. Caller is responsible for inserting it
     /// by calling [FutureCacheGuard::set] once computed.
-    Miss(FutureCacheGuard),
-    /// The first entrant dropped their write guard without writing to it, so
-    /// there's no response to return
-    NoResponse,
+    Miss(FieldCacheGuard),
 }
 
 /// A handle for writing a computed future value back into the cache. This is
@@ -75,15 +79,15 @@ pub(crate) enum FieldCacheOutcome {
 /// responsible for calling [FutureCacheGuard::set] to insert the value for
 /// everyone else. Subsequent callers to the cache will block until `set` is
 /// called.
-pub(crate) struct FutureCacheGuard(OwnedRwLockWriteGuard<Option<Stream>>);
+pub(crate) struct FieldCacheGuard(OwnedRwLockWriteGuard<FieldCacheValue>);
 
-impl FutureCacheGuard {
-    pub fn set(mut self, stream: Stream) {
-        *self.0.deref_mut() = Some(stream);
+impl FieldCacheGuard {
+    pub fn set(mut self, result: Result<Stream, RenderError>) {
+        *self.0.deref_mut() = Some(result);
     }
 }
 
-impl Drop for FutureCacheGuard {
+impl Drop for FieldCacheGuard {
     fn drop(&mut self) {
         if self.0.is_none() {
             // Friendly little error logging. We don't have a good way of

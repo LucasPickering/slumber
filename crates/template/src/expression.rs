@@ -69,7 +69,7 @@ impl Expression {
                                 let key = key.render_value(context).await?;
                                 // Keys must be strings, so convert here
                                 key.try_into_string().map_err(|error| {
-                                    RenderError::Value(error.error)
+                                    RenderError::from(error.error)
                                 })
                             };
                             try_join(key_future, value.render_value(context))
@@ -105,30 +105,27 @@ impl Expression {
         // else can copy our homework.
         let cache = context.field_cache();
         let guard = match cache.get_or_init(field.clone()).await {
-            FieldCacheOutcome::Hit(stream) => return Ok(stream),
+            FieldCacheOutcome::Hit(result) => return result,
             FieldCacheOutcome::Miss(guard) => guard,
-            // The future responsible for writing to the guard failed. Cloning
-            // errors is annoying so we return an empty response here. The
-            // initial error should've been returned elsewhere so that can be
-            // used instead.
-            FieldCacheOutcome::NoResponse => {
-                return Err(RenderError::CacheFailed {
-                    field: field.clone(),
-                });
-            }
         };
 
         // This value hasn't been rendered yet - ask the context to evaluate it
-        let mut stream = context.get_field(field).await?;
-        // If streaming isn't supported here, convert to a value before caching,
-        // so that the stream isn't evaluated multiple times unless necessary
-        if !context.can_stream() {
-            stream = stream.resolve().await?.into();
+        let result = async move {
+            let stream = context.get_field(field).await?;
+            if context.can_stream() {
+                Ok(stream)
+            } else {
+                // If streaming isn't supported here, convert to a value before
+                // caching, so that the stream isn't evaluated multiple times
+                // unless necessary
+                stream.resolve().await.map(Stream::Value)
+            }
         }
+        .await;
 
-        // Store value in the cache so other references to this field can use it
-        guard.set(stream.clone());
-        Ok(stream)
+        // Cache the result, even if it fails
+        guard.set(result.clone());
+        result
     }
 
     /// Render this expression, resolving any stream to a concrete value.

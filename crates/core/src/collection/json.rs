@@ -60,7 +60,7 @@ impl JsonTemplate {
                 serde_json::Value::try_from_value(
                     template.render_value(context).await?,
                 )
-                .map_err(|error| RenderError::Value(error.error))?
+                .map_err(|error| RenderError::from(error.error))?
             }
             Self::Array(array) => {
                 let array = future::try_join_all(

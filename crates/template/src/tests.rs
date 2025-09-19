@@ -3,14 +3,10 @@ use crate::{
     Value, value::StreamMetadata,
 };
 use bytes::Bytes;
-use futures::FutureExt;
 use indexmap::indexmap;
 use rstest::rstest;
 use slumber_util::{assert_err, assert_matches, test_data_dir};
-use std::sync::{
-    Arc,
-    atomic::{AtomicI64, Ordering},
-};
+use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::fs;
 
 /// Test simple expression rendering
@@ -283,19 +279,15 @@ impl Context for TestContext {
             }
             "stream" => {
                 let path = test_data_dir().join("data.json");
-                Ok(Stream::Stream {
-                    metadata: StreamMetadata::File { path: path.clone() },
-                    f: Arc::new(move || {
-                        let path = path.clone();
-                        async move {
-                            fs::read(path)
-                                .await
-                                .map(Bytes::from)
-                                .map_err(RenderError::other)
-                        }
-                        .boxed()
-                    }),
-                })
+                Ok(Stream::new(
+                    StreamMetadata::File { path: path.clone() },
+                    async move {
+                        fs::read(path)
+                            .await
+                            .map(Bytes::from)
+                            .map_err(RenderError::other)
+                    },
+                ))
             }
             _ => Err(RenderError::FunctionUnknown),
         }

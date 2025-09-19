@@ -7,6 +7,7 @@ use std::{
     fmt::Display,
     num::{ParseFloatError, ParseIntError},
     str::Utf8Error,
+    sync::Arc,
 };
 use thiserror::Error;
 use tracing::error;
@@ -33,7 +34,10 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 ///
 /// These error messages are generally shown with additional parent context, so
 /// they should be pretty brief.
-#[derive(Debug, Error)]
+///
+/// This has to implement Clone so it can be duplicated across deduplicated
+/// render chunks.
+#[derive(Clone, Debug, Error)]
 pub enum RenderError {
     /// 2+ futures were rendering the same field. One future was doing the
     /// actual rendering and the rest were waiting on the first. If the first
@@ -62,7 +66,7 @@ pub enum RenderError {
 
     /// External error type from a function call
     #[error(transparent)]
-    Other(Box<dyn std::error::Error + Send + Sync>),
+    Other(Arc<dyn std::error::Error + Send + Sync>),
 
     /// Not enough arguments provided to a function call
     #[error("Not enough arguments")]
@@ -77,7 +81,7 @@ pub enum RenderError {
 
     /// Error converting a [Value] to another type
     #[error(transparent)]
-    Value(#[from] ValueError),
+    Value(Arc<ValueError>),
 
     /// An error with additional context attached. Used to locate errors in
     /// function calls that could be deeply nested
@@ -94,7 +98,8 @@ impl RenderError {
     pub fn other(
         error: impl 'static + Into<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Self {
-        Self::Other(error.into())
+        // Use Box's conversions to box the error, then convert to Arc
+        Self::Other(Arc::from(error.into()))
     }
 
     /// Attach context to this error
@@ -107,17 +112,23 @@ impl RenderError {
     }
 }
 
+impl From<ValueError> for RenderError {
+    fn from(error: ValueError) -> Self {
+        Self::Value(error.into())
+    }
+}
+
 impl de::Error for RenderError {
     fn custom<T>(msg: T) -> Self
     where
         T: Display,
     {
-        RenderError::Other(msg.to_string().into())
+        Self::other(msg.to_string())
     }
 }
 
 /// Information about where an error occurred
-#[derive(Debug, Display)]
+#[derive(Clone, Debug, Display)]
 pub enum RenderErrorContext {
     /// Error in a function call expression
     #[display("{_0}()")]

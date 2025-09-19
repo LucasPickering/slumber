@@ -7,10 +7,10 @@ use crate::{
 };
 use bytes::Bytes;
 use derive_more::From;
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, FutureExt, Shared};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, fmt::Debug, path::PathBuf, sync::Arc};
+use std::{collections::VecDeque, fmt::Debug, path::PathBuf};
 
 /// A runtime template value. This very similar to a JSON value, except:
 /// - Numbers do not support arbitrary size
@@ -165,7 +165,7 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
-#[derive(Clone, derive_more::Debug)]
+#[derive(Clone, Debug)]
 pub enum Stream {
     /// A pre-resolved value
     Value(Value),
@@ -173,26 +173,30 @@ pub enum Stream {
     Stream {
         /// Additional information about the source of the stream
         metadata: StreamMetadata,
-        /// Function returning the stream future. This can be cloned so that it
-        /// can be called multiple times, as the stream may be cloned by the
-        /// field cache.
-        #[debug(skip)]
-        f: Arc<
-            dyn Fn() -> BoxFuture<'static, Result<Bytes, RenderError>>
-                + Send
-                + Sync,
-        >,
+        /// Future that resolves to binary data
+        future: Shared<BoxFuture<'static, Result<Bytes, RenderError>>>,
     },
 }
 
 impl Stream {
+    /// Create a new stream from a future that returns binary data
+    pub fn new(
+        metadata: StreamMetadata,
+        future: impl 'static + Future<Output = Result<Bytes, RenderError>> + Send,
+    ) -> Self {
+        Self::Stream {
+            metadata,
+            future: future.boxed().shared(),
+        }
+    }
+
     /// Resolve this stream to a concrete [Value]. If it's already a value, just
     /// return it. Otherwise the stream will be awaited and collected into
     /// bytes.
     pub async fn resolve(self) -> Result<Value, RenderError> {
         match self {
             Self::Value(value) => Ok(value),
-            Self::Stream { f, .. } => f().await.map(Value::Bytes),
+            Self::Stream { future, .. } => future.await.map(Value::Bytes),
         }
     }
 }
@@ -413,7 +417,7 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         let arg_index = self.num_popped;
         self.num_popped += 1;
         T::try_from_value(value).map_err(|error| {
-            RenderError::Value(error.error).context(
+            RenderError::from(error.error).context(
                 RenderErrorContext::ArgumentConvert {
                     argument: arg_index.to_string(),
                     value: error.value,
@@ -431,7 +435,7 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
     ) -> Result<T, RenderError> {
         match self.keyword.shift_remove(name) {
             Some(value) => T::try_from_value(value).map_err(|error| {
-                RenderError::Value(error.error).context(
+                RenderError::from(error.error).context(
                     RenderErrorContext::ArgumentConvert {
                         argument: name.to_owned(),
                         value: error.value,

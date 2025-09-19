@@ -7,7 +7,6 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
-use futures::FutureExt;
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
@@ -258,21 +257,12 @@ pub fn file(#[context] context: &TemplateContext, path: String) -> Stream {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
     // Return the file as a stream. If streaming isn't available here, it will
     // be resolved immediately instead
-    Stream::Stream {
-        metadata: StreamMetadata::File { path: path.clone() },
-        f: Arc::new(move || {
-            // This possible this function gets called multiple times, and each
-            // future has to be 'static
-            let path = path.clone();
-            async move {
-                fs::read(&path)
-                    .await
-                    .map(Bytes::from)
-                    .map_err(|error| FunctionError::File { path, error }.into())
-            }
-            .boxed()
-        }),
-    }
+    Stream::new(StreamMetadata::File { path: path.clone() }, async move {
+        fs::read(&path)
+            .await
+            .map(Bytes::from)
+            .map_err(|error| FunctionError::File { path, error }.into())
+    })
 }
 
 /// Convert a value to a float

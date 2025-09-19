@@ -22,8 +22,7 @@ futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
-regex = {version = "1.10.5", default-features = false}
-reqwest = {workspace = true, features = ["json", "multipart", "rustls-tls", "rustls-tls-native-roots", "rustls-tls-native-roots-no-provider"]}
+reqwest = {workspace = true, features = ["json", "multipart", "rustls-tls", "rustls-tls-native-roots", "rustls-tls-native-roots-no-provider", "stream"]}
 rstest = {workspace = true, optional = true}
 rusqlite = {version = "0.35.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "2.1.0"

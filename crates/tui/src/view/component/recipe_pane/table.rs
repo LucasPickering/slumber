@@ -72,6 +72,7 @@ where
         rows: impl IntoIterator<
             Item = (String, Template, RecipeOverrideKey, RowToggleKey),
         >,
+        can_stream: bool,
     ) -> Self {
         let items = rows
             .into_iter()
@@ -83,6 +84,7 @@ where
                     override_key,
                     template.clone(),
                     None,
+                    can_stream,
                 ),
                 enabled: Persisted::new(toggle_key, true),
             })
@@ -442,7 +444,12 @@ mod tests {
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                TestRowKey(recipe_id.clone()),
+                rows,
+                false,
+            ),
         )
         .with_props(props_factory())
         .build();
@@ -507,7 +514,12 @@ mod tests {
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                TestRowKey(recipe_id.clone()),
+                rows,
+                false,
+            ),
         )
         .with_props(props_factory())
         .build();
@@ -564,7 +576,12 @@ mod tests {
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                TestRowKey(recipe_id.clone()),
+                rows,
+                false,
+            ),
         )
         .with_props(props_factory())
         .build();
@@ -614,7 +631,12 @@ mod tests {
         let component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                TestRowKey(recipe_id.clone()),
+                rows,
+                false,
+            ),
         )
         .with_props(props_factory())
         .build();

@@ -2,44 +2,35 @@
 
 mod common;
 
+use rstest::rstest;
 use serde_json::json;
 use slumber_core::database::Database;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
-/// Test generating a curl command with:
-/// - URL
-/// - Query params
-/// - Headers
-#[test]
-fn test_generate_curl() {
+/// Test generating a curl command with different flags. Most of the request
+/// components are tested in unit tests in the core crate, so we just need to
+/// test CLI behavior here.
+#[rstest]
+#[case::url(
+    &["getUser"],
+    "curl -XGET --url 'http://server/users/username1'\n",
+)]
+#[case::profile(
+    &["getUser", "-p", "profile2"],
+    "curl -XGET --url 'http://server/users/username2'\n",
+)]
+#[case::overrides(
+    &["getUser", "-o", "username=username3"],
+    "curl -XGET --url 'http://server/users/username3'\n",
+)]
+fn test_generate_curl(
+    #[case] arguments: &[&str],
+    #[case] expected: &'static str,
+) {
     let (mut command, _) = common::slumber();
-    command.args(["generate", "curl", "getUser"]);
-    command
-        .assert()
-        .success()
-        .stdout("curl -XGET --url 'http://server/users/username1'\n");
-}
-
-/// Make sure the profile option is reflected correctly
-#[test]
-fn test_generate_curl_profile() {
-    let (mut command, _) = common::slumber();
-    command.args(["generate", "curl", "getUser", "-p", "profile2"]);
-    command
-        .assert()
-        .success()
-        .stdout("curl -XGET --url 'http://server/users/username2'\n");
-}
-
-/// Make sure field overrides are applied correctly
-#[test]
-fn test_generate_curl_override() {
-    let (mut command, _) = common::slumber();
-    command.args(["generate", "curl", "getUser", "-o", "username=username3"]);
-    command
-        .assert()
-        .success()
-        .stdout("curl -XGET --url 'http://server/users/username3'\n");
+    command.args(["generate", "curl"]);
+    command.args(arguments);
+    command.assert().success().stdout(expected);
 }
 
 /// Test failure when a downstream request is needed but cannot be triggered

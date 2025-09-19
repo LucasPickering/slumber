@@ -7,13 +7,14 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
+use futures::FutureExt;
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
-    Expected, TryFromValue, Value, ValueError, WithValue,
-    impl_try_from_value_str,
+    Expected, Stream, StreamMetadata, TryFromValue, Value, ValueError,
+    WithValue, impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
 use std::{env, fmt::Debug, path::PathBuf, process::Stdio, sync::Arc};
@@ -253,15 +254,25 @@ pub fn env(variable: String) -> String {
 /// {{ file("config.json") }} => Contents of config.json file
 /// ```
 #[template]
-pub async fn file(
-    #[context] context: &TemplateContext,
-    path: String,
-) -> Result<Bytes, FunctionError> {
+pub fn file(#[context] context: &TemplateContext, path: String) -> Stream {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
-    let bytes = fs::read(&path)
-        .await
-        .map_err(|error| FunctionError::File { path, error })?;
-    Ok(bytes.into())
+    // Return the file as a stream. If streaming isn't available here, it will
+    // be resolved immediately instead
+    Stream::Stream {
+        metadata: StreamMetadata::File { path: path.clone() },
+        f: Arc::new(move || {
+            // This possible this function gets called multiple times, and each
+            // future has to be 'static
+            let path = path.clone();
+            async move {
+                fs::read(&path)
+                    .await
+                    .map(Bytes::from)
+                    .map_err(|error| FunctionError::File { path, error }.into())
+            }
+            .boxed()
+        }),
+    }
 }
 
 /// Convert a value to a float

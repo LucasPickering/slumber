@@ -1,4 +1,4 @@
-use crate::{Identifier, Value};
+use crate::{Identifier, Stream};
 use std::{
     collections::{HashMap, hash_map::Entry},
     ops::DerefMut,
@@ -15,7 +15,7 @@ pub struct FieldCache {
     /// Cache each value by key. The outer mutex will only be held open for as
     /// long as it takes to check if the value is in the cache or not. The
     /// inner lock will be blocked on until the value is available.
-    cache: Mutex<HashMap<Identifier, Arc<RwLock<Option<Value>>>>>,
+    cache: Mutex<HashMap<Identifier, Arc<RwLock<Option<Stream>>>>>,
 }
 
 impl FieldCache {
@@ -61,7 +61,7 @@ impl FieldCache {
 /// Outcome of check a future cache for a particular key
 pub(crate) enum FieldCacheOutcome {
     /// The value is already in the cache
-    Hit(Value),
+    Hit(Stream),
     /// The value is not in the cache. Caller is responsible for inserting it
     /// by calling [FutureCacheGuard::set] once computed.
     Miss(FutureCacheGuard),
@@ -75,11 +75,11 @@ pub(crate) enum FieldCacheOutcome {
 /// responsible for calling [FutureCacheGuard::set] to insert the value for
 /// everyone else. Subsequent callers to the cache will block until `set` is
 /// called.
-pub(crate) struct FutureCacheGuard(OwnedRwLockWriteGuard<Option<Value>>);
+pub(crate) struct FutureCacheGuard(OwnedRwLockWriteGuard<Option<Stream>>);
 
 impl FutureCacheGuard {
-    pub fn set(mut self, value: Value) {
-        *self.0.deref_mut() = Some(value);
+    pub fn set(mut self, stream: Stream) {
+        *self.0.deref_mut() = Some(stream);
     }
 }
 

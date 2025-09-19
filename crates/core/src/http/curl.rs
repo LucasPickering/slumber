@@ -1,6 +1,6 @@
 use crate::{
     collection::Authentication,
-    http::{HttpMethod, RenderedBody},
+    http::{FormPart, HttpMethod, RenderedBody},
 };
 use anyhow::Context;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
@@ -100,8 +100,15 @@ impl CurlBuilder {
                 }
             }
             RenderedBody::FormMultipart(form) => {
-                for (field, value) in form {
-                    let value = as_text(value)?;
+                for (field, part) in form {
+                    let value = match part {
+                        FormPart::Bytes(bytes) => as_text(bytes)?,
+                        // Use curl's file path syntax
+                        FormPart::File(path) => {
+                            let path = path.to_string_lossy();
+                            &format!("@{path}")
+                        }
+                    };
                     write!(&mut self.command, " -F '{field}={value}'").unwrap();
                 }
             }

@@ -47,12 +47,14 @@ impl AuthenticationDisplay {
                     RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
                     username,
                     None,
+                    false,
                 );
                 let password = RecipeTemplate::new(
                     RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
                     // See note on this field def for why we unwrap
                     password.unwrap_or_default(),
                     None,
+                    false,
                 );
                 State::Basic {
                     username,
@@ -65,6 +67,7 @@ impl AuthenticationDisplay {
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
                     None,
+                    false,
                 ),
             },
         };

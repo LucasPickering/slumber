@@ -1,10 +1,17 @@
 use crate::{
-    Arguments, Context, FieldCache, Identifier, RenderError, Template, Value,
+    Arguments, Context, FieldCache, Identifier, RenderError, Stream, Template,
+    Value, value::StreamMetadata,
 };
+use bytes::Bytes;
+use futures::FutureExt;
 use indexmap::indexmap;
 use rstest::rstest;
-use slumber_util::assert_err;
-use std::sync::atomic::{AtomicI64, Ordering};
+use slumber_util::{assert_err, assert_matches, test_data_dir};
+use std::sync::{
+    Arc,
+    atomic::{AtomicI64, Ordering},
+};
+use tokio::fs;
 
 /// Test simple expression rendering
 #[rstest]
@@ -43,6 +50,8 @@ async fn test_expression(#[case] template: Template, #[case] expected: Value) {
     "my name is {{ invalid_utf8 }}",
     Value::Bytes(b"my name is \xc3\x28".as_slice().into(),
 ))]
+// Stream gets resolved to bytes, then converted to a string
+#[case::stream("{{ stream() }}", "{ \"a\": 1, \"b\": 2 }".into())]
 #[tokio::test]
 async fn test_render_value(
     #[case] template: Template,
@@ -54,6 +63,38 @@ async fn test_render_value(
             .await
             .unwrap(),
         expected
+    );
+}
+
+/// Render to a stream
+#[rstest]
+#[case::stream("{{ stream() }}", b"{ \"a\": 1, \"b\": 2 }", true)]
+#[case::text("text: {{ stream() }}", b"text: { \"a\": 1, \"b\": 2 }", false)]
+#[case::binary(
+    "{{ invalid_utf8 }} {{ stream() }}",
+    b"\xc3\x28 { \"a\": 1, \"b\": 2 }",
+    false
+)]
+#[tokio::test]
+async fn test_render_stream(
+    #[case] template: Template,
+    #[case] expected_resolved: &[u8],
+    #[case] expected_is_stream: bool,
+) {
+    let stream = template
+        .render_stream(&TestContext::default())
+        .await
+        .unwrap();
+
+    if expected_is_stream {
+        assert_matches!(stream, Stream::Stream { .. });
+    } else {
+        assert_matches!(stream, Stream::Value(Value::Bytes(_)));
+    }
+
+    assert_eq!(
+        stream.resolve().await.unwrap().into_bytes(),
+        expected_resolved
     );
 }
 
@@ -180,10 +221,14 @@ struct TestContext {
 }
 
 impl Context for TestContext {
+    fn can_stream(&self) -> bool {
+        true
+    }
+
     async fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> Result<Value, RenderError> {
+    ) -> Result<Stream, RenderError> {
         match identifier.as_str() {
             "name" => Ok("Mike".into()),
             "array" => Ok(vec!["a", "b", "c"].into()),
@@ -196,7 +241,7 @@ impl Context for TestContext {
                 // this call
                 Ok((previous_incrs + 1).into())
             }
-            "invalid_utf8" => Ok(Value::Bytes(b"\xc3\x28".as_slice().into())),
+            "invalid_utf8" => Ok(b"\xc3\x28".into()),
             _ => Err(RenderError::FieldUnknown {
                 field: identifier.clone(),
             }),
@@ -211,12 +256,12 @@ impl Context for TestContext {
         &self,
         function_name: &Identifier,
         mut arguments: Arguments<'_, Self>,
-    ) -> Result<Value, RenderError> {
+    ) -> Result<Stream, RenderError> {
         match function_name.as_str() {
             "identity" => {
                 let value: Value = arguments.pop_position()?;
                 arguments.ensure_consumed()?;
-                Ok(value)
+                Ok(value.into())
             }
             "add" => {
                 let a: i64 = arguments.pop_position()?;
@@ -235,6 +280,22 @@ impl Context for TestContext {
                 } else {
                     Ok(a.into())
                 }
+            }
+            "stream" => {
+                let path = test_data_dir().join("data.json");
+                Ok(Stream::Stream {
+                    metadata: StreamMetadata::File { path: path.clone() },
+                    f: Arc::new(move || {
+                        let path = path.clone();
+                        async move {
+                            fs::read(path)
+                                .await
+                                .map(Bytes::from)
+                                .map_err(RenderError::other)
+                        }
+                        .boxed()
+                    }),
+                })
             }
             _ => Err(RenderError::FunctionUnknown),
         }

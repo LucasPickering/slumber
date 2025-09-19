@@ -161,7 +161,21 @@ mod tests {
     #[rstest]
     fn test_complete_recipe(_current_dir: CurrentDirGuard) {
         let completions = complete(complete_recipe());
-        assert_eq!(&completions, &["getUser", "jsonBody", "chained"]);
+        assert_eq!(
+            &completions,
+            &[
+                "getUser",
+                "query",
+                "headers",
+                "authBasic",
+                "authBearer",
+                "textBody",
+                "jsonBody",
+                "fileBody",
+                "multipart",
+                "chained"
+            ]
+        );
     }
 
     /// Complete request IDs from the database

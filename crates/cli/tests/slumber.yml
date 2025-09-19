@@ -20,12 +20,59 @@ requests:
     method: GET
     url: "{{ host }}/users/{{ username }}"
 
+  query:
+    method: GET
+    url: "{{ host }}/query"
+    query:
+      a: 1
+      b: [2, 3]
+
+  headers:
+    method: GET
+    url: "{{ host }}/headers"
+    headers:
+      Content-Type: text/plain
+
+  authBasic:
+    method: GET
+    url: "{{ host }}/headers"
+    authentication:
+      type: basic
+      username: "{{ username }}"
+      password: hunter2
+
+  authBearer:
+    method: GET
+    url: "{{ host }}/headers"
+    authentication:
+      type: bearer
+      token: my-token
+
+  textBody:
+    method: POST
+    url: "{{ host }}/text"
+    body: "This is an HTTP body"
+
   jsonBody:
     method: POST
     url: "{{ host }}/json"
     body:
       type: json
       data: { "username": "{{ username }}", "name": "Frederick Smidgen" }
+
+  fileBody:
+    method: POST
+    url: "{{ host }}/file"
+    body: "{{ file('test_data/data.json') }}"
+
+  multipart:
+    method: POST
+    url: "{{ host }}/multipart"
+    body:
+      type: form_multipart
+      data:
+        username: "{{ username }}"
+        file: "{{ file('test_data/data.json') }}"
 
   chained:
     method: GET

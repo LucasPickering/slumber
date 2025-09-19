@@ -7,9 +7,10 @@ use crate::{
 };
 use bytes::Bytes;
 use derive_more::From;
+use futures::future::BoxFuture;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, fmt::Debug};
+use std::{collections::VecDeque, fmt::Debug, path::PathBuf, sync::Arc};
 
 /// A runtime template value. This very similar to a JSON value, except:
 /// - Numbers do not support arbitrary size
@@ -122,6 +123,13 @@ impl From<&str> for Value {
     }
 }
 
+// Convert from byte literals
+impl<const N: usize> From<&'static [u8; N]> for Value {
+    fn from(value: &'static [u8; N]) -> Self {
+        Self::Bytes(value.as_slice().into())
+    }
+}
+
 impl<T> From<Vec<T>> for Value
 where
     Value: From<T>,
@@ -150,6 +158,60 @@ impl From<serde_json::Value> for Value {
     fn from(value: serde_json::Value) -> Self {
         Self::from_json(value)
     }
+}
+
+/// A source of a template value. This can be a concrete [Value] or a streamable
+/// source such as a file. This is used widely within rendering because it's a
+/// superset of all values. Not all renders accept streams as results though,
+/// so it's a separate type rather than a variant on [Value]. To convert a
+/// stream into a value, call [Self::resolve].
+#[derive(Clone, derive_more::Debug)]
+pub enum Stream {
+    /// A pre-resolved value
+    Value(Value),
+    /// Stream data from a (potentially) large source such as a file
+    Stream {
+        /// Additional information about the source of the stream
+        metadata: StreamMetadata,
+        /// Function returning the stream future. This can be cloned so that it
+        /// can be called multiple times, as the stream may be cloned by the
+        /// field cache.
+        #[debug(skip)]
+        f: Arc<
+            dyn Fn() -> BoxFuture<'static, Result<Bytes, RenderError>>
+                + Send
+                + Sync,
+        >,
+    },
+}
+
+impl Stream {
+    /// Resolve this stream to a concrete [Value]. If it's already a value, just
+    /// return it. Otherwise the stream will be awaited and collected into
+    /// bytes.
+    pub async fn resolve(self) -> Result<Value, RenderError> {
+        match self {
+            Self::Value(value) => Ok(value),
+            Self::Stream { f, .. } => f().await.map(Value::Bytes),
+        }
+    }
+}
+
+impl<T: Into<Value>> From<T> for Stream {
+    fn from(value: T) -> Self {
+        Self::Value(value.into())
+    }
+}
+
+/// Metadata about the source of a [Stream]. This helps consumers present the
+/// stream to the user, e.g. in a template preview
+#[derive(Clone, Debug)]
+pub enum StreamMetadata {
+    /// Data is being streamed from a file
+    File {
+        /// **Absolute** path to the file
+        path: PathBuf,
+    },
 }
 
 /// Convert [Value] to a type fallibly
@@ -395,6 +457,19 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         }
     }
 
+    /// Replace the context by mapping it through a function
+    pub fn map_context<Ctx2>(
+        self,
+        f: impl FnOnce(&'ctx Ctx) -> &'ctx Ctx2,
+    ) -> Arguments<'ctx, Ctx2> {
+        Arguments {
+            context: f(self.context),
+            position: self.position,
+            num_popped: self.num_popped,
+            keyword: self.keyword,
+        }
+    }
+
     /// Push a piped argument onto the back of the positional argument list
     pub(crate) fn push_piped(&mut self, argument: Value) {
         self.position.push_back(argument);
@@ -405,30 +480,27 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
 ///
 /// This is used for converting function outputs back to template values.
 pub trait FunctionOutput {
-    fn into_result(self) -> Result<Value, RenderError>;
+    fn into_result(self) -> Result<Stream, RenderError>;
 }
 
-impl<T> FunctionOutput for T
-where
-    Value: From<T>,
-{
-    fn into_result(self) -> Result<Value, RenderError> {
+impl<T: Into<Stream>> FunctionOutput for T {
+    fn into_result(self) -> Result<Stream, RenderError> {
         Ok(self.into())
     }
 }
 
 impl<T, E> FunctionOutput for Result<T, E>
 where
-    T: Into<Value> + Send + Sync,
+    T: Into<Stream> + Send + Sync,
     E: Into<RenderError> + Send + Sync,
 {
-    fn into_result(self) -> Result<Value, RenderError> {
+    fn into_result(self) -> Result<Stream, RenderError> {
         self.map(T::into).map_err(E::into)
     }
 }
 
 impl<T: FunctionOutput> FunctionOutput for Option<T> {
-    fn into_result(self) -> Result<Value, RenderError> {
-        self.map(T::into_result).unwrap_or(Ok(Value::Null))
+    fn into_result(self) -> Result<Stream, RenderError> {
+        self.map(T::into_result).unwrap_or(Ok(Value::Null.into()))
     }
 }

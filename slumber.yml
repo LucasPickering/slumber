@@ -136,12 +136,19 @@ requests:
   bodies:
     name: Misc Bodies
     requests:
-      big_file:
+      stream_file:
         $ref: "#/.base_request"
-        name: Big File
+        name: Stream File
         method: POST
         url: "{{ host }}/anything"
         body: "{{ file('Cargo.lock') }}"
+
+      stream_command:
+        $ref: "#/.base_request"
+        name: Stream Command
+        method: POST
+        url: "{{ host }}/anything"
+        body: "{{ command(['cat', 'Cargo.lock']) }}"
 
       form_urlencoded:
         $ref: "#/.base_request"
@@ -160,7 +167,6 @@ requests:
         body:
           type: form_multipart
           data:
-            filename: "logo.png"
             image: "{{ prompt(message='Path', default='static/slumber.png') | file() }}"
 
       raw_json:

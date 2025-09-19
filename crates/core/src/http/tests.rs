@@ -7,19 +7,18 @@ use crate::{
 };
 use indexmap::{IndexMap, indexmap};
 use pretty_assertions::assert_eq;
-use regex::Regex;
 use reqwest::{Body, StatusCode, header};
 use rstest::rstest;
 use serde_json::json;
 use slumber_util::{Factory, assert_err, test_data_dir};
-use std::ptr;
+use std::{path, ptr};
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 /// Create a template context. Take a set of extra recipes to add to the created
 /// collection
-fn template_context(recipe: Recipe) -> TemplateContext {
+fn template_context(recipe: Recipe, host: Option<&str>) -> TemplateContext {
     let profile_data = indexmap! {
-        "host".into() => "http://localhost".into(),
+        "host".into() => host.unwrap_or("http://localhost").into(),
         "mode".into() => "sudo".into(),
         "user_id".into() => "1".into(),
         "group_id".into() => "3".into(),
@@ -28,6 +27,9 @@ fn template_context(recipe: Recipe) -> TemplateContext {
         "token".into() => "tokenzzz".into(),
         "test_data_dir".into() => test_data_dir().to_str().unwrap().into(),
         "prompt".into() => "{{ prompt() }}".into(),
+        "stream".into() => "{{ file('data.json') }}".into(),
+        // Streamed value that we can use to test deduping
+        "stream_prompt".into() => "{{ file(concat([prompt(), '.txt'])) }}".into(),
         "error".into() => "{{ fake_fn() }}".into(),
     };
     let profile = Profile {
@@ -36,6 +38,7 @@ fn template_context(recipe: Recipe) -> TemplateContext {
     };
     TemplateContext {
         prompter: Box::new(TestPrompter::new(["first", "second"])),
+        root_dir: test_data_dir(),
         ..TemplateContext::factory((by_id([profile]), by_id([recipe])))
     }
 }
@@ -91,7 +94,7 @@ async fn test_build_request(http_engine: HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
 
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
@@ -144,7 +147,7 @@ async fn test_build_url(http_engine: HttpEngine) {
         },
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
     let seed = seed(&context, BuildOptions::default());
     let url = http_engine.build_url(seed, &context).await.unwrap();
 
@@ -171,10 +174,13 @@ async fn test_build_body(
     #[case] body: RecipeBody,
     #[case] expected_body: &[u8],
 ) {
-    let context = template_context(Recipe {
-        body: Some(body),
-        ..Recipe::factory(())
-    });
+    let context = template_context(
+        Recipe {
+            body: Some(body),
+            ..Recipe::factory(())
+        },
+        None,
+    );
     let seed = seed(&context, BuildOptions::default());
     let body = http_engine.build_body(seed, &context).await.unwrap();
 
@@ -213,7 +219,7 @@ async fn test_authentication(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
 
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
@@ -245,36 +251,32 @@ async fn test_authentication(
 #[case::json(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     None,
-    Some(r#"{"group_id":"3"}"#),
-    "^application/json$",
-    &[],
+    "application/json",
+    r#"{"group_id":"3"}"#,
 )]
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     Some("text/plain"),
-    Some(r#"{"group_id":"3"}"#),
-    "^text/plain$",
-    &[],
+    "text/plain",
+    r#"{"group_id":"3"}"#,
 )]
 #[case::json_unpack(
     // Single-chunk templates should get unpacked to the actual JSON value
     // instead of returned as a string
     RecipeBody::json(json!("{{ [1,2,3] }}")).unwrap(),
     None,
-    Some("[1,2,3]"),
-    "^application/json$",
-    &[],
+    "application/json",
+    "[1,2,3]",
 )]
 #[case::json_no_unpack(
     // This template doesn't get unpacked because it is multiple chunks
     RecipeBody::json(json!("no: {{ [1,2,3] }}")).unwrap(),
     None,
+    "application/json",
     // Spaces are added because this uses the template Value stringification
     // instead of serde_json stringification
-    Some(r#""no: [1, 2, 3]""#),
-    "^application/json$",
-    &[],
+    r#""no: [1, 2, 3]""#,
 )]
 #[case::json_string_from_file(
     // JSON data is loaded as a string and NOT unpacked. file() returns bytes
@@ -283,9 +285,8 @@ async fn test_authentication(
         "{{ file(concat([test_data_dir, '/data.json'])) | trim() }}"
     )).unwrap(),
     None,
-    Some(r#""{ \"a\": 1, \"b\": 2 }""#),
-    "^application/json$",
-    &[],
+    "application/json",
+    r#""{ \"a\": 1, \"b\": 2 }""#,
 )]
 #[case::json_from_file_parsed(
     // Pipe to json_parse() to parse it
@@ -293,9 +294,8 @@ async fn test_authentication(
         "{{ file(concat([test_data_dir, '/data.json'])) | json_parse() }}"
     )).unwrap(),
     None,
-    Some(r#"{"a":1,"b":2}"#),
-    "^application/json$",
-    &[],
+    "application/json",
+    r#"{"a":1,"b":2}"#,
 )]
 #[case::form_urlencoded(
     RecipeBody::FormUrlencoded(indexmap! {
@@ -303,101 +303,125 @@ async fn test_authentication(
         "token".into() => "{{ token }}".into()
     }),
     None,
-    Some("user_id=1&token=tokenzzz"),
-    "^application/x-www-form-urlencoded$",
-    &[],
+    "application/x-www-form-urlencoded",
+    "user_id=1&token=tokenzzz",
 )]
 // reqwest sets the content type when initializing the body, so make sure
 // that doesn't override the user's value
 #[case::form_urlencoded_content_type_override(
     RecipeBody::FormUrlencoded(Default::default()),
     Some("text/plain"),
-    Some(""),
-    "^text/plain$",
-    &[],
+    "text/plain",
+    ""
 )]
 #[case::form_multipart(
     RecipeBody::FormMultipart(indexmap! {
         "user_id".into() => "{{ user_id }}".into(),
-        "binary".into() => invalid_utf8(),
     }),
     None,
-    // multipart bodies are automatically turned into streams by reqwest,
-    // and we don't store stream bodies atm
-    // https://github.com/LucasPickering/slumber/issues/256
+    // Normally the boundary is random, but we make it static for testing
+    "multipart/form-data; boundary=BOUNDARY",
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"user_id\"\r
+\r
+1\r
+--BOUNDARY--\r
+",
+)]
+#[case::form_multipart_file(
+    RecipeBody::FormMultipart(indexmap! {
+        "file".into() =>
+            "{{ file(concat([test_data_dir, '/data.json'])) }}".into(),
+    }),
     None,
-    "^multipart/form-data; boundary=[a-f0-9-]{67}$",
-    &[("content-length", "321")],
+    "multipart/form-data; boundary=BOUNDARY",
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"file\"; filename=\"data.json\"\r
+Content-Type: application/json\r
+\r
+{ \"a\": 1, \"b\": 2 }\r
+--BOUNDARY--\r
+",
+)]
+#[case::form_multipart_file_not_streamed(
+    RecipeBody::FormMultipart(indexmap! {
+        // This file does *not* get streamed because it's not a single-chunk
+        // template
+        "file".into() =>
+            "data: {{ file(concat([test_data_dir, '/data.json'])) }}".into(),
+    }),
+    None,
+    "multipart/form-data; boundary=BOUNDARY",
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"file\"\r
+\r
+data: { \"a\": 1, \"b\": 2 }\r
+--BOUNDARY--\r
+",
 )]
 #[tokio::test]
 async fn test_structured_body(
     http_engine: HttpEngine,
     #[case] body: RecipeBody,
     #[case] content_type: Option<&str>,
-    #[case] expected_body: Option<&'static str>,
-    // For multipart bodies, the content type includes random content
-    #[case] expected_content_type: Regex,
-    #[case] extra_headers: &[(&str, &str)],
+    #[case] expected_content_type: &str,
+    #[case] expected_body: &'static str,
 ) {
+    // We're going to actually send the request so we can get the full body.
+    // Reqwest doesn't expose the body for multipart requests because it may be
+    // streamed
+    let server = MockServer::start().await;
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/post"))
+        .respond_with(move |request: &wiremock::Request| {
+            // Echo back the Content-Type and body so we can assert on it
+            ResponseTemplate::new(StatusCode::OK)
+                .append_header(
+                    header::CONTENT_TYPE,
+                    request
+                        .headers
+                        .get(header::CONTENT_TYPE)
+                        .expect("Missing Content-Type header"),
+                )
+                .set_body_bytes(request.body.clone())
+        })
+        .mount(&server)
+        .await;
+
     let headers = if let Some(content_type) = content_type {
         indexmap! {"content-type".into() => content_type.into()}
     } else {
         IndexMap::default()
     };
     let recipe = Recipe {
+        method: HttpMethod::Post,
+        url: "{{ host }}/post".into(),
         headers,
         body: Some(body),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let context = template_context(recipe);
+    let context = template_context(recipe, Some(&server.uri()));
 
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
+    let exchange = ticket.send().await.unwrap();
 
-    // Assert on the actual built request *and* the record, to make sure
-    // they're consistent with each other
-    let actual_content_type = ticket
-        .request
-        .headers()
+    // Mocker echoes the Content-Type header and body, assert on them
+    assert_eq!(exchange.response.status, StatusCode::OK);
+    let actual_content_type = exchange
+        .response
+        .headers
         .get(header::CONTENT_TYPE)
         .expect("Missing Content-Type header")
         .to_str()
         .expect("Invalid Content-Type header");
-    assert!(
-        expected_content_type.is_match(actual_content_type),
-        "Expected Content-Type `{actual_content_type}` \
-            to match `{expected_content_type}`"
-    );
-    assert_eq!(
-        ticket
-            .request
-            .body()
-            .and_then(Body::as_bytes)
-            // We know all the bodies are UTF-8. This gives better errors
-            .map(|bytes| std::str::from_utf8(bytes).unwrap()),
-        expected_body
-    );
-
-    assert_eq!(
-        *ticket.record,
-        RequestRecord {
-            id: ticket.record.id,
-            body: expected_body.map(Bytes::from),
-            // Use the actual content type here, because the expected
-            // content type maybe be a pattern and we need an exactl string.
-            // We checked actual=expected above so this is fine
-            headers: header_map(
-                [("content-type", actual_content_type)]
-                    .into_iter()
-                    .chain(extra_headers.iter().copied())
-            ),
-            ..RequestRecord::factory((
-                Some(context.collection.first_profile_id().clone()),
-                recipe_id
-            ))
-        }
-    );
+    assert_eq!(actual_content_type, expected_content_type);
+    if let Some(body) = exchange.response.body.text() {
+        assert_eq!(body, expected_body);
+    } else {
+        // We expect all bodies to be text
+        panic!("Non UTF-8 body: {:?}", exchange.response.body.bytes());
+    }
 }
 
 /// Test overriding authentication in BuildOptions
@@ -411,7 +435,7 @@ async fn test_override_authentication(http_engine: HttpEngine) {
         }),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
 
     let seed = seed(
         &context,
@@ -451,7 +475,7 @@ async fn test_override_headers(http_engine: HttpEngine) {
         },
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
     let seed = seed(
         &context,
         BuildOptions {
@@ -495,7 +519,7 @@ async fn test_override_query(http_engine: HttpEngine) {
         },
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
     let seed = seed(
         &context,
         BuildOptions {
@@ -525,7 +549,7 @@ async fn test_override_body_raw(http_engine: HttpEngine) {
         body: Some(RecipeBody::Raw("{{ username }}".into())),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
     let seed = seed(
         &context,
         BuildOptions {
@@ -555,7 +579,7 @@ async fn test_override_body_json(http_engine: HttpEngine) {
         ),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
 
     let seed = seed(
         &context,
@@ -594,7 +618,7 @@ async fn test_override_body_form(http_engine: HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
 
     let seed = seed(
         &context,
@@ -631,28 +655,88 @@ async fn test_override_body_form(http_engine: HttpEngine) {
 /// Using the same profile field in two different templates should be
 /// deduplicated, so that the expression is only evaluated once
 #[rstest]
+#[case::url_body(
+    // Dedupe happens within a single template AND across templates
+    "{{ host }}/{{ prompt }}/{{ prompt }}",
+    "{{ prompt }}".into(),
+    "first",
+)]
+#[case::url_multipart_body(
+    "{{ host }}/{{ stream_prompt }}/{{ stream_prompt }}",
+    // The body should *not* be streamed because is cached from the URL. This
+    // works by rendering the body last
+    RecipeBody::FormMultipart(indexmap!{
+        "file".into() => "{{ stream_prompt }}".into(),
+    }),
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"file\"\r
+\r
+first\r
+--BOUNDARY--\r
+",
+)]
+#[case::multipart_body_multiple(
+    "{{ host }}/first/first",
+    // Field is used twice in the same body. The stream source gets cloned so
+    // they reference the same file but are both streamed
+    RecipeBody::FormMultipart(indexmap!{
+        "f1".into() => "{{ stream_prompt }}".into(),
+        "f2".into() => "{{ stream_prompt }}".into(),
+    }),
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"f1\"; filename=\"first.txt\"\r
+Content-Type: text/plain\r
+\r
+first\r
+--BOUNDARY\r
+Content-Disposition: form-data; name=\"f2\"; filename=\"first.txt\"\r
+Content-Type: text/plain\r
+\r
+first\r
+--BOUNDARY--\r
+",
+)]
 #[tokio::test]
-async fn test_profile_duplicate(http_engine: HttpEngine) {
+async fn test_profile_duplicate(
+    http_engine: HttpEngine,
+    #[case] url: Template,
+    #[case] body: RecipeBody,
+    #[case] expected_body: &str,
+) {
+    // We're going to actually send the request so we can get the full body.
+    // Reqwest doesn't expose the body for multipart requests because it may be
+    // streamed
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/first/first"))
+        .respond_with(|request: &wiremock::Request| {
+            ResponseTemplate::new(StatusCode::OK)
+                .set_body_bytes(request.body.clone())
+        })
+        .mount(&server)
+        .await;
+
     let recipe = Recipe {
         method: HttpMethod::Post,
-        url: "{{ host }}/{{ prompt }}/{{ prompt }}".into(),
-        body: Some("{{ prompt }}".into()),
+        url,
+        body: Some(body),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, Some(&host));
 
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
 
-    let expected_url: Url = "http://localhost/first/first".parse().unwrap();
-    let expected_body = "first";
+    // Make sure the URL rendered correctly before sending
+    let expected_url: Url = format!("{host}/first/first").parse().unwrap();
+    let exchange = ticket.send().await.unwrap();
 
-    let request = &ticket.request;
-    assert_eq!(request.url(), &expected_url);
+    assert_eq!(exchange.response.status, StatusCode::OK);
+    assert_eq!(exchange.request.url, expected_url);
     assert_eq!(
-        request
-            .body()
-            .and_then(|body| std::str::from_utf8(body.as_bytes()?).ok()),
+        // The response body is the same as the request body
+        std::str::from_utf8(exchange.response.body.bytes()).ok(),
         Some(expected_body)
     );
 }
@@ -669,7 +753,7 @@ async fn test_profile_duplicate_error(http_engine: HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
     assert_err!(
@@ -697,10 +781,10 @@ async fn test_send_request(http_engine: HttpEngine) {
         .await;
 
     let recipe = Recipe {
-        url: format!("{host}/get", host = server.uri()).as_str().into(),
+        url: "{{ host }}/get".into(),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, Some(&server.uri()));
     let seed = seed(&context, BuildOptions::default());
 
     // Build+send the request
@@ -745,7 +829,7 @@ async fn test_render_headers_strip() {
         },
         ..Recipe::factory(())
     };
-    let context = template_context(Recipe::factory(()));
+    let context = template_context(Recipe::factory(()), None);
     let rendered = recipe
         .render_headers(&BuildOptions::default(), &context)
         .await
@@ -788,7 +872,7 @@ async fn test_build_curl(http_engine: HttpEngine) {
         },
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
     let seed = seed(&context, BuildOptions::default());
 
     let command = http_engine.build_curl(seed, &context).await.unwrap();
@@ -829,7 +913,7 @@ async fn test_build_curl_authentication(
         authentication: Some(authentication),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
     let seed = seed(&context, BuildOptions::default());
     let command = http_engine.build_curl(seed, &context).await.unwrap();
     let expected_command = format!(
@@ -859,6 +943,12 @@ async fn test_build_curl_authentication(
     }),
     "-F 'user_id=1' -F 'token=tokenzzz'"
 )]
+#[case::form_multipart_file(
+    RecipeBody::FormMultipart(indexmap! {
+        "file".into() => "{{ file('data.json') }}".into(),
+    }),
+    "-F 'file=@{ROOT}{SEP}data.json'"
+)]
 #[tokio::test]
 async fn test_build_curl_body(
     http_engine: HttpEngine,
@@ -869,10 +959,14 @@ async fn test_build_curl_body(
         body: Some(body),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, None);
 
     let seed = seed(&context, BuildOptions::default());
     let command = http_engine.build_curl(seed, &context).await.unwrap();
+    let expected_arguments = expected_arguments
+        // Dynamic replacements for system-specific contents
+        .replace("{ROOT}", &context.root_dir.to_string_lossy())
+        .replace("{SEP}", path::MAIN_SEPARATOR_STR);
     let expected_command =
         format!("curl -XGET --url 'http://localhost/url' {expected_arguments}");
     assert_eq!(command, expected_command);
@@ -909,10 +1003,10 @@ async fn test_follow_redirects(
         ..Default::default()
     });
     let recipe = Recipe {
-        url: format!("{host}/redirect").as_str().into(),
+        url: "{{ host }}/redirect".into(),
         ..Recipe::factory(())
     };
-    let context = template_context(recipe);
+    let context = template_context(recipe, Some(&host));
     let seed = seed(&context, BuildOptions::default());
 
     // Build+send the request

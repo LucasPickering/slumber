@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Fixed
+
+- Fix `slumber generate curl` output for multipart forms with file fields
+
 ## [4.0.1] - 2025-09-14
 
 <!-- ANCHOR: changelog -->

@@ -41,7 +41,7 @@ impl RecipeDisplay {
         Self {
             tabs: Default::default(),
             method: recipe.method,
-            url: TemplatePreview::new(recipe.url.clone(), None, false),
+            url: TemplatePreview::new(recipe.url.clone(), None, false, false),
             query: RecipeFieldTable::new(
                 "Parameter",
                 QueryRowKey(recipe.id.clone()),
@@ -61,6 +61,7 @@ impl RecipeDisplay {
                         )
                     },
                 ),
+                false,
             )
             .into(),
             headers: RecipeFieldTable::new(
@@ -79,6 +80,7 @@ impl RecipeDisplay {
                         )
                     },
                 ),
+                false,
             )
             .into(),
             body: recipe

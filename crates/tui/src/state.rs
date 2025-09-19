@@ -18,7 +18,7 @@ use slumber_core::{
     http::{Exchange, RequestError, RequestId, RequestSeed},
     render::{Prompter, TemplateContext},
 };
-use slumber_template::{RenderedChunk, Template};
+use slumber_template::{RenderedChunk, StreamContext, Template};
 use slumber_util::ResultTraced;
 use std::{
     path::{Path, PathBuf},
@@ -384,6 +384,7 @@ impl LoadedState {
             }
             Message::TemplatePreview {
                 template,
+                can_stream,
                 on_complete,
             } => {
                 self.render_template_preview(
@@ -394,6 +395,7 @@ impl LoadedState {
                     // and this shortcut saves us a lot of plumbing so it's
                     // worth it
                     self.view.selected_profile_id().cloned(),
+                    can_stream,
                     on_complete,
                 );
             }
@@ -646,12 +648,17 @@ impl LoadedState {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
+        can_stream: bool,
         on_complete: Callback<Vec<RenderedChunk>>,
     ) {
         let context = self.template_context(profile_id, true);
         util::spawn(async move {
             // Render chunks, then write them to the output destination
-            let chunks = template.render_chunks(&context).await;
+            let chunks = if can_stream {
+                template.render_chunks(&StreamContext::new(&context)).await
+            } else {
+                template.render_chunks(&context).await
+            };
             on_complete(chunks);
         });
     }

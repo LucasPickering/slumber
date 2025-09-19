@@ -20,7 +20,9 @@ use derive_more::From;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
-use slumber_template::{Arguments, FieldCache, Identifier, RenderError, Value};
+use slumber_template::{
+    Arguments, FieldCache, Identifier, RenderError, Stream,
+};
 use slumber_util::ResultTraced;
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -81,73 +83,85 @@ impl TemplateContext {
             });
         }
 
-        // Defer loading the most recent exchange until we know we'll need it
-        let get_latest = || async {
-            self.http_provider
-                .get_latest_request(self.selected_profile.as_ref(), recipe_id)
-                .await
-                .map_err(FunctionError::Database)
-        };
-
-        // Helper to execute the request, if triggered
-        let send_request = || async {
-            // There are 3 different ways we can generate the build optoins:
-            // 1. Default (enable all query params/headers)
-            // 2. Load from UI state for both TUI and CLI
-            // 3. Load from UI state for TUI, enable all for CLI
-            // These all have their own issues:
-            // 1. Triggered request doesn't necessarily match behavior if user
-            //  were to execute the request themself
-            // 2. CLI behavior is silently controlled by UI state
-            // 3. TUI and CLI behavior may not match
-            // All 3 options are unintuitive in some way, but 1 is the easiest
-            // to implement so I'm going with that for now.
-            let build_options = Default::default();
-
-            self.http_provider
-                .send_request(
-                    RequestSeed::new(recipe_id.clone(), build_options),
-                    self,
-                )
-                .await
-                .map_err(|error| FunctionError::Trigger {
-                    recipe_id: recipe_id.clone(),
-                    error,
-                })
-        };
-
         let exchange = match trigger {
-            RequestTrigger::Never => {
-                get_latest().await?.ok_or(FunctionError::ResponseMissing)?
-            }
+            RequestTrigger::Never => self
+                .get_latest_cached(recipe_id)
+                .await?
+                .ok_or(FunctionError::ResponseMissing)?,
             RequestTrigger::NoHistory => {
                 // If a exchange is present in history, use that. If not, fetch
-                if let Some(exchange) = get_latest().await? {
-                    exchange
-                } else {
-                    send_request().await?
-                }
-            }
-            RequestTrigger::Expire { duration } => match get_latest().await? {
-                Some(exchange)
-                    if exchange.end_time + duration.inner() >= Utc::now() =>
+                if let Some(exchange) =
+                    self.get_latest_cached(recipe_id).await?
                 {
                     exchange
+                } else {
+                    self.send_request(recipe_id).await?
                 }
-                _ => send_request().await?,
-            },
-            RequestTrigger::Always => send_request().await?,
+            }
+            RequestTrigger::Expire { duration } => {
+                match self.get_latest_cached(recipe_id).await? {
+                    Some(exchange)
+                        if exchange.end_time + duration.inner()
+                            >= Utc::now() =>
+                    {
+                        exchange
+                    }
+                    _ => self.send_request(recipe_id).await?,
+                }
+            }
+            RequestTrigger::Always => self.send_request(recipe_id).await?,
         };
 
         Ok(exchange.response)
+    }
+
+    /// Get the most recent cached exchange for the given recipe
+    async fn get_latest_cached(
+        &self,
+        recipe_id: &RecipeId,
+    ) -> Result<Option<Exchange>, FunctionError> {
+        self.http_provider
+            .get_latest_request(self.selected_profile.as_ref(), recipe_id)
+            .await
+            .map_err(FunctionError::Database)
+    }
+
+    /// Send a request for the recipe and return the exchange
+    async fn send_request(
+        &self,
+        recipe_id: &RecipeId,
+    ) -> Result<Exchange, FunctionError> {
+        // There are 3 different ways we can generate the build optoins:
+        // 1. Default (enable all query params/headers)
+        // 2. Load from UI state for both TUI and CLI
+        // 3. Load from UI state for TUI, enable all for CLI
+        // These all have their own issues:
+        // 1. Triggered request doesn't necessarily match behavior if user
+        //  were to execute the request themself
+        // 2. CLI behavior is silently controlled by UI state
+        // 3. TUI and CLI behavior may not match
+        // All 3 options are unintuitive in some way, but 1 is the easiest
+        // to implement so I'm going with that for now.
+        let build_options = Default::default();
+
+        self.http_provider
+            .send_request(
+                RequestSeed::new(recipe_id.clone(), build_options),
+                self,
+            )
+            .await
+            .map_err(|error| FunctionError::Trigger {
+                recipe_id: recipe_id.clone(),
+                error,
+            })
     }
 }
 
 impl slumber_template::Context for TemplateContext {
     async fn get_field(
         &self,
-        field: &slumber_template::Identifier,
-    ) -> Result<Value, slumber_template::RenderError> {
+        field: &Identifier,
+    ) -> Result<Stream, RenderError> {
         // Check overrides first. The override value is NOT treated as a
         // template
         if let Some(value) = self.overrides.get(field.as_str()) {
@@ -163,13 +177,15 @@ impl slumber_template::Context for TemplateContext {
             })?;
 
         // Render the nested template
-        let bytes = template.render_bytes(self).await.map_err(|error| {
+        template.render_stream(self).await.map_err(|error| {
+            // We *could* just return the error, but wrap it to give additional
+            // context
             FunctionError::ProfileNested {
                 field: field.clone(),
                 error,
             }
-        })?;
-        Ok(bytes.into())
+            .into()
+        })
     }
 
     fn field_cache(&self) -> &FieldCache {
@@ -180,7 +196,7 @@ impl slumber_template::Context for TemplateContext {
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<Value, RenderError> {
+    ) -> Result<Stream, RenderError> {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
@@ -188,7 +204,7 @@ impl slumber_template::Context for TemplateContext {
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
-            "file" => functions::file(arguments).await,
+            "file" => functions::file(arguments),
             "float" => functions::float(arguments),
             "integer" => functions::integer(arguments),
             "json_parse" => functions::json_parse(arguments),

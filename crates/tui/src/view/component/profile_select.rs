@@ -333,7 +333,15 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
                 .map(|(key, template)| {
                     (
                         key.clone(),
-                        TemplatePreview::new(template.clone(), None, false),
+                        TemplatePreview::new(
+                            template.clone(),
+                            None,
+                            false,
+                            // We don't know how this value will be used, so
+                            // let's say we *do* support streaming to prevent
+                            // loading some huge streams
+                            true,
+                        ),
                     )
                 })
                 .collect_vec()

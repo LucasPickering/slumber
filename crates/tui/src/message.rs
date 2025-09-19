@@ -166,6 +166,9 @@ pub enum Message {
     /// way back down the component tree.
     TemplatePreview {
         template: Template,
+        /// Does the consumer support streaming? If so, the output chunks may
+        /// contain streams
+        can_stream: bool,
         #[debug(skip)]
         on_complete: Callback<Vec<RenderedChunk>>,
     },

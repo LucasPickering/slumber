@@ -3,7 +3,7 @@
 #[cfg(test)]
 use crate::test_util;
 use crate::{
-    Arguments, Context, RenderError, Value, error::RenderErrorContext,
+    Arguments, Context, RenderError, Stream, Value, error::RenderErrorContext,
     util::FieldCacheOutcome,
 };
 use bytes::Bytes;
@@ -14,7 +14,7 @@ use futures::{
 };
 use indexmap::IndexMap;
 
-type RenderResult = Result<Value, RenderError>;
+type RenderResult = Result<Stream, RenderError>;
 
 /// A dynamic segment of a template that will be computed at render time.
 /// Expressions are derived from the template context and may include external
@@ -53,38 +53,39 @@ impl Expression {
                 Self::Literal(literal) => Ok(literal.into()),
                 Self::Array(expressions) => {
                     // Render each inner expression
-                    let values = future::try_join_all(
-                        expressions
-                            .iter()
-                            .map(|expression| expression.render(context)),
-                    )
-                    .boxed() // Box for recursion
-                    .await?;
-                    Ok(Value::Array(values))
+                    let values =
+                        future::try_join_all(expressions.iter().map(
+                            |expression| expression.render_value(context),
+                        ))
+                        // Box for recursion
+                        .boxed()
+                        .await?;
+                    Ok(Value::Array(values).into())
                 }
                 Self::Object(entries) => {
                     let pairs: Vec<(String, Value)> = future::try_join_all(
                         entries.iter().map(|(key, value)| {
                             let key_future = async move {
-                                let key = key.render(context).await?;
+                                let key = key.render_value(context).await?;
                                 // Keys must be strings, so convert here
                                 key.try_into_string().map_err(|error| {
                                     RenderError::Value(error.error)
                                 })
                             };
-                            try_join(key_future, value.render(context))
+                            try_join(key_future, value.render_value(context))
                         }),
                     )
                     .boxed() // Box for recursion
                     .await?;
                     // Keys will be deduped here, with the last taking priority
-                    Ok(Value::Object(IndexMap::from_iter(pairs)))
+                    Ok(Value::Object(IndexMap::from_iter(pairs)).into())
                 }
                 Self::Field(field) => Self::render_field(field, context).await,
                 Self::Call(call) => call.call(context, None).await,
                 Self::Pipe { expression, call } => {
                     // Compute the left hand side first. Box for recursion
-                    let value = expression.render(context).boxed().await?;
+                    let value =
+                        expression.render_value(context).boxed().await?;
                     call.call(context, Some(value)).await
                 }
             }
@@ -104,7 +105,7 @@ impl Expression {
         // else can copy our homework.
         let cache = context.field_cache();
         let guard = match cache.get_or_init(field.clone()).await {
-            FieldCacheOutcome::Hit(value) => return Ok(value),
+            FieldCacheOutcome::Hit(stream) => return Ok(stream),
             FieldCacheOutcome::Miss(guard) => guard,
             // The future responsible for writing to the guard failed. Cloning
             // errors is annoying so we return an empty response here. The
@@ -118,11 +119,24 @@ impl Expression {
         };
 
         // This value hasn't been rendered yet - ask the context to evaluate it
-        let value = context.get_field(field).await?;
+        let mut stream = context.get_field(field).await?;
+        // If streaming isn't supported here, convert to a value before caching,
+        // so that the stream isn't evaluated multiple times unless necessary
+        if !context.can_stream() {
+            stream = stream.resolve().await?.into();
+        }
 
         // Store value in the cache so other references to this field can use it
-        guard.set(value.clone());
-        Ok(value)
+        guard.set(stream.clone());
+        Ok(stream)
+    }
+
+    /// Render this expression, resolving any stream to a concrete value.
+    async fn render_value<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Result<Value, RenderError> {
+        self.render(context).await?.resolve().await
     }
 
     /// Build a function call expression. Any keyword arguments with `None`
@@ -283,7 +297,7 @@ impl FunctionCall {
         &self,
         context: &Ctx,
         piped_argument: Option<Value>,
-    ) -> Result<Value, RenderError> {
+    ) -> RenderResult {
         // Provide context to the error
         let map_error = |error: RenderError| {
             error.context(RenderErrorContext::Function(self.function.clone()))
@@ -312,7 +326,7 @@ impl FunctionCall {
         let position_future =
             future::try_join_all(self.position.iter().enumerate().map(
                 |(index, expression)| async move {
-                    expression.render(context).await.map_err(|error| {
+                    expression.render_value(context).await.map_err(|error| {
                         error.context(RenderErrorContext::ArgumentRender {
                             argument: index.to_string(),
                             expression: expression.clone(),
@@ -322,13 +336,14 @@ impl FunctionCall {
             ));
         let keyword_future = future::try_join_all(self.keyword.iter().map(
             |(name, expression)| async {
-                let value =
-                    expression.render(context).await.map_err(|error| {
+                let value = expression.render_value(context).await.map_err(
+                    |error| {
                         error.context(RenderErrorContext::ArgumentRender {
                             argument: name.to_string(),
                             expression: expression.clone(),
                         })
-                    })?;
+                    },
+                )?;
                 Ok((name.to_string(), value))
             },
         ));

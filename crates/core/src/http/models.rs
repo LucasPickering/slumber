@@ -435,6 +435,8 @@ pub struct RequestRecord {
     pub headers: HeaderMap,
     /// Body content as bytes. This should be decoded as needed. This will
     /// **not** be populated for bodies that are above the "large" threshold.
+    /// - `Some(empty bytes)`: There was no body (e.g. GET request)
+    /// - `None`: Body couldn't be stored (stream or too large)
     pub body: Option<Bytes>,
 }
 

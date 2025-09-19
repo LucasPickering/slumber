@@ -69,14 +69,21 @@ impl RecipeTemplate {
         persisted_key: RecipeOverrideKey,
         template: Template,
         content_type: Option<ContentType>,
+        can_stream: bool,
     ) -> Self {
         Self(PersistedLazy::new(
             persisted_key,
             RecipeTemplateInner {
                 original_template: template.clone(),
                 override_template: None,
-                preview: TemplatePreview::new(template, content_type, false),
+                preview: TemplatePreview::new(
+                    template,
+                    content_type,
+                    false,
+                    can_stream,
+                ),
                 content_type,
+                can_stream,
             },
         ))
     }
@@ -115,6 +122,9 @@ struct RecipeTemplateInner {
     preview: TemplatePreview,
     /// Retain this so we can rebuild the preview with it
     content_type: Option<ContentType>,
+    /// Does the consumer support streams, or does everything have to be
+    /// resolved to a concrete value?
+    can_stream: bool,
 }
 
 impl RecipeTemplateInner {
@@ -139,6 +149,7 @@ impl RecipeTemplateInner {
             self.template().clone(),
             self.content_type,
             self.override_template.is_some(),
+            self.can_stream,
         );
     }
 }

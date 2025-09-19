@@ -96,7 +96,7 @@ pub fn template(_attr: TokenStream, item: TokenStream) -> TokenStream {
             #[allow(unused_mut)]
             mut arguments: ::slumber_template::Arguments<'_, #context_type_param>
         ) -> ::core::result::Result<
-            ::slumber_template::Value,
+            ::slumber_template::Stream,
             ::slumber_template::RenderError
         > {
             #inner_fn

@@ -40,7 +40,10 @@ indexmap = {version = "2.0.0", default-features = false}
 itertools = "0.13.0"
 mime = "0.3.17"
 pretty_assertions = "1.4.0"
-reqwest = {version = "0.12.5", default-features = false}
+regex = {version = "1.10.5", default-features = false}
+# TODO use a stable version
+# reqwest = {version = "0.12.23", default-features = false}
+reqwest = {git = "https://github.com/LucasPickering/reqwest", branch = "2374-custom-boundary", default-features = false}
 rstest = {version = "0.24.0", default-features = false}
 saphyr = "0.0.6"
 schemars = "1.0.2"

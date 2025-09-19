@@ -18,6 +18,7 @@ use crate::{
     },
 };
 use anyhow::Context;
+use indexmap::IndexMap;
 use mime::Mime;
 use ratatui::Frame;
 use serde::Serialize;
@@ -68,26 +69,36 @@ impl RecipeBodyDisplay {
                 let template = json_string.parse().unwrap();
                 Self::Json(TextBody::new(template, recipe).into())
             }
-            RecipeBody::FormUrlencoded(fields)
-            | RecipeBody::FormMultipart(fields) => {
-                let inner = RecipeFieldTable::new(
-                    "Field",
-                    FormRowKey(recipe.id.clone()),
-                    fields.iter().enumerate().map(|(i, (field, value))| {
-                        (
-                            field.clone(),
-                            value.clone(),
-                            RecipeOverrideKey::form_field(recipe.id.clone(), i),
-                            FormRowToggleKey {
-                                recipe_id: recipe.id.clone(),
-                                field: field.clone(),
-                            },
-                        )
-                    }),
-                );
-                Self::Form(inner.into())
+            RecipeBody::FormUrlencoded(fields) => {
+                Self::Form(Self::form_table(&recipe.id, fields, false).into())
+            }
+            RecipeBody::FormMultipart(fields) => {
+                Self::Form(Self::form_table(&recipe.id, fields, true).into())
             }
         }
+    }
+
+    fn form_table(
+        recipe_id: &RecipeId,
+        fields: &IndexMap<String, Template>,
+        can_stream: bool,
+    ) -> RecipeFieldTable<FormRowKey, FormRowToggleKey> {
+        RecipeFieldTable::new(
+            "Field",
+            FormRowKey(recipe_id.clone()),
+            fields.iter().enumerate().map(|(i, (field, value))| {
+                (
+                    field.clone(),
+                    value.clone(),
+                    RecipeOverrideKey::form_field(recipe_id.clone(), i),
+                    FormRowToggleKey {
+                        recipe_id: recipe_id.clone(),
+                        field: field.clone(),
+                    },
+                )
+            }),
+            can_stream,
+        )
     }
 
     /// If the user has applied a temporary edit to the body, get the override
@@ -177,6 +188,7 @@ impl TextBody {
                 RecipeOverrideKey::body(recipe.id.clone()),
                 template,
                 content_type,
+                false,
             ),
             mime,
             text_window: Component::default(),

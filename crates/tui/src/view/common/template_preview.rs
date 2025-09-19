@@ -11,7 +11,7 @@ use ratatui::{
     widgets::Widget,
 };
 use slumber_core::http::content_type::ContentType;
-use slumber_template::{RenderedChunk, Template};
+use slumber_template::{RenderedChunk, Stream, StreamMetadata, Template};
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -42,10 +42,22 @@ impl TemplatePreview {
     /// defines which profile to use for the render. Optionally provide content
     /// type to enable syntax highlighting, which will be applied to both
     /// unrendered and rendered content.
+    ///
+    /// ## Params
+    ///
+    /// - `template`: Template to render
+    /// - `content_type`: Content-Type of the output, which can be used to apply
+    ///   syntax highlighting
+    /// - `overridden`: Has the template been overridden by the user in the
+    ///   current session? Applies additional styling
+    /// - `can_stream`: Does this component of the recipe support streaming? If
+    ///   so, the template will be rendered to a stream if possible and its
+    ///   metadata will be displayed rather than the resolved value.
     pub fn new(
         template: Template,
         content_type: Option<ContentType>,
         overridden: bool,
+        can_stream: bool,
     ) -> Self {
         let tui_context = TuiContext::get();
         let style = if overridden {
@@ -83,6 +95,7 @@ impl TemplatePreview {
 
             ViewContext::send_message(Message::TemplatePreview {
                 template,
+                can_stream,
                 on_complete: Box::new(on_complete),
             });
         }
@@ -114,7 +127,7 @@ impl TemplatePreview {
 
 impl From<Template> for TemplatePreview {
     fn from(template: Template) -> Self {
-        Self::new(template, None, false)
+        Self::new(template, None, false, false)
     }
 }
 
@@ -213,7 +226,7 @@ impl TextStitcher {
     fn get_chunk_text(chunk: RenderedChunk) -> String {
         match chunk {
             RenderedChunk::Raw(text) => text.deref().into(),
-            RenderedChunk::Rendered(value) => {
+            RenderedChunk::Rendered(Stream::Value(value)) => {
                 // We could potentially use MaybeStr to show binary data as
                 // hex, but that could get weird if there's text data in the
                 // template as well. This is simpler and prevents giant
@@ -221,6 +234,13 @@ impl TextStitcher {
                 value
                     .try_into_string()
                     .unwrap_or_else(|_| "<binary>".into())
+            }
+            RenderedChunk::Rendered(Stream::Stream { metadata, .. }) => {
+                match metadata {
+                    StreamMetadata::File { path } => {
+                        format!("<file {}>", path.display())
+                    }
+                }
             }
             // There's no good way to render the entire error inline
             RenderedChunk::Error(_) => "Error".into(),

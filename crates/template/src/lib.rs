@@ -21,7 +21,7 @@ pub use error::{
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
 pub use util::FieldCache;
 pub use value::{
-    Arguments, FunctionOutput, Stream, StreamMetadata, TryFromValue, Value,
+    Arguments, FunctionOutput, Stream, StreamSource, TryFromValue, Value,
 };
 
 use bytes::{Bytes, BytesMut};

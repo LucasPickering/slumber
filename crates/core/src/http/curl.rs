@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Context;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
-use slumber_template::{Stream, StreamMetadata};
+use slumber_template::{Stream, StreamSource};
 use std::borrow::Cow;
 
 /// Builder pattern for constructing cURL commands from a recipe
@@ -92,7 +92,7 @@ impl CurlBuilder {
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
             RenderedBody::Raw(Stream::Stream {
-                metadata: StreamMetadata::File { path },
+                source: StreamSource::File { path },
                 ..
             }) => {
                 // Stream the file

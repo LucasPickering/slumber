@@ -11,7 +11,7 @@ use ratatui::{
     widgets::Widget,
 };
 use slumber_core::http::content_type::ContentType;
-use slumber_template::{RenderedChunk, Stream, StreamMetadata, Template};
+use slumber_template::{RenderedChunk, Stream, StreamSource, Template};
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -235,13 +235,14 @@ impl TextStitcher {
                     .try_into_string()
                     .unwrap_or_else(|_| "<binary>".into())
             }
-            RenderedChunk::Rendered(Stream::Stream { metadata, .. }) => {
-                match metadata {
-                    StreamMetadata::File { path } => {
-                        format!("<file {}>", path.display())
-                    }
+            RenderedChunk::Rendered(Stream::Stream {
+                source: metadata,
+                ..
+            }) => match metadata {
+                StreamSource::File { path } => {
+                    format!("<file {}>", path.display())
                 }
-            }
+            },
             // There's no good way to render the entire error inline
             RenderedChunk::Error(_) => "Error".into(),
         }

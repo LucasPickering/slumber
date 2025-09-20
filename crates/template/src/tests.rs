@@ -1,6 +1,6 @@
 use crate::{
     Arguments, Context, FieldCache, Identifier, RenderError, Stream, Template,
-    Value, value::StreamMetadata,
+    Value, value::StreamSource,
 };
 use bytes::Bytes;
 use futures::FutureExt;
@@ -284,7 +284,7 @@ impl Context for TestContext {
             "stream" => {
                 let path = test_data_dir().join("data.json");
                 Ok(Stream::Stream {
-                    metadata: StreamMetadata::File { path: path.clone() },
+                    source: StreamSource::File { path: path.clone() },
                     f: Arc::new(move || {
                         let path = path.clone();
                         async move {

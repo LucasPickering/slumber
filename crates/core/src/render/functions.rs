@@ -13,7 +13,7 @@ use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
-    Expected, Stream, StreamMetadata, TryFromValue, Value, ValueError,
+    Expected, Stream, StreamSource, TryFromValue, Value, ValueError,
     WithValue, impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
@@ -259,7 +259,7 @@ pub fn file(#[context] context: &TemplateContext, path: String) -> Stream {
     // Return the file as a stream. If streaming isn't available here, it will
     // be resolved immediately instead
     Stream::Stream {
-        metadata: StreamMetadata::File { path: path.clone() },
+        source: StreamSource::File { path: path.clone() },
         f: Arc::new(move || {
             // This possible this function gets called multiple times, and each
             // future has to be 'static

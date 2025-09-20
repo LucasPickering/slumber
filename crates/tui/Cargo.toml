@@ -37,7 +37,7 @@ strum = {workspace = true}
 terminput = {workspace = true}
 terminput-crossterm = "0.3.3"
 tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
-tokio-util = "0.7.13"
+tokio-util = {workspace = true}
 tracing = {workspace = true}
 tree-sitter-highlight = "0.25.4"
 tree-sitter-json = "0.24.8"

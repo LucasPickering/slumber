@@ -7,7 +7,7 @@ use indexmap::indexmap;
 use rstest::rstest;
 use slumber_util::{assert_err, assert_matches, test_data_dir};
 use std::sync::atomic::{AtomicI64, Ordering};
-use tokio::fs;
+use tokio::fs::{self, File};
 
 /// Test simple expression rendering
 #[rstest]
@@ -279,9 +279,12 @@ impl Context for TestContext {
             }
             "stream" => {
                 let path = test_data_dir().join("data.json");
-                Ok(Stream::new(
+                Ok(Stream::reader(
                     StreamMetadata::File { path: path.clone() },
-                    async move {
+                    move || {
+                        let file =
+                            File::open(path).map_err(RenderError::other)?;
+
                         fs::read(path)
                             .await
                             .map(Bytes::from)

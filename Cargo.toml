@@ -65,6 +65,7 @@ syn = "2.0.101"
 terminput = "0.5.3"
 thiserror = "2.0.12"
 tokio = {version = "1.39.2", default-features = false}
+tokio-util = "0.7.13"
 tracing = "0.1.40"
 url = "2.0.0"
 uuid = {version = "1.10.0", default-features = false}

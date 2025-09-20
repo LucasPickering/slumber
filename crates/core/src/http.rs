@@ -704,7 +704,9 @@ impl RenderedBody {
             RenderedBody::Raw(Stream::Value(value)) => {
                 Ok(builder.body(value.into_bytes()))
             }
-            RenderedBody::Raw(Stream::Stream { future, .. }) => {
+            RenderedBody::Raw(Stream::Stream {
+                stream_fn: future, ..
+            }) => {
                 let body = Body::wrap_stream(stream::once(future));
                 Ok(builder.body(body))
             }
@@ -736,9 +738,11 @@ impl RenderedBody {
                             ..
                         } => Part::file(path).await?,
                         // Any other stream can be streamed directly as bytes
-                        Stream::Stream { future, .. } => Part::stream(
-                            Body::wrap_stream(stream::once(future)),
-                        ),
+                        Stream::Stream {
+                            stream_fn: future, ..
+                        } => Part::stream(Body::wrap_stream(stream::once(
+                            future,
+                        ))),
                     };
                     form = form.part(field, part);
                 }

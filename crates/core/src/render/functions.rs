@@ -184,7 +184,7 @@ pub fn command(
     };
 
     // Include the command in the stream so it can be shown in the preview
-    Ok(Stream::new(StreamMetadata::Command { command }, future))
+    Ok(Stream::reader(StreamMetadata::Command { command }, future))
 }
 
 /// Concatenate any number of strings together
@@ -268,7 +268,7 @@ pub fn file(#[context] context: &TemplateContext, path: String) -> Stream {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
     // Return the file as a stream. If streaming isn't available here, it will
     // be resolved immediately instead
-    Stream::new(StreamMetadata::File { path: path.clone() }, async move {
+    Stream::reader(StreamMetadata::File { path: path.clone() }, async move {
         fs::read(&path)
             .await
             .map(Bytes::from)

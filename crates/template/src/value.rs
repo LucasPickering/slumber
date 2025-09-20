@@ -7,10 +7,12 @@ use crate::{
 };
 use bytes::Bytes;
 use derive_more::From;
-use futures::future::{BoxFuture, FutureExt, Shared};
+use futures::stream::BoxStream;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, fmt::Debug, path::PathBuf};
+use std::{collections::VecDeque, fmt::Debug, path::PathBuf, sync::Arc};
+use tokio::io::AsyncRead;
+use tokio_util::io::ReaderStream;
 
 /// A runtime template value. This very similar to a JSON value, except:
 /// - Numbers do not support arbitrary size
@@ -165,7 +167,7 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
-#[derive(Clone, Debug)]
+#[derive(Clone, derive_more::Debug)]
 pub enum Stream {
     /// A pre-resolved value
     Value(Value),
@@ -175,23 +177,27 @@ pub enum Stream {
         metadata: StreamMetadata,
         /// Future that resolves to binary data
         /// TODO use a stream instead of future
-        future: Shared<BoxFuture<'static, Result<Bytes, RenderError>>>,
+        #[debug(skip)]
+        stream_fn: Arc<
+            dyn Fn() -> BoxStream<'static, Result<Bytes, RenderError>>
+                + Send
+                + Sync,
+        >,
     },
 }
 
 impl Stream {
-    /// Create a new stream from a future that returns binary data
-    pub fn new<E>(
+    /// TODO
+    pub fn reader<R, E>(
         metadata: StreamMetadata,
-        future: impl 'static + Future<Output = Result<Bytes, E>> + Send,
+        reader: impl 'static + AsyncRead,
     ) -> Self
     where
         RenderError: From<E>,
     {
-        let future = async move { future.await.map_err(RenderError::from) };
         Self::Stream {
             metadata,
-            future: future.boxed().shared(),
+            stream_fn: Arc::new(move || ReaderStream::new(reader)),
         }
     }
 
@@ -201,7 +207,7 @@ impl Stream {
     pub async fn resolve(self) -> Result<Value, RenderError> {
         match self {
             Self::Value(value) => Ok(value),
-            Self::Stream { future, .. } => future.await.map(Value::Bytes),
+            Self::Stream { stream_fn, .. } => todo!(),
         }
     }
 }

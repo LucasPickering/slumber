@@ -24,6 +24,7 @@ serde_json = {workspace = true}
 slumber_util = {workspace = true}
 thiserror = {workspace = true}
 tokio = {workspace = true, features = ["sync"]}
+tokio-util = {workspace = true, features = ["io"]}
 tracing = {workspace = true}
 winnow = {workspace = true}
 

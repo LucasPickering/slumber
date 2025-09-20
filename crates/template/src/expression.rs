@@ -105,17 +105,8 @@ impl Expression {
         // else can copy our homework.
         let cache = context.field_cache();
         let guard = match cache.get_or_init(field.clone()).await {
-            FieldCacheOutcome::Hit(stream) => return Ok(stream),
+            FieldCacheOutcome::Hit(value) => return Ok(value.into()),
             FieldCacheOutcome::Miss(guard) => guard,
-            // The future responsible for writing to the guard failed. Cloning
-            // errors is annoying so we return an empty response here. The
-            // initial error should've been returned elsewhere so that can be
-            // used instead.
-            FieldCacheOutcome::NoResponse => {
-                return Err(RenderError::CacheFailed {
-                    field: field.clone(),
-                });
-            }
         };
 
         // This value hasn't been rendered yet - ask the context to evaluate it
@@ -126,8 +117,14 @@ impl Expression {
             stream = stream.resolve().await?.into();
         }
 
-        // Store value in the cache so other references to this field can use it
-        guard.set(stream.clone());
+        // If the output is a value, we can cache it. If it's a stream, it can't
+        // be cloned so it can't be cached. In practice there's probably no
+        // reason to include the same stream field twice in a single body, but
+        // if that happens we'll have to compute it twice. This saves us a lot
+        // of annoying machinery though.
+        if let Stream::Value(value) = &stream {
+            guard.set(value.clone());
+        }
         Ok(stream)
     }
 

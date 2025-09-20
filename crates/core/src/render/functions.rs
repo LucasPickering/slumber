@@ -7,18 +7,17 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
-use futures::FutureExt;
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
-    Expected, Stream, StreamSource, TryFromValue, Value, ValueError,
-    WithValue, impl_try_from_value_str,
+    Expected, Stream, StreamSource, TryFromValue, Value, ValueError, WithValue,
+    impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
 use std::{env, fmt::Debug, path::PathBuf, process::Stdio, sync::Arc};
-use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
+use tokio::{fs::File, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span};
 
 // ===========================================================
@@ -246,7 +245,7 @@ pub fn env(variable: String) -> String {
 ///
 /// **Errors**
 ///
-/// - If an I/O error occurs while reading the file (e.g. file missing)
+/// - If an I/O error occurs while opening the file (e.g. file missing)
 ///
 /// **Examples**
 ///
@@ -254,25 +253,23 @@ pub fn env(variable: String) -> String {
 /// {{ file("config.json") }} => Contents of config.json file
 /// ```
 #[template]
-pub fn file(#[context] context: &TemplateContext, path: String) -> Stream {
+pub async fn file(
+    #[context] context: &TemplateContext,
+    path: String,
+) -> Result<Stream, FunctionError> {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
     // Return the file as a stream. If streaming isn't available here, it will
-    // be resolved immediately instead
-    Stream::Stream {
-        source: StreamSource::File { path: path.clone() },
-        f: Arc::new(move || {
-            // This possible this function gets called multiple times, and each
-            // future has to be 'static
-            let path = path.clone();
-            async move {
-                fs::read(&path)
-                    .await
-                    .map(Bytes::from)
-                    .map_err(|error| FunctionError::File { path, error }.into())
-            }
-            .boxed()
-        }),
-    }
+    // be resolved immediately instead. If the file doesn't exist, we'll return
+    // an error immediately. If we fail to read from it for another reason, the
+    // error will be deferred until the data is actually streamed.
+    let file =
+        File::open(&path)
+            .await
+            .map_err(|error| FunctionError::File {
+                path: path.clone(),
+                error,
+            })?;
+    Ok(Stream::reader(StreamSource::File { path }, file))
 }
 
 /// Convert a value to a float

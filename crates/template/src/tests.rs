@@ -2,16 +2,11 @@ use crate::{
     Arguments, Context, FieldCache, Identifier, RenderError, Stream, Template,
     Value, value::StreamSource,
 };
-use bytes::Bytes;
-use futures::FutureExt;
 use indexmap::indexmap;
 use rstest::rstest;
 use slumber_util::{assert_err, assert_matches, test_data_dir};
-use std::sync::{
-    Arc,
-    atomic::{AtomicI64, Ordering},
-};
-use tokio::fs;
+use std::sync::atomic::{AtomicI64, Ordering};
+use tokio::fs::File;
 
 /// Test simple expression rendering
 #[rstest]
@@ -51,7 +46,7 @@ async fn test_expression(#[case] template: Template, #[case] expected: Value) {
     Value::Bytes(b"my name is \xc3\x28".as_slice().into(),
 ))]
 // Stream gets resolved to bytes, then converted to a string
-#[case::stream("{{ stream() }}", "{ \"a\": 1, \"b\": 2 }".into())]
+#[case::stream("{{ file('data.json') }}", "{ \"a\": 1, \"b\": 2 }".into())]
 #[tokio::test]
 async fn test_render_value(
     #[case] template: Template,
@@ -68,10 +63,14 @@ async fn test_render_value(
 
 /// Render to a stream
 #[rstest]
-#[case::stream("{{ stream() }}", b"{ \"a\": 1, \"b\": 2 }", true)]
-#[case::text("text: {{ stream() }}", b"text: { \"a\": 1, \"b\": 2 }", false)]
+#[case::stream("{{ file('data.json') }}", b"{ \"a\": 1, \"b\": 2 }", true)]
+#[case::text(
+    "text: {{ file('data.json') }}",
+    b"text: { \"a\": 1, \"b\": 2 }",
+    false
+)]
 #[case::binary(
-    "{{ invalid_utf8 }} {{ stream() }}",
+    "{{ invalid_utf8 }} {{ file('data.json') }}",
     b"\xc3\x28 { \"a\": 1, \"b\": 2 }",
     false
 )]
@@ -281,21 +280,16 @@ impl Context for TestContext {
                     Ok(a.into())
                 }
             }
-            "stream" => {
-                let path = test_data_dir().join("data.json");
-                Ok(Stream::Stream {
-                    source: StreamSource::File { path: path.clone() },
-                    f: Arc::new(move || {
-                        let path = path.clone();
-                        async move {
-                            fs::read(path)
-                                .await
-                                .map(Bytes::from)
-                                .map_err(RenderError::other)
-                        }
-                        .boxed()
-                    }),
-                })
+            "file" => {
+                let file_name: String = arguments.pop_position()?;
+                arguments.ensure_consumed()?;
+                let path = test_data_dir().join(file_name);
+                let file =
+                    File::open(&path).await.map_err(RenderError::other)?;
+                Ok(Stream::reader(
+                    StreamSource::File { path: path.clone() },
+                    file,
+                ))
             }
             _ => Err(RenderError::FunctionUnknown),
         }

@@ -3566,6 +3566,7 @@ dependencies = [
  "slumber_util",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-util",
  "tracing",
  "winnow",
 ]

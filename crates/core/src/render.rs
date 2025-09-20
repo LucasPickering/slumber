@@ -204,7 +204,7 @@ impl slumber_template::Context for TemplateContext {
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
-            "file" => functions::file(arguments),
+            "file" => functions::file(arguments).await,
             "float" => functions::float(arguments),
             "integer" => functions::integer(arguments),
             "json_parse" => functions::json_parse(arguments),

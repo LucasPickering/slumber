@@ -1,10 +1,10 @@
-use crate::{Identifier, Stream};
+use crate::{Identifier, Value};
 use std::{
     collections::{HashMap, hash_map::Entry},
     ops::DerefMut,
     sync::Arc,
 };
-use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
+use tokio::sync::{Mutex, OwnedMutexGuard};
 use tracing::error;
 
 /// A cache of template values that either have been computed, or are
@@ -14,8 +14,14 @@ use tracing::error;
 pub struct FieldCache {
     /// Cache each value by key. The outer mutex will only be held open for as
     /// long as it takes to check if the value is in the cache or not. The
-    /// inner lock will be blocked on until the value is available.
-    cache: Mutex<HashMap<Identifier, Arc<RwLock<Option<Stream>>>>>,
+    /// inner mutex will be blocked on until the value is available.
+    ///
+    /// This uses a mutex instead of rwlock for the inner lock to prevent race
+    /// conditions in the scenario where the first entrant doesn't write, in
+    /// which case the second entrant has to upgrade their read to a write. The
+    /// contention on the mutex should be extremely low once the write is done,
+    /// so the difference between mutex and rwlock is minimal.
+    cache: Mutex<HashMap<Identifier, Arc<Mutex<Option<Value>>>>>,
 }
 
 impl FieldCache {
@@ -33,41 +39,46 @@ impl FieldCache {
         match cache.entry(field) {
             Entry::Occupied(entry) => {
                 let lock = Arc::clone(entry.get());
-                drop(cache); // Drop the outer lock as quickly as possible
+                drop(cache); // Drop the outer lock before acquiring the inner
+                let guard = lock.clone().lock_owned().await;
 
-                match &*lock.read_owned().await {
-                    Some(value) => FieldCacheOutcome::Hit(value.clone()),
-                    None => FieldCacheOutcome::NoResponse,
+                if let Some(value) = &*guard {
+                    FieldCacheOutcome::Hit(value.clone())
+                } else {
+                    // If someone else grabbed the lock but didn't write to it,
+                    // we're now responsible for computing+caching it. This can
+                    // happen in two scenarios:
+                    // - Other task failed in an unexpected way
+                    // - Field evaluated to a stream, which can't be cached
+                    FieldCacheOutcome::Miss(FieldCacheGuard(guard))
                 }
             }
             Entry::Vacant(entry) => {
-                let lock = Arc::new(RwLock::new(None));
+                let lock = Arc::new(Mutex::new(None));
                 entry.insert(Arc::clone(&lock));
                 // Grab the write lock and hold it as long as the parent is
                 // working to compute the value
                 let guard = lock
-                    .try_write_owned()
+                    .try_lock_owned()
                     .expect("Lock was just created, who the hell grabbed it??");
                 // Drop the root cache lock *after* we acquire the lock for our
                 // own future, to prevent other tasks grabbing it first
                 drop(cache);
 
-                FieldCacheOutcome::Miss(FutureCacheGuard(guard))
+                FieldCacheOutcome::Miss(FieldCacheGuard(guard))
             }
         }
     }
 }
 
 /// Outcome of check a future cache for a particular key
+#[derive(Debug)]
 pub(crate) enum FieldCacheOutcome {
     /// The value is already in the cache
-    Hit(Stream),
+    Hit(Value),
     /// The value is not in the cache. Caller is responsible for inserting it
     /// by calling [FutureCacheGuard::set] once computed.
-    Miss(FutureCacheGuard),
-    /// The first entrant dropped their write guard without writing to it, so
-    /// there's no response to return
-    NoResponse,
+    Miss(FieldCacheGuard),
 }
 
 /// A handle for writing a computed future value back into the cache. This is
@@ -75,20 +86,96 @@ pub(crate) enum FieldCacheOutcome {
 /// responsible for calling [FutureCacheGuard::set] to insert the value for
 /// everyone else. Subsequent callers to the cache will block until `set` is
 /// called.
-pub(crate) struct FutureCacheGuard(OwnedRwLockWriteGuard<Option<Stream>>);
+#[derive(Debug)]
+pub(crate) struct FieldCacheGuard(OwnedMutexGuard<Option<Value>>);
 
-impl FutureCacheGuard {
-    pub fn set(mut self, stream: Stream) {
-        *self.0.deref_mut() = Some(stream);
+impl FieldCacheGuard {
+    pub fn set(mut self, value: Value) {
+        *self.0.deref_mut() = Some(value);
     }
 }
 
-impl Drop for FutureCacheGuard {
+impl Drop for FieldCacheGuard {
     fn drop(&mut self) {
         if self.0.is_none() {
             // Friendly little error logging. We don't have a good way of
             // identifying *which* lock this happened to :(
             error!("Future cache guard dropped without setting a value");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::join;
+    use slumber_util::assert_matches;
+
+    /// If the first writer doesn't write anything, the second should get a
+    /// chance to
+    #[tokio::test]
+    async fn test_field_cache() {
+        let cache = FieldCache::default();
+        let field: Identifier = "field".into();
+
+        let fut1 = async {
+            let guard = assert_matches!(
+                cache.get_or_init(field.clone()).await,
+                FieldCacheOutcome::Miss(guard) => guard,
+            );
+            let value: Value = true.into();
+            guard.set(value.clone());
+            value
+        };
+        let fut2 = async {
+            assert_matches!(
+                cache.get_or_init(field.clone()).await,
+                FieldCacheOutcome::Hit(value) => value,
+            )
+        };
+
+        // This should be deterministic because the futures are polled in order
+        let (v1, v2) = join!(fut1, fut2);
+        assert_eq!(v1, true.into());
+        assert_eq!(v2, true.into());
+    }
+
+    /// If the first writer doesn't write anything, the second should get a
+    /// chance to
+    #[tokio::test]
+    async fn test_field_cache_dropped_guard() {
+        let cache = FieldCache::default();
+        let field: Identifier = "field".into();
+
+        let fut1 = async {
+            // We get the write guard, but never write to it
+            let guard = assert_matches!(
+                cache.get_or_init(field.clone()).await,
+                FieldCacheOutcome::Miss(guard) => guard,
+            );
+            drop(guard);
+        };
+        let fut2 = async {
+            // After fut1 drops the write guard, we get it and write to it
+            let guard = assert_matches!(
+                cache.get_or_init(field.clone()).await,
+                FieldCacheOutcome::Miss(guard) => guard,
+            );
+            let value: Value = true.into();
+            guard.set(value.clone());
+            value
+        };
+        let fut3 = async {
+            // We get the value written by fut2
+            assert_matches!(
+                cache.get_or_init(field.clone()).await,
+                FieldCacheOutcome::Hit(value) => value,
+            )
+        };
+
+        // This should be deterministic because the futures are polled in order
+        let ((), v2, v3) = join!(fut1, fut2, fut3);
+        assert_eq!(v2, true.into());
+        assert_eq!(v3, true.into());
     }
 }

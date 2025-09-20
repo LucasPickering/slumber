@@ -5,12 +5,14 @@ use crate::{
     error::RenderErrorContext,
     parse::{FALSE, NULL, TRUE},
 };
-use bytes::Bytes;
-use derive_more::From;
-use futures::future::BoxFuture;
+use bytes::{Bytes, BytesMut};
+use derive_more::{Display, From};
+use futures::{StreamExt, TryStreamExt, stream::BoxStream};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, fmt::Debug, path::PathBuf, sync::Arc};
+use std::{collections::VecDeque, fmt::Debug, io, path::PathBuf};
+use tokio::io::AsyncRead;
+use tokio_util::io::ReaderStream;
 
 /// A runtime template value. This very similar to a JSON value, except:
 /// - Numbers do not support arbitrary size
@@ -165,7 +167,7 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
-#[derive(Clone, derive_more::Debug)]
+#[derive(derive_more::Debug)]
 pub enum Stream {
     /// A pre-resolved value
     Value(Value),
@@ -173,26 +175,38 @@ pub enum Stream {
     Stream {
         /// Additional information about the source of the stream
         source: StreamSource,
-        /// Function returning the stream future. This can be cloned so that it
-        /// can be called multiple times, as the stream may be cloned by the
-        /// field cache.
+        /// The stream of binary data
         #[debug(skip)]
-        f: Arc<
-            dyn Fn() -> BoxFuture<'static, Result<Bytes, RenderError>>
-                + Send
-                + Sync,
-        >,
+        stream: BoxStream<'static, Result<Bytes, io::Error>>,
     },
 }
 
 impl Stream {
+    /// Create a new stream from an `AsyncRead` value
+    pub fn reader<R>(source: StreamSource, reader: R) -> Self
+    where
+        R: 'static + AsyncRead + Send,
+    {
+        Self::Stream {
+            source,
+            stream: ReaderStream::new(reader).boxed(),
+        }
+    }
+
     /// Resolve this stream to a concrete [Value]. If it's already a value, just
     /// return it. Otherwise the stream will be awaited and collected into
     /// bytes.
     pub async fn resolve(self) -> Result<Value, RenderError> {
         match self {
             Self::Value(value) => Ok(value),
-            Self::Stream { f, .. } => f().await.map(Value::Bytes),
+            Self::Stream { stream, source } => stream
+                .try_collect::<BytesMut>()
+                .await
+                .map(|bytes| Value::Bytes(bytes.into()))
+                .map_err(|error| RenderError::Stream {
+                    stream_source: source,
+                    error,
+                }),
         }
     }
 }
@@ -205,9 +219,10 @@ impl<T: Into<Value>> From<T> for Stream {
 
 /// Metadata about the source of a [Stream]. This helps consumers present the
 /// stream to the user, e.g. in a template preview
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Display)]
 pub enum StreamSource {
     /// Data is being streamed from a file
+    #[display("file {}", path.display())]
     File {
         /// **Absolute** path to the file
         path: PathBuf,
@@ -491,8 +506,8 @@ impl<T: Into<Stream>> FunctionOutput for T {
 
 impl<T, E> FunctionOutput for Result<T, E>
 where
-    T: Into<Stream> + Send + Sync,
-    E: Into<RenderError> + Send + Sync,
+    T: Into<Stream>,
+    E: Into<RenderError>,
 {
     fn into_result(self) -> Result<Stream, RenderError> {
         self.map(T::into).map_err(E::into)

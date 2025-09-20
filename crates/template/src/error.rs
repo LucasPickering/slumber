@@ -1,10 +1,11 @@
-use crate::{Expression, Identifier, Value};
+use crate::{Expression, Identifier, StreamSource, Value};
 use derive_more::derive::Display;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::de;
 use std::{
     fmt::Display,
+    io,
     num::{ParseFloatError, ParseIntError},
     str::Utf8Error,
 };
@@ -35,14 +36,6 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 /// they should be pretty brief.
 #[derive(Debug, Error)]
 pub enum RenderError {
-    /// 2+ futures were rendering the same field. One future was doing the
-    /// actual rendering and the rest were waiting on the first. If the first
-    /// one fails, the rest will return this error. Theoretically this will
-    /// never actually be emitted because `try_join` should return after the
-    /// initial error, so this is a placeholder.
-    #[error("Error rendering cached profile field `{field}`")]
-    CacheFailed { field: Identifier },
-
     /// A profile field key contained an unknown field
     #[error("Unknown field `{field}`")]
     FieldUnknown { field: Identifier },
@@ -63,6 +56,15 @@ pub enum RenderError {
     /// External error type from a function call
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
+
+    /// I/O error while streaming bytes from a streaming source
+    #[error("Error streaming from {stream_source}")]
+    Stream {
+        /// Descriptor of the streaming source, such as a file path
+        stream_source: StreamSource,
+        #[source]
+        error: io::Error,
+    },
 
     /// Not enough arguments provided to a function call
     #[error("Not enough arguments")]

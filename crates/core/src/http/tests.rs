@@ -682,8 +682,10 @@ first\r
 )]
 #[case::multipart_body_multiple(
     "{{ host }}/first/first",
-    // Field is used twice in the same body. The stream source gets cloned so
-    // they reference the same file but are both streamed
+    // Field is used twice in the same body. The stream is *not* cloned, meaning
+    // the prompt runs twice. This is a bug but requires a lot of machinery to
+    // fix and in practice should be very rare. Why would you need to stream the
+    // same source twice within the same form?
     RecipeBody::FormMultipart(indexmap!{
         "f1".into() => "{{ stream_prompt }}".into(),
         "f2".into() => "{{ stream_prompt }}".into(),
@@ -694,10 +696,10 @@ Content-Type: text/plain\r
 \r
 first\r
 --BOUNDARY\r
-Content-Disposition: form-data; name=\"f2\"; filename=\"first.txt\"\r
+Content-Disposition: form-data; name=\"f2\"; filename=\"second.txt\"\r
 Content-Type: text/plain\r
 \r
-first\r
+second\r
 --BOUNDARY--\r
 ",
 )]

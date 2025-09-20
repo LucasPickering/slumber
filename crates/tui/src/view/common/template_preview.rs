@@ -240,6 +240,9 @@ impl TextStitcher {
                     StreamMetadata::File { path } => {
                         format!("<file {}>", path.display())
                     }
+                    StreamMetadata::Command { command } => {
+                        format!("<command `{}`>", command.join(" "))
+                    }
                 }
             }
             // There's no good way to render the entire error inline

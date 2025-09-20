@@ -174,16 +174,21 @@ pub enum Stream {
         /// Additional information about the source of the stream
         metadata: StreamMetadata,
         /// Future that resolves to binary data
+        /// TODO use a stream instead of future
         future: Shared<BoxFuture<'static, Result<Bytes, RenderError>>>,
     },
 }
 
 impl Stream {
     /// Create a new stream from a future that returns binary data
-    pub fn new(
+    pub fn new<E>(
         metadata: StreamMetadata,
-        future: impl 'static + Future<Output = Result<Bytes, RenderError>> + Send,
-    ) -> Self {
+        future: impl 'static + Future<Output = Result<Bytes, E>> + Send,
+    ) -> Self
+    where
+        RenderError: From<E>,
+    {
+        let future = async move { future.await.map_err(RenderError::from) };
         Self::Stream {
             metadata,
             future: future.boxed().shared(),
@@ -211,7 +216,12 @@ impl<T: Into<Value>> From<T> for Stream {
 /// stream to the user, e.g. in a template preview
 #[derive(Clone, Debug)]
 pub enum StreamMetadata {
-    /// Data is being streamed from a file
+    /// Stream from a subprocess
+    Command {
+        /// Program + 0 or more arguments
+        command: Vec<String>,
+    },
+    /// Stream from a file
     File {
         /// **Absolute** path to the file
         path: PathBuf,

@@ -200,7 +200,7 @@ impl slumber_template::Context for TemplateContext {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
-            "command" => functions::command(arguments).await,
+            "command" => functions::command(arguments),
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),

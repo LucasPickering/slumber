@@ -772,7 +772,8 @@ async fn test_trim(
 
 /// Test different conditions where streaming is/isn't allowed
 #[rstest]
-#[case::stream_direct("{{ file('data.json') }}", true, true)]
+#[case::stream_file("{{ file('data.json') }}", true, true)]
+#[case::stream_command("{{ command(['cat', 'data.json']) }}", true, true)]
 #[case::stream_piped("{{ 'data.json' | file() }}", true, true)]
 #[case::stream_via_profile("{{ file_field }}", true, true)]
 #[case::no_stream_direct("{{ file('data.json') }}", false, false)]

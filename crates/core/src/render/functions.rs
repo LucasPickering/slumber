@@ -113,67 +113,78 @@ pub fn boolean(value: Value) -> bool {
 /// > `command` is commonly paired with [`trim`](#trim) to remove trailing
 /// newlines from command output: `{{ command(["echo", "hello"]) | trim() }}`
 #[template]
-pub async fn command(
+pub fn command(
     #[context] context: &TemplateContext,
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
-) -> Result<Bytes, FunctionError> {
-    let [program, args @ ..] = command.as_slice() else {
+) -> Result<Stream, FunctionError> {
+    let cwd = context.root_dir.join(cwd.unwrap_or_default());
+    let [program, arguments @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
     };
-    let _ = debug_span!("Executing command", ?program, ?args).entered();
+    let program = program.clone();
+    let arguments = arguments.to_owned();
 
-    let output = async {
-        // Spawn the command process
-        let mut process = Command::new(program)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .current_dir(context.root_dir.join(cwd.unwrap_or_default()))
-            .kill_on_drop(true)
-            .spawn()?;
+    let future = async move {
+        let _ =
+            debug_span!("Executing command", ?program, ?arguments).entered();
 
-        // Write the stdin to the process
-        if let Some(stdin) = stdin {
-            process
-                .stdin
-                .as_mut()
-                .expect("Process missing stdin")
-                .write_all(&stdin)
-                .await?;
+        // Try block for all errors that can occur during command init
+        let output = async {
+            // Spawn the command process
+            let mut process = Command::new(&program)
+                .args(&arguments)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .current_dir(cwd)
+                .kill_on_drop(true)
+                .spawn()?;
+
+            // Write the stdin to the process
+            if let Some(stdin) = stdin {
+                process
+                    .stdin
+                    .as_mut()
+                    .expect("Process missing stdin")
+                    .write_all(&stdin)
+                    .await?;
+            }
+
+            // Wait for the process to finish
+            process.wait_with_output().await
         }
-
-        // Wait for the process to finish
-        process.wait_with_output().await
-    }
-    .await
-    .map_err(|error| FunctionError::CommandInit {
-        program: program.clone(),
-        args: args.into(),
-        error,
-    })?;
-
-    debug!(
-        status = %output.status,
-        stdout = %String::from_utf8_lossy(&output.stdout),
-        stderr = %String::from_utf8_lossy(&output.stderr),
-        "Command finished"
-    );
-
-    // Check status code
-    if output.status.success() {
-        Ok(output.stdout.into())
-    } else {
-        Err(FunctionError::CommandStatus {
+        .await
+        .map_err(|error| FunctionError::CommandInit {
             program: program.clone(),
-            args: args.into(),
-            status: output.status,
-            stdout: output.stdout,
-            stderr: output.stderr,
-        })
-    }
+            args: arguments.clone(),
+            error,
+        })?;
+
+        debug!(
+            status = %output.status,
+            stdout = %String::from_utf8_lossy(&output.stdout),
+            stderr = %String::from_utf8_lossy(&output.stderr),
+            "Command finished"
+        );
+
+        // Check status code
+        if output.status.success() {
+            Ok(output.stdout.into())
+        } else {
+            Err(FunctionError::CommandStatus {
+                program: program.clone(),
+                args: arguments.clone(),
+                status: output.status,
+                stdout: output.stdout,
+                stderr: output.stderr,
+            })
+        }
+    };
+
+    // Include the command in the stream so it can be shown in the preview
+    Ok(Stream::new(StreamMetadata::Command { command }, future))
 }
 
 /// Concatenate any number of strings together
@@ -261,7 +272,7 @@ pub fn file(#[context] context: &TemplateContext, path: String) -> Stream {
         fs::read(&path)
             .await
             .map(Bytes::from)
-            .map_err(|error| FunctionError::File { path, error }.into())
+            .map_err(|error| FunctionError::File { path, error })
     })
 }
 

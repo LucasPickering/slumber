@@ -63,7 +63,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{Stream, StreamMetadata, Template};
+use slumber_template::{Stream, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, path::PathBuf};
 use tokio::fs::File;
@@ -675,7 +675,7 @@ impl Recipe {
             Stream::Value(value) => FormPart::Bytes(value.into_bytes()),
             // If the stream is a file, we can pass that directly to reqwest
             Stream::Stream {
-                metadata: StreamMetadata::File { path },
+                source: StreamSource::File { path },
                 ..
             } => FormPart::File(path),
         }
@@ -719,7 +719,7 @@ impl RenderedBody {
                 Ok(builder.body(value.into_bytes()))
             }
             RenderedBody::Raw(Stream::Stream {
-                metadata: StreamMetadata::File { path },
+                source: StreamSource::File { path },
                 ..
             }) => {
                 // Stream from a file

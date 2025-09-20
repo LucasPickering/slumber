@@ -172,7 +172,7 @@ pub enum Stream {
     /// Stream data from a (potentially) large source such as a file
     Stream {
         /// Additional information about the source of the stream
-        metadata: StreamMetadata,
+        source: StreamSource,
         /// Function returning the stream future. This can be cloned so that it
         /// can be called multiple times, as the stream may be cloned by the
         /// field cache.
@@ -206,7 +206,7 @@ impl<T: Into<Value>> From<T> for Stream {
 /// Metadata about the source of a [Stream]. This helps consumers present the
 /// stream to the user, e.g. in a template preview
 #[derive(Clone, Debug)]
-pub enum StreamMetadata {
+pub enum StreamSource {
     /// Data is being streamed from a file
     File {
         /// **Absolute** path to the file

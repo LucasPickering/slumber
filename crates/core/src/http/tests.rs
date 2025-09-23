@@ -248,10 +248,16 @@ async fn test_authentication(
 /// which could hypothetically vary from the request record.
 #[rstest]
 #[case::text(RecipeBody::Raw("hello!".into()), None, None, "hello!")]
-#[case::stream(
+#[case::stream_file(
     RecipeBody::Raw("{{ file('data.json') }}".into()),
     None,
     None, // Content-Type is intentionally *not* inferred from the extension
+    r#"{ "a": 1, "b": 2 }"#,
+)]
+#[case::stream_command(
+    RecipeBody::Raw("{{ command(['cat', 'data.json']) }}".into()),
+    None,
+    None,
     r#"{ "a": 1, "b": 2 }"#,
 )]
 #[case::json(
@@ -336,8 +342,7 @@ Content-Disposition: form-data; name=\"user_id\"\r
 )]
 #[case::form_multipart_file(
     RecipeBody::FormMultipart(indexmap! {
-        "file".into() =>
-            "{{ file(concat([test_data_dir, '/data.json'])) }}".into(),
+        "file".into() => "{{ file('data.json') }}".into(),
     }),
     None,
     Some("multipart/form-data; boundary=BOUNDARY"),
@@ -353,8 +358,7 @@ Content-Type: application/json\r
     RecipeBody::FormMultipart(indexmap! {
         // This file does *not* get streamed because it's not a single-chunk
         // template
-        "file".into() =>
-            "data: {{ file(concat([test_data_dir, '/data.json'])) }}".into(),
+        "file".into() => "data: {{ file('data.json') }}".into(),
     }),
     None,
     Some("multipart/form-data; boundary=BOUNDARY"),
@@ -362,6 +366,19 @@ Content-Type: application/json\r
 Content-Disposition: form-data; name=\"file\"\r
 \r
 data: { \"a\": 1, \"b\": 2 }\r
+--BOUNDARY--\r
+",
+)]
+#[case::form_multipart_command(
+    RecipeBody::FormMultipart(indexmap! {
+        "command".into() => "{{ command(['cat', 'data.json']) }}".into(),
+    }),
+    None,
+    Some("multipart/form-data; boundary=BOUNDARY"),
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"command\"\r
+\r
+{ \"a\": 1, \"b\": 2 }\r
 --BOUNDARY--\r
 ",
 )]
@@ -960,6 +977,12 @@ async fn test_build_curl_authentication(
         "file".into() => "{{ file('data.json') }}".into(),
     }),
     "-F 'file=@{ROOT}/data.json'"
+)]
+#[case::form_multipart_command(
+    RecipeBody::FormMultipart(indexmap! {
+        "command".into() => "{{ command(['cat', 'data.json']) }}".into(),
+    }),
+    r#"-F 'command={ "a": 1, "b": 2 }'"#
 )]
 #[tokio::test]
 async fn test_build_curl_body(

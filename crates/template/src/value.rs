@@ -7,12 +7,10 @@ use crate::{
 };
 use bytes::{Bytes, BytesMut};
 use derive_more::{Display, From};
-use futures::{StreamExt, TryStreamExt, stream::BoxStream};
+use futures::{TryStreamExt, stream::BoxStream};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, fmt::Debug, io, path::PathBuf};
-use tokio::io::AsyncRead;
-use tokio_util::io::ReaderStream;
+use std::{collections::VecDeque, fmt::Debug, path::PathBuf};
 
 /// A runtime template value. This very similar to a JSON value, except:
 /// - Numbers do not support arbitrary size
@@ -177,22 +175,11 @@ pub enum Stream {
         source: StreamSource,
         /// The stream of binary data
         #[debug(skip)]
-        stream: BoxStream<'static, Result<Bytes, io::Error>>,
+        stream: BoxStream<'static, Result<Bytes, RenderError>>,
     },
 }
 
 impl Stream {
-    /// Create a new stream from an `AsyncRead` value
-    pub fn reader<R>(source: StreamSource, reader: R) -> Self
-    where
-        R: 'static + AsyncRead + Send,
-    {
-        Self::Stream {
-            source,
-            stream: ReaderStream::new(reader).boxed(),
-        }
-    }
-
     /// Resolve this stream to a concrete [Value]. If it's already a value, just
     /// return it. Otherwise the stream will be awaited and collected into
     /// bytes.
@@ -205,7 +192,7 @@ impl Stream {
                 .map(|bytes| Value::Bytes(bytes.into()))
                 .map_err(|error| RenderError::Stream {
                     stream_source: source,
-                    error,
+                    error: Box::new(error),
                 }),
         }
     }
@@ -221,6 +208,12 @@ impl<T: Into<Value>> From<T> for Stream {
 /// stream to the user, e.g. in a template preview
 #[derive(Clone, Debug, Display)]
 pub enum StreamSource {
+    /// Stream from a subprocess
+    #[display("command `{}`", command.join(" "))]
+    Command {
+        /// Program + 0 or more arguments
+        command: Vec<String>,
+    },
     /// Data is being streamed from a file
     #[display("file {}", path.display())]
     File {

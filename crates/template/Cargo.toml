@@ -24,7 +24,6 @@ serde_json = {workspace = true}
 slumber_util = {workspace = true}
 thiserror = {workspace = true}
 tokio = {workspace = true, features = ["sync"]}
-tokio-util = {workspace = true, features = ["io"]}
 tracing = {workspace = true}
 winnow = {workspace = true}
 
@@ -38,6 +37,7 @@ serde_json = {workspace = true}
 serde_yaml = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}
 tokio = {workspace = true, features = ["fs", "macros", "rt"]}
+tokio-util = {workspace = true, features=["io"]}
 
 [features]
 schema = ["dep:schemars"]

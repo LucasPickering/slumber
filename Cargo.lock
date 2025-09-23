@@ -3496,6 +3496,7 @@ dependencies = [
  "strum 0.26.3",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-util",
  "tracing",
  "url",
  "uuid",

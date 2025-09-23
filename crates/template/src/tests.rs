@@ -2,11 +2,13 @@ use crate::{
     Arguments, Context, FieldCache, Identifier, RenderError, Stream, Template,
     Value, value::StreamSource,
 };
+use futures::{StreamExt, TryStreamExt};
 use indexmap::indexmap;
 use rstest::rstest;
 use slumber_util::{assert_err, assert_matches, test_data_dir};
 use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::fs::File;
+use tokio_util::io::ReaderStream;
 
 /// Test simple expression rendering
 #[rstest]
@@ -286,10 +288,12 @@ impl Context for TestContext {
                 let path = test_data_dir().join(file_name);
                 let file =
                     File::open(&path).await.map_err(RenderError::other)?;
-                Ok(Stream::reader(
-                    StreamSource::File { path: path.clone() },
-                    file,
-                ))
+                Ok(Stream::Stream {
+                    source: StreamSource::File { path: path.clone() },
+                    stream: ReaderStream::new(file)
+                        .map_err(RenderError::other)
+                        .boxed(),
+                })
             }
             _ => Err(RenderError::FunctionUnknown),
         }

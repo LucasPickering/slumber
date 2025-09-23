@@ -127,15 +127,15 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
 // code, there isn't much value in testing all platforms.
 #[cfg_attr(
     unix,
-    case::root_dir(vec!["pwd"], None, None, Ok("{ROOT}\n".as_bytes())),
+    case::root_dir(vec!["pwd"], None, None, Ok("{ROOT}/test_data\n".as_bytes())),
 )]
 #[cfg_attr(
     unix,
     case::cwd(
         vec!["pwd"],
-        Some("test_data"),
+        Some(".."), // We start in the test_data dir
         None,
-        Ok("{ROOT}/test_data\n".as_bytes()),
+        Ok("{ROOT}\n".as_bytes()),
     ),
 )]
 #[case::stdin(
@@ -163,8 +163,7 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     vec!["ls", "--fake"],
     None,
     None,
-    // Error message varies by platform
-    Err(if cfg!(unix) { "unrecognized option" } else { "unknown option" }),
+    Err("Command `ls --fake` exited with"),
 )]
 #[tokio::test]
 async fn test_command(
@@ -181,21 +180,19 @@ async fn test_command(
             ("stdin", stdin.map(Expression::from)),
         ],
     );
-    let root_dir = get_repo_root();
-    let context = TemplateContext {
-        root_dir: root_dir.to_owned(),
-        ..TemplateContext::factory(())
-    };
     // Replace {ROOT} with the root dir
     let expected = expected.map(|bytes| {
         if let Ok(s) = std::str::from_utf8(bytes) {
-            s.replace("{ROOT}", &root_dir.to_string_lossy())
+            s.replace("{ROOT}", &get_repo_root().to_string_lossy())
                 .into_bytes()
         } else {
             bytes.to_owned()
         }
     });
-    assert_result(template.render_bytes(&context).await, expected);
+    assert_result(
+        template.render_bytes(&TemplateContext::factory(())).await,
+        expected,
+    );
 }
 
 /// `concat()`
@@ -772,7 +769,8 @@ async fn test_trim(
 
 /// Test different conditions where streaming is/isn't allowed
 #[rstest]
-#[case::stream_direct("{{ file('data.json') }}", true, true)]
+#[case::stream_file("{{ file('data.json') }}", true, true)]
+#[case::stream_command("{{ command(['cat', 'data.json']) }}", true, true)]
 #[case::stream_piped("{{ 'data.json' | file() }}", true, true)]
 #[case::stream_via_profile("{{ file_field }}", true, true)]
 #[case::no_stream_direct("{{ file('data.json') }}", false, false)]

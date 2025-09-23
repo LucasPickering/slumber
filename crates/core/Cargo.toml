@@ -38,6 +38,7 @@ slumber_util = {workspace = true}
 strum = {workspace = true, features = ["derive"]}
 thiserror = {workspace = true}
 tokio = {workspace = true, features = ["fs", "process"]}
+tokio-util = {workspace = true, features = ["io"]}
 tracing = {workspace = true}
 url = {workspace = true, features = ["serde"]}
 uuid = {workspace = true, features = ["serde", "v4"]}

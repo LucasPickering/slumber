@@ -7,18 +7,25 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
+use futures::{StreamExt, TryStreamExt, stream};
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
-    Expected, Stream, StreamSource, TryFromValue, Value, ValueError, WithValue,
-    impl_try_from_value_str,
+    Expected, RenderError, Stream, StreamSource, TryFromValue, Value,
+    ValueError, WithValue, impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
 use std::{env, fmt::Debug, path::PathBuf, process::Stdio, sync::Arc};
-use tokio::{fs::File, io::AsyncWriteExt, process::Command, sync::oneshot};
-use tracing::{debug, debug_span};
+use tokio::{
+    fs::File,
+    io::{AsyncRead, AsyncWriteExt},
+    process::Command,
+    sync::oneshot,
+};
+use tokio_util::io::ReaderStream;
+use tracing::{Instrument, debug, debug_span};
 
 // ===========================================================
 // Documentation for these functions is generated automatically by an mdbook
@@ -118,26 +125,31 @@ pub async fn command(
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
-) -> Result<Bytes, FunctionError> {
-    let [program, args @ ..] = command.as_slice() else {
+) -> Result<Stream, FunctionError> {
+    let cwd = context.root_dir.join(cwd.unwrap_or_default());
+    let [program, arguments @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
     };
-    let _ = debug_span!("Executing command", ?program, ?args).entered();
+    let program = program.clone();
+    let arguments = arguments.to_owned();
 
-    let output = async {
+    let span = debug_span!("Running command", ?program, ?arguments);
+
+    // Try block for all errors that can occur during command init
+    let mut child = async {
         // Spawn the command process
-        let mut process = Command::new(program)
-            .args(args)
+        let mut child = Command::new(&program)
+            .args(&arguments)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .current_dir(context.root_dir.join(cwd.unwrap_or_default()))
+            .stderr(Stdio::null())
+            .current_dir(cwd)
             .kill_on_drop(true)
             .spawn()?;
 
         // Write the stdin to the process
         if let Some(stdin) = stdin {
-            process
+            child
                 .stdin
                 .as_mut()
                 .expect("Process missing stdin")
@@ -145,35 +157,57 @@ pub async fn command(
                 .await?;
         }
 
-        // Wait for the process to finish
-        process.wait_with_output().await
+        Ok(child)
     }
     .await
     .map_err(|error| FunctionError::CommandInit {
         program: program.clone(),
-        args: args.into(),
+        args: arguments.clone(),
         error,
     })?;
 
-    debug!(
-        status = %output.status,
-        stdout = %String::from_utf8_lossy(&output.stdout),
-        stderr = %String::from_utf8_lossy(&output.stderr),
-        "Command finished"
+    // We have to poll the process (via wait()) and stream from stdout
+    // simultaneously. If we just stream from stdout, we never get any output.
+    // If we try to wait() then stream from stdout, the stdout buffer may fill
+    // up and the process will hang until it's drained. In practice this means
+    // we'll poll in a background task, then stream stdout until it's done.
+    let stdout = child.stdout.take().expect("stdout not set for child");
+    let handle = tokio::spawn(
+        async move {
+            let result = child.wait().await;
+            debug!(?result, "Command finished");
+            result
+        }
+        .instrument(span),
     );
+    // After stdout is done, we'll check the status code of the process to make
+    // sure it succeeded. This gets chained on to the end of the stream
+    let status_future = async move {
+        let status = handle
+            .await
+            .map_err(RenderError::other)? // Join error
+            .map_err(RenderError::other)?; // Command error
+        if status.success() {
+            // Since we're chaining onto the end of the output stream, we need
+            // to emit empty bytes
+            Ok(Bytes::new())
+        } else {
+            Err(FunctionError::CommandStatus {
+                program,
+                arguments,
+                status,
+            }
+            .into())
+        }
+    };
+    let stream = reader_stream(stdout)
+        .chain(stream::once(status_future))
+        .boxed();
 
-    // Check status code
-    if output.status.success() {
-        Ok(output.stdout.into())
-    } else {
-        Err(FunctionError::CommandStatus {
-            program: program.clone(),
-            args: args.into(),
-            status: output.status,
-            stdout: output.stdout,
-            stderr: output.stderr,
-        })
-    }
+    Ok(Stream::Stream {
+        source: StreamSource::Command { command },
+        stream,
+    })
 }
 
 /// Concatenate any number of strings together
@@ -269,7 +303,10 @@ pub async fn file(
                 path: path.clone(),
                 error,
             })?;
-    Ok(Stream::reader(StreamSource::File { path }, file))
+    Ok(Stream::Stream {
+        source: StreamSource::File { path },
+        stream: reader_stream(file).boxed(),
+    })
 }
 
 /// Convert a value to a float
@@ -913,6 +950,13 @@ impl TryFromValue for RecipeId {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         String::try_from_value(value).map(RecipeId::from)
     }
+}
+
+/// Create a stream from an `AsyncRead` value
+fn reader_stream(
+    reader: impl AsyncRead,
+) -> impl stream::Stream<Item = Result<Bytes, RenderError>> {
+    ReaderStream::new(reader).map_err(RenderError::other)
 }
 
 // There are no unit tests for these functions. Instead we use integration-ish

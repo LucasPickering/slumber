@@ -1,6 +1,6 @@
 use crate::{
     collection::Authentication,
-    http::{FormPart, HttpMethod, RenderedBody},
+    http::{HttpMethod, RenderedBody},
 };
 use anyhow::Context;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
@@ -83,14 +83,11 @@ impl CurlBuilder {
         }
     }
 
-    /// Add a body to the command
-    pub fn body(mut self, body: RenderedBody) -> anyhow::Result<Self> {
+    /// Add a body to the command. This is async because the body may be an
+    /// stream that needs to be resolved.
+    pub async fn body(mut self, body: RenderedBody) -> anyhow::Result<Self> {
         match body {
-            RenderedBody::Raw(Stream::Value(value)) => {
-                let bytes = value.into_bytes();
-                let body = as_text(&bytes)?;
-                self.push(["--data".into(), format!("'{body}'").into()]);
-            }
+            // We know how to stream files to curl
             RenderedBody::Raw(Stream::Stream {
                 source: StreamSource::File { path },
                 ..
@@ -100,6 +97,13 @@ impl CurlBuilder {
                     "--data".into(),
                     format!("'@{path}'", path = path.to_string_lossy()).into(),
                 ]);
+            }
+            // Any other type of has to be resolved eagerly since curl
+            // doesn't support them natively
+            RenderedBody::Raw(stream) => {
+                let bytes = stream.resolve().await?.into_bytes();
+                let body = as_text(&bytes)?;
+                self.push(["--data".into(), format!("'{body}'").into()]);
             }
             RenderedBody::Json(json) => {
                 self.push(["--json".into(), format!("'{json}'").into()]);
@@ -114,19 +118,21 @@ impl CurlBuilder {
                 }
             }
             RenderedBody::FormMultipart(form) => {
-                for (field, part) in form {
-                    let value = match &part {
-                        FormPart::Bytes(bytes) => as_text(bytes)?,
-                        // Use curl's file path syntax
-                        FormPart::File(path) => {
-                            let path = path.to_string_lossy();
-                            &format!("@{path}")
-                        }
+                for (field, stream) in form {
+                    let argument = if let Stream::Stream {
+                        source: StreamSource::File { path },
+                        ..
+                    } = stream
+                    {
+                        // Files can be passed directly to curl
+                        let path = path.to_string_lossy();
+                        format!("'{field}=@{path}'")
+                    } else {
+                        let bytes = stream.resolve().await?.into_bytes();
+                        let text = as_text(&bytes)?;
+                        format!("'{field}={text}'")
                     };
-                    self.push([
-                        "-F".into(),
-                        format!("'{field}={value}'").into(),
-                    ]);
+                    self.push(["-F".into(), argument.into()]);
                 }
             }
         }

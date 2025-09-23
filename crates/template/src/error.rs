@@ -5,7 +5,6 @@ use itertools::Itertools;
 use serde::de;
 use std::{
     fmt::Display,
-    io,
     num::{ParseFloatError, ParseIntError},
     str::Utf8Error,
 };
@@ -57,13 +56,14 @@ pub enum RenderError {
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
 
-    /// I/O error while streaming bytes from a streaming source
+    /// Error while streaming bytes from a streaming source
     #[error("Error streaming from {stream_source}")]
     Stream {
         /// Descriptor of the streaming source, such as a file path
         stream_source: StreamSource,
+        /// The inner error
         #[source]
-        error: io::Error,
+        error: Box<Self>,
     },
 
     /// Not enough arguments provided to a function call

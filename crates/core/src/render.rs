@@ -248,7 +248,7 @@ impl
             database::CollectionDatabase,
             test_util::{TestHttpProvider, TestPrompter},
         };
-        use slumber_util::paths::get_repo_root;
+        use slumber_util::test_data_dir;
 
         let selected_profile = profiles.first().map(|(id, _)| id.clone());
         Self {
@@ -265,7 +265,7 @@ impl
             )),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
-            root_dir: get_repo_root().to_owned(),
+            root_dir: test_data_dir(),
             show_sensitive: true,
             state: Default::default(),
         }
@@ -390,19 +390,13 @@ pub enum FunctionError {
 
     /// Command exited with a non-zero status code
     #[error(
-        "Command `{command}` exited with {status}\n{stderr}",
-        command = iter::once(program).chain(args).format(" "),
-        stderr = String::from_utf8_lossy(stderr),
+        "Command `{command}` exited with {status}",
+        command = iter::once(program).chain(arguments).format(" "),
     )]
     CommandStatus {
         program: String,
-        args: Vec<String>,
+        arguments: Vec<String>,
         status: ExitStatus,
-        // Storing stdout+stderr because I like symmetry. It's not easy to
-        // print both because we don't know how they're supposed to be
-        // interleaved. The error should be in stderr so we'll just print that.
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
     },
 
     /// User passed an empty command arrary

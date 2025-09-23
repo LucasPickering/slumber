@@ -57,7 +57,7 @@ use futures::{
     try_join,
 };
 use reqwest::{
-    Client, RequestBuilder, Response, Url,
+    Body, Client, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
     redirect,
@@ -65,8 +65,7 @@ use reqwest::{
 use slumber_config::HttpEngineConfig;
 use slumber_template::{Stream, StreamSource, Template};
 use slumber_util::ResultTraced;
-use std::{collections::HashSet, error::Error, path::PathBuf};
-use tokio::fs::File;
+use std::{collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -338,7 +337,7 @@ impl HttpEngine {
                 builder = builder.authentication(&authentication);
             }
             if let Some(body) = body {
-                builder = builder.body(body)?;
+                builder = builder.body(body).await?;
             }
             Ok(builder.build())
         };
@@ -652,13 +651,12 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value =
+                            let stream =
                                 template.render_stream(context).await.context(
                                     format!("Rendering form field `{field}`"),
                                 )?;
 
-                            let part = Self::stream(value);
-                            Ok::<_, anyhow::Error>((field.clone(), part))
+                            Ok::<_, anyhow::Error>((field.clone(), stream))
                         })
                     },
                 );
@@ -667,18 +665,6 @@ impl Recipe {
             }
         };
         Ok(Some(rendered))
-    }
-
-    /// Convert a template stream to a multipart form part
-    fn stream(stream: Stream) -> FormPart {
-        match stream {
-            Stream::Value(value) => FormPart::Bytes(value.into_bytes()),
-            // If the stream is a file, we can pass that directly to reqwest
-            Stream::Stream {
-                source: StreamSource::File { path },
-                ..
-            } => FormPart::File(path),
-        }
     }
 }
 
@@ -703,8 +689,8 @@ enum RenderedBody {
     /// Field:value mapping. Value is `String` because only string data can be
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
-    /// Field:value mapping. Values can be arbitrary bytes
-    FormMultipart(Vec<(String, FormPart)>),
+    /// Field:value mapping. Values can be arbitrary bytes or a binary stream
+    FormMultipart(Vec<(String, Stream)>),
 }
 
 impl RenderedBody {
@@ -718,13 +704,9 @@ impl RenderedBody {
             RenderedBody::Raw(Stream::Value(value)) => {
                 Ok(builder.body(value.into_bytes()))
             }
-            RenderedBody::Raw(Stream::Stream {
-                source: StreamSource::File { path },
-                ..
-            }) => {
-                // Stream from a file
-                let file = File::open(&path).await?;
-                Ok(builder.body(file))
+            RenderedBody::Raw(Stream::Stream { stream, .. }) => {
+                let body = Body::wrap_stream(stream);
+                Ok(builder.body(body))
             }
             RenderedBody::Json(json) => Ok(builder.json(&json)),
             RenderedBody::FormUrlencoded(fields) => Ok(builder.form(&fields)),
@@ -740,30 +722,28 @@ impl RenderedBody {
                     form.set_boundary("BOUNDARY");
                 }
 
-                for (field, part) in fields {
-                    form = form.part(field, part.into_reqwest().await?);
+                for (field, stream) in fields {
+                    // Convert the stream to a form part
+                    let part = match stream {
+                        Stream::Value(value) => {
+                            Part::bytes::<Vec<u8>>(value.into_bytes().into())
+                        }
+                        // Files can be handled natively by reqwest, which gets
+                        // bonus support for Content-Type and
+                        // Content-Disposition goodies
+                        Stream::Stream {
+                            source: StreamSource::File { path },
+                            ..
+                        } => Part::file(path).await?,
+                        // Any other stream can be streamed directly as bytes
+                        Stream::Stream { stream, .. } => {
+                            Part::stream(Body::wrap_stream(stream))
+                        }
+                    };
+                    form = form.part(field, part);
                 }
+
                 Ok(builder.multipart(form))
-            }
-        }
-    }
-}
-
-/// Form field value for a multipart form
-#[derive(Debug)]
-pub enum FormPart {
-    /// Data will be raw bytes
-    Bytes(Bytes),
-    /// Data will be streamed from a file. The path should be absolute
-    File(PathBuf),
-}
-
-impl FormPart {
-    async fn into_reqwest(self) -> anyhow::Result<Part> {
-        match self {
-            Self::Bytes(bytes) => Ok(Part::bytes(<Vec<u8>>::from(bytes))),
-            Self::File(path) => {
-                Part::file(path).await.map_err(anyhow::Error::from)
             }
         }
     }

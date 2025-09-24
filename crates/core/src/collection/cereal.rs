@@ -299,29 +299,29 @@ impl DeserializeYaml for RecipeBody {
     }
 
     fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        /// Deserialize a struct with a single "data" field
+        fn deserialize_data<T: DeserializeYaml>(
+            yaml: SourcedYaml<'_>,
+        ) -> yaml::Result<T> {
+            let mut deserializer = StructDeserializer::new(yaml)?;
+            let data = deserializer.get(Field::new("data"))?;
+            deserializer.done()?;
+            Ok(data)
+        }
+
         // Mapping deserializes as some sort of structured body. It should have
         // a `type` and `data` field
         if yaml.data.is_mapping() {
             deserialize_enum! {
                 yaml,
-                "json" => |yaml| {
-                    let mut deserializer = StructDeserializer::new(yaml)?;
-                    let json = deserializer.get(Field::new("data"))?;
-                    deserializer.done()?;
-                    Ok(Self::Json(json))
-                },
+                "json" => |yaml| Ok(Self::Json(deserialize_data(yaml)?)),
                 "form_urlencoded" => |yaml| {
-                    let mut deserializer = StructDeserializer::new(yaml)?;
-                    let form = deserializer.get(Field::new("data"))?;
-                    deserializer.done()?;
-                    Ok(Self::FormUrlencoded(form))
+                    Ok(Self::FormUrlencoded(deserialize_data(yaml)?))
                 },
                 "form_multipart" => |yaml| {
-                    let mut deserializer = StructDeserializer::new(yaml)?;
-                    let form = deserializer.get(Field::new("data"))?;
-                    deserializer.done()?;
-                    Ok(Self::FormMultipart(form))
+                    Ok(Self::FormMultipart(deserialize_data(yaml)?))
                 },
+                "stream" => |yaml| Ok(Self::Stream(deserialize_data(yaml)?)),
             }
         } else {
             // Otherwise it's a raw body - deserialize as a template
@@ -585,7 +585,7 @@ mod tests {
     #[case::raw_tag(
         yaml_enum("raw", [("data", "data")]),
         "Expected one of \"json\", \"form_urlencoded\", \"form_multipart\", \
-        received \"raw\"",
+        \"stream\", received \"raw\"",
     )]
     #[case::form_urlencoded_missing_data(
         yaml_enum("form_urlencoded", [] as [(_, serde_yaml::Value); 0]),

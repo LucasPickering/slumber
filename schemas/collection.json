@@ -381,6 +381,23 @@
           ]
         },
         {
+          "description": "Plain body, but the bytes will be streamed instead of being loaded\ninto memory",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "stream"
+            },
+            "data": {
+              "$ref": "#/$defs/Template"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ]
+        },
+        {
           "description": "Plain string/bytes body. Must be the last variant to support untagged.\nThis captures any value that doesn't fit one of the above variants.",
           "$ref": "#/$defs/Template"
         }

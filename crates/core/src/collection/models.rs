@@ -451,6 +451,9 @@ pub enum RecipeBody {
     /// name to value. Values are templates while field names are not. Values
     /// can render to any bytes.
     FormMultipart(IndexMap<String, Template>),
+    /// Plain body, but the bytes will be streamed instead of being loaded
+    /// into memory
+    Stream(Template),
     /// Plain string/bytes body. Must be the last variant to support untagged.
     /// This captures any value that doesn't fit one of the above variants.
     #[serde(untagged)]
@@ -476,7 +479,7 @@ impl RecipeBody {
     /// an explicit header.
     pub fn mime(&self) -> Option<Mime> {
         match self {
-            RecipeBody::Raw(_) => None,
+            RecipeBody::Raw(_) | RecipeBody::Stream(_) => None,
             RecipeBody::Json(_) => Some(mime::APPLICATION_JSON),
             RecipeBody::FormUrlencoded(_) => {
                 Some(mime::APPLICATION_WWW_FORM_URLENCODED)

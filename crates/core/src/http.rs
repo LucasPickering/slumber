@@ -620,7 +620,15 @@ impl Recipe {
         };
 
         let rendered = match body {
+            // Raw body is always eagerly rendered
             RecipeBody::Raw(body) => RenderedBody::Raw(
+                body.render_bytes(context)
+                    .await
+                    .context("Rendering body")?
+                    .into(),
+            ),
+            // Stream body is rendered as a stream (!!)
+            RecipeBody::Stream(body) => RenderedBody::Raw(
                 body.render_stream(context)
                     .await
                     .context("Rendering body")?,

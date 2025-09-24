@@ -141,14 +141,18 @@ requests:
         name: Stream File
         method: POST
         url: "{{ host }}/anything"
-        body: "{{ file('Cargo.lock') }}"
+        body:
+          type: stream
+          data: "{{ file('Cargo.lock') }}"
 
       stream_command:
         $ref: "#/.base_request"
         name: Stream Command
         method: POST
         url: "{{ host }}/anything"
-        body: "{{ command(['cat', 'Cargo.lock']) }}"
+        body:
+          type: stream
+          data: "{{ command(['cat', 'Cargo.lock']) }}"
 
       form_urlencoded:
         $ref: "#/.base_request"

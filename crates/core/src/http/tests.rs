@@ -247,24 +247,27 @@ async fn test_authentication(
 /// is set correctly. This also allows us to test the actual built request,
 /// which could hypothetically vary from the request record.
 #[rstest]
-#[case::text(RecipeBody::Raw("hello!".into()), None, None, "hello!")]
+#[case::text(RecipeBody::Raw("hello!".into()), None, None, "hello!", true)]
 #[case::stream_file(
-    RecipeBody::Raw("{{ file('data.json') }}".into()),
+    RecipeBody::Stream("{{ file('data.json') }}".into()),
     None,
     None, // Content-Type is intentionally *not* inferred from the extension
     r#"{ "a": 1, "b": 2 }"#,
+    false, // Stream bodies aren't stored
 )]
 #[case::stream_command(
-    RecipeBody::Raw("{{ command(['cat', 'data.json']) }}".into()),
+    RecipeBody::Stream("{{ command(['cat', 'data.json']) }}".into()),
     None,
     None,
     r#"{ "a": 1, "b": 2 }"#,
+    false, // Stream bodies aren't stored
 )]
 #[case::json(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     None,
     Some("application/json"),
     r#"{"group_id":"3"}"#,
+    true,
 )]
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
@@ -272,6 +275,7 @@ async fn test_authentication(
     Some("text/plain"),
     Some("text/plain"),
     r#"{"group_id":"3"}"#,
+    true,
 )]
 #[case::json_unpack(
     // Single-chunk templates should get unpacked to the actual JSON value
@@ -280,6 +284,7 @@ async fn test_authentication(
     None,
     Some("application/json"),
     "[1,2,3]",
+    true,
 )]
 #[case::json_no_unpack(
     // This template doesn't get unpacked because it is multiple chunks
@@ -289,6 +294,7 @@ async fn test_authentication(
     // Spaces are added because this uses the template Value stringification
     // instead of serde_json stringification
     r#""no: [1, 2, 3]""#,
+    true,
 )]
 #[case::json_string_from_file(
     // JSON data is loaded as a string and NOT unpacked. file() returns bytes
@@ -299,6 +305,7 @@ async fn test_authentication(
     None,
     Some("application/json"),
     r#""{ \"a\": 1, \"b\": 2 }""#,
+    true,
 )]
 #[case::json_from_file_parsed(
     // Pipe to json_parse() to parse it
@@ -308,6 +315,7 @@ async fn test_authentication(
     None,
     Some("application/json"),
     r#"{"a":1,"b":2}"#,
+    true,
 )]
 #[case::form_urlencoded(
     RecipeBody::FormUrlencoded(indexmap! {
@@ -317,6 +325,7 @@ async fn test_authentication(
     None,
     Some("application/x-www-form-urlencoded"),
     "user_id=1&token=tokenzzz",
+    true,
 )]
 // reqwest sets the content type when initializing the body, so make sure
 // that doesn't override the user's value
@@ -324,7 +333,8 @@ async fn test_authentication(
     RecipeBody::FormUrlencoded(Default::default()),
     Some("text/plain"),
     Some("text/plain"),
-    ""
+    "",
+    true
 )]
 #[case::form_multipart(
     RecipeBody::FormMultipart(indexmap! {
@@ -339,6 +349,7 @@ Content-Disposition: form-data; name=\"user_id\"\r
 1\r
 --BOUNDARY--\r
 ",
+    false, // Multipart bodies are streamed, and therefore not persisted
 )]
 #[case::form_multipart_file(
     RecipeBody::FormMultipart(indexmap! {
@@ -353,6 +364,7 @@ Content-Type: application/json\r
 { \"a\": 1, \"b\": 2 }\r
 --BOUNDARY--\r
 ",
+    false,
 )]
 #[case::form_multipart_file_not_streamed(
     RecipeBody::FormMultipart(indexmap! {
@@ -368,6 +380,7 @@ Content-Disposition: form-data; name=\"file\"\r
 data: { \"a\": 1, \"b\": 2 }\r
 --BOUNDARY--\r
 ",
+    false,
 )]
 #[case::form_multipart_command(
     RecipeBody::FormMultipart(indexmap! {
@@ -381,14 +394,19 @@ Content-Disposition: form-data; name=\"command\"\r
 { \"a\": 1, \"b\": 2 }\r
 --BOUNDARY--\r
 ",
+    false,
 )]
 #[tokio::test]
 async fn test_body(
     http_engine: HttpEngine,
     #[case] body: RecipeBody,
     #[case] content_type: Option<&str>,
+    // Expected value of the request's Content-Type header
     #[case] expected_content_type: Option<&str>,
+    // Expected value of the request body
     #[case] expected_body: &'static str,
+    // Should the body be available on the RequestRecord value?
+    #[case] expected_body_persisted: bool,
 ) {
     // We're going to actually send the request so we can get the full body.
     // Reqwest doesn't expose the body for multipart requests because it may be
@@ -427,6 +445,13 @@ async fn test_body(
 
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    assert_eq!(
+        ticket.record.body().is_some(),
+        expected_body_persisted,
+        "Body persistence mismatch"
+    );
+
     let exchange = ticket.send().await.unwrap();
 
     // Mocker echoes the Content-Type header and body, assert on them
@@ -950,7 +975,7 @@ async fn test_build_curl_authentication(
 #[rstest]
 #[case::text(RecipeBody::Raw("hello!".into()), "--data 'hello!'")]
 #[case::stream(
-    RecipeBody::Raw("{{ file('data.json') }}".into()),
+    RecipeBody::Stream("{{ file('data.json') }}".into()),
     "--data '@{ROOT}/data.json'",
 )]
 #[case::json(

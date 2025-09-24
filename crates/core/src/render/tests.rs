@@ -15,7 +15,9 @@ use chrono::{DateTime, Utc};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{Expression, Literal, Stream, Template, Value};
+use slumber_template::{
+    Expression, Literal, Stream, StreamSource, Template, Value,
+};
 use slumber_util::{
     Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
     temp_dir, test_data_dir,
@@ -192,6 +194,24 @@ async fn test_command(
     assert_result(
         template.render_bytes(&TemplateContext::factory(())).await,
         expected,
+    );
+}
+
+/// Test that the command isn't spawned until the output stream is evaluated.
+/// This ensures we don't execute the command for previews
+#[tokio::test]
+async fn test_command_lazy() {
+    let template = Template::function_call(
+        "command",
+        [vec!["i-will-fail".into()].into()],
+        [],
+    );
+    assert_matches!(
+        template.render_stream(&TemplateContext::factory(())).await,
+        Ok(Stream::Stream {
+            source: StreamSource::Command { .. },
+            ..
+        }),
     );
 }
 

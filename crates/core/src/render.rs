@@ -200,7 +200,7 @@ impl slumber_template::Context for TemplateContext {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
-            "command" => functions::command(arguments).await,
+            "command" => functions::command(arguments),
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
@@ -377,13 +377,13 @@ pub enum FunctionError {
     #[error(transparent)]
     Base64Decode(#[from] base64::DecodeError),
 
-    /// Error creating or spawning a subprocess
+    /// Error creating, spawning, or executing a subprocess
     #[error(
-        "Executing command `{}`", iter::once(program).chain(args).format(" ")
+        "Executing command `{}`", iter::once(program).chain(arguments).format(" ")
     )]
     CommandInit {
         program: String,
-        args: Vec<String>,
+        arguments: Vec<String>,
         #[source]
         error: io::Error,
     },

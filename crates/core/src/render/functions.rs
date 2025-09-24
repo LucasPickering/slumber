@@ -7,7 +7,7 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::{FutureExt, StreamExt, TryFutureExt, TryStreamExt, stream};
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
@@ -17,7 +17,7 @@ use slumber_template::{
     ValueError, WithValue, impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
-use std::{env, fmt::Debug, path::PathBuf, process::Stdio, sync::Arc};
+use std::{env, fmt::Debug, io, path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncWriteExt},
@@ -120,12 +120,25 @@ pub fn boolean(value: Value) -> bool {
 /// > `command` is commonly paired with [`trim`](#trim) to remove trailing
 /// newlines from command output: `{{ command(["echo", "hello"]) | trim() }}`
 #[template]
-pub async fn command(
+pub fn command(
     #[context] context: &TemplateContext,
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
 ) -> Result<Stream, FunctionError> {
+    /// Wrap an IO error
+    fn io_error(
+        program: &str,
+        arguments: &[String],
+        error: io::Error,
+    ) -> RenderError {
+        RenderError::from(FunctionError::CommandInit {
+            program: program.to_owned(),
+            arguments: arguments.to_owned(),
+            error,
+        })
+    }
+
     let cwd = context.root_dir.join(cwd.unwrap_or_default());
     let [program, arguments @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
@@ -135,8 +148,16 @@ pub async fn command(
 
     let span = debug_span!("Running command", ?program, ?arguments);
 
-    // Try block for all errors that can occur during command init
-    let mut child = async {
+    // We're going to defer command spawning *and* streaming. Streamed commands
+    // shouldn't be spawned until the stream is actually resolved, to prevent
+    // running large/slow commands in a preview.
+    //
+    // We construct a 3-stage stream:
+    // - Spawn command
+    // - Stream from stdout
+    // - Check command status
+    let span2 = span.clone();
+    let future = async {
         // Spawn the command process
         let mut child = Command::new(&program)
             .args(&arguments)
@@ -145,7 +166,8 @@ pub async fn command(
             .stderr(Stdio::null())
             .current_dir(cwd)
             .kill_on_drop(true)
-            .spawn()?;
+            .spawn()
+            .map_err(|error| io_error(&program, &arguments, error))?;
 
         // Write the stdin to the process
         if let Some(stdin) = stdin {
@@ -154,55 +176,53 @@ pub async fn command(
                 .as_mut()
                 .expect("Process missing stdin")
                 .write_all(&stdin)
-                .await?;
+                .await
+                .map_err(|error| io_error(&program, &arguments, error))?;
         }
 
-        Ok(child)
-    }
-    .await
-    .map_err(|error| FunctionError::CommandInit {
-        program: program.clone(),
-        args: arguments.clone(),
-        error,
-    })?;
-
-    // We have to poll the process (via wait()) and stream from stdout
-    // simultaneously. If we just stream from stdout, we never get any output.
-    // If we try to wait() then stream from stdout, the stdout buffer may fill
-    // up and the process will hang until it's drained. In practice this means
-    // we'll poll in a background task, then stream stdout until it's done.
-    let stdout = child.stdout.take().expect("stdout not set for child");
-    let handle = tokio::spawn(
-        async move {
-            let result = child.wait().await;
-            debug!(?result, "Command finished");
-            result
-        }
-        .instrument(span),
-    );
-    // After stdout is done, we'll check the status code of the process to make
-    // sure it succeeded. This gets chained on to the end of the stream
-    let status_future = async move {
-        let status = handle
-            .await
-            .map_err(RenderError::other)? // Join error
-            .map_err(RenderError::other)?; // Command error
-        if status.success() {
-            // Since we're chaining onto the end of the output stream, we need
-            // to emit empty bytes
-            Ok(Bytes::new())
-        } else {
-            Err(FunctionError::CommandStatus {
-                program,
-                arguments,
-                status,
+        // We have to poll the process (via wait()) and stream from stdout
+        // simultaneously. If we just stream from stdout, we never get any
+        // output. If we try to wait() then stream from stdout, the stdout
+        // buffer may fill up and the process will hang until it's drained. In
+        // practice this means we'll poll in a background task, then stream
+        // stdout until it's done.
+        let stdout = child.stdout.take().expect("stdout not set for child");
+        let handle = tokio::spawn(
+            async move {
+                let result = child.wait().await;
+                debug!(?result, "Command finished");
+                result
             }
-            .into())
-        }
-    };
-    let stream = reader_stream(stdout)
-        .chain(stream::once(status_future))
-        .boxed();
+            .instrument(span),
+        );
+
+        // After stdout is done, we'll check the status code of the process to
+        // make sure it succeeded. This gets chained on to the end of
+        // the stream
+        let status_future = async move {
+            let status = handle
+                .await
+                .map_err(RenderError::other)? // Join error - task panicked
+                // Command error
+                .map_err(|error| io_error(&program, &arguments, error))?;
+            if status.success() {
+                // Since we're chaining onto the end of the output stream, we
+                // need to emit empty bytes
+                Ok(Bytes::new())
+            } else {
+                Err(FunctionError::CommandStatus {
+                    program,
+                    arguments,
+                    status,
+                }
+                .into())
+            }
+        };
+        Ok(reader_stream(stdout).chain(status_future.into_stream()))
+    }
+    .instrument(span2);
+
+    let stream = future.try_flatten_stream().boxed();
 
     Ok(Stream::Stream {
         source: StreamSource::Command { command },

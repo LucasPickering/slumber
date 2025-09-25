@@ -478,7 +478,9 @@ async fn test_body_stream(
 
     let exchange = ticket.send().await.unwrap();
 
-    // TODO how can we assert the body was ACTUALLY streamed??
+    // Note: this doesn't actually enforce that the body was streamed
+    // chunk-by-chunk, we just know that the right bytes got there in the end.
+    // There's a test in the render module for that.
 
     // Mocker echoes the Content-Type header and body, assert on them
     assert_eq!(exchange.response.status, StatusCode::OK);

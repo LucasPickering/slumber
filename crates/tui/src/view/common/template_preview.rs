@@ -322,7 +322,7 @@ mod tests {
             ..TemplateContext::factory(())
         };
 
-        let chunks = template.render(&context.eager()).await;
+        let chunks = template.render(&context.streaming(false)).await;
         let text = TextStitcher::stitch_chunks(chunks);
         assert_eq!(text, Text::from(expected));
     }

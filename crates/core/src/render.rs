@@ -37,7 +37,10 @@ use tokio::sync::oneshot;
 /// deferred into a task (tokio requires `'static` for spawned tasks). If this
 /// becomes a bottleneck, we can `Arc` some stuff.
 ///
-/// TODO update comment
+/// One instance of this context applies to all renders in a group (a render
+/// group is all the renders for a single request). [SingleRenderContext] is a
+/// wrapper for each individual render. Use [Self::streaming] to get the wrapper
+/// for a render.
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Entire request collection
@@ -64,15 +67,6 @@ pub struct TemplateContext {
 }
 
 impl TemplateContext {
-    /// Wrap this context for a single render with streaming disabled
-    /// TODO get rid of this? rename it?
-    pub fn eager(&self) -> SingleRenderContext<'_> {
-        SingleRenderContext {
-            context: self,
-            can_stream: false,
-        }
-    }
-
     ///  Wrap this context for a single render, with streaming optionally
     /// enabled
     pub fn streaming(&self, can_stream: bool) -> SingleRenderContext<'_> {
@@ -241,15 +235,13 @@ impl slumber_template::Context for SingleRenderContext<'_> {
         // if that happens we'll have to compute it twice. This saves us a lot
         // of annoying machinery though.
         if output.has_stream() {
-            // If the nested template has multiple chunks, we need to include
-            // all the chunks in the output so they can be both previewed and
-            // streamed correctly.
-            match output.unpack_lazy() {
-                Ok(lazy) => Ok(lazy),
-                Err(output) => Ok(LazyValue::Nested(output)),
-            }
+            // If the nested template rendered to a single chunk, we can unpack
+            // it out of its chunk list. If it had multiple chunks, we need to
+            // keep all of them to provide both a correct preview and the final
+            // stream
+            Ok(output.unpack())
         } else {
-            let value = output.try_into_value().await.map_err(
+            let value = output.try_collect_value().await.map_err(
                 // We *could* just return the error, but wrap it to give
                 // additional context
                 |error| {

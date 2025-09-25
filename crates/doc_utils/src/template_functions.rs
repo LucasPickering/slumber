@@ -322,7 +322,7 @@ fn type_map() -> HashMap<Type, TypeDef> {
         (parse_quote!(String), TypeDef::String),
         // We're hiding streams from the type system, since they will
         // transparently convert to bytes
-        (parse_quote!(Stream), TypeDef::Bytes),
+        (parse_quote!(LazyValue), TypeDef::Bytes),
         (parse_quote!(TrimMode), union!("start" | "end" | "both")),
         (parse_quote!(slumber_template::Value), TypeDef::Value),
         (parse_quote!(Value), TypeDef::Value),

@@ -23,7 +23,7 @@ pub use value::{
 };
 
 use bytes::{Bytes, BytesMut};
-use futures::{Stream, StreamExt, future, stream};
+use futures::{Stream, StreamExt, TryStreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
@@ -180,13 +180,9 @@ impl Template {
     /// than stitching them together into a string. If any individual chunk
     /// fails to render, its error will be returned inline as
     /// [RenderedChunk::Error] and the rest of the template will still be
-    /// rendered.
-    ///
-    /// TODO update comment
+    /// rendered. The returned output can be transformed into a variety of final
+    /// output types.
     pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedOutput {
-        // TODO should we pass the futures directly into RenderedChunks so we
-        // can start streaming before they're all rendered?
-
         // Map over each parsed chunk, and render the expressions into values.
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
@@ -219,35 +215,13 @@ impl Template {
         RenderedOutput(chunks)
     }
 
-    /// Render the template. If any chunk fails to render, return an error. The
-    /// render output is converted to a [Value] by these rules:
-    /// - If the template is a single dynamic chunk, return the output of that
-    ///   chunk, which may be any type of [Value]
-    /// - Any other template will be rendered to a string by stringifying each
-    ///   dynamic chunk and concatenating them all together
-    /// - If rendering to a string fails because the bytes are not valid UTF-8,
-    ///   concatenate into a bytes object instead
-    ///
-    /// Return an error iff any chunk fails to render. This will never fail on
-    /// output conversion because it can always fall back to returning raw
-    /// bytes.
-    ///
-    /// TODO roll this into try_into_value()
-    pub async fn render_value<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<Value, RenderError> {
-        let chunks = self.render(context).await;
-        chunks.try_into_value().await
-    }
-
     /// Convenience method for rendering a template and collecting the output
     /// into a byte string.
     pub async fn render_bytes<Ctx: Context>(
         &self,
         context: &Ctx,
     ) -> Result<Bytes, RenderError> {
-        self.render(context).await.try_into_bytes().await
+        self.render(context).await.try_collect_bytes().await
     }
 
     /// Convenience method for rendering a template and collecting the output
@@ -322,7 +296,8 @@ impl From<Expression> for TemplateChunk {
 pub struct RenderedOutput(Vec<RenderedChunk>);
 
 impl RenderedOutput {
-    /// TODO
+    /// If this output is a single chunk and that chunk is a stream, get the
+    /// source of the stream
     pub fn stream_source(&self) -> Option<&StreamSource> {
         if let [RenderedChunk::Rendered(LazyValue::Stream { source, .. })] =
             self.0.as_slice()
@@ -333,70 +308,88 @@ impl RenderedOutput {
         }
     }
 
-    /// TODO
+    /// Does this output contain *any* stream chunks?
     pub fn has_stream(&self) -> bool {
-        self.0.iter().any(|chunk| {
-            matches!(chunk, RenderedChunk::Rendered(LazyValue::Stream { .. }))
+        self.0.iter().any(|chunk| match chunk {
+            RenderedChunk::Raw(_) => false,
+            RenderedChunk::Rendered(LazyValue::Value(_)) => false,
+            RenderedChunk::Rendered(LazyValue::Stream { .. }) => true,
+            // Recursion!!
+            RenderedChunk::Rendered(LazyValue::Nested(output)) => {
+                output.has_stream()
+            }
+            RenderedChunk::Error(_) => true,
         })
     }
 
-    /// TODO
-    pub fn unpack_lazy(mut self) -> Result<LazyValue, Self> {
+    /// Unpack this output into a single lazy value. If the output is a single
+    /// dynamic chunk, unpack it into a scalar value. Otherwise return a
+    /// [LazyValue::Nested].
+    pub fn unpack(mut self) -> LazyValue {
         if let &[RenderedChunk::Rendered(_)] = self.0.as_slice() {
             // If we have a single dynamic chunk, return its value directly
             let Some(RenderedChunk::Rendered(lazy)) = self.0.pop() else {
                 // Checked pattern above
                 unreachable!()
             };
-            Ok(lazy)
+            lazy
         } else {
-            Err(self)
+            LazyValue::Nested(self)
         }
     }
 
-    /// TODO
+    /// Convert this output into a byte stream. Each chunk will be yielded as a
+    /// separate `Bytes` output from the stream, except for inner stream chunks,
+    /// which can yield any number of values based on their
+    /// implementation. Return `Err` if any of the rendered chunks are errors.
     pub fn try_into_stream(
         self,
     ) -> Result<
         impl Stream<Item = Result<Bytes, RenderError>> + Send,
         RenderError,
     > {
-        // TODO explain
-        let mut stream = stream::empty().boxed();
-        for chunk in self.0 {
-            let chunk_stream = match chunk {
-                RenderedChunk::Raw(s) => stream::once(async move {
-                    Ok(Bytes::from(s.as_bytes().to_owned()))
-                })
-                .boxed(),
+        let stream_value =
+            |bytes| Ok(stream::once(future::ready(Ok(bytes))).boxed());
+
+        // First, make sure we have no errors
+        let chunks = self
+            .0
+            .into_iter()
+            .map(move |chunk| match chunk {
+                RenderedChunk::Raw(s) => {
+                    stream_value(Bytes::from(s.to_string()))
+                }
                 RenderedChunk::Rendered(lazy) => match lazy {
-                    LazyValue::Value(value) => {
-                        stream::once(async move { Ok(value.into_bytes()) })
-                            .boxed()
-                    }
-                    LazyValue::Stream {
-                        stream: chunk_stream,
-                        ..
-                    } => chunk_stream.boxed(),
+                    LazyValue::Value(value) => stream_value(value.into_bytes()),
+                    LazyValue::Stream { stream, .. } => Ok(stream.boxed()),
                     LazyValue::Nested(output) => {
-                        output.try_into_stream()?.boxed()
+                        Ok(output.try_into_stream()?.boxed())
                     }
                 },
 
-                RenderedChunk::Error(error) => return Err(error),
-            };
-            stream = stream.chain(chunk_stream).boxed();
-        }
-        Ok(stream)
+                RenderedChunk::Error(error) => Err(error),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // If none of the chunks failed, we can chain all the streams together
+        Ok(stream::iter(chunks).flatten())
     }
 
-    /// TODO
-    pub async fn try_into_value(self) -> Result<Value, RenderError> {
-        let value = match self.unpack_lazy() {
-            Ok(lazy) => lazy.resolve().await?,
-            Err(output) => {
+    /// Collect the rendered chunks into a [Value] by these rules:
+    /// - If the template is a single dynamic chunk, return the output of that
+    ///   chunk, which may be any type of [Value]
+    /// - Any other template will be rendered to a string by stringifying each
+    ///   dynamic chunk and concatenating them all together
+    /// - If rendering to a string fails because the bytes are not valid UTF-8,
+    ///   concatenate into a bytes object instead
+    pub async fn try_collect_value(self) -> Result<Value, RenderError> {
+        // If we only have one chunk, unpack it into a value
+        let value = match self.unpack() {
+            LazyValue::Value(value) => value,
+            lazy @ LazyValue::Stream { .. } => lazy.resolve().await?,
+            LazyValue::Nested(output) => {
                 // Render to bytes
-                let bytes = output.try_into_bytes().await?;
+                let bytes = output.try_collect_bytes().await?;
                 Value::Bytes(bytes)
             }
         };
@@ -412,43 +405,15 @@ impl RenderedOutput {
         }
     }
 
-    /// Concatenate rendered chunks into bytes. If any chunk is an error, return
-    /// an error. This is async because the chunk may be a stream, in which
-    /// case it will be resolved.
-    pub async fn try_into_bytes(self) -> Result<Bytes, RenderError> {
-        // TODO we could just collect the stream here instead
-
-        // Take an educated guess at the needed capacity to avoid reallocations
-        let capacity = self
-            .0
-            .iter()
-            .map(|chunk| match chunk {
-                RenderedChunk::Raw(s) => s.len(),
-                RenderedChunk::Rendered(LazyValue::Value(Value::Bytes(
-                    bytes,
-                ))) => bytes.len(),
-                RenderedChunk::Rendered(LazyValue::Value(Value::String(s))) => {
-                    s.len()
-                }
-                // Take a rough guess for anything other than bytes/string
-                RenderedChunk::Rendered(_) => 5,
-                RenderedChunk::Error(_) => 0,
-            })
-            .sum();
-
-        let mut bytes = BytesMut::with_capacity(capacity);
-        for chunk in self.0 {
-            match chunk {
-                RenderedChunk::Raw(s) => bytes.extend(s.as_bytes()),
-                RenderedChunk::Rendered(stream) => {
-                    // If the chunk is still a stream, resolve to a value now
-                    let value = stream.resolve().await?;
-                    bytes.extend(value.into_bytes());
-                }
-                RenderedChunk::Error(error) => return Err(error),
-            }
-        }
-        Ok(bytes.into())
+    /// Collect the rendered chunks into a byte string. If any chunk is an
+    /// error, return an error. This is async because the chunk may be a
+    /// stream, in which case it will be resolved.
+    pub async fn try_collect_bytes(self) -> Result<Bytes, RenderError> {
+        // Build a stream, then collect it into bytes
+        self.try_into_stream()?
+            .try_collect::<BytesMut>()
+            .await
+            .map(Bytes::from)
     }
 }
 

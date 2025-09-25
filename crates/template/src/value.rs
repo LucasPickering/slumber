@@ -7,10 +7,7 @@ use crate::{
 };
 use bytes::{Bytes, BytesMut};
 use derive_more::{Display, From};
-use futures::{
-    Stream, StreamExt, TryStreamExt,
-    stream::{self, BoxStream},
-};
+use futures::{TryStreamExt, stream::BoxStream};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, fmt::Debug, path::PathBuf};
@@ -168,8 +165,6 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
-///
-/// TODO rename this to disambiguate with futures::Stream
 #[derive(derive_more::Debug)]
 pub enum LazyValue {
     /// A pre-resolved value
@@ -185,49 +180,17 @@ pub enum LazyValue {
 }
 
 impl LazyValue {
-    // TODO can we dedupe these somehow?
-
     /// Resolve this stream to a concrete [Value]. If it's already a value, just
     /// return it. Otherwise the stream will be awaited and collected into
     /// bytes.
+    /// TODO rename? Get rid of this?
     pub async fn resolve(self) -> Result<Value, RenderError> {
         match self {
             Self::Value(value) => Ok(value),
-            Self::Stream { stream, source } => stream
+            Self::Stream { stream, .. } => stream
                 .try_collect::<BytesMut>()
                 .await
-                .map(|bytes| Value::Bytes(bytes.into()))
-                .map_err(|error| RenderError::Stream {
-                    stream_source: source,
-                    error: Box::new(error),
-                }),
-        }
-    }
-
-    /// TODO
-    pub fn into_stream(self) -> impl Stream<Item = Result<Bytes, RenderError>> {
-        match self {
-            Self::Value(value) => {
-                // TODO remove the future wrapper?
-                stream::once(async move { Ok(value.into_bytes()) }).boxed()
-            }
-            Self::Stream { stream, .. } => stream.boxed(),
-        }
-    }
-
-    /// If this is a value, convert it into bytes. If it's a stream, collect it
-    /// into bytes.
-    pub async fn try_collect(self) -> Result<Bytes, RenderError> {
-        match self {
-            Self::Value(value) => Ok(value.into_bytes()),
-            Self::Stream { stream, source } => stream
-                .try_collect::<BytesMut>()
-                .await
-                .map(Bytes::from)
-                .map_err(|error| RenderError::Stream {
-                    stream_source: source,
-                    error: Box::new(error),
-                }),
+                .map(|bytes| Value::Bytes(bytes.into())),
         }
     }
 }
@@ -240,7 +203,7 @@ impl<T: Into<Value>> From<T> for LazyValue {
 
 /// Metadata about the source of a [Stream]. This helps consumers present the
 /// stream to the user, e.g. in a template preview
-#[derive(Clone, Debug, Display)]
+#[derive(Clone, Debug, Display, PartialEq)]
 pub enum StreamSource {
     /// Stream from a subprocess
     #[display("command `{}`", command.join(" "))]
@@ -254,6 +217,8 @@ pub enum StreamSource {
         /// **Absolute** path to the file
         path: PathBuf,
     },
+    /// TODO
+    Unknown,
 }
 
 /// Convert [Value] to a type fallibly

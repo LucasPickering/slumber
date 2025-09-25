@@ -241,10 +241,8 @@ impl Template {
         chunks.try_into_value().await
     }
 
-    /// Render the template. If any chunk fails to render, return an error. The
-    /// output is returned as bytes, meaning it can safely render to non-UTF-8
-    /// content. Use [Self::render_string] if you want the bytes converted to a
-    /// string.
+    /// Convenience method for rendering a template and collecting the output
+    /// into a byte string.
     pub async fn render_bytes<Ctx: Context>(
         &self,
         context: &Ctx,
@@ -252,9 +250,8 @@ impl Template {
         self.render(context).await.try_into_bytes().await
     }
 
-    /// Render the template. If any chunk fails to render, return an error. The
-    /// output will be converted from raw bytes to UTF-8. If it is not valid
-    /// UTF-8, return an error.
+    /// Convenience method for rendering a template and collecting the output
+    /// into a string. If the output is not valid UTF-8, return an error.
     pub async fn render_string<Ctx: Context>(
         &self,
         context: &Ctx,
@@ -326,50 +323,75 @@ pub struct RenderedOutput(Vec<RenderedChunk>);
 
 impl RenderedOutput {
     /// TODO
+    pub fn stream_source(&self) -> Option<&StreamSource> {
+        if let [RenderedChunk::Rendered(LazyValue::Stream { source, .. })] =
+            self.0.as_slice()
+        {
+            Some(source)
+        } else {
+            None
+        }
+    }
+
+    /// TODO
+    pub fn has_stream(&self) -> bool {
+        self.0.iter().any(|chunk| {
+            matches!(chunk, RenderedChunk::Rendered(LazyValue::Stream { .. }))
+        })
+    }
+
+    /// TODO
+    pub fn unpack_lazy(mut self) -> Result<LazyValue, Self> {
+        if let &[RenderedChunk::Rendered(_)] = self.0.as_slice() {
+            // If we have a single dynamic chunk, return its value directly
+            let Some(RenderedChunk::Rendered(lazy)) = self.0.pop() else {
+                // Checked pattern above
+                unreachable!()
+            };
+            Ok(lazy)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// TODO
     pub fn try_into_stream(
         self,
     ) -> Result<impl Stream<Item = Result<Bytes, RenderError>>, RenderError>
     {
         // TODO explain
-        // TODO can we do this without boxing?
         let mut stream = stream::empty().boxed();
         for chunk in self.0 {
-            match chunk {
-                RenderedChunk::Raw(s) => {
-                    // TODO remove the future
-                    let chunk_stream = stream::once(async move {
-                        Ok(Bytes::from(s.as_bytes().to_owned()))
-                    });
-                    stream = stream.chain(chunk_stream).boxed();
+            let chunk_stream = match chunk {
+                RenderedChunk::Raw(s) => stream::once(async move {
+                    Ok(Bytes::from(s.as_bytes().to_owned()))
+                })
+                .boxed(),
+                RenderedChunk::Rendered(LazyValue::Value(value)) => {
+                    stream::once(async move { Ok(value.into_bytes()) }).boxed()
                 }
-                RenderedChunk::Rendered(value) => {
-                    stream = stream.chain(value.into_stream()).boxed();
-                }
+
+                RenderedChunk::Rendered(LazyValue::Stream {
+                    stream: chunk_stream,
+                    ..
+                }) => chunk_stream.boxed(),
                 RenderedChunk::Error(error) => return Err(error),
-            }
+            };
+            stream = stream.chain(chunk_stream).boxed();
         }
         Ok(stream)
     }
 
     /// TODO
-    pub async fn try_into_lazy(mut self) -> Result<LazyValue, RenderError> {
-        if let &[RenderedChunk::Rendered(_)] = self.0.as_slice() {
-            // If we have a single dynamic chunk, return its value directly
-            let Some(RenderedChunk::Rendered(value)) = self.0.pop() else {
-                // Checked pattern above
-                unreachable!()
-            };
-            Ok(value)
-        } else {
-            // Render to bytes
-            let bytes = self.try_into_bytes().await?;
-            Ok(Value::Bytes(bytes).into())
-        }
-    }
-
-    /// TODO
     pub async fn try_into_value(self) -> Result<Value, RenderError> {
-        let value = self.try_into_lazy().await?.resolve().await?;
+        let value = match self.unpack_lazy() {
+            Ok(lazy) => lazy.resolve().await?,
+            Err(output) => {
+                // Render to bytes
+                let bytes = output.try_into_bytes().await?;
+                Value::Bytes(bytes)
+            }
+        };
 
         // Try to convert bytes to string, because that's generally more useful
         // to the consumer

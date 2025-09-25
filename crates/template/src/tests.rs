@@ -1,13 +1,12 @@
 use crate::{
-    Arguments, Context, FieldCache, Identifier, LazyValue, RenderError,
-    Template, Value, value::StreamSource,
+    Arguments, Context, Identifier, LazyValue, RenderError, Template, Value,
+    value::StreamSource,
 };
 use bytes::BytesMut;
 use futures::{StreamExt, TryFutureExt, TryStreamExt};
 use indexmap::indexmap;
 use rstest::rstest;
 use slumber_util::{assert_err, assert_result, test_data_dir};
-use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
@@ -87,11 +86,8 @@ async fn test_render_stream(
     #[case] template: Template,
     #[case] expected: Result<&[u8], &str>,
 ) {
-    let result = match template
-        .render(&TestContext::default(), true)
-        .await
-        .try_into_stream()
-    {
+    let context = TestContext { can_stream: true };
+    let result = match template.render(&context).await.try_into_stream() {
         Ok(stream) => stream.try_collect::<BytesMut>().await,
         Err(error) => Err(error),
     };
@@ -202,28 +198,14 @@ async fn test_function_error(
     );
 }
 
-/// Using the same field multiple times should be deduplicated, so that the
-/// expression is only evaluated once
-#[tokio::test]
-async fn test_field_duplicate() {
-    let context = TestContext::default();
-    let template: Template = "{{ increment }} + {{ increment }}".into();
-
-    // Should deduplicate multiple uses in the same template
-    assert_eq!(template.render_string(&context).await.unwrap(), "1 + 1");
-    // Rendering again with the same context should retain the caching
-    assert_eq!(template.render_string(&context).await.unwrap(), "1 + 1");
-}
-
 #[derive(Debug, Default)]
 struct TestContext {
-    increment: AtomicI64,
-    field_cache: FieldCache,
+    can_stream: bool,
 }
 
 impl Context for TestContext {
     fn can_stream(&self) -> bool {
-        true
+        self.can_stream
     }
 
     async fn get_field(
@@ -233,24 +215,11 @@ impl Context for TestContext {
         match identifier.as_str() {
             "name" => Ok("Mike".into()),
             "array" => Ok(vec!["a", "b", "c"].into()),
-            // A field that increments each time it's evaluated, to test for
-            // deduplication
-            "increment" => {
-                let previous_incrs =
-                    self.increment.fetch_add(1, Ordering::Relaxed);
-                // Return the number of times this has been evaluated, including
-                // this call
-                Ok((previous_incrs + 1).into())
-            }
             "invalid_utf8" => Ok(b"\xc3\x28".into()),
             _ => Err(RenderError::FieldUnknown {
                 field: identifier.clone(),
             }),
         }
-    }
-
-    fn field_cache(&self) -> &FieldCache {
-        &self.field_cache
     }
 
     async fn call(

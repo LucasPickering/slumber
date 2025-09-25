@@ -12,14 +12,12 @@ mod parse;
 mod test_util;
 #[cfg(test)]
 mod tests;
-mod util;
 mod value;
 
 pub use error::{
     Expected, RenderError, TemplateParseError, ValueError, WithValue,
 };
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
-pub use util::FieldCache;
 pub use value::{
     Arguments, FunctionOutput, LazyValue, StreamSource, TryFromValue, Value,
 };
@@ -41,9 +39,7 @@ pub trait Context: Sized + Send + Sync {
     ///
     /// This is a method on the context to avoid plumbing around a second object
     /// to all render locations.
-    fn can_stream(&self) -> bool {
-        false
-    }
+    fn can_stream(&self) -> bool;
 
     /// Get the value of a field from the context. The implementor can decide
     /// where fields are derived from. Fields can also be computed dynamically
@@ -57,54 +53,12 @@ pub trait Context: Sized + Send + Sync {
         identifier: &Identifier,
     ) -> impl Future<Output = Result<LazyValue, RenderError>> + Send;
 
-    /// A cache to store the outcome of rendered fields.
-    fn field_cache(&self) -> &FieldCache;
-
     /// Call a function by name
     fn call(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
     ) -> impl Future<Output = Result<LazyValue, RenderError>> + Send;
-}
-
-/// A wrapper for a [Context] implementation that enables streaming all other
-/// behavior is forwarded to the inner context. This is automatically applied by
-/// [Template::render], but can also be used manually to control the
-/// output of [Template::render_chunks].
-///
-/// TODO update comment
-#[derive(Debug)]
-struct StreamContext<'a, T> {
-    context: &'a T,
-    can_stream: bool,
-}
-
-impl<T: Context> Context for StreamContext<'_, T> {
-    fn can_stream(&self) -> bool {
-        self.can_stream
-    }
-
-    async fn get_field(
-        &self,
-        identifier: &Identifier,
-    ) -> Result<LazyValue, RenderError> {
-        self.context.get_field(identifier).await
-    }
-
-    fn field_cache(&self) -> &FieldCache {
-        self.context.field_cache()
-    }
-
-    async fn call(
-        &self,
-        function_name: &Identifier,
-        arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError> {
-        self.context
-            .call(function_name, arguments.map_context(|ctx| ctx.context))
-            .await
-    }
 }
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -229,11 +183,7 @@ impl Template {
     /// rendered.
     ///
     /// TODO update comment
-    pub async fn render<Ctx: Context>(
-        &self,
-        context: &Ctx,
-        can_stream: bool,
-    ) -> RenderedChunks {
+    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedOutput {
         // TODO should we pass the futures directly into RenderedChunks so we
         // can start streaming before they're all rendered?
 
@@ -241,16 +191,12 @@ impl Template {
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
         let futures = self.chunks.iter().map(|chunk| async move {
-            let context = StreamContext {
-                context,
-                can_stream,
-            };
             match chunk {
                 TemplateChunk::Raw(text) => {
                     RenderedChunk::Raw(Arc::clone(text))
                 }
                 TemplateChunk::Expression(expression) => {
-                    match expression.render(&context).await {
+                    match expression.render(context).await {
                         Ok(lazy) if context.can_stream() => {
                             RenderedChunk::Rendered(lazy)
                         }
@@ -270,7 +216,7 @@ impl Template {
 
         // Concurrency!
         let chunks = future::join_all(futures).await;
-        RenderedChunks(chunks)
+        RenderedOutput(chunks)
     }
 
     /// Render the template. If any chunk fails to render, return an error. The
@@ -291,7 +237,7 @@ impl Template {
         &self,
         context: &Ctx,
     ) -> Result<Value, RenderError> {
-        let chunks = self.render(context, false).await;
+        let chunks = self.render(context).await;
         chunks.try_into_value().await
     }
 
@@ -303,7 +249,7 @@ impl Template {
         &self,
         context: &Ctx,
     ) -> Result<Bytes, RenderError> {
-        self.render(context, false).await.try_into_bytes().await
+        self.render(context).await.try_into_bytes().await
     }
 
     /// Render the template. If any chunk fails to render, return an error. The
@@ -372,12 +318,13 @@ impl From<Expression> for TemplateChunk {
     }
 }
 
-/// TODO doc
-/// TODO rename
+/// Outcome of rendering the individual chunks of a template. This is an
+/// intermediate output type that can be resolved into a variety of final
+/// output types.
 #[derive(Debug)]
-pub struct RenderedChunks(Vec<RenderedChunk>);
+pub struct RenderedOutput(Vec<RenderedChunk>);
 
-impl RenderedChunks {
+impl RenderedOutput {
     /// TODO
     pub fn try_into_stream(
         self,
@@ -472,6 +419,16 @@ impl RenderedChunks {
             }
         }
         Ok(bytes.into())
+    }
+}
+
+/// Get an iterator over the chunks of this output
+impl IntoIterator for RenderedOutput {
+    type Item = RenderedChunk;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

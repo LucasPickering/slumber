@@ -499,19 +499,6 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         }
     }
 
-    /// Replace the context by mapping it through a function
-    pub fn map_context<Ctx2>(
-        self,
-        f: impl FnOnce(&'ctx Ctx) -> &'ctx Ctx2,
-    ) -> Arguments<'ctx, Ctx2> {
-        Arguments {
-            context: f(self.context),
-            position: self.position,
-            num_popped: self.num_popped,
-            keyword: self.keyword,
-        }
-    }
-
     /// Push a piped argument onto the back of the positional argument list
     pub(crate) fn push_piped(&mut self, argument: Value) {
         self.position.push_back(argument);

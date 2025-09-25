@@ -2,7 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    render::{FunctionError, Prompt, Select, TemplateContext},
+    render::{FunctionError, Prompt, Select, SingleRenderContext},
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
@@ -121,7 +121,7 @@ pub fn boolean(value: Value) -> bool {
 /// newlines from command output: `{{ command(["echo", "hello"]) | trim() }}`
 #[template]
 pub fn command(
-    #[context] context: &TemplateContext,
+    #[context] context: &SingleRenderContext<'_>,
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
@@ -146,8 +146,6 @@ pub fn command(
     let program = program.clone();
     let arguments = arguments.to_owned();
 
-    let span = debug_span!("Running command", ?program, ?arguments);
-
     // We're going to defer command spawning *and* streaming. Streamed commands
     // shouldn't be spawned until the stream is actually resolved, to prevent
     // running large/slow commands in a preview.
@@ -156,8 +154,9 @@ pub fn command(
     // - Spawn command
     // - Stream from stdout
     // - Check command status
-    let span2 = span.clone();
     let future = async {
+        let span = debug_span!("Running command", ?program, ?arguments);
+
         // Spawn the command process
         let mut child = Command::new(&program)
             .args(&arguments)
@@ -219,8 +218,7 @@ pub fn command(
             }
         };
         Ok(reader_stream(stdout).chain(status_future.into_stream()))
-    }
-    .instrument(span2);
+    };
 
     let stream = future.try_flatten_stream().boxed();
 
@@ -308,7 +306,7 @@ pub fn env(variable: String) -> String {
 /// ```
 #[template]
 pub async fn file(
-    #[context] context: &TemplateContext,
+    #[context] context: &SingleRenderContext<'_>,
     path: String,
 ) -> Result<LazyValue, FunctionError> {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
@@ -638,7 +636,7 @@ impl_try_from_value_str!(JsonPathMode);
 /// ```
 #[template]
 pub async fn prompt(
-    #[context] context: &TemplateContext,
+    #[context] context: &SingleRenderContext<'_>,
     #[kwarg] message: Option<String>,
     #[kwarg] default: Option<String>,
     #[kwarg] sensitive: bool,
@@ -718,7 +716,7 @@ pub async fn prompt(
 /// > data from JSON responses
 #[template]
 pub async fn response(
-    #[context] context: &TemplateContext,
+    #[context] context: &SingleRenderContext<'_>,
     recipe_id: RecipeId,
     #[kwarg] trigger: RequestTrigger,
 ) -> Result<Bytes, FunctionError> {
@@ -756,7 +754,7 @@ pub async fn response(
 /// ```
 #[template]
 pub async fn response_header(
-    #[context] context: &TemplateContext,
+    #[context] context: &SingleRenderContext<'_>,
     recipe_id: RecipeId,
     header: String,
     #[kwarg] trigger: RequestTrigger,
@@ -794,7 +792,7 @@ pub async fn response_header(
 /// ```
 #[template]
 pub async fn select(
-    #[context] context: &TemplateContext,
+    #[context] context: &SingleRenderContext<'_>,
     options: Vec<String>,
     #[kwarg] message: Option<String>,
 ) -> Result<String, FunctionError> {
@@ -830,7 +828,7 @@ pub async fn select(
 /// ```
 #[template]
 pub fn sensitive(
-    #[context] context: &TemplateContext,
+    #[context] context: &SingleRenderContext<'_>,
     value: String,
 ) -> String {
     mask_sensitive(context, value)
@@ -884,7 +882,7 @@ pub fn trim(value: String, #[kwarg] mode: TrimMode) -> String {
     }
 }
 
-fn mask_sensitive(context: &TemplateContext, value: String) -> String {
+fn mask_sensitive(context: &SingleRenderContext<'_>, value: String) -> String {
     if context.show_sensitive {
         value
     } else {

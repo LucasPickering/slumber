@@ -1,4 +1,4 @@
-use crate::{Identifier, Value};
+use slumber_template::{Identifier, Value};
 use std::{
     collections::{HashMap, hash_map::Entry},
     ops::DerefMut,

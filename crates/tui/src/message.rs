@@ -14,7 +14,7 @@ use slumber_core::{
     },
     render::{Prompt, ResponseChannel, Select},
 };
-use slumber_template::{RenderedChunk, Template};
+use slumber_template::{RenderedOutput, Template};
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
@@ -170,7 +170,7 @@ pub enum Message {
         /// contain streams
         can_stream: bool,
         #[debug(skip)]
-        on_complete: Callback<Vec<RenderedChunk>>,
+        on_complete: Callback<RenderedOutput>,
     },
 }
 

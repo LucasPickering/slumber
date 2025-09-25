@@ -58,7 +58,11 @@ impl JsonTemplate {
                 // (e.g. a number or array), use that value directly. This
                 // enables non-string values
                 serde_json::Value::try_from_value(
-                    template.render_value(&context.eager()).await?,
+                    template
+                        .render(&context.streaming(false))
+                        .await
+                        .try_collect_value()
+                        .await?,
                 )
                 .map_err(|error| RenderError::Value(error.error))?
             }

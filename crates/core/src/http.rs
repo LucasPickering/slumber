@@ -471,7 +471,7 @@ impl Recipe {
     ) -> anyhow::Result<Url> {
         let url = self
             .url
-            .render_string(&context.eager())
+            .render_string(&context.streaming(false))
             .await
             .context("Rendering URL")?;
         url.parse::<Url>()
@@ -494,7 +494,7 @@ impl Recipe {
                     Ok::<_, anyhow::Error>((
                         k.to_owned(),
                         template
-                            .render_string(&context.eager())
+                            .render_string(&context.streaming(false))
                             .await
                             .context(format!(
                                 "Rendering query parameter `{k}`"
@@ -546,7 +546,7 @@ impl Recipe {
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
         let mut value: Vec<u8> = value_template
-            .render_bytes(&context.eager())
+            .render_bytes(&context.streaming(false))
             .await
             .context(format!("Rendering header `{header}`"))?
             .into();
@@ -581,7 +581,7 @@ impl Recipe {
             .authentication
             .as_ref()
             .or(self.authentication.as_ref());
-        let context = context.eager(); // Auth templates never support streaming
+        let context = context.streaming(false); // Auth templates never support streaming
         match authentication {
             Some(Authentication::Basic { username, password }) => {
                 let (username, password) =
@@ -628,7 +628,7 @@ impl Recipe {
         let rendered = match body {
             // Raw body is always eagerly rendered
             RecipeBody::Raw(body) => RenderedBody::Raw(
-                body.render_bytes(&context.eager())
+                body.render_bytes(&context.streaming(false))
                     .await
                     .context("Rendering body")?,
             ),
@@ -650,7 +650,7 @@ impl Recipe {
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
                             let value = template
-                                .render_string(&context.eager())
+                                .render_string(&context.streaming(false))
                                 .await
                                 .context(format!(
                                     "Rendering form field `{field}`"

@@ -165,8 +165,6 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
-///
-/// TODO rename to RenderedValue
 #[derive(derive_more::Debug)]
 pub enum LazyValue {
     /// A pre-resolved value
@@ -184,10 +182,9 @@ pub enum LazyValue {
 }
 
 impl LazyValue {
-    /// Resolve this stream to a concrete [Value]. If it's already a value, just
-    /// return it. Otherwise the stream will be awaited and collected into
-    /// bytes.
-    /// TODO rename? Get rid of this?
+    /// Resolve this lazy value to a concrete [Value]. If it's already a value,
+    /// just return it. If it's a stream it will be awaited and collected
+    /// into bytes. If it's nested chunks, collect them into a single value.
     pub async fn resolve(self) -> Result<Value, RenderError> {
         match self {
             Self::Value(value) => Ok(value),
@@ -196,7 +193,7 @@ impl LazyValue {
                 .await
                 .map(|bytes| Value::Bytes(bytes.into())),
             // Box needed for recursion
-            Self::Nested(output) => Box::pin(output.try_into_value()).await,
+            Self::Nested(output) => Box::pin(output.try_collect_value()).await,
         }
     }
 }
@@ -500,5 +497,57 @@ where
 impl<T: FunctionOutput> FunctionOutput for Option<T> {
     fn into_result(self) -> Result<LazyValue, RenderError> {
         self.map(T::into_result).unwrap_or(Ok(Value::Null.into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RenderedChunk;
+    use futures::{StreamExt, future, stream};
+    use rstest::rstest;
+    use slumber_util::assert_result;
+
+    #[rstest]
+    #[case::value(LazyValue::Value("test".into()), Ok("test".into()))]
+    #[case::stream(
+        stream(Ok("test".into())),
+        Ok(b"test".into()),
+    )]
+    #[case::stream_error(
+        stream(Err(RenderError::FunctionUnknown)),
+        Err("Unknown function")
+    )]
+    #[case::nested(
+        LazyValue::Nested(RenderedOutput(vec![
+            RenderedChunk::Rendered(LazyValue::Value("test1".into())),
+            RenderedChunk::Raw(" ".into()),
+            RenderedChunk::Rendered(stream(Ok("test2".into()))),
+        ])),
+        Ok("test1 test2".into()),
+    )]
+    #[case::nested_error(
+        LazyValue::Nested(RenderedOutput(vec![
+            RenderedChunk::Rendered(LazyValue::Value("test1".into())),
+            RenderedChunk::Raw(" ".into()),
+            RenderedChunk::Rendered(stream(Err(RenderError::FunctionUnknown))),
+        ])),
+        Err("Unknown function"),
+    )]
+    #[tokio::test]
+    async fn test_lazy_resolve(
+        #[case] lazy: LazyValue,
+        #[case] expected: Result<Value, &str>,
+    ) {
+        assert_result(lazy.resolve().await, expected);
+    }
+
+    fn stream(result: Result<Bytes, RenderError>) -> LazyValue {
+        LazyValue::Stream {
+            stream: stream::once(future::ready(result)).boxed(),
+            source: StreamSource::File {
+                path: "bogus".into(),
+            },
+        }
     }
 }

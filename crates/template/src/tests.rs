@@ -2,11 +2,11 @@ use crate::{
     Arguments, Context, Identifier, LazyValue, RenderError, Template, Value,
     value::StreamSource,
 };
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::{StreamExt, TryFutureExt, TryStreamExt};
 use indexmap::indexmap;
 use rstest::rstest;
-use slumber_util::{assert_err, assert_result, test_data_dir};
+use slumber_util::{assert_err, test_data_dir};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
@@ -30,7 +30,9 @@ use tokio_util::io::ReaderStream;
 async fn test_expression(#[case] template: Template, #[case] expected: Value) {
     assert_eq!(
         template
-            .render_value(&TestContext::default())
+            .render(&TestContext::default())
+            .await
+            .try_collect_value()
             .await
             .unwrap(),
         expected
@@ -56,7 +58,9 @@ async fn test_render_value(
 ) {
     assert_eq!(
         template
-            .render_value(&TestContext::default())
+            .render(&TestContext::default())
+            .await
+            .try_collect_value()
             .await
             .unwrap(),
         expected
@@ -67,35 +71,60 @@ async fn test_render_value(
 #[rstest]
 #[case::stream(
     "{{ file('data.json') }}",
-    Ok(vec![b"{ \"a\": 1, \"b\": 2 }" as &[u8]]),
+    vec![b"{ \"a\": 1, \"b\": 2 }" as &[u8]],
 )]
 #[case::text(
     // Multiple chunks are chained together
     "text: {{ file('data.json') }}",
-    Ok(vec![b"text: " as &[u8], b"{ \"a\": 1, \"b\": 2 }"]),
+    vec![b"text: " as &[u8], b"{ \"a\": 1, \"b\": 2 }"],
 )]
 #[case::binary(
     "{{ invalid_utf8 }} {{ file('data.json') }}",
-    Ok(vec![b"\xc3\x28" as &[u8], b" ", b"{ \"a\": 1, \"b\": 2 }"])
+    vec![b"\xc3\x28" as &[u8], b" ", b"{ \"a\": 1, \"b\": 2 }"]
 )]
-// Error while rendering chunks
-#[case::render_error("{{ unknown() }}", Err("Unknown function"))]
-// Error during stream resolution
-#[case::collect_error("{{ file('fake.txt') }}", Err("No such file"))]
 #[tokio::test]
 async fn test_render_stream(
     #[case] template: Template,
-    // For Ok, we assert on the individual chunks
-    #[case] expected: Result<Vec<&'static [u8]>, &str>,
+    // Assert on the individual chunks
+    #[case] expected: Vec<&'static [u8]>,
 ) {
     let context = TestContext { can_stream: true };
     // Join into a stream, then collect the stream
-    let result = match template.render(&context).await.try_into_stream() {
-        Ok(stream) => stream.try_collect::<Vec<Bytes>>().await,
-        Err(error) => Err(error),
-    };
+    let stream = template.render(&context).await.try_into_stream().unwrap();
+    let chunks = stream.try_collect::<Vec<Bytes>>().await.unwrap();
+    assert_eq!(chunks, expected);
+}
 
-    assert_result(result, expected);
+/// Render to a byte stream, but there's an error while rendering one of the
+/// chunks
+#[tokio::test]
+async fn test_render_stream_chunk_error() {
+    let template: Template = "{{ unknown() }}".into();
+    let context = TestContext { can_stream: true };
+    let result = template
+        .render(&context)
+        .await
+        .try_into_stream()
+        .map(|_| "stream") // Stream doesn't impl Debug :(
+        .map_err(anyhow::Error::from); // Include chain in error output
+    assert_err!(result, "unknown(): Unknown function");
+}
+
+/// Render to a byte stream, but there's an error while collecting one of the
+/// streams
+#[tokio::test]
+async fn test_render_stream_collect_error() {
+    let template: Template = "{{ file('fake.txt') }}".into();
+    let context = TestContext { can_stream: true };
+    let stream = template.render(&context).await.try_into_stream().unwrap();
+    assert_err!(
+        stream.try_collect::<BytesMut>().await,
+        if cfg!(unix) {
+            "No such file or directory"
+        } else {
+            "The system cannot find the file specified"
+        }
+    );
 }
 
 /// Convert JSON values to template values

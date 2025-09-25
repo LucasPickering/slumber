@@ -43,7 +43,10 @@ async fn test_profile() {
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
     assert_eq!(
-        template.render_bytes(&context.eager()).await.unwrap(),
+        template
+            .render_bytes(&context.streaming(false))
+            .await
+            .unwrap(),
         "http://localhost/users/1"
     );
 }
@@ -68,7 +71,10 @@ async fn test_override() {
     };
 
     assert_eq!(
-        template.render_bytes(&context.eager()).await.unwrap(),
+        template
+            .render_bytes(&context.streaming(false))
+            .await
+            .unwrap(),
         "http://override/users/1"
     );
 }
@@ -93,7 +99,7 @@ async fn test_base64(
     );
     assert_result(
         template
-            .render_bytes(&TemplateContext::factory(()).eager())
+            .render_bytes(&TemplateContext::factory(()).streaming(false))
             .await,
         expected,
     );
@@ -119,7 +125,9 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     let template = Template::function_call("boolean", [input], []);
     assert_result(
         template
-            .render_value(&TemplateContext::factory(()).eager())
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
             .await,
         Ok(Value::Boolean(expected)),
     );
@@ -197,7 +205,7 @@ async fn test_command(
     });
     assert_result(
         template
-            .render_bytes(&TemplateContext::factory(()).eager())
+            .render_bytes(&TemplateContext::factory(()).streaming(false))
             .await,
         expected,
     );
@@ -227,7 +235,11 @@ async fn test_command_lazy() {
     // Error happens when we collect
     assert_result(
         stream.try_collect::<BytesMut>().await,
-        Err::<BytesMut, &str>("No such file"),
+        Err::<BytesMut, &str>(if cfg!(unix) {
+            "No such file or directory"
+        } else {
+            "program not found"
+        }),
     );
 }
 
@@ -247,7 +259,7 @@ async fn test_concat(
     let template = Template::function_call("concat", [elements.into()], []);
     assert_result(
         template
-            .render_string(&TemplateContext::factory(()).eager())
+            .render_string(&TemplateContext::factory(()).streaming(false))
             .await,
         expected,
     );
@@ -265,7 +277,7 @@ async fn test_env(
     let template = Template::function_call("env", [variable.into()], []);
     assert_result(
         template
-            .render_bytes(&TemplateContext::factory(()).eager())
+            .render_bytes(&TemplateContext::factory(()).streaming(false))
             .await,
         expected,
     );
@@ -302,7 +314,10 @@ async fn test_file(
         ..TemplateContext::factory(())
     };
 
-    assert_result(template.render_bytes(&context.eager()).await, expected);
+    assert_result(
+        template.render_bytes(&context.streaming(false)).await,
+        expected,
+    );
 }
 
 /// Bonus test case for ~ expansion in file(). Only test on Linux because
@@ -323,7 +338,10 @@ async fn test_file_tilde(temp_dir: TempDir) {
 
     let guard =
         env_lock::lock_env([("HOME", Some(temp_dir.to_str().unwrap()))]);
-    assert_result(template.render_string(&context.eager()).await, Ok("text"));
+    assert_result(
+        template.render_string(&context.streaming(false)).await,
+        Ok("text"),
+    );
     drop(guard);
 }
 
@@ -351,7 +369,9 @@ async fn test_float(
     let template = Template::function_call("float", [input], []);
     assert_result(
         template
-            .render_value(&TemplateContext::factory(()).eager())
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
             .await,
         expected.map(Value::from),
     );
@@ -381,7 +401,9 @@ async fn test_integer(
     let template = Template::function_call("integer", [input], []);
     assert_result(
         template
-            .render_value(&TemplateContext::factory(()).eager())
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
             .await,
         expected.map(Value::from),
     );
@@ -402,7 +424,9 @@ async fn test_json_parse(
     let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
         template
-            .render_value(&TemplateContext::factory(()).eager())
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
             .await,
         expected,
     );
@@ -464,7 +488,7 @@ async fn test_jsonpath(
     );
     assert_result(
         template
-            .render_string(&TemplateContext::factory(()).eager())
+            .render_string(&TemplateContext::factory(()).streaming(false))
             .await,
         expected,
     );
@@ -499,7 +523,10 @@ async fn test_prompt(
         show_sensitive: false,
         ..TemplateContext::factory(())
     };
-    assert_result(template.render_bytes(&context.eager()).await, expected);
+    assert_result(
+        template.render_bytes(&context.streaming(false)).await,
+        expected,
+    );
 }
 
 /// `response()`
@@ -665,7 +692,10 @@ async fn test_response(
         ..TemplateContext::factory((IndexMap::new(), by_id(recipes)))
     };
 
-    assert_result(template.render_bytes(&context.eager()).await, expected);
+    assert_result(
+        template.render_bytes(&context.streaming(false)).await,
+        expected,
+    );
 }
 
 /// `response_header()`. We're leaning on the `response()` tests for most of
@@ -731,7 +761,10 @@ async fn test_response_header(
         ..TemplateContext::factory((IndexMap::new(), by_id([recipe])))
     };
 
-    assert_result(template.render_bytes(&context.eager()).await, expected);
+    assert_result(
+        template.render_bytes(&context.streaming(false)).await,
+        expected,
+    );
 }
 
 /// `select()`
@@ -754,7 +787,10 @@ async fn test_select(
         prompter: Box::new(TestSelectPrompter::new(select.into_iter())),
         ..TemplateContext::factory(())
     };
-    assert_result(template.render_bytes(&context.eager()).await, expected);
+    assert_result(
+        template.render_bytes(&context.streaming(false)).await,
+        expected,
+    );
 }
 
 /// `sensitive()`
@@ -768,7 +804,10 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
         ..TemplateContext::factory(())
     };
     assert_eq!(
-        template.render_bytes(&context.eager()).await.unwrap(),
+        template
+            .render_bytes(&context.streaming(false))
+            .await
+            .unwrap(),
         expected
     );
 }
@@ -788,7 +827,7 @@ async fn test_string(
     let template = Template::function_call("string", [input], []);
     assert_result(
         template
-            .render_string(&TemplateContext::factory(()).eager())
+            .render_string(&TemplateContext::factory(()).streaming(false))
             .await,
         expected,
     );
@@ -813,7 +852,7 @@ async fn test_trim(
     );
     assert_eq!(
         template
-            .render_bytes(&TemplateContext::factory(()).eager())
+            .render_bytes(&TemplateContext::factory(()).streaming(false))
             .await
             .unwrap(),
         expected

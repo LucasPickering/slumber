@@ -7,13 +7,13 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
-use futures::{FutureExt, StreamExt, TryFutureExt, TryStreamExt, stream};
+use futures::{FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
-    Expected, RenderError, Stream, StreamSource, TryFromValue, Value,
+    Expected, LazyValue, RenderError, StreamSource, TryFromValue, Value,
     ValueError, WithValue, impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
@@ -125,7 +125,7 @@ pub fn command(
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
-) -> Result<Stream, FunctionError> {
+) -> Result<LazyValue, FunctionError> {
     /// Wrap an IO error
     fn io_error(
         program: &str,
@@ -224,7 +224,7 @@ pub fn command(
 
     let stream = future.try_flatten_stream().boxed();
 
-    Ok(Stream::Stream {
+    Ok(LazyValue::Stream {
         source: StreamSource::Command { command },
         stream,
     })
@@ -310,7 +310,7 @@ pub fn env(variable: String) -> String {
 pub async fn file(
     #[context] context: &TemplateContext,
     path: String,
-) -> Result<Stream, FunctionError> {
+) -> Result<LazyValue, FunctionError> {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
     // Return the file as a stream. If streaming isn't available here, it will
     // be resolved immediately instead. If the file doesn't exist, we'll return
@@ -323,7 +323,7 @@ pub async fn file(
                 path: path.clone(),
                 error,
             })?;
-    Ok(Stream::Stream {
+    Ok(LazyValue::Stream {
         source: StreamSource::File { path },
         stream: reader_stream(file).boxed(),
     })
@@ -975,7 +975,7 @@ impl TryFromValue for RecipeId {
 /// Create a stream from an `AsyncRead` value
 fn reader_stream(
     reader: impl AsyncRead,
-) -> impl stream::Stream<Item = Result<Bytes, RenderError>> {
+) -> impl Stream<Item = Result<Bytes, RenderError>> {
     ReaderStream::new(reader).map_err(RenderError::other)
 }
 

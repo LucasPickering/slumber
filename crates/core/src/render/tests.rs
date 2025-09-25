@@ -16,7 +16,7 @@ use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
 use slumber_template::{
-    Expression, Literal, Stream, StreamSource, Template, Value,
+    Expression, LazyValue, Literal, StreamSource, Template, Value,
 };
 use slumber_util::{
     Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
@@ -207,8 +207,12 @@ async fn test_command_lazy() {
         [],
     );
     assert_matches!(
-        template.render_stream(&TemplateContext::factory(())).await,
-        Ok(Stream::Stream {
+        template
+            .render(&TemplateContext::factory(()), true)
+            .await
+            .try_into_lazy()
+            .await,
+        Ok(LazyValue::Stream {
             source: StreamSource::Command { .. },
             ..
         }),
@@ -816,16 +820,15 @@ async fn test_stream(
         ..TemplateContext::factory((by_id([profile]), IndexMap::new()))
     };
 
-    let stream = if can_stream {
-        template.render_stream(&context).await
-    } else {
-        template.render_value(&context).await.map(Stream::Value)
-    }
-    .unwrap();
+    let value = template
+        .render(&context, can_stream)
+        .await
+        .try_into_lazy()
+        .await;
     if expect_stream {
-        assert_matches!(stream, Stream::Stream { .. });
+        assert_matches!(value, Ok(LazyValue::Stream { .. }));
     } else {
-        assert_matches!(stream, Stream::Value(_));
+        assert_matches!(value, Ok(LazyValue::Value(_)));
     }
 }
 

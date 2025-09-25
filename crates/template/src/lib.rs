@@ -21,11 +21,11 @@ pub use error::{
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
 pub use util::FieldCache;
 pub use value::{
-    Arguments, FunctionOutput, Stream, StreamSource, TryFromValue, Value,
+    Arguments, FunctionOutput, LazyValue, StreamSource, TryFromValue, Value,
 };
 
 use bytes::{Bytes, BytesMut};
-use futures::future;
+use futures::{Stream, StreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
@@ -55,7 +55,7 @@ pub trait Context: Sized + Send + Sync {
     fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> impl Future<Output = Result<Stream, RenderError>> + Send;
+    ) -> impl Future<Output = Result<LazyValue, RenderError>> + Send;
 
     /// A cache to store the outcome of rendered fields.
     fn field_cache(&self) -> &FieldCache;
@@ -65,44 +65,44 @@ pub trait Context: Sized + Send + Sync {
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> impl Future<Output = Result<Stream, RenderError>> + Send;
+    ) -> impl Future<Output = Result<LazyValue, RenderError>> + Send;
 }
 
 /// A wrapper for a [Context] implementation that enables streaming all other
 /// behavior is forwarded to the inner context. This is automatically applied by
-/// [Template::render_stream], but can also be used manually to control the
+/// [Template::render], but can also be used manually to control the
 /// output of [Template::render_chunks].
-pub struct StreamContext<'a, T>(&'a T);
-
-impl<'a, T> StreamContext<'a, T> {
-    pub fn new(context: &'a T) -> Self {
-        Self(context)
-    }
+///
+/// TODO update comment
+#[derive(Debug)]
+struct StreamContext<'a, T> {
+    context: &'a T,
+    can_stream: bool,
 }
 
 impl<T: Context> Context for StreamContext<'_, T> {
     fn can_stream(&self) -> bool {
-        true
+        self.can_stream
     }
 
     async fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> Result<Stream, RenderError> {
-        self.0.get_field(identifier).await
+    ) -> Result<LazyValue, RenderError> {
+        self.context.get_field(identifier).await
     }
 
     fn field_cache(&self) -> &FieldCache {
-        self.0.field_cache()
+        self.context.field_cache()
     }
 
     async fn call(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<Stream, RenderError> {
-        self.0
-            .call(function_name, arguments.map_context(|ctx| ctx.0))
+    ) -> Result<LazyValue, RenderError> {
+        self.context
+            .call(function_name, arguments.map_context(|ctx| ctx.context))
             .await
     }
 }
@@ -222,114 +222,41 @@ impl Template {
         self.chunks.is_empty()
     }
 
-    /// Render the template. If any chunk fails to render, return an error. The
-    /// render output is converted to a [Value] by these rules:
-    /// - If the template is a single dynamic chunk, return the output of that
-    ///   chunk, which may be any type of [Value]
-    /// - Any other template will be rendered to a string by stringifying each
-    ///   dynamic chunk and concatenating them all together
-    /// - If rendering to a string fails because the bytes are not valid UTF-8,
-    ///   concatenate into a bytes object instead
-    ///
-    /// Return an error iff any chunk fails to render. This will never fail on
-    /// output conversion because it can always fall back to returning raw
-    /// bytes.
-    pub async fn render_value<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<Value, RenderError> {
-        let stream = self.render_stream(context).await?;
-        let value = stream.resolve().await?;
-        // Try to convert bytes to string, because that's generally more useful
-        // to the consumer
-        match value {
-            Value::Bytes(bytes) => match String::from_utf8(bytes.into()) {
-                Ok(s) => Ok(Value::String(s)),
-                Err(error) => Ok(Value::Bytes(error.into_bytes().into())),
-            },
-            _ => Ok(value),
-        }
-    }
-
-    /// Render the template. The output may be a concrete value *or* a
-    /// streamable value, following these rules:
-    /// - If the template is a single dynamic chunk, return the output of that
-    ///   chunk, which may be a stream or any type of [Value]
-    /// - Any other template will be rendered to bytes by concatenating all
-    ///   chunks together
-    ///
-    /// Since streams return bytes, concrete values are also returned as bytes
-    /// because we know the consumer will accept bytes.
-    pub async fn render_stream<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<Stream, RenderError> {
-        let context = StreamContext(context);
-        let mut chunks = self.render_chunks(&context).await;
-
-        // If we have a single dynamic chunk, return its value directly instead
-        // of stringifying
-        if let &[RenderedChunk::Rendered(_)] = chunks.as_slice() {
-            let Some(RenderedChunk::Rendered(stream)) = chunks.pop() else {
-                // Checked pattern above
-                unreachable!()
-            };
-            return Ok(stream);
-        }
-
-        // Stitch together into bytes. Attempt to convert that to UTF-8, but if
-        // that fails fall back to just returning the bytes
-        chunks_to_bytes(chunks).await.map(Stream::from)
-    }
-
-    /// Render the template. If any chunk fails to render, return an error. The
-    /// output is returned as bytes, meaning it can safely render to non-UTF-8
-    /// content. Use [Self::render_string] if you want the bytes converted to a
-    /// string.
-    pub async fn render_bytes<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<Bytes, RenderError> {
-        let chunks = self.render_chunks(context).await;
-        chunks_to_bytes(chunks).await
-    }
-
-    /// Render the template. If any chunk fails to render, return an error. The
-    /// output will be converted from raw bytes to UTF-8. If it is not valid
-    /// UTF-8, return an error.
-    pub async fn render_string<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<String, RenderError> {
-        let bytes = self.render_bytes(context).await?;
-        String::from_utf8(bytes.into()).map_err(RenderError::other)
-    }
-
     /// Render the template, returning the individual rendered chunks rather
     /// than stitching them together into a string. If any individual chunk
     /// fails to render, its error will be returned inline as
     /// [RenderedChunk::Error] and the rest of the template will still be
     /// rendered.
-    pub async fn render_chunks<Ctx: Context>(
+    ///
+    /// TODO update comment
+    pub async fn render<Ctx: Context>(
         &self,
         context: &Ctx,
-    ) -> Vec<RenderedChunk> {
+        can_stream: bool,
+    ) -> RenderedChunks {
+        // TODO should we pass the futures directly into RenderedChunks so we
+        // can start streaming before they're all rendered?
+
         // Map over each parsed chunk, and render the expressions into values.
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
         let futures = self.chunks.iter().map(|chunk| async move {
+            let context = StreamContext {
+                context,
+                can_stream,
+            };
             match chunk {
                 TemplateChunk::Raw(text) => {
                     RenderedChunk::Raw(Arc::clone(text))
                 }
                 TemplateChunk::Expression(expression) => {
-                    match expression.render(context).await {
-                        Ok(stream) if context.can_stream() => {
-                            RenderedChunk::Rendered(stream)
+                    match expression.render(&context).await {
+                        Ok(lazy) if context.can_stream() => {
+                            RenderedChunk::Rendered(lazy)
                         }
-                        // If the context doesn't support streaming, resolve the
-                        // stream now
-                        Ok(stream) => stream
+                        // If the context doesn't support streaming, resolve
+                        // the lazy value now
+                        Ok(lazy) => lazy
                             .resolve()
                             .await
                             .map_or_else(RenderedChunk::Error, |value| {
@@ -342,7 +269,52 @@ impl Template {
         });
 
         // Concurrency!
-        future::join_all(futures).await
+        let chunks = future::join_all(futures).await;
+        RenderedChunks(chunks)
+    }
+
+    /// Render the template. If any chunk fails to render, return an error. The
+    /// render output is converted to a [Value] by these rules:
+    /// - If the template is a single dynamic chunk, return the output of that
+    ///   chunk, which may be any type of [Value]
+    /// - Any other template will be rendered to a string by stringifying each
+    ///   dynamic chunk and concatenating them all together
+    /// - If rendering to a string fails because the bytes are not valid UTF-8,
+    ///   concatenate into a bytes object instead
+    ///
+    /// Return an error iff any chunk fails to render. This will never fail on
+    /// output conversion because it can always fall back to returning raw
+    /// bytes.
+    ///
+    /// TODO roll this into try_into_value()
+    pub async fn render_value<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Result<Value, RenderError> {
+        let chunks = self.render(context, false).await;
+        chunks.try_into_value().await
+    }
+
+    /// Render the template. If any chunk fails to render, return an error. The
+    /// output is returned as bytes, meaning it can safely render to non-UTF-8
+    /// content. Use [Self::render_string] if you want the bytes converted to a
+    /// string.
+    pub async fn render_bytes<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Result<Bytes, RenderError> {
+        self.render(context, false).await.try_into_bytes().await
+    }
+
+    /// Render the template. If any chunk fails to render, return an error. The
+    /// output will be converted from raw bytes to UTF-8. If it is not valid
+    /// UTF-8, return an error.
+    pub async fn render_string<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Result<String, RenderError> {
+        let bytes = self.render_bytes(context).await?;
+        String::from_utf8(bytes.into()).map_err(RenderError::other)
     }
 }
 
@@ -400,6 +372,109 @@ impl From<Expression> for TemplateChunk {
     }
 }
 
+/// TODO doc
+/// TODO rename
+#[derive(Debug)]
+pub struct RenderedChunks(Vec<RenderedChunk>);
+
+impl RenderedChunks {
+    /// TODO
+    pub fn try_into_stream(
+        self,
+    ) -> Result<impl Stream<Item = Result<Bytes, RenderError>>, RenderError>
+    {
+        // TODO explain
+        // TODO can we do this without boxing?
+        let mut stream = stream::empty().boxed();
+        for chunk in self.0 {
+            match chunk {
+                RenderedChunk::Raw(s) => {
+                    // TODO remove the future
+                    let chunk_stream = stream::once(async move {
+                        Ok(Bytes::from(s.as_bytes().to_owned()))
+                    });
+                    stream = stream.chain(chunk_stream).boxed();
+                }
+                RenderedChunk::Rendered(value) => {
+                    stream = stream.chain(value.into_stream()).boxed();
+                }
+                RenderedChunk::Error(error) => return Err(error),
+            }
+        }
+        Ok(stream)
+    }
+
+    /// TODO
+    pub async fn try_into_lazy(mut self) -> Result<LazyValue, RenderError> {
+        if let &[RenderedChunk::Rendered(_)] = self.0.as_slice() {
+            // If we have a single dynamic chunk, return its value directly
+            let Some(RenderedChunk::Rendered(value)) = self.0.pop() else {
+                // Checked pattern above
+                unreachable!()
+            };
+            Ok(value)
+        } else {
+            // Render to bytes
+            let bytes = self.try_into_bytes().await?;
+            Ok(Value::Bytes(bytes).into())
+        }
+    }
+
+    /// TODO
+    pub async fn try_into_value(self) -> Result<Value, RenderError> {
+        let value = self.try_into_lazy().await?.resolve().await?;
+
+        // Try to convert bytes to string, because that's generally more useful
+        // to the consumer
+        match value {
+            Value::Bytes(bytes) => match String::from_utf8(bytes.into()) {
+                Ok(s) => Ok(Value::String(s)),
+                Err(error) => Ok(Value::Bytes(error.into_bytes().into())),
+            },
+            _ => Ok(value),
+        }
+    }
+
+    /// Concatenate rendered chunks into bytes. If any chunk is an error, return
+    /// an error. This is async because the chunk may be a stream, in which
+    /// case it will be resolved.
+    pub async fn try_into_bytes(self) -> Result<Bytes, RenderError> {
+        // TODO we could just collect the stream here instead
+
+        // Take an educated guess at the needed capacity to avoid reallocations
+        let capacity = self
+            .0
+            .iter()
+            .map(|chunk| match chunk {
+                RenderedChunk::Raw(s) => s.len(),
+                RenderedChunk::Rendered(LazyValue::Value(Value::Bytes(
+                    bytes,
+                ))) => bytes.len(),
+                RenderedChunk::Rendered(LazyValue::Value(Value::String(s))) => {
+                    s.len()
+                }
+                // Take a rough guess for anything other than bytes/string
+                RenderedChunk::Rendered(_) => 5,
+                RenderedChunk::Error(_) => 0,
+            })
+            .sum();
+
+        let mut bytes = BytesMut::with_capacity(capacity);
+        for chunk in self.0 {
+            match chunk {
+                RenderedChunk::Raw(s) => bytes.extend(s.as_bytes()),
+                RenderedChunk::Rendered(stream) => {
+                    // If the chunk is still a stream, resolve to a value now
+                    let value = stream.resolve().await?;
+                    bytes.extend(value.into_bytes());
+                }
+                RenderedChunk::Error(error) => return Err(error),
+            }
+        }
+        Ok(bytes.into())
+    }
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
@@ -409,7 +484,7 @@ pub enum RenderedChunk {
     /// without having to clone it.
     Raw(Arc<str>),
     /// A dynamic chunk of a template, rendered to a stream/value
-    Rendered(Stream),
+    Rendered(LazyValue),
     /// An error occurred while rendering a template key
     Error(RenderError),
 }
@@ -420,8 +495,8 @@ impl PartialEq for RenderedChunk {
         match (self, other) {
             (Self::Raw(raw1), Self::Raw(raw2)) => raw1 == raw2,
             (
-                Self::Rendered(Stream::Value(value1)),
-                Self::Rendered(Stream::Value(value2)),
+                Self::Rendered(LazyValue::Value(value1)),
+                Self::Rendered(LazyValue::Value(value2)),
             ) => value1 == value2,
             // Streams are never equal
             (Self::Rendered(_), Self::Rendered(_)) => false,
@@ -433,40 +508,4 @@ impl PartialEq for RenderedChunk {
             _ => false,
         }
     }
-}
-
-/// Concatenate rendered chunks into bytes. If any chunk is an error, return an
-/// error. This is async because the chunk may be a stream, in which case it
-/// will be resolved.
-async fn chunks_to_bytes(
-    chunks: Vec<RenderedChunk>,
-) -> Result<Bytes, RenderError> {
-    // Take an educated guess at the needed capacity to avoid reallocations
-    let capacity = chunks
-        .iter()
-        .map(|chunk| match chunk {
-            RenderedChunk::Raw(s) => s.len(),
-            RenderedChunk::Rendered(Stream::Value(Value::Bytes(bytes))) => {
-                bytes.len()
-            }
-            RenderedChunk::Rendered(Stream::Value(Value::String(s))) => s.len(),
-            // Take a rough guess for anything other than bytes/string
-            RenderedChunk::Rendered(_) => 5,
-            RenderedChunk::Error(_) => 0,
-        })
-        .sum();
-
-    let mut bytes = BytesMut::with_capacity(capacity);
-    for chunk in chunks {
-        match chunk {
-            RenderedChunk::Raw(s) => bytes.extend(s.as_bytes()),
-            RenderedChunk::Rendered(stream) => {
-                // If the chunk is still a stream, resolve to a value now
-                let value = stream.resolve().await?;
-                bytes.extend(value.into_bytes());
-            }
-            RenderedChunk::Error(error) => return Err(error),
-        }
-    }
-    Ok(bytes.into())
 }

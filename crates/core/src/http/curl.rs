@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Context;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
-use slumber_template::{Stream, StreamSource};
+use slumber_template::{LazyValue, StreamSource};
 use std::borrow::Cow;
 
 /// Builder pattern for constructing cURL commands from a recipe
@@ -87,8 +87,12 @@ impl CurlBuilder {
     /// stream that needs to be resolved.
     pub async fn body(mut self, body: RenderedBody) -> anyhow::Result<Self> {
         match body {
+            RenderedBody::Raw(bytes) => {
+                let body = as_text(&bytes)?;
+                self.push(["--data".into(), format!("'{body}'").into()]);
+            }
             // We know how to stream files to curl
-            RenderedBody::Raw(Stream::Stream {
+            RenderedBody::Stream(LazyValue::Stream {
                 source: StreamSource::File { path },
                 ..
             }) => {
@@ -100,8 +104,8 @@ impl CurlBuilder {
             }
             // Any other type of has to be resolved eagerly since curl
             // doesn't support them natively
-            RenderedBody::Raw(stream) => {
-                let bytes = stream.resolve().await?.into_bytes();
+            RenderedBody::Stream(value) => {
+                let bytes = value.try_collect().await?;
                 let body = as_text(&bytes)?;
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
@@ -119,7 +123,7 @@ impl CurlBuilder {
             }
             RenderedBody::FormMultipart(form) => {
                 for (field, stream) in form {
-                    let argument = if let Stream::Stream {
+                    let argument = if let LazyValue::Stream {
                         source: StreamSource::File { path },
                         ..
                     } = stream

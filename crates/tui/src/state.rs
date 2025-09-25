@@ -655,9 +655,9 @@ impl LoadedState {
         util::spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = if can_stream {
-                template.render_chunks(&StreamContext::new(&context)).await
+                template.render(&StreamContext::new(&context)).await
             } else {
-                template.render_chunks(&context).await
+                template.render(&context).await
             };
             on_complete(chunks);
         });

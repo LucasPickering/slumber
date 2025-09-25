@@ -357,8 +357,10 @@ impl RenderedOutput {
     /// TODO
     pub fn try_into_stream(
         self,
-    ) -> Result<impl Stream<Item = Result<Bytes, RenderError>>, RenderError>
-    {
+    ) -> Result<
+        impl Stream<Item = Result<Bytes, RenderError>> + Send,
+        RenderError,
+    > {
         // TODO explain
         let mut stream = stream::empty().boxed();
         for chunk in self.0 {
@@ -367,14 +369,20 @@ impl RenderedOutput {
                     Ok(Bytes::from(s.as_bytes().to_owned()))
                 })
                 .boxed(),
-                RenderedChunk::Rendered(LazyValue::Value(value)) => {
-                    stream::once(async move { Ok(value.into_bytes()) }).boxed()
-                }
+                RenderedChunk::Rendered(lazy) => match lazy {
+                    LazyValue::Value(value) => {
+                        stream::once(async move { Ok(value.into_bytes()) })
+                            .boxed()
+                    }
+                    LazyValue::Stream {
+                        stream: chunk_stream,
+                        ..
+                    } => chunk_stream.boxed(),
+                    LazyValue::Nested(output) => {
+                        output.try_into_stream()?.boxed()
+                    }
+                },
 
-                RenderedChunk::Rendered(LazyValue::Stream {
-                    stream: chunk_stream,
-                    ..
-                }) => chunk_stream.boxed(),
                 RenderedChunk::Error(error) => return Err(error),
             };
             stream = stream.chain(chunk_stream).boxed();
@@ -393,8 +401,8 @@ impl RenderedOutput {
             }
         };
 
-        // Try to convert bytes to string, because that's generally more useful
-        // to the consumer
+        // Try to convert bytes to string, because that's generally more
+        // useful to the consumer
         match value {
             Value::Bytes(bytes) => match String::from_utf8(bytes.into()) {
                 Ok(s) => Ok(Value::String(s)),

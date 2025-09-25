@@ -21,13 +21,10 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::Utc;
 use derive_more::{Deref, From};
-use futures::StreamExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
-use slumber_template::{
-    Arguments, Identifier, LazyValue, RenderError, StreamSource,
-};
+use slumber_template::{Arguments, Identifier, LazyValue, RenderError};
 use slumber_util::ResultTraced;
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -236,7 +233,6 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             })?;
 
         // Render the nested template
-        // TODO this resolves streams eagerly
         let output = template.render(self).await;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
@@ -245,17 +241,12 @@ impl slumber_template::Context for SingleRenderContext<'_> {
         // if that happens we'll have to compute it twice. This saves us a lot
         // of annoying machinery though.
         if output.has_stream() {
-            // TODO explain
+            // If the nested template has multiple chunks, we need to include
+            // all the chunks in the output so they can be both previewed and
+            // streamed correctly.
             match output.unpack_lazy() {
                 Ok(lazy) => Ok(lazy),
-                Err(output) => {
-                    // TODO map error and dedupe
-                    let stream = output.try_into_stream()?.boxed();
-                    Ok(LazyValue::Stream {
-                        source: StreamSource::Unknown,
-                        stream,
-                    })
-                }
+                Err(output) => Ok(LazyValue::Nested(output)),
             }
         } else {
             let value = output.try_into_value().await.map_err(

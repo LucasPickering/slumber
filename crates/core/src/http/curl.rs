@@ -1,6 +1,6 @@
 use crate::{
     collection::Authentication,
-    http::{HttpMethod, RenderedBody, StreamTodo},
+    http::{BodyStream, HttpMethod, RenderedBody},
 };
 use anyhow::Context;
 use bytes::BytesMut;
@@ -94,7 +94,7 @@ impl CurlBuilder {
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
             // We know how to stream files to curl
-            RenderedBody::Stream(StreamTodo {
+            RenderedBody::Stream(BodyStream {
                 source: Some(StreamSource::File { path }),
                 ..
             }) => {
@@ -106,8 +106,8 @@ impl CurlBuilder {
             }
             // Any other type of has to be resolved eagerly since curl
             // doesn't support them natively
-            RenderedBody::Stream(todo) => {
-                let bytes = todo.stream.try_collect::<BytesMut>().await?;
+            RenderedBody::Stream(stream) => {
+                let bytes = stream.stream.try_collect::<BytesMut>().await?;
                 let body = as_text(&bytes)?;
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
@@ -124,16 +124,16 @@ impl CurlBuilder {
                 }
             }
             RenderedBody::FormMultipart(form) => {
-                for (field, todo) in form {
+                for (field, stream) in form {
                     let argument = if let Some(StreamSource::File { path }) =
-                        todo.source
+                        stream.source
                     {
                         // Files can be passed directly to curl
                         let path = path.to_string_lossy();
                         format!("'{field}=@{path}'")
                     } else {
                         let bytes =
-                            todo.stream.try_collect::<BytesMut>().await?;
+                            stream.stream.try_collect::<BytesMut>().await?;
                         let text = as_text(&bytes)?;
                         format!("'{field}={text}'")
                     };

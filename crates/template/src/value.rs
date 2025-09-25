@@ -1,7 +1,7 @@
 //! Template runtime values
 
 use crate::{
-    Expected, Literal, RenderError, ValueError, WithValue,
+    Expected, Literal, RenderError, RenderedOutput, ValueError, WithValue,
     error::RenderErrorContext,
     parse::{FALSE, NULL, TRUE},
 };
@@ -165,6 +165,8 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
+///
+/// TODO rename to RenderedValue
 #[derive(derive_more::Debug)]
 pub enum LazyValue {
     /// A pre-resolved value
@@ -177,6 +179,8 @@ pub enum LazyValue {
         #[debug(skip)]
         stream: BoxStream<'static, Result<Bytes, RenderError>>,
     },
+    /// A template chunk that rendered a nested template with multiple chunks
+    Nested(RenderedOutput),
 }
 
 impl LazyValue {
@@ -191,6 +195,8 @@ impl LazyValue {
                 .try_collect::<BytesMut>()
                 .await
                 .map(|bytes| Value::Bytes(bytes.into())),
+            // Box needed for recursion
+            Self::Nested(output) => Box::pin(output.try_into_value()).await,
         }
     }
 }
@@ -217,8 +223,6 @@ pub enum StreamSource {
         /// **Absolute** path to the file
         path: PathBuf,
     },
-    /// TODO
-    Unknown,
 }
 
 /// Convert [Value] to a type fallibly

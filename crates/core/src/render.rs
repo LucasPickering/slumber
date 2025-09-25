@@ -21,10 +21,13 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::Utc;
 use derive_more::{Deref, From};
+use futures::StreamExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
-use slumber_template::{Arguments, Identifier, LazyValue, RenderError};
+use slumber_template::{
+    Arguments, Identifier, LazyValue, RenderError, StreamSource,
+};
 use slumber_util::ResultTraced;
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -64,7 +67,8 @@ pub struct TemplateContext {
 }
 
 impl TemplateContext {
-    /// TODO
+    /// Wrap this context for a single render with streaming disabled
+    /// TODO get rid of this? rename it?
     pub fn eager(&self) -> SingleRenderContext<'_> {
         SingleRenderContext {
             context: self,
@@ -72,7 +76,8 @@ impl TemplateContext {
         }
     }
 
-    /// TODO
+    ///  Wrap this context for a single render, with streaming optionally
+    /// enabled
     pub fn streaming(&self, can_stream: bool) -> SingleRenderContext<'_> {
         SingleRenderContext {
             context: self,
@@ -177,11 +182,16 @@ impl TemplateContext {
     }
 }
 
-/// TODO
+/// A wrapper for [TemplateContext] that provides the [Context] trait. While
+/// [TemplateContext] is intended to be used for multiple renders within a
+/// render group, this is meant for an individual render. As such, it captures
+/// settings that can vary across different renders in the same group.
 #[derive(Debug, Deref)]
 pub struct SingleRenderContext<'a> {
     #[deref]
     context: &'a TemplateContext,
+    /// Is streaming supported for this component? Enabled for request bodies,
+    /// disabled for everything else.
     can_stream: bool,
 }
 
@@ -200,8 +210,6 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             return Ok(value.clone().into());
         }
 
-        // TODO update comments
-
         // Check the field cache to see if this value is already being computed
         // somewhere else. If it is, we'll block on that and re-use the result.
         // If not, we get a guard back, meaning we're responsible for the
@@ -218,7 +226,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             FieldCacheOutcome::Miss(guard) => guard,
         };
 
-        // Then check the current profile
+        // We're responsible for the computation. Grab the field's value
         let template = self
             .context
             .current_profile()
@@ -228,27 +236,41 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             })?;
 
         // Render the nested template
-        let lazy = template.render(self).await.try_into_lazy().await.map_err(
-            // We *could* just return the error, but wrap it to give
-            // additional context
-            |error| {
-                RenderError::from(FunctionError::ProfileNested {
-                    field: field.clone(),
-                    error,
-                })
-            },
-        )?;
+        // TODO this resolves streams eagerly
+        let output = template.render(self).await;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no
         // reason to include the same stream field twice in a single body, but
         // if that happens we'll have to compute it twice. This saves us a lot
         // of annoying machinery though.
-        if let LazyValue::Value(value) = &lazy {
+        if output.has_stream() {
+            // TODO explain
+            match output.unpack_lazy() {
+                Ok(lazy) => Ok(lazy),
+                Err(output) => {
+                    // TODO map error and dedupe
+                    let stream = output.try_into_stream()?.boxed();
+                    Ok(LazyValue::Stream {
+                        source: StreamSource::Unknown,
+                        stream,
+                    })
+                }
+            }
+        } else {
+            let value = output.try_into_value().await.map_err(
+                // We *could* just return the error, but wrap it to give
+                // additional context
+                |error| {
+                    RenderError::from(FunctionError::ProfileNested {
+                        field: field.clone(),
+                        error,
+                    })
+                },
+            )?;
             guard.set(value.clone());
+            Ok(LazyValue::Value(value))
         }
-
-        Ok(lazy)
     }
 
     async fn call(
@@ -263,7 +285,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
-            "file" => functions::file(arguments).await,
+            "file" => functions::file(arguments),
             "float" => functions::float(arguments),
             "integer" => functions::integer(arguments),
             "json_parse" => functions::json_parse(arguments),

@@ -1,10 +1,12 @@
 use crate::{
     collection::Authentication,
-    http::{HttpMethod, RenderedBody},
+    http::{HttpMethod, RenderedBody, StreamTodo},
 };
 use anyhow::Context;
+use bytes::BytesMut;
+use futures::TryStreamExt;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
-use slumber_template::{LazyValue, StreamSource};
+use slumber_template::StreamSource;
 use std::borrow::Cow;
 
 /// Builder pattern for constructing cURL commands from a recipe
@@ -92,8 +94,8 @@ impl CurlBuilder {
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
             // We know how to stream files to curl
-            RenderedBody::Stream(LazyValue::Stream {
-                source: StreamSource::File { path },
+            RenderedBody::Stream(StreamTodo {
+                source: Some(StreamSource::File { path }),
                 ..
             }) => {
                 // Stream the file
@@ -104,8 +106,8 @@ impl CurlBuilder {
             }
             // Any other type of has to be resolved eagerly since curl
             // doesn't support them natively
-            RenderedBody::Stream(value) => {
-                let bytes = value.try_collect().await?;
+            RenderedBody::Stream(todo) => {
+                let bytes = todo.stream.try_collect::<BytesMut>().await?;
                 let body = as_text(&bytes)?;
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
@@ -122,17 +124,16 @@ impl CurlBuilder {
                 }
             }
             RenderedBody::FormMultipart(form) => {
-                for (field, stream) in form {
-                    let argument = if let LazyValue::Stream {
-                        source: StreamSource::File { path },
-                        ..
-                    } = stream
+                for (field, todo) in form {
+                    let argument = if let Some(StreamSource::File { path }) =
+                        todo.source
                     {
                         // Files can be passed directly to curl
                         let path = path.to_string_lossy();
                         format!("'{field}=@{path}'")
                     } else {
-                        let bytes = stream.resolve().await?.into_bytes();
+                        let bytes =
+                            todo.stream.try_collect::<BytesMut>().await?;
                         let text = as_text(&bytes)?;
                         format!("'{field}={text}'")
                     };

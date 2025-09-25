@@ -2,7 +2,7 @@ use crate::{
     Arguments, Context, Identifier, LazyValue, RenderError, Template, Value,
     value::StreamSource,
 };
-use bytes::BytesMut;
+use bytes::Bytes;
 use futures::{StreamExt, TryFutureExt, TryStreamExt};
 use indexmap::indexmap;
 use rstest::rstest;
@@ -63,19 +63,20 @@ async fn test_render_value(
     );
 }
 
-/// Render to a stream
+/// Render to a byte stream
 #[rstest]
 #[case::stream(
     "{{ file('data.json') }}",
-    Ok(b"{ \"a\": 1, \"b\": 2 }".as_slice()),
+    Ok(vec![b"{ \"a\": 1, \"b\": 2 }" as &[u8]]),
 )]
 #[case::text(
+    // Multiple chunks are chained together
     "text: {{ file('data.json') }}",
-    Ok(b"text: { \"a\": 1, \"b\": 2 }".as_slice())
+    Ok(vec![b"text: " as &[u8], b"{ \"a\": 1, \"b\": 2 }"]),
 )]
 #[case::binary(
     "{{ invalid_utf8 }} {{ file('data.json') }}",
-    Ok(b"\xc3\x28 { \"a\": 1, \"b\": 2 }".as_slice())
+    Ok(vec![b"\xc3\x28" as &[u8], b" ", b"{ \"a\": 1, \"b\": 2 }"])
 )]
 // Error while rendering chunks
 #[case::render_error("{{ unknown() }}", Err("Unknown function"))]
@@ -84,11 +85,13 @@ async fn test_render_value(
 #[tokio::test]
 async fn test_render_stream(
     #[case] template: Template,
-    #[case] expected: Result<&[u8], &str>,
+    // For Ok, we assert on the individual chunks
+    #[case] expected: Result<Vec<&'static [u8]>, &str>,
 ) {
     let context = TestContext { can_stream: true };
+    // Join into a stream, then collect the stream
     let result = match template.render(&context).await.try_into_stream() {
-        Ok(stream) => stream.try_collect::<BytesMut>().await,
+        Ok(stream) => stream.try_collect::<Vec<Bytes>>().await,
         Err(error) => Err(error),
     };
 

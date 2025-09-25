@@ -247,27 +247,12 @@ async fn test_authentication(
 /// is set correctly. This also allows us to test the actual built request,
 /// which could hypothetically vary from the request record.
 #[rstest]
-#[case::text(RecipeBody::Raw("hello!".into()), None, None, "hello!", true)]
-#[case::stream_file(
-    RecipeBody::Stream("{{ file('data.json') }}".into()),
-    None,
-    None, // Content-Type is intentionally *not* inferred from the extension
-    r#"{ "a": 1, "b": 2 }"#,
-    false, // Stream bodies aren't stored
-)]
-#[case::stream_command(
-    RecipeBody::Stream("{{ command(['cat', 'data.json']) }}".into()),
-    None,
-    None,
-    r#"{ "a": 1, "b": 2 }"#,
-    false, // Stream bodies aren't stored
-)]
+#[case::text(RecipeBody::Raw("hello!".into()), None, None, "hello!")]
 #[case::json(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
     None,
     Some("application/json"),
     r#"{"group_id":"3"}"#,
-    true,
 )]
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
@@ -275,7 +260,6 @@ async fn test_authentication(
     Some("text/plain"),
     Some("text/plain"),
     r#"{"group_id":"3"}"#,
-    true,
 )]
 #[case::json_unpack(
     // Single-chunk templates should get unpacked to the actual JSON value
@@ -284,7 +268,6 @@ async fn test_authentication(
     None,
     Some("application/json"),
     "[1,2,3]",
-    true,
 )]
 #[case::json_no_unpack(
     // This template doesn't get unpacked because it is multiple chunks
@@ -294,7 +277,6 @@ async fn test_authentication(
     // Spaces are added because this uses the template Value stringification
     // instead of serde_json stringification
     r#""no: [1, 2, 3]""#,
-    true,
 )]
 #[case::json_string_from_file(
     // JSON data is loaded as a string and NOT unpacked. file() returns bytes
@@ -305,7 +287,6 @@ async fn test_authentication(
     None,
     Some("application/json"),
     r#""{ \"a\": 1, \"b\": 2 }""#,
-    true,
 )]
 #[case::json_from_file_parsed(
     // Pipe to json_parse() to parse it
@@ -315,7 +296,6 @@ async fn test_authentication(
     None,
     Some("application/json"),
     r#"{"a":1,"b":2}"#,
-    true,
 )]
 #[case::form_urlencoded(
     RecipeBody::FormUrlencoded(indexmap! {
@@ -325,7 +305,6 @@ async fn test_authentication(
     None,
     Some("application/x-www-form-urlencoded"),
     "user_id=1&token=tokenzzz",
-    true,
 )]
 // reqwest sets the content type when initializing the body, so make sure
 // that doesn't override the user's value
@@ -333,68 +312,7 @@ async fn test_authentication(
     RecipeBody::FormUrlencoded(Default::default()),
     Some("text/plain"),
     Some("text/plain"),
-    "",
-    true
-)]
-#[case::form_multipart(
-    RecipeBody::FormMultipart(indexmap! {
-        "user_id".into() => "{{ user_id }}".into(),
-    }),
-    None,
-    // Normally the boundary is random, but we make it static for testing
-    Some("multipart/form-data; boundary=BOUNDARY"),
-    "--BOUNDARY\r
-Content-Disposition: form-data; name=\"user_id\"\r
-\r
-1\r
---BOUNDARY--\r
-",
-    false, // Multipart bodies are streamed, and therefore not persisted
-)]
-#[case::form_multipart_file(
-    RecipeBody::FormMultipart(indexmap! {
-        "file".into() => "{{ file('data.json') }}".into(),
-    }),
-    None,
-    Some("multipart/form-data; boundary=BOUNDARY"),
-    "--BOUNDARY\r
-Content-Disposition: form-data; name=\"file\"; filename=\"data.json\"\r
-Content-Type: application/json\r
-\r
-{ \"a\": 1, \"b\": 2 }\r
---BOUNDARY--\r
-",
-    false,
-)]
-#[case::form_multipart_file_not_streamed(
-    RecipeBody::FormMultipart(indexmap! {
-        // This file does *not* get streamed because it's not a single-chunk
-        // template
-        "file".into() => "data: {{ file('data.json') }}".into(),
-    }),
-    None,
-    Some("multipart/form-data; boundary=BOUNDARY"),
-    "--BOUNDARY\r
-Content-Disposition: form-data; name=\"file\"\r
-\r
-data: { \"a\": 1, \"b\": 2 }\r
---BOUNDARY--\r
-",
-    false,
-)]
-#[case::form_multipart_command(
-    RecipeBody::FormMultipart(indexmap! {
-        "command".into() => "{{ command(['cat', 'data.json']) }}".into(),
-    }),
-    None,
-    Some("multipart/form-data; boundary=BOUNDARY"),
-    "--BOUNDARY\r
-Content-Disposition: form-data; name=\"command\"\r
-\r
-{ \"a\": 1, \"b\": 2 }\r
---BOUNDARY--\r
-",
-    false,
+    ""
 )]
 #[tokio::test]
 async fn test_body(
@@ -405,12 +323,130 @@ async fn test_body(
     #[case] expected_content_type: Option<&str>,
     // Expected value of the request body
     #[case] expected_body: &'static str,
-    // Should the body be available on the RequestRecord value?
-    #[case] expected_body_persisted: bool,
 ) {
-    // We're going to actually send the request so we can get the full body.
-    // Reqwest doesn't expose the body for multipart requests because it may be
-    // streamed
+    let headers = if let Some(content_type) = content_type {
+        indexmap! {"content-type".into() => content_type.into()}
+    } else {
+        IndexMap::default()
+    };
+    let recipe = Recipe {
+        method: HttpMethod::Post,
+        url: "{{ host }}/post".into(),
+        headers,
+        body: Some(body),
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe, None);
+
+    let seed = seed(&context, BuildOptions::default());
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+    let request = ticket.record;
+
+    assert_eq!(
+        request
+            .headers
+            .get("Content-Type")
+            .map(|value| value.to_str().unwrap()),
+        expected_content_type
+    );
+    // Convert body to text for comparison, because it gives better errors
+    let body = request.body.as_ref().expect("Expected request body");
+    let body_text = std::str::from_utf8(body).unwrap();
+    assert_eq!(body_text, expected_body);
+}
+
+/// Test request bodies that are streamed. Streaming means the body is never
+/// loaded entirely into memory at once.
+#[rstest]
+#[case::stream_static(
+    RecipeBody::Stream("static string".into()),
+    None,
+    "static string",
+)]
+#[case::stream_file(
+    RecipeBody::Stream("{{ file('data.json') }}".into()),
+    None, // Content-Type is intentionally *not* inferred from the extension
+    r#"{ "a": 1, "b": 2 }"#,
+)]
+#[case::stream_command(
+    RecipeBody::Stream("{{ command(['cat', 'data.json']) }}".into()),
+    None,
+    r#"{ "a": 1, "b": 2 }"#,
+)]
+#[case::stream_profile(
+    // Profile field should *not* eagerly resolve the stream
+    RecipeBody::Stream("{{ stream }}".into()),
+    None,
+    r#"{ "a": 1, "b": 2 }"#,
+)]
+#[case::stream_multichunk(
+    // This gets streamed one chunk at a time
+    RecipeBody::Stream(r#"{ "data": {{ file('data.json') }} }"#.into()),
+    None,
+    r#"{ "data": { "a": 1, "b": 2 } }"#,
+)]
+#[case::form_multipart(
+    RecipeBody::FormMultipart(indexmap! {
+        "user_id".into() => "{{ user_id }}".into(),
+    }),
+    // Normally the boundary is random, but we make it static for testing
+    Some("multipart/form-data; boundary=BOUNDARY"),
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"user_id\"\r
+\r
+1\r
+--BOUNDARY--\r
+",
+)]
+#[case::form_multipart_file(
+    RecipeBody::FormMultipart(indexmap! {
+        "file".into() => "{{ file('data.json') }}".into(),
+    }),
+    Some("multipart/form-data; boundary=BOUNDARY"),
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"file\"; filename=\"data.json\"\r
+Content-Type: application/json\r
+\r
+{ \"a\": 1, \"b\": 2 }\r
+--BOUNDARY--\r
+",
+)]
+#[case::form_multipart_file_multichunk(
+    RecipeBody::FormMultipart(indexmap! {
+        // This body gets streamed, but it does *not* use native file support
+        // because it's not *just* the file
+        "file".into() => "data: {{ file('data.json') }}".into(),
+    }),
+    Some("multipart/form-data; boundary=BOUNDARY"),
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"file\"\r
+\r
+data: { \"a\": 1, \"b\": 2 }\r
+--BOUNDARY--\r
+",
+)]
+#[case::form_multipart_command(
+    RecipeBody::FormMultipart(indexmap! {
+        "command".into() => "{{ command(['cat', 'data.json']) }}".into(),
+    }),
+    Some("multipart/form-data; boundary=BOUNDARY"),
+    "--BOUNDARY\r
+Content-Disposition: form-data; name=\"command\"\r
+\r
+{ \"a\": 1, \"b\": 2 }\r
+--BOUNDARY--\r
+",
+)]
+#[tokio::test]
+async fn test_body_stream(
+    http_engine: HttpEngine,
+    #[case] body: RecipeBody,
+    #[case] expected_content_type: Option<&str>,
+    // Expected value of the request body
+    #[case] expected_body: &'static str,
+) {
+    // Streamed bodies aren't stored on the request, so we're going to actually
+    // send the request and echo the body back in the response
     let server = MockServer::start().await;
     Mock::given(matchers::method("POST"))
         .and(matchers::path("/post"))
@@ -429,15 +465,9 @@ async fn test_body(
         .mount(&server)
         .await;
 
-    let headers = if let Some(content_type) = content_type {
-        indexmap! {"content-type".into() => content_type.into()}
-    } else {
-        IndexMap::default()
-    };
     let recipe = Recipe {
         method: HttpMethod::Post,
         url: "{{ host }}/post".into(),
-        headers,
         body: Some(body),
         ..Recipe::factory(())
     };
@@ -446,13 +476,9 @@ async fn test_body(
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
 
-    assert_eq!(
-        ticket.record.body().is_some(),
-        expected_body_persisted,
-        "Body persistence mismatch"
-    );
-
     let exchange = ticket.send().await.unwrap();
+
+    // TODO how can we assert the body was ACTUALLY streamed??
 
     // Mocker echoes the Content-Type header and body, assert on them
     assert_eq!(exchange.response.status, StatusCode::OK);
@@ -463,12 +489,8 @@ async fn test_body(
             },
         );
     assert_eq!(actual_content_type, expected_content_type);
-    if let Some(body) = exchange.response.body.text() {
-        assert_eq!(body, expected_body);
-    } else {
-        // We expect all bodies to be text
-        panic!("Non UTF-8 body: {:?}", exchange.response.body.bytes());
-    }
+    let body = exchange.response.body.text().expect("Invalid UTF-8 body");
+    assert_eq!(body, expected_body);
 }
 
 /// Test overriding authentication in BuildOptions

@@ -1,4 +1,4 @@
-use crate::{Expression, Identifier, StreamSource, Value};
+use crate::{Expression, Identifier, Value};
 use derive_more::derive::Display;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -55,16 +55,6 @@ pub enum RenderError {
     /// External error type from a function call
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
-
-    /// Error while streaming bytes from a streaming source
-    #[error("Error streaming from {stream_source}")]
-    Stream {
-        /// Descriptor of the streaming source, such as a file path
-        stream_source: StreamSource,
-        /// The inner error
-        #[source]
-        error: Box<Self>,
-    },
 
     /// Not enough arguments provided to a function call
     #[error("Not enough arguments")]

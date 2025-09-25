@@ -11,16 +11,16 @@ use crate::{
         http_engine,
     },
 };
+use bytes::BytesMut;
 use chrono::{DateTime, Utc};
+use futures::{StreamExt, TryStreamExt};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{
-    Expression, LazyValue, Literal, StreamSource, Template, Value,
-};
+use slumber_template::{Expression, Literal, StreamSource, Template, Value};
 use slumber_util::{
     Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
-    temp_dir, test_data_dir,
+    temp_dir,
 };
 use std::time::Duration;
 use tokio::fs;
@@ -212,16 +212,22 @@ async fn test_command_lazy() {
         [vec!["i-will-fail".into()].into()],
         [],
     );
-    assert_matches!(
-        template
-            .render(&TemplateContext::factory(()).streaming(true))
-            .await
-            .try_into_lazy()
-            .await,
-        Ok(LazyValue::Stream {
-            source: StreamSource::Command { .. },
-            ..
-        }),
+    // This shouldn't fail because the command isn't evaluated yet
+    let output = template
+        .render(&TemplateContext::factory(()).streaming(true))
+        .await;
+    assert_eq!(
+        output.stream_source(),
+        Some(&StreamSource::Command {
+            command: vec!["i-will-fail".into()]
+        })
+    );
+    let stream = output.try_into_stream().unwrap();
+
+    // Error happens when we collect
+    assert_result(
+        stream.try_collect::<BytesMut>().await,
+        Err::<BytesMut, &str>("No such file"),
     );
 }
 
@@ -814,21 +820,18 @@ async fn test_trim(
     );
 }
 
-/// Test different conditions where streaming is/isn't allowed
+/// Test that the stream source is retained for a single-chunk template
 #[rstest]
-#[case::stream_file("{{ file('data.json') }}", true, true)]
-#[case::stream_command("{{ command(['cat', 'data.json']) }}", true, true)]
-#[case::stream_piped("{{ 'data.json' | file() }}", true, true)]
-#[case::stream_via_profile("{{ file_field }}", true, true)]
-#[case::no_stream_direct("{{ file('data.json') }}", false, false)]
-#[case::no_stream_via_profile("{{ file_field }}", false, false)]
-#[case::no_stream_not_root("data: {{ file('data.json') }}", true, false)]
-#[case::no_stream_not_root_via_profile("data: {{ file_field }}", true, false)]
+#[case::stream_root("{{ file('data.json') }}", true)]
+#[case::stream_piped("{{ 'data.json' | file() }}", true)]
+#[case::stream_via_profile("{{ file_field }}", true)]
+// Multiple chunks means we don't have a single stream source
+#[case::no_stream_not_root("data: {{ file('data.json') }}", false)]
+#[case::no_stream_not_root_via_profile("data: {{ file_field }}", false)]
 #[tokio::test]
-async fn test_stream(
+async fn test_stream_source(
     #[case] template: Template,
-    #[case] can_stream: bool,
-    #[case] expect_stream: bool,
+    #[case] expected_has_source: bool,
 ) {
     // Put some profile data in the context
     let profile_data = indexmap! {
@@ -838,21 +841,84 @@ async fn test_stream(
         data: profile_data,
         ..Profile::factory(())
     };
+    let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
+
+    let output = template.render(&context.streaming(true)).await;
+    if expected_has_source {
+        assert_matches!(output.stream_source(), Some(_));
+    } else {
+        assert_matches!(output.stream_source(), None);
+    }
+}
+
+/// Test that streamed templates are actually computed chunk-by-chunk and are
+/// never eagerly collected
+#[rstest]
+#[tokio::test]
+async fn test_stream_chunks(temp_dir: TempDir) {
+    // Put some profile data in the context
+    let profile_data = indexmap! {
+        "one_chunk".into() => "{{ file('second') }}".into(),
+        // This one has multiple chunks. Need to make sure this doesn't get
+        // collected, and the whole stream is passed through
+        "multi_chunk".into() => "{{ file('third') }} | {{ file('fourth') }}".into(),
+    };
+    let profile = Profile {
+        data: profile_data,
+        ..Profile::factory(())
+    };
     let context = TemplateContext {
-        root_dir: test_data_dir(),
+        root_dir: temp_dir.to_owned(),
         ..TemplateContext::factory((by_id([profile]), IndexMap::new()))
     };
 
-    let value = template
-        .render(&context.streaming(can_stream))
+    // Testing that streaming directly or via a profile field loads the value
+    // lazily
+    let template = Template::from(
+        "{{ file('first') }} | {{ one_chunk }} | {{ multi_chunk }}",
+    );
+
+    // Stream init succeeds even though the files don't exist yet, because they
+    // aren't loaded until the respective chunk is loaded
+    let mut stream = template
+        .render(&context.streaming(true))
         .await
-        .try_into_lazy()
-        .await;
-    if expect_stream {
-        assert_matches!(value, Ok(LazyValue::Stream { .. }));
-    } else {
-        assert_matches!(value, Ok(LazyValue::Value(_)));
-    }
+        .try_into_stream()
+        .unwrap();
+    // Convert chunks to strings for better assertions
+    let mut next_chunk = async move || {
+        stream.next().await.map(|result| {
+            let bytes = result.unwrap();
+            String::from_utf8(bytes.into()).unwrap()
+        })
+    };
+
+    let write_file = async |name: &str| {
+        fs::write(temp_dir.join(name), name).await.unwrap();
+    };
+    // Stream should be 3 chunks. Each chunk isn't computed until requested.
+    // By creating the files right before reading, we assure that it isn't
+    // loaded until the chunk is requested
+    write_file("first").await;
+    assert_eq!(next_chunk().await.as_deref(), Some("first"));
+
+    assert_eq!(next_chunk().await.as_deref(), Some(" | "));
+
+    // Profile field with one chunk
+    write_file("second").await;
+    assert_eq!(next_chunk().await.as_deref(), Some("second"));
+
+    assert_eq!(next_chunk().await.as_deref(), Some(" | "));
+
+    // Profile field with multiple chunks
+    write_file("third").await;
+    assert_eq!(next_chunk().await.as_deref(), Some("third"));
+    assert_eq!(next_chunk().await.as_deref(), Some(" | "));
+    write_file("fourth").await;
+    assert_eq!(next_chunk().await.as_deref(), Some("fourth"));
+
+    // Job's done
+    assert_eq!(next_chunk().await, None);
 }
 
 /// Bytes that can't be converted to a string

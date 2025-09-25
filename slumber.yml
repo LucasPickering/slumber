@@ -6,6 +6,7 @@
 .base_profile_data:
   username: xX{{ command(['whoami']) | trim() | sensitive() }}Xx
   fish_id: "{{ response('list_fish', trigger='no_history') | jsonpath('$[*].id') | select() }}"
+  stream_compound: "command: {{ command(['echo', 'test']) }}\nfile: {{ file('Cargo.toml') }}"
 
 profiles:
   prd:
@@ -143,7 +144,7 @@ requests:
         url: "{{ host }}/anything"
         body:
           type: stream
-          data: "{{ file('Cargo.lock') }}"
+          data: "{{ file('Cargo.toml') }}"
 
       stream_command:
         $ref: "#/.base_request"
@@ -152,7 +153,16 @@ requests:
         url: "{{ host }}/anything"
         body:
           type: stream
-          data: "{{ command(['cat', 'Cargo.lock']) }}"
+          data: "{{ command(['cat', 'Cargo.toml']) }}"
+
+      stream_compound:
+        $ref: "#/.base_request"
+        name: Stream Compound
+        method: POST
+        url: "{{ host }}/anything"
+        body:
+          type: stream
+          data: "{{ stream_compound }}"
 
       form_urlencoded:
         $ref: "#/.base_request"

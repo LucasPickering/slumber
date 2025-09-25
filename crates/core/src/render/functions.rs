@@ -305,26 +305,26 @@ pub fn env(variable: String) -> String {
 /// {{ file("config.json") }} => Contents of config.json file
 /// ```
 #[template]
-pub async fn file(
+pub fn file(
     #[context] context: &SingleRenderContext<'_>,
     path: String,
-) -> Result<LazyValue, FunctionError> {
+) -> LazyValue {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
+    let source = StreamSource::File { path: path.clone() };
     // Return the file as a stream. If streaming isn't available here, it will
-    // be resolved immediately instead. If the file doesn't exist, we'll return
-    // an error immediately. If we fail to read from it for another reason, the
-    // error will be deferred until the data is actually streamed.
-    let file =
-        File::open(&path)
+    // be resolved immediately instead. If the file doesn't exist or any other
+    // error occurs, the error will be deferred until the data is actually
+    // streamed.
+    let future = async move {
+        let file = File::open(&path)
             .await
-            .map_err(|error| FunctionError::File {
-                path: path.clone(),
-                error,
-            })?;
-    Ok(LazyValue::Stream {
-        source: StreamSource::File { path },
-        stream: reader_stream(file).boxed(),
-    })
+            .map_err(|error| FunctionError::File { path, error })?;
+        Ok(reader_stream(file))
+    };
+    LazyValue::Stream {
+        source,
+        stream: future.try_flatten_stream().boxed(),
+    }
 }
 
 /// Convert a value to a float

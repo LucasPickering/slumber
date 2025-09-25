@@ -49,11 +49,12 @@ use crate::{
     render::TemplateContext,
 };
 use anyhow::Context;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use chrono::Utc;
 use futures::{
-    Future,
+    Future, StreamExt, TryStreamExt,
     future::{self, OptionFuture, try_join_all},
+    stream::BoxStream,
     try_join,
 };
 use reqwest::{
@@ -63,7 +64,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{LazyValue, StreamSource, Template};
+use slumber_template::{RenderError, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
@@ -265,9 +266,9 @@ impl HttpEngine {
                 // If we have the bytes, we don't need to bother building a
                 // request
                 RenderedBody::Raw(bytes) => Ok(Some(bytes)),
-                RenderedBody::Stream(value) => {
-                    let bytes = value.try_collect().await?;
-                    Ok(Some(bytes))
+                RenderedBody::Stream(todo) => {
+                    let bytes = todo.stream.try_collect::<BytesMut>().await?;
+                    Ok(Some(bytes.into()))
                 }
 
                 // The body is complex - offload the hard work to RequestBuilder
@@ -632,13 +633,13 @@ impl Recipe {
                     .context("Rendering body")?,
             ),
             // Stream body is rendered as a stream (!!)
-            RecipeBody::Stream(body) => RenderedBody::Stream(
-                body.render(&context.streaming(true))
-                    .await
-                    .try_into_lazy()
-                    .await
-                    .context("Rendering body")?,
-            ),
+            RecipeBody::Stream(body) => {
+                let output = body.render(&context.streaming(true)).await;
+                let source = output.stream_source().cloned();
+                let stream =
+                    output.try_into_stream().context("Rendering body")?.boxed();
+                RenderedBody::Stream(StreamTodo { stream, source })
+            }
             RecipeBody::Json(json) => RenderedBody::Json(
                 json.render(context).await.context("Rendering body")?,
             ),
@@ -667,19 +668,24 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value = template
-                                .render(&context.streaming(true))
-                                .await
-                                // If this is a single-chunk template, we can
-                                // unpack it into the underlying value. Useful
-                                // for file streams since we support natively
-                                .try_into_lazy()
-                                .await
+                            let output =
+                                template.render(&context.streaming(true)).await;
+                            // If this is a single-chunk template, we can might
+                            // be able to load directly from the source, since
+                            // we support file streams natively. In that case,
+                            // the stream will be thrown away
+                            let source = output.stream_source().cloned();
+                            let stream = output
+                                .try_into_stream()
                                 .context(format!(
                                     "Rendering form field `{field}`"
-                                ))?;
+                                ))?
+                                .boxed();
 
-                            Ok::<_, anyhow::Error>((field.clone(), value))
+                            Ok::<_, anyhow::Error>((
+                                field.clone(),
+                                StreamTodo { stream, source },
+                            ))
                         })
                     },
                 );
@@ -706,17 +712,20 @@ impl Authentication<String> {
 /// by which we'll add it to the request. This means it is **not** 1:1 with
 /// [RecipeBody]
 enum RenderedBody {
-    /// TODO
+    /// A body of plain ass bytes
     Raw(Bytes),
-    /// TODO
-    Stream(LazyValue),
+    /// A body that should be streamed. If possible the value will be evaluated
+    /// lazily, meaning it won't be collected into bytes and instead will be
+    /// streamed over the network as the data becomes available. Only certain
+    /// data sources (such as files and commands) can be streamed.
+    Stream(StreamTodo),
     /// JSON body
     Json(serde_json::Value),
     /// Field:value mapping. Value is `String` because only string data can be
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
     /// Field:value mapping. Values can be arbitrary bytes or a binary stream
-    FormMultipart(Vec<(String, LazyValue)>),
+    FormMultipart(Vec<(String, StreamTodo)>),
 }
 
 impl RenderedBody {
@@ -728,8 +737,8 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
-            RenderedBody::Stream(value) => {
-                let body = Body::wrap_stream(value.into_stream());
+            RenderedBody::Stream(todo) => {
+                let body = Body::wrap_stream(todo.stream);
                 Ok(builder.body(body))
             }
             RenderedBody::Json(json) => Ok(builder.json(&json)),
@@ -746,23 +755,17 @@ impl RenderedBody {
                     form.set_boundary("BOUNDARY");
                 }
 
-                for (field, stream) in fields {
+                for (field, todo) in fields {
                     // Convert the stream to a form part
-                    let part = match stream {
-                        LazyValue::Value(value) => {
-                            Part::bytes::<Vec<u8>>(value.into_bytes().into())
-                        }
+                    let part = match todo.source {
                         // Files can be handled natively by reqwest, which gets
                         // bonus support for Content-Type and
                         // Content-Disposition goodies
-                        LazyValue::Stream {
-                            source: StreamSource::File { path },
-                            ..
-                        } => Part::file(path).await?,
-                        // Any other stream can be streamed directly as bytes
-                        LazyValue::Stream { stream, .. } => {
-                            Part::stream(Body::wrap_stream(stream))
+                        Some(StreamSource::File { path }) => {
+                            Part::file(path).await?
                         }
+                        // Any other stream can be streamed directly as bytes
+                        _ => Part::stream(Body::wrap_stream(todo.stream)),
                     };
                     form = form.part(field, part);
                 }
@@ -771,6 +774,17 @@ impl RenderedBody {
             }
         }
     }
+}
+
+/// TODO
+struct StreamTodo {
+    /// Stream of bytes
+    stream: BoxStream<'static, Result<Bytes, RenderError>>,
+    /// If the stream was generated by a template with a single dynamic
+    /// chunk (e.g. `{{ file('data.png') }}`), we can trace the source of
+    /// the stream. This allows certain applications to skip the stream and
+    /// handle the source natively.
+    source: Option<StreamSource>,
 }
 
 impl From<HttpMethod> for reqwest::Method {

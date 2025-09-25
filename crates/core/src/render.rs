@@ -5,24 +5,26 @@
 mod functions;
 #[cfg(test)]
 mod tests;
+mod util;
 
 #[cfg(any(test, feature = "test"))]
 use crate::collection::Recipe;
 use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
     http::{Exchange, RequestSeed, ResponseRecord, TriggeredRequestError},
-    render::functions::RequestTrigger,
+    render::{
+        functions::RequestTrigger,
+        util::{FieldCache, FieldCacheOutcome},
+    },
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::Utc;
-use derive_more::From;
+use derive_more::{Deref, From};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
-use slumber_template::{
-    Arguments, FieldCache, Identifier, LazyValue, RenderError,
-};
+use slumber_template::{Arguments, Identifier, LazyValue, RenderError};
 use slumber_util::ResultTraced;
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -34,6 +36,8 @@ use tokio::sync::oneshot;
 /// templating. Unfortunately this has to own all data so templating can be
 /// deferred into a task (tokio requires `'static` for spawned tasks). If this
 /// becomes a bottleneck, we can `Arc` some stuff.
+///
+/// TODO update comment
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Entire request collection
@@ -60,6 +64,22 @@ pub struct TemplateContext {
 }
 
 impl TemplateContext {
+    /// TODO
+    pub fn eager(&self) -> SingleRenderContext<'_> {
+        SingleRenderContext {
+            context: self,
+            can_stream: false,
+        }
+    }
+
+    /// TODO
+    pub fn streaming(&self, can_stream: bool) -> SingleRenderContext<'_> {
+        SingleRenderContext {
+            context: self,
+            can_stream,
+        }
+    }
+
     fn current_profile(&self) -> Option<&Profile> {
         self.selected_profile
             .as_ref()
@@ -157,19 +177,50 @@ impl TemplateContext {
     }
 }
 
-impl slumber_template::Context for TemplateContext {
+/// TODO
+#[derive(Debug, Deref)]
+pub struct SingleRenderContext<'a> {
+    #[deref]
+    context: &'a TemplateContext,
+    can_stream: bool,
+}
+
+impl slumber_template::Context for SingleRenderContext<'_> {
+    fn can_stream(&self) -> bool {
+        self.can_stream
+    }
+
     async fn get_field(
         &self,
         field: &Identifier,
     ) -> Result<LazyValue, RenderError> {
         // Check overrides first. The override value is NOT treated as a
         // template
-        if let Some(value) = self.overrides.get(field.as_str()) {
+        if let Some(value) = self.context.overrides.get(field.as_str()) {
             return Ok(value.clone().into());
         }
 
+        // TODO update comments
+
+        // Check the field cache to see if this value is already being computed
+        // somewhere else. If it is, we'll block on that and re-use the result.
+        // If not, we get a guard back, meaning we're responsible for the
+        // computation. At the end, we'll write back to the guard so everyone
+        // else can copy our homework.
+        let guard = match self
+            .context
+            .state
+            .field_cache
+            .get_or_init(field.clone())
+            .await
+        {
+            FieldCacheOutcome::Hit(value) => return Ok(value.into()),
+            FieldCacheOutcome::Miss(guard) => guard,
+        };
+
         // Then check the current profile
         let template = self
+            .context
             .current_profile()
             .and_then(|profile| profile.data.get(field.as_str()))
             .ok_or_else(|| FunctionError::UnknownField {
@@ -177,24 +228,27 @@ impl slumber_template::Context for TemplateContext {
             })?;
 
         // Render the nested template
-        template
-            .render(self, true)
-            .await
-            .try_into_lazy()
-            .await
-            .map_err(|error| {
-                // We *could* just return the error, but wrap it to give
-                // additional context
-                FunctionError::ProfileNested {
+        let lazy = template.render(self).await.try_into_lazy().await.map_err(
+            // We *could* just return the error, but wrap it to give
+            // additional context
+            |error| {
+                RenderError::from(FunctionError::ProfileNested {
                     field: field.clone(),
                     error,
-                }
-                .into()
-            })
-    }
+                })
+            },
+        )?;
 
-    fn field_cache(&self) -> &FieldCache {
-        &self.state.field_cache
+        // If the output is a value, we can cache it. If it's a stream, it can't
+        // be cloned so it can't be cached. In practice there's probably no
+        // reason to include the same stream field twice in a single body, but
+        // if that happens we'll have to compute it twice. This saves us a lot
+        // of annoying machinery though.
+        if let LazyValue::Value(value) = &lazy {
+            guard.set(value.clone());
+        }
+
+        Ok(lazy)
     }
 
     async fn call(

@@ -11,7 +11,7 @@ use ratatui::{
     widgets::Widget,
 };
 use slumber_core::http::content_type::ContentType;
-use slumber_template::{LazyValue, RenderedChunk, Template};
+use slumber_template::{LazyValue, RenderedChunk, RenderedOutput, Template};
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -112,7 +112,7 @@ impl TemplatePreview {
     /// Generate text from the rendered template, and replace the text in the
     /// mutex
     fn calculate_rendered_text(
-        chunks: Vec<RenderedChunk>,
+        chunks: RenderedOutput,
         destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
         style: Style,
@@ -165,7 +165,7 @@ struct TextStitcher {
 
 impl TextStitcher {
     /// Convert chunks into a series of spans, which can be turned into a line
-    fn stitch_chunks(chunks: Vec<RenderedChunk>) -> Text<'static> {
+    fn stitch_chunks(chunks: RenderedOutput) -> Text<'static> {
         let styles = &TuiContext::get().styles;
 
         // Each chunk will get its own styling, but we can't just make each
@@ -313,7 +313,7 @@ mod tests {
             ..TemplateContext::factory(())
         };
 
-        let chunks = template.render(&context).await;
+        let chunks = template.render(&context.eager()).await;
         let text = TextStitcher::stitch_chunks(chunks);
         assert_eq!(text, Text::from(expected));
     }

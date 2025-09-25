@@ -4,7 +4,7 @@
 use crate::test_util;
 use crate::{
     Arguments, Context, LazyValue, RenderError, Value,
-    error::RenderErrorContext, util::FieldCacheOutcome,
+    error::RenderErrorContext,
 };
 use bytes::Bytes;
 use derive_more::{Deref, Display, From};
@@ -80,7 +80,7 @@ impl Expression {
                     // Keys will be deduped here, with the last taking priority
                     Ok(Value::Object(IndexMap::from_iter(pairs)).into())
                 }
-                Self::Field(field) => Self::render_field(field, context).await,
+                Self::Field(field) => context.get_field(field).await,
                 Self::Call(call) => call.call(context, None).await,
                 Self::Pipe { expression, call } => {
                     // Compute the left hand side first. Box for recursion
@@ -90,42 +90,6 @@ impl Expression {
                 }
             }
         }
-    }
-
-    /// Render the value of a field. This will apply caching, so that a field
-    /// never has to be rendered more than once for a given context.
-    async fn render_field<Ctx: Context>(
-        field: &Identifier,
-        context: &Ctx,
-    ) -> RenderResult {
-        // Check the field cache to see if this value is already being computed
-        // somewhere else. If it is, we'll block on that and re-use the result.
-        // If not, we get a guard back, meaning we're responsible for the
-        // computation. At the end, we'll write back to the guard so everyone
-        // else can copy our homework.
-        let cache = context.field_cache();
-        let guard = match cache.get_or_init(field.clone()).await {
-            FieldCacheOutcome::Hit(value) => return Ok(value.into()),
-            FieldCacheOutcome::Miss(guard) => guard,
-        };
-
-        // This value hasn't been rendered yet - ask the context to evaluate it
-        let mut lazy = context.get_field(field).await?;
-        // If streaming isn't supported here, convert to a value before caching,
-        // so that the stream isn't evaluated multiple times unless necessary
-        if !context.can_stream() {
-            lazy = lazy.resolve().await?.into();
-        }
-
-        // If the output is a value, we can cache it. If it's a stream, it can't
-        // be cloned so it can't be cached. In practice there's probably no
-        // reason to include the same stream field twice in a single body, but
-        // if that happens we'll have to compute it twice. This saves us a lot
-        // of annoying machinery though.
-        if let LazyValue::Value(value) = &lazy {
-            guard.set(value.clone());
-        }
-        Ok(lazy)
     }
 
     /// Render this expression, resolving any stream to a concrete value.

@@ -18,7 +18,7 @@ use slumber_core::{
     http::{Exchange, RequestError, RequestId, RequestSeed},
     render::{Prompter, TemplateContext},
 };
-use slumber_template::{RenderedChunk, StreamContext, Template};
+use slumber_template::{RenderedOutput, Template};
 use slumber_util::ResultTraced;
 use std::{
     path::{Path, PathBuf},
@@ -649,16 +649,12 @@ impl LoadedState {
         template: Template,
         profile_id: Option<ProfileId>,
         can_stream: bool,
-        on_complete: Callback<Vec<RenderedChunk>>,
+        on_complete: Callback<RenderedOutput>,
     ) {
         let context = self.template_context(profile_id, true);
         util::spawn(async move {
             // Render chunks, then write them to the output destination
-            let chunks = if can_stream {
-                template.render(&StreamContext::new(&context)).await
-            } else {
-                template.render(&context).await
-            };
+            let chunks = template.render(&context.streaming(can_stream)).await;
             on_complete(chunks);
         });
     }

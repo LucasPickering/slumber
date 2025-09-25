@@ -51,7 +51,7 @@ impl RecipeBodyDisplay {
     /// body is not `None`.
     pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
         match body {
-            RecipeBody::Raw(body) => {
+            RecipeBody::Raw(body) | RecipeBody::Stream(body) => {
                 Self::Raw(TextBody::new(body.clone(), recipe).into())
             }
             RecipeBody::Json(json) => {

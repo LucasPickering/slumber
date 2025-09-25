@@ -470,7 +470,7 @@ impl Recipe {
     ) -> anyhow::Result<Url> {
         let url = self
             .url
-            .render_string(context)
+            .render_string(&context.eager())
             .await
             .context("Rendering URL")?;
         url.parse::<Url>()
@@ -492,9 +492,12 @@ impl Recipe {
                 Some(async move {
                     Ok::<_, anyhow::Error>((
                         k.to_owned(),
-                        template.render_string(context).await.context(
-                            format!("Rendering query parameter `{k}`"),
-                        )?,
+                        template
+                            .render_string(&context.eager())
+                            .await
+                            .context(format!(
+                                "Rendering query parameter `{k}`"
+                            ))?,
                     ))
                 })
             });
@@ -542,7 +545,7 @@ impl Recipe {
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
         let mut value: Vec<u8> = value_template
-            .render_bytes(context)
+            .render_bytes(&context.eager())
             .await
             .context(format!("Rendering header `{header}`"))?
             .into();
@@ -577,19 +580,20 @@ impl Recipe {
             .authentication
             .as_ref()
             .or(self.authentication.as_ref());
+        let context = context.eager(); // Auth templates never support streaming
         match authentication {
             Some(Authentication::Basic { username, password }) => {
                 let (username, password) =
                     try_join!(
                         async {
                             username
-                                .render_string(context)
+                                .render_string(&context)
                                 .await
                                 .context("Rendering username")
                         },
                         async {
                             OptionFuture::from(password.as_ref().map(
-                                |password| password.render_string(context),
+                                |password| password.render_string(&context),
                             ))
                             .await
                             .transpose()
@@ -601,7 +605,7 @@ impl Recipe {
 
             Some(Authentication::Bearer { token }) => {
                 let token = token
-                    .render_string(context)
+                    .render_string(&context)
                     .await
                     .context("Rendering bearer token")?;
                 Ok(Some(Authentication::Bearer { token }))
@@ -623,11 +627,13 @@ impl Recipe {
         let rendered = match body {
             // Raw body is always eagerly rendered
             RecipeBody::Raw(body) => RenderedBody::Raw(
-                body.render_bytes(context).await.context("Rendering body")?,
+                body.render_bytes(&context.eager())
+                    .await
+                    .context("Rendering body")?,
             ),
             // Stream body is rendered as a stream (!!)
             RecipeBody::Stream(body) => RenderedBody::Stream(
-                body.render(context, true)
+                body.render(&context.streaming(true))
                     .await
                     .try_into_lazy()
                     .await
@@ -642,10 +648,12 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value =
-                                template.render_string(context).await.context(
-                                    format!("Rendering form field `{field}`"),
-                                )?;
+                            let value = template
+                                .render_string(&context.eager())
+                                .await
+                                .context(format!(
+                                    "Rendering form field `{field}`"
+                                ))?;
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
                     },
@@ -655,12 +663,12 @@ impl Recipe {
             }
             RecipeBody::FormMultipart(fields) => {
                 let iter = fields.iter().enumerate().filter_map(
-                    |(i, (field, value_template))| {
+                    move |(i, (field, value_template))| {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
                             let value = template
-                                .render(context, true)
+                                .render(&context.streaming(true))
                                 .await
                                 // If this is a single-chunk template, we can
                                 // unpack it into the underlying value. Useful

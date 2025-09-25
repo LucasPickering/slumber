@@ -1,11 +1,12 @@
 use crate::{
-    Arguments, Context, FieldCache, Identifier, RenderError, Stream, Template,
-    Value, value::StreamSource,
+    Arguments, Context, FieldCache, Identifier, LazyValue, RenderError,
+    Template, Value, value::StreamSource,
 };
-use futures::{StreamExt, TryStreamExt};
+use bytes::BytesMut;
+use futures::{StreamExt, TryFutureExt, TryStreamExt};
 use indexmap::indexmap;
 use rstest::rstest;
-use slumber_util::{assert_err, assert_matches, test_data_dir};
+use slumber_util::{assert_err, assert_result, test_data_dir};
 use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
@@ -65,38 +66,37 @@ async fn test_render_value(
 
 /// Render to a stream
 #[rstest]
-#[case::stream("{{ file('data.json') }}", b"{ \"a\": 1, \"b\": 2 }", true)]
+#[case::stream(
+    "{{ file('data.json') }}",
+    Ok(b"{ \"a\": 1, \"b\": 2 }".as_slice()),
+)]
 #[case::text(
     "text: {{ file('data.json') }}",
-    b"text: { \"a\": 1, \"b\": 2 }",
-    false
+    Ok(b"text: { \"a\": 1, \"b\": 2 }".as_slice())
 )]
 #[case::binary(
     "{{ invalid_utf8 }} {{ file('data.json') }}",
-    b"\xc3\x28 { \"a\": 1, \"b\": 2 }",
-    false
+    Ok(b"\xc3\x28 { \"a\": 1, \"b\": 2 }".as_slice())
 )]
+// Error while rendering chunks
+#[case::render_error("{{ unknown() }}", Err("Unknown function"))]
+// Error during stream resolution
+#[case::collect_error("{{ file('fake.txt') }}", Err("No such file"))]
 #[tokio::test]
 async fn test_render_stream(
     #[case] template: Template,
-    #[case] expected_resolved: &[u8],
-    #[case] expected_is_stream: bool,
+    #[case] expected: Result<&[u8], &str>,
 ) {
-    let stream = template
-        .render_stream(&TestContext::default())
+    let result = match template
+        .render(&TestContext::default(), true)
         .await
-        .unwrap();
+        .try_into_stream()
+    {
+        Ok(stream) => stream.try_collect::<BytesMut>().await,
+        Err(error) => Err(error),
+    };
 
-    if expected_is_stream {
-        assert_matches!(stream, Stream::Stream { .. });
-    } else {
-        assert_matches!(stream, Stream::Value(Value::Bytes(_)));
-    }
-
-    assert_eq!(
-        stream.resolve().await.unwrap().into_bytes(),
-        expected_resolved
-    );
+    assert_result(result, expected);
 }
 
 /// Convert JSON values to template values
@@ -229,7 +229,7 @@ impl Context for TestContext {
     async fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> Result<Stream, RenderError> {
+    ) -> Result<LazyValue, RenderError> {
         match identifier.as_str() {
             "name" => Ok("Mike".into()),
             "array" => Ok(vec!["a", "b", "c"].into()),
@@ -257,7 +257,7 @@ impl Context for TestContext {
         &self,
         function_name: &Identifier,
         mut arguments: Arguments<'_, Self>,
-    ) -> Result<Stream, RenderError> {
+    ) -> Result<LazyValue, RenderError> {
         match function_name.as_str() {
             "identity" => {
                 let value: Value = arguments.pop_position()?;
@@ -286,13 +286,15 @@ impl Context for TestContext {
                 let file_name: String = arguments.pop_position()?;
                 arguments.ensure_consumed()?;
                 let path = test_data_dir().join(file_name);
-                let file =
-                    File::open(&path).await.map_err(RenderError::other)?;
-                Ok(Stream::Stream {
-                    source: StreamSource::File { path: path.clone() },
-                    stream: ReaderStream::new(file)
-                        .map_err(RenderError::other)
-                        .boxed(),
+                // Create a stream that first opens the file, then reads from it
+                let stream = File::open(path.clone())
+                    .map_ok(ReaderStream::new)
+                    .try_flatten_stream()
+                    .map_err(RenderError::other)
+                    .boxed();
+                Ok(LazyValue::Stream {
+                    source: StreamSource::File { path },
+                    stream,
                 })
             }
             _ => Err(RenderError::FunctionUnknown),

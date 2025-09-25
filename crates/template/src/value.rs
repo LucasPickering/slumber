@@ -7,7 +7,10 @@ use crate::{
 };
 use bytes::{Bytes, BytesMut};
 use derive_more::{Display, From};
-use futures::{TryStreamExt, stream::BoxStream};
+use futures::{
+    Stream, StreamExt, TryStreamExt,
+    stream::{self, BoxStream},
+};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, fmt::Debug, path::PathBuf};
@@ -165,8 +168,10 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
+///
+/// TODO rename this to disambiguate with futures::Stream
 #[derive(derive_more::Debug)]
-pub enum Stream {
+pub enum LazyValue {
     /// A pre-resolved value
     Value(Value),
     /// Stream data from a (potentially) large source such as a file
@@ -179,7 +184,9 @@ pub enum Stream {
     },
 }
 
-impl Stream {
+impl LazyValue {
+    // TODO can we dedupe these somehow?
+
     /// Resolve this stream to a concrete [Value]. If it's already a value, just
     /// return it. Otherwise the stream will be awaited and collected into
     /// bytes.
@@ -196,9 +203,36 @@ impl Stream {
                 }),
         }
     }
+
+    /// TODO
+    pub fn into_stream(self) -> impl Stream<Item = Result<Bytes, RenderError>> {
+        match self {
+            Self::Value(value) => {
+                // TODO remove the future wrapper?
+                stream::once(async move { Ok(value.into_bytes()) }).boxed()
+            }
+            Self::Stream { stream, .. } => stream.boxed(),
+        }
+    }
+
+    /// If this is a value, convert it into bytes. If it's a stream, collect it
+    /// into bytes.
+    pub async fn try_collect(self) -> Result<Bytes, RenderError> {
+        match self {
+            Self::Value(value) => Ok(value.into_bytes()),
+            Self::Stream { stream, source } => stream
+                .try_collect::<BytesMut>()
+                .await
+                .map(Bytes::from)
+                .map_err(|error| RenderError::Stream {
+                    stream_source: source,
+                    error: Box::new(error),
+                }),
+        }
+    }
 }
 
-impl<T: Into<Value>> From<T> for Stream {
+impl<T: Into<Value>> From<T> for LazyValue {
     fn from(value: T) -> Self {
         Self::Value(value.into())
     }
@@ -488,27 +522,27 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
 ///
 /// This is used for converting function outputs back to template values.
 pub trait FunctionOutput {
-    fn into_result(self) -> Result<Stream, RenderError>;
+    fn into_result(self) -> Result<LazyValue, RenderError>;
 }
 
-impl<T: Into<Stream>> FunctionOutput for T {
-    fn into_result(self) -> Result<Stream, RenderError> {
+impl<T: Into<LazyValue>> FunctionOutput for T {
+    fn into_result(self) -> Result<LazyValue, RenderError> {
         Ok(self.into())
     }
 }
 
 impl<T, E> FunctionOutput for Result<T, E>
 where
-    T: Into<Stream>,
+    T: Into<LazyValue>,
     E: Into<RenderError>,
 {
-    fn into_result(self) -> Result<Stream, RenderError> {
+    fn into_result(self) -> Result<LazyValue, RenderError> {
         self.map(T::into).map_err(E::into)
     }
 }
 
 impl<T: FunctionOutput> FunctionOutput for Option<T> {
-    fn into_result(self) -> Result<Stream, RenderError> {
+    fn into_result(self) -> Result<LazyValue, RenderError> {
         self.map(T::into_result).unwrap_or(Ok(Value::Null.into()))
     }
 }

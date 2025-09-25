@@ -3,8 +3,8 @@
 #[cfg(test)]
 use crate::test_util;
 use crate::{
-    Arguments, Context, RenderError, Stream, Value, error::RenderErrorContext,
-    util::FieldCacheOutcome,
+    Arguments, Context, LazyValue, RenderError, Value,
+    error::RenderErrorContext, util::FieldCacheOutcome,
 };
 use bytes::Bytes;
 use derive_more::{Deref, Display, From};
@@ -14,7 +14,7 @@ use futures::{
 };
 use indexmap::IndexMap;
 
-type RenderResult = Result<Stream, RenderError>;
+type RenderResult = Result<LazyValue, RenderError>;
 
 /// A dynamic segment of a template that will be computed at render time.
 /// Expressions are derived from the template context and may include external
@@ -110,11 +110,11 @@ impl Expression {
         };
 
         // This value hasn't been rendered yet - ask the context to evaluate it
-        let mut stream = context.get_field(field).await?;
+        let mut lazy = context.get_field(field).await?;
         // If streaming isn't supported here, convert to a value before caching,
         // so that the stream isn't evaluated multiple times unless necessary
         if !context.can_stream() {
-            stream = stream.resolve().await?.into();
+            lazy = lazy.resolve().await?.into();
         }
 
         // If the output is a value, we can cache it. If it's a stream, it can't
@@ -122,10 +122,10 @@ impl Expression {
         // reason to include the same stream field twice in a single body, but
         // if that happens we'll have to compute it twice. This saves us a lot
         // of annoying machinery though.
-        if let Stream::Value(value) = &stream {
+        if let LazyValue::Value(value) = &lazy {
             guard.set(value.clone());
         }
-        Ok(stream)
+        Ok(lazy)
     }
 
     /// Render this expression, resolving any stream to a concrete value.

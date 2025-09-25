@@ -21,7 +21,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
 use slumber_template::{
-    Arguments, FieldCache, Identifier, RenderError, Stream,
+    Arguments, FieldCache, Identifier, LazyValue, RenderError,
 };
 use slumber_util::ResultTraced;
 use std::{
@@ -161,7 +161,7 @@ impl slumber_template::Context for TemplateContext {
     async fn get_field(
         &self,
         field: &Identifier,
-    ) -> Result<Stream, RenderError> {
+    ) -> Result<LazyValue, RenderError> {
         // Check overrides first. The override value is NOT treated as a
         // template
         if let Some(value) = self.overrides.get(field.as_str()) {
@@ -177,15 +177,20 @@ impl slumber_template::Context for TemplateContext {
             })?;
 
         // Render the nested template
-        template.render_stream(self).await.map_err(|error| {
-            // We *could* just return the error, but wrap it to give additional
-            // context
-            FunctionError::ProfileNested {
-                field: field.clone(),
-                error,
-            }
-            .into()
-        })
+        template
+            .render(self, true)
+            .await
+            .try_into_lazy()
+            .await
+            .map_err(|error| {
+                // We *could* just return the error, but wrap it to give
+                // additional context
+                FunctionError::ProfileNested {
+                    field: field.clone(),
+                    error,
+                }
+                .into()
+            })
     }
 
     fn field_cache(&self) -> &FieldCache {
@@ -196,7 +201,7 @@ impl slumber_template::Context for TemplateContext {
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<Stream, RenderError> {
+    ) -> Result<LazyValue, RenderError> {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),

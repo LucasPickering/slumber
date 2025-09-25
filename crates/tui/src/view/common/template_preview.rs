@@ -11,7 +11,7 @@ use ratatui::{
     widgets::Widget,
 };
 use slumber_core::http::content_type::ContentType;
-use slumber_template::{RenderedChunk, Stream, Template};
+use slumber_template::{LazyValue, RenderedChunk, Template};
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -226,7 +226,7 @@ impl TextStitcher {
     fn get_chunk_text(chunk: RenderedChunk) -> String {
         match chunk {
             RenderedChunk::Raw(text) => text.deref().into(),
-            RenderedChunk::Rendered(Stream::Value(value)) => {
+            RenderedChunk::Rendered(LazyValue::Value(value)) => {
                 // We could potentially use MaybeStr to show binary data as
                 // hex, but that could get weird if there's text data in the
                 // template as well. This is simpler and prevents giant
@@ -235,7 +235,7 @@ impl TextStitcher {
                     .try_into_string()
                     .unwrap_or_else(|_| "<binary>".into())
             }
-            RenderedChunk::Rendered(Stream::Stream { source, .. }) => {
+            RenderedChunk::Rendered(LazyValue::Stream { source, .. }) => {
                 format!("<{source}>")
             }
             // There's no good way to render the entire error inline
@@ -313,7 +313,7 @@ mod tests {
             ..TemplateContext::factory(())
         };
 
-        let chunks = template.render_chunks(&context).await;
+        let chunks = template.render(&context).await;
         let text = TextStitcher::stitch_chunks(chunks);
         assert_eq!(text, Text::from(expected));
     }

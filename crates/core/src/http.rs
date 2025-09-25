@@ -63,7 +63,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{Stream, StreamSource, Template};
+use slumber_template::{LazyValue, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
@@ -264,9 +264,10 @@ impl HttpEngine {
             match body {
                 // If we have the bytes, we don't need to bother building a
                 // request
-                RenderedBody::Raw(stream) => {
-                    let value = stream.resolve().await?;
-                    Ok(Some(value.into_bytes()))
+                RenderedBody::Raw(bytes) => Ok(Some(bytes)),
+                RenderedBody::Stream(value) => {
+                    let bytes = value.try_collect().await?;
+                    Ok(Some(bytes))
                 }
 
                 // The body is complex - offload the hard work to RequestBuilder
@@ -622,14 +623,13 @@ impl Recipe {
         let rendered = match body {
             // Raw body is always eagerly rendered
             RecipeBody::Raw(body) => RenderedBody::Raw(
-                body.render_bytes(context)
-                    .await
-                    .context("Rendering body")?
-                    .into(),
+                body.render_bytes(context).await.context("Rendering body")?,
             ),
             // Stream body is rendered as a stream (!!)
-            RecipeBody::Stream(body) => RenderedBody::Raw(
-                body.render_stream(context)
+            RecipeBody::Stream(body) => RenderedBody::Stream(
+                body.render(context, true)
+                    .await
+                    .try_into_lazy()
                     .await
                     .context("Rendering body")?,
             ),
@@ -659,12 +659,19 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let stream =
-                                template.render_stream(context).await.context(
-                                    format!("Rendering form field `{field}`"),
-                                )?;
+                            let value = template
+                                .render(context, true)
+                                .await
+                                // If this is a single-chunk template, we can
+                                // unpack it into the underlying value. Useful
+                                // for file streams since we support natively
+                                .try_into_lazy()
+                                .await
+                                .context(format!(
+                                    "Rendering form field `{field}`"
+                                ))?;
 
-                            Ok::<_, anyhow::Error>((field.clone(), stream))
+                            Ok::<_, anyhow::Error>((field.clone(), value))
                         })
                     },
                 );
@@ -691,14 +698,17 @@ impl Authentication<String> {
 /// by which we'll add it to the request. This means it is **not** 1:1 with
 /// [RecipeBody]
 enum RenderedBody {
-    Raw(Stream),
+    /// TODO
+    Raw(Bytes),
+    /// TODO
+    Stream(LazyValue),
     /// JSON body
     Json(serde_json::Value),
     /// Field:value mapping. Value is `String` because only string data can be
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
     /// Field:value mapping. Values can be arbitrary bytes or a binary stream
-    FormMultipart(Vec<(String, Stream)>),
+    FormMultipart(Vec<(String, LazyValue)>),
 }
 
 impl RenderedBody {
@@ -709,11 +719,9 @@ impl RenderedBody {
     ) -> anyhow::Result<RequestBuilder> {
         // Set body. The variant tells us _how_ to set it
         match self {
-            RenderedBody::Raw(Stream::Value(value)) => {
-                Ok(builder.body(value.into_bytes()))
-            }
-            RenderedBody::Raw(Stream::Stream { stream, .. }) => {
-                let body = Body::wrap_stream(stream);
+            RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
+            RenderedBody::Stream(value) => {
+                let body = Body::wrap_stream(value.into_stream());
                 Ok(builder.body(body))
             }
             RenderedBody::Json(json) => Ok(builder.json(&json)),
@@ -733,18 +741,18 @@ impl RenderedBody {
                 for (field, stream) in fields {
                     // Convert the stream to a form part
                     let part = match stream {
-                        Stream::Value(value) => {
+                        LazyValue::Value(value) => {
                             Part::bytes::<Vec<u8>>(value.into_bytes().into())
                         }
                         // Files can be handled natively by reqwest, which gets
                         // bonus support for Content-Type and
                         // Content-Disposition goodies
-                        Stream::Stream {
+                        LazyValue::Stream {
                             source: StreamSource::File { path },
                             ..
                         } => Part::file(path).await?,
                         // Any other stream can be streamed directly as bytes
-                        Stream::Stream { stream, .. } => {
+                        LazyValue::Stream { stream, .. } => {
                             Part::stream(Body::wrap_stream(stream))
                         }
                     };

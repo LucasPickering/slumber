@@ -746,13 +746,12 @@ impl RenderedBody {
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();
 
-                // Use a static boundary in tests for assertions. Test-only
-                // code can be dangerous, but in non-test we're just using the
-                // default library behavior. There's also plenty of tests in
-                // other crates that hit this code path, and cfg(test) won't
-                // be enabled for those.
-                if cfg!(test) {
-                    form.set_boundary("BOUNDARY");
+                #[cfg(test)]
+                {
+                    // Hack alert!! Reqwest uses a random boundary between parts
+                    // in a multipart request. We share this with the tests via
+                    // TLS. See the TLS declaration for more info.
+                    tests::MULTIPART_BOUNDARY.set(form.boundary().to_owned());
                 }
 
                 for (field, stream) in fields {

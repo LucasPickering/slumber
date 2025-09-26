@@ -4,10 +4,7 @@ use crate::{
         Component, ViewContext,
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{
-            Child, Emitter, Event, EventHandler, LocalEvent, OptionEvent,
-            ToEmitter,
-        },
+        event::{Child, Event, EventHandler, OptionEvent},
         util::centered_rect,
     },
 };
@@ -233,63 +230,5 @@ impl Draw for ModalQueue {
             // Render the actual content
             modal.draw(frame, (), inner_area, true);
         }
-    }
-}
-
-/// A helper to manage opened modals. Useful for components that need to open
-/// a modal of a particular type, then listen for emitted events from that
-/// modal. This only supports **a single modal at a time** of that type.
-///
-/// The generic parameter here is the type of *event* emitted by the modal, not
-/// the modal type itself. This event is what the opener will receive back from
-/// the modal.
-#[derive(Debug)]
-pub struct ModalHandle<E> {
-    /// Track the emitter of the opened modal, so we can check for emitted
-    /// events from it later. This will start as the null emitter, and we'll
-    /// update it whenever the mdoal is open. It *doesn't* get cleared when the
-    /// modal is closed, because hooking into the close is complicated. This
-    /// shouldn't create issues since you can't have multiple instances of the
-    /// same modal open+visible at once.
-    emitter: Emitter<E>,
-}
-
-impl<E: LocalEvent> ModalHandle<E> {
-    pub fn new() -> Self {
-        Self {
-            emitter: Emitter::null(),
-        }
-    }
-
-    /// Open a modal and store its emitter ID
-    pub fn open<M>(&mut self, modal: M)
-    where
-        M: 'static + ToEmitter<E> + Modal,
-    {
-        self.emitter = modal.to_emitter();
-        modal.open();
-    }
-}
-
-// Manual impls needed to bypass bounds
-impl<E> Copy for ModalHandle<E> {}
-
-impl<E> Clone for ModalHandle<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E> Default for ModalHandle<E> {
-    fn default() -> Self {
-        Self {
-            emitter: Emitter::default(),
-        }
-    }
-}
-
-impl<E: 'static + Debug> ToEmitter<E> for ModalHandle<E> {
-    fn to_emitter(&self) -> Emitter<E> {
-        self.emitter
     }
 }

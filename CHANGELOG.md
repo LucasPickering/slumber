@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Added
+
+- Add support for streaming large HTTP bodies with the new `stream` body type [#256](https://github.com/LucasPickering/slumber/issues/256)
+  - [See docs](https://slumber.lucaspickering.me/user_guide/streaming.html)
+
+### Changed
+
+- `form_multipart` fields that consist of a single call to `file()` will now include the correct `Content-Type` header and `filename` field of the `Content-Disposition` header [#582](https://github.com/LucasPickering/slumber/issues/582)
+  - [See docs](https://slumber.lucaspickering.me/user_guide/streaming.html)
+
 ### Fixed
 
 - Fix `slumber generate curl` output for multipart forms with file fields

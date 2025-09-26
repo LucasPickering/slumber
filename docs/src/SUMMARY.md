@@ -14,6 +14,7 @@
     - [Examples](./user_guide/templates/examples.md)
   - [Profiles](./user_guide/profiles.md)
 - [Collection Reuse with `$ref`](./user_guide/composition.md)
+- [Data Streaming & File Upload](./user_guide/streaming.md)
 - [Importing External Collections](./user_guide/import.md)
 - [Terminal User Interface (TUI)](./user_guide/tui/index.md)
   - [In-App Editing & File Viewing](./user_guide/tui/editor.md)

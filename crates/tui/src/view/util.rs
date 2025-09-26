@@ -63,7 +63,8 @@ pub struct PreviewPrompter;
 
 impl Prompter for PreviewPrompter {
     fn prompt(&self, prompt: Prompt) {
-        prompt.channel.respond("<prompt>".into());
+        let value = prompt.default.unwrap_or_else(|| "<prompt>".into());
+        prompt.channel.respond(value);
     }
 
     fn select(&self, select: Select) {

@@ -95,6 +95,8 @@ pub fn boolean(value: Value) -> bool {
 /// type is `bytes`, [in most cases you can use it interchangeably as a
 /// string](../user_guide/templates/values.md#bytes-vs-string).
 ///
+/// This function supports [streaming](../user_guide/streaming.html).
+///
 /// **Parameters**
 ///
 /// - `command`: Command to run, in the form `[program, arg1, arg2, ...]`
@@ -288,6 +290,8 @@ pub fn env(variable: String) -> String {
 /// string](../user_guide/templates/values.md#bytes-vs-string). `bytes`
 /// support means you can also use this to load binary files such as images,
 /// which can be useful for request bodies.
+///
+/// This function supports [streaming](../user_guide/streaming.html).
 ///
 /// **Parameters**
 ///

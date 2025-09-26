@@ -8,11 +8,12 @@ In addition, you can pass any [`Template`](../../user_guide/templates/index.md) 
 
 The following content types have first-class support. Slumber will automatically set the `Content-Type` header to the specified value, but you can override this simply by providing your own value for the header.
 
-| Variant           | `Content-Type`                      | Description                                                                                                |
-| ----------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `json`            | `application/json`                  | Structured JSON body; all strings are treated as templates                                                 |
-| `form_urlencoded` | `application/x-www-form-urlencoded` | URL-encoded form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) |
-| `form_multipart`  | `multipart/form-data`               | Binary form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST)      |
+| Variant           | `Content-Type`                      | Description                                                                                                                                                 |
+| ----------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stream`          | None                                | Instead of rendering an entire body eagerly, stream the bytes of the template to the server as they're rendered; [more info](../../user_guide/streaming.md) |
+| `json`            | `application/json`                  | Structured JSON body; all strings are treated as templates                                                                                                  |
+| `form_urlencoded` | `application/x-www-form-urlencoded` | URL-encoded form data; [more info](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST)                                                          |
+| `form_multipart`  | `multipart/form-data`               | Binary form data; [more info](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST)                                                               |
 
 ### JSON
 
@@ -42,7 +43,7 @@ See [the guide](../../user_guide/recipes.md#body) for more detail on how to use 
 | ------ | ------------------------------------------------------------------- | ----------- | -------- |
 | `data` | [`mapping[string, Template]`](../../user_guide/templates/index.md)` | Form fields | Required |
 
-See [the guide](../../user_guide/recipes.md#body) for more detail on how to use form bodies.
+See [the guide](../../user_guide/recipes.md#body) for more detail on how to use form bodies, and [Multipart File Streaming](../../user_guide/streaming.md#multipart-file-streaming) for details on how data is streamed.
 
 ## Examples
 

@@ -380,12 +380,6 @@ impl<T: ?Sized> Emitter<T> {
             phantom: PhantomData,
         }
     }
-
-    /// An emitter with the null ID, which shouldn't actually be used to emit.
-    /// This is a bit jank :(
-    pub fn null() -> Self {
-        Self::new(EmitterId(Uuid::nil()))
-    }
 }
 
 impl<T: Sized + LocalEvent> Emitter<T> {

@@ -41,10 +41,12 @@ use strum::IntoEnumIterator;
 /// This implementation leans heavily on the fact that all nodes in the tree
 /// have a unique ID, which is another reason why it deserves its own
 /// implementation.
+///
+/// TODO rename
 #[derive(Debug)]
 pub struct RecipeListPane {
     /// Emitter for events that the parent will consume
-    emitter: Emitter<RecipeListPaneEvent>,
+    emitter: Emitter<RecipeTabEvent>,
     /// Emitter for menu actions, to be handled by our parent
     actions_emitter: Emitter<RecipeMenuAction>,
     /// The visible list of items is tracked using normal list state, so we can
@@ -168,7 +170,7 @@ impl EventHandler for RecipeListPane {
             .opt()
             .action(|action, propagate| match action {
                 Action::LeftClick => {
-                    self.emitter.emit(RecipeListPaneEvent::Click);
+                    self.emitter.emit(RecipeTabEvent::Click);
                 }
                 Action::Left => {
                     self.set_selected_collapsed(CollapseState::Collapse);
@@ -188,7 +190,9 @@ impl EventHandler for RecipeListPane {
                     // will do nothing
                     ViewContext::push_event(Event::HttpSelectRequest(None));
                 }
-                SelectStateEvent::Submit(_) => {}
+                SelectStateEvent::Submit(_) => {
+                    self.emitter.emit(RecipeTabEvent::Submit);
+                }
                 SelectStateEvent::Toggle(_) => {
                     self.set_selected_collapsed(CollapseState::Toggle);
                 }
@@ -202,7 +206,7 @@ impl EventHandler for RecipeListPane {
             })
             .emitted(self.actions_emitter, |menu_action| {
                 // Forward this to our parent
-                self.emitter.emit(RecipeListPaneEvent::Action(menu_action));
+                self.emitter.emit(RecipeTabEvent::Action(menu_action));
             })
     }
 
@@ -225,7 +229,7 @@ impl Draw for RecipeListPane {
 
         let title = context
             .input_engine
-            .add_hint("Recipes", Action::SelectRecipeList);
+            .add_hint("Recipe", Action::SelectRecipeList);
         let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),
@@ -234,29 +238,43 @@ impl Draw for RecipeListPane {
         let area = block.inner(metadata.area());
         frame.render_widget(block, metadata.area());
 
-        let [select_area, filter_area] =
-            Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
-                .areas(area);
+        // If the tab is open, draw the entire list. Otherwise just draw the
+        // tab with the current recipe
+        if metadata.has_focus() {
+            let [select_area, filter_area] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
+                    .areas(area);
 
-        self.select.draw(
-            frame,
-            List::from(&**self.select.data()),
-            select_area,
-            true,
-        );
+            self.select.draw(
+                frame,
+                List::from(&**self.select.data()),
+                select_area,
+                true,
+            );
 
-        self.filter.draw(
-            frame,
-            TextBoxProps::default(),
-            filter_area,
-            self.filter_focused,
-        );
+            self.filter.draw(
+                frame,
+                TextBoxProps::default(),
+                filter_area,
+                self.filter_focused,
+            );
+        } else if let Some(recipe) = self.select.data().selected() {
+            // Just show the recipe name/ID
+            // TODO better styling here
+            frame.render_widget(
+                format!("{name} ({id})", name = recipe.name, id = recipe.id),
+                area,
+            );
+        } else {
+            // Collection has no recipes
+            frame.render_widget("TODO empty state", area);
+        }
     }
 }
 
 /// Notify parent when this pane is clicked
-impl ToEmitter<RecipeListPaneEvent> for RecipeListPane {
-    fn to_emitter(&self) -> Emitter<RecipeListPaneEvent> {
+impl ToEmitter<RecipeTabEvent> for RecipeListPane {
+    fn to_emitter(&self) -> Emitter<RecipeTabEvent> {
         self.emitter
     }
 }
@@ -268,9 +286,11 @@ struct SelectedRecipeKey;
 
 /// Emitted event type for the recipe list pane
 #[derive(Debug)]
-pub enum RecipeListPaneEvent {
+pub enum RecipeTabEvent {
     /// Pane was clicked; focus it
     Click,
+    /// Recipe was selected+submitted
+    Submit,
     /// Forward menu actions to the parent because it has the needed context
     Action(RecipeMenuAction),
 }
@@ -438,6 +458,7 @@ impl Collapsed {
         SelectState::builder(items)
             .subscribe([
                 SelectStateEventType::Select,
+                SelectStateEventType::Submit,
                 SelectStateEventType::Toggle,
             ])
             .build()

@@ -79,8 +79,8 @@ requests:
             {
               "name": "{{ prompt(message='Name', default='Fishy') }}",
               "species": "{{ prompt(message='Species', default='Fish') }}",
-              "age": "{{ prompt(message='Age', default=3, type='int') }}",
-              "weight_kg": "{{ prompt(message='Weight (kg)', default='1.5', type='float') }}",
+              "age": "{{ prompt(message='Age', default=3) | integer() }}",
+              "weight_kg": "{{ prompt(message='Weight (kg)', default='1.5') | float() }}",
             }
 
       modify_fish:
@@ -92,8 +92,8 @@ requests:
           type: json
           data:
             {
-              "age": "{{ prompt(message='Age', default=3, type='int') }}",
-              "weight_kg": "{{ prompt(message='Weight (kg)', default='1.5', type='float') }}",
+              "age": "{{ prompt(message='Age', default=3) | integer() }}",
+              "weight_kg": "{{ prompt(message='Weight (kg)', default='1.5') | float() }}",
             }
 
       delete_fish:

@@ -3510,6 +3510,7 @@ name = "slumber_import"
 version = "4.0.1"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "derive_more 1.0.0",
  "futures",
  "indexmap 2.9.0",

@@ -12,6 +12,7 @@ version = {workspace = true}
 
 [dependencies]
 anyhow = {workspace = true}
+base64 = {workspace = true}
 derive_more = {workspace = true, features = ["display"]}
 futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}

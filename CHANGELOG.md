@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `form_multipart` fields that consist of a single call to `file()` will now include the correct `Content-Type` header and `filename` field of the `Content-Disposition` header [#582](https://github.com/LucasPickering/slumber/issues/582)
   - [See docs](https://slumber.lucaspickering.me/user_guide/streaming.html)
+- Previews of `prompt()` will now show the default value if possible
+- Recipe ID is now shown in the top-right of the Recipe pane header
 
 ### Fixed
 

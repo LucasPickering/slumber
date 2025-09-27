@@ -26,6 +26,7 @@ use derive_more::Display;
 use itertools::{Itertools, Position};
 use ratatui::{
     Frame,
+    layout::Alignment,
     text::{Line, Text},
 };
 use slumber_config::Action;
@@ -103,8 +104,10 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
         props: RecipePaneProps<'a>,
         metadata: DrawMetadata,
     ) {
+        let context = TuiContext::get();
+
         // Render outermost block
-        let title = TuiContext::get().input_engine.add_hint(
+        let title = context.input_engine.add_hint(
             match props.selected_recipe_node {
                 Some(RecipeNode::Folder(_)) => "Folder",
                 Some(RecipeNode::Recipe(_)) | None => "Recipe",
@@ -115,8 +118,16 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
             title: &title,
             has_focus: metadata.has_focus(),
         };
-        let block = block.generate();
+        let mut block = block.generate();
         let inner_area = block.inner(metadata.area());
+        // Include the folder/recipe ID in the header
+        if let Some(node) = props.selected_recipe_node {
+            block = block.title(
+                Line::from(node.id().to_string())
+                    .alignment(Alignment::Right)
+                    .style(context.styles.text.title),
+            );
+        }
         frame.render_widget(block, metadata.area());
 
         // Whenever the recipe or profile changes, generate a preview for

@@ -14,6 +14,41 @@ profiles:
       greeting: howdy
 
 requests:
+  fld_46131b927d9f4fbaa2fd01d946827da3:
+    name: Chains
+    requests:
+      req_daa3b8fc531b444aa2bd48ec82522393:
+        name: Chain Header / Trigger Never
+        method: GET
+        url: https://httpbin.org/get
+        authentication:
+          type: bearer
+          token: "{{ response_header('req_a345faa530a7453e83ee967d18555712', 'content-type') }}"
+      req_0c0bd2eb342c4d7a8408b2ad8033d3a9:
+        name: Chain Body / Trigger No History
+        method: GET
+        url: https://httpbin.org/get
+        authentication:
+          type: bearer
+          token: "{{ response('req_a345faa530a7453e83ee967d18555712', trigger='no_history') }}"
+      req_fdeac2a5d6f74468bf0d7c5418a8bfb4:
+        name: Chain Body Part / Trigger Expire
+        method: GET
+        url: https://httpbin.org/get
+        authentication:
+          type: bearer
+          token:
+            "{{ response('req_a345faa530a7453e83ee967d18555712', trigger='60s') \
+            | jsonpath('$.data') }}"
+      req_2810d3a0eedc437ca02f6094a3406d2c:
+        name: Chain URL / Trigger Always
+        method: GET
+        url: https://httpbin.org/get
+        authentication:
+          type: bearer
+          # There's no function to get a response URL in Slumber
+          token: "{% response 'url', 'req_a345faa530a7453e83ee967d18555712', 'b64::JC5kYXRh::46b', 'always', 60 %}"
+
   fld_9a7332db608943b093c929a82c81df50:
     name: My Folder
     requests:
@@ -27,7 +62,7 @@ requests:
             body: null
             authentication:
               type: bearer
-              token: " {% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}"
+              token: my-token
             query: {}
             headers: {}
 

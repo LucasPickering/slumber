@@ -28,6 +28,7 @@ rust-version = "1.88.0"
 [workspace.dependencies]
 anyhow = "1.0.0"
 async-trait = "0.1.81"
+base64 = "0.22.1"
 bytes = {version = "1.6.1", default-features = false}
 chrono = {version = "0.4.31", default-features = false}
 clap = "4.4.2"

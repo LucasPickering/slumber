@@ -13,6 +13,7 @@ use futures::{
     future::{self, try_join},
 };
 use indexmap::IndexMap;
+use std::borrow::Cow;
 
 type RenderResult = Result<LazyValue, RenderError>;
 
@@ -159,6 +160,12 @@ impl From<String> for Expression {
 impl From<&str> for Expression {
     fn from(value: &str) -> Self {
         Self::Literal(Literal::from(value))
+    }
+}
+
+impl From<Cow<'_, str>> for Expression {
+    fn from(value: Cow<'_, str>) -> Self {
+        Self::Literal(Literal::from(value.into_owned()))
     }
 }
 

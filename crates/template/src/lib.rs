@@ -235,6 +235,13 @@ impl Template {
     }
 }
 
+/// Build a single-chunk template
+impl From<Expression> for Template {
+    fn from(expression: Expression) -> Self {
+        Self::from_chunks(vec![TemplateChunk::Expression(expression)])
+    }
+}
+
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for Template {
     fn from(value: &str) -> Self {

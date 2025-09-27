@@ -1,7 +1,9 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
-use crate::{ImportInput, common};
+mod parse;
+
+use crate::{ImportInput, common, insomnia::parse::parse_template};
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -17,7 +19,7 @@ use slumber_core::{
 };
 use slumber_template::Template;
 use slumber_util::NEW_ISSUE_LINK;
-use std::{collections::HashMap, fmt::Display, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap, fmt::Display, str::FromStr};
 use tracing::{debug, error, warn};
 
 /// Convert an Insomnia exported collection into the slumber format. This
@@ -42,7 +44,11 @@ pub async fn from_insomnia(input: &ImportInput) -> anyhow::Result<Collection> {
     // Match Insomnia's visual order. This isn't entirely accurate because
     // Insomnia reorders folders/requests according to the tree structure,
     // but it should get us the right order within each layer
-    insomnia.resources.sort_by_key(Resource::sort_key);
+    insomnia.resources.sort_by(|a, b| {
+        a.sort_key()
+            .partial_cmp(&b.sort_key())
+            .unwrap_or(Ordering::Equal)
+    });
 
     let Grouped {
         workspace_id,
@@ -93,7 +99,9 @@ enum Resource {
         #[serde(rename = "_id")]
         id: String,
     },
+    // Variants we recognize but don't use
     ApiSpec,
+    CookieJar,
     /// Catch-all for unknown variants
     #[serde(untagged)]
     Other {
@@ -112,7 +120,7 @@ struct Environment {
     parent_id: String,
     name: String,
     data: IndexMap<String, String>,
-    meta_sort_key: i64,
+    meta_sort_key: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,7 +130,7 @@ struct RequestGroup {
     id: String,
     parent_id: String,
     name: String,
-    meta_sort_key: i64,
+    meta_sort_key: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -131,7 +139,7 @@ struct Request {
     #[serde(rename = "_id")]
     id: String,
     parent_id: String,
-    meta_sort_key: i64,
+    meta_sort_key: f64,
     name: String,
     url: String,
     method: HttpMethod,
@@ -238,10 +246,13 @@ impl Grouped {
                 }
                 Resource::Workspace { id } => workspace_id = Some(id),
                 // These are known types but we don't need to do anything
-                Resource::ApiSpec => {}
-                // Anything unknown should give a warning
+                Resource::ApiSpec | Resource::CookieJar => {}
+                // We could get this if the type was unknown or it failed to
+                // deserialize into a known type
                 Resource::Other { id, kind } => {
-                    error!("Ignoring resource `{id}` of unknown type `{kind}`");
+                    error!(
+                        "Unable to deserialize resource `{id}` of type `{kind}`"
+                    );
                 }
             }
         }
@@ -259,14 +270,15 @@ impl Grouped {
 impl Resource {
     /// Rather than order things how they should be, Insomnia attaches a sort
     /// key to each item
-    fn sort_key(&self) -> i64 {
+    fn sort_key(&self) -> f64 {
         match self {
             Resource::RequestGroup(folder) => folder.meta_sort_key,
             Resource::Request(request) => request.meta_sort_key,
             Resource::Environment(environment) => environment.meta_sort_key,
             Resource::Workspace { .. }
             | Resource::ApiSpec
-            | Resource::Other { .. } => 0,
+            | Resource::CookieJar
+            | Resource::Other { .. } => 0.0,
         }
     }
 }
@@ -290,14 +302,14 @@ impl From<Request> for RecipeNode {
         if let Some(Body { mime_type, .. }) = &request.body {
             headers.insert(
                 header::CONTENT_TYPE.as_str().into(),
-                Template::raw(mime_type.to_string()),
+                parse_template(mime_type.to_string()),
             );
         }
         // Load explicit headers *after* so we can override the implicit stuff
         for header in request.headers {
             headers.insert(
                 header.name.to_lowercase(),
-                Template::raw(header.value),
+                parse_template(header.value),
             );
         }
         headers.shift_remove(header::USER_AGENT.as_str());
@@ -334,11 +346,11 @@ impl From<Request> for RecipeNode {
             persist: true,
             name: Some(request.name),
             method: request.method,
-            url: Template::raw(request.url),
+            url: parse_template(request.url),
             body,
             query: common::build_query_parameters(
                 request.parameters.into_iter().map(|parameter| {
-                    (parameter.name, Template::raw(parameter.value))
+                    (parameter.name, parse_template(parameter.value))
                 }),
             ),
             headers,
@@ -370,7 +382,7 @@ impl TryFrom<Body> for RecipeBody {
                 body.params.into_iter().map(FormParam::into).collect(),
             )
         } else {
-            RecipeBody::Raw(Template::raw(body.try_text()?))
+            RecipeBody::Raw(parse_template(body.try_text()?))
         };
         Ok(body)
     }
@@ -383,7 +395,7 @@ impl From<FormParam> for (String, Template) {
     fn from(param: FormParam) -> Self {
         match param.kind {
             // Simple string, map to a raw template
-            FormParamKind::String => (param.name, Template::raw(param.value)),
+            FormParamKind::String => (param.name, parse_template(param.value)),
             // Generate a function call to load the file
             FormParamKind::File => {
                 let path = param.file_name.unwrap_or_else(|| {
@@ -408,13 +420,13 @@ impl TryFrom<Authentication> for collection::Authentication {
         match authentication {
             Authentication::Basic { username, password } => {
                 Ok(collection::Authentication::Basic {
-                    username: Template::raw(username),
-                    password: Some(Template::raw(password)),
+                    username: parse_template(username),
+                    password: Some(parse_template(password)),
                 })
             }
             Authentication::Bearer { token } => {
                 Ok(collection::Authentication::Bearer {
-                    token: Template::raw(token),
+                    token: parse_template(token),
                 })
             }
             // Caller should print a warning for this
@@ -431,7 +443,7 @@ fn build_profiles(
     fn convert_data(
         data: IndexMap<String, String>,
     ) -> impl Iterator<Item = (String, Template)> {
-        data.into_iter().map(|(k, v)| (k, Template::raw(v)))
+        data.into_iter().map(|(k, v)| (k, parse_template(v)))
     }
 
     // The Base Environment is the one with the workspace as a parent. We

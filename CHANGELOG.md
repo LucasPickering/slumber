@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Fix `slumber generate curl` output for multipart forms with file fields
 - `slumber import insomnia` now imports some dynamic expressions. Values chained from other responses now properly import as `response()`/`response_header()` calls [#164](https://github.com/LucasPickering/slumber/issues/164)
+- Improve TUI performance when handling lots of input events
 
 ## [4.0.1] - 2025-09-14
 

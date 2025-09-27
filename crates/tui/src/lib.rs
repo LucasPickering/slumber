@@ -21,12 +21,18 @@ use crate::{
     util::{CANCEL_TOKEN, ResultReported},
 };
 use anyhow::Context;
-use crossterm::event::EventStream;
+use crossterm::event::{self, EventStream};
 use futures::{StreamExt, pin_mut};
-use ratatui::{Terminal, prelude::CrosstermBackend};
+use ratatui::{
+    Terminal,
+    backend::{ClearType, WindowSize},
+    layout::{Position, Size},
+    prelude::{Backend, CrosstermBackend},
+};
 use slumber_config::{Action, Config};
 use slumber_core::{collection::CollectionFile, database::Database};
 use std::{
+    convert::Infallible,
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
@@ -45,6 +51,8 @@ use tracing::{error, info, trace};
 #[derive(Debug)]
 pub struct Tui {
     terminal: Term,
+    /// Null terminal for state-only draws
+    null_terminal: Terminal<NullBackend>,
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
     /// touch this
@@ -94,6 +102,7 @@ impl Tui {
 
         let app = Tui {
             terminal,
+            null_terminal: Terminal::new(NullBackend)?,
             messages_rx,
             messages_tx,
 
@@ -129,7 +138,7 @@ impl Tui {
             });
         pin_mut!(input_stream);
 
-        self.draw()?; // Initial draw
+        self.draw(false)?; // Initial draw
 
         // This loop is limited by the rate that messages come in, with a
         // minimum rate enforced by a timeout
@@ -190,7 +199,11 @@ impl Tui {
 
             // ===== Draw Phase =====
             if needs_draw {
-                self.draw()?;
+                // Skip the terminal render if we have more messages/events in
+                // the queue
+                let has_message = !self.messages_rx.is_empty();
+                let has_input = event::poll(Duration::ZERO).unwrap_or(false);
+                self.draw(has_message || has_input)?;
             }
         }
 
@@ -226,7 +239,7 @@ impl Tui {
                 // the terminal gets cleared but ratatui's (e.g. waking from
                 // sleep) buffer doesn't, so the two get out of sync
                 self.terminal.clear()?;
-                self.draw()?;
+                self.draw(false)?;
                 Ok(())
             }
 
@@ -258,9 +271,17 @@ impl Tui {
         CANCEL_TOKEN.cancel();
     }
 
-    /// Draw the view onto the screen
-    fn draw(&mut self) -> anyhow::Result<()> {
-        self.terminal.draw(|frame| self.state.draw(frame))?;
+    /// Draw the view onto the screen. If `null` is true, the draw will be done
+    /// with a null backend. This will update all state in the component tree,
+    /// but won't actually write to the terminal buffer. This should be enabled
+    /// when we know there will be subsequent draws (i.e. if there are more
+    /// events in the queue) to improve performance.
+    fn draw(&mut self, null: bool) -> anyhow::Result<()> {
+        if null {
+            self.null_terminal.draw(|frame| self.state.draw(frame))?;
+        } else {
+            self.terminal.draw(|frame| self.state.draw(frame))?;
+        }
         Ok(())
     }
 }
@@ -271,6 +292,66 @@ impl Drop for Tui {
         if let Err(err) = util::restore_terminal() {
             error!(error = err.deref(), "Error restoring terminal, sorry!");
         }
+    }
+}
+
+/// A null implementation of [Backend] that does nothing for all operations
+#[derive(Debug)]
+struct NullBackend;
+
+impl Backend for NullBackend {
+    type Error = Infallible;
+
+    fn draw<'a, I>(&mut self, _content: I) -> Result<(), Self::Error>
+    where
+        I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
+    {
+        Ok(())
+    }
+
+    fn hide_cursor(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn show_cursor(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn get_cursor_position(&mut self) -> Result<Position, Self::Error> {
+        Ok(Position::default())
+    }
+
+    fn set_cursor_position<P: Into<Position>>(
+        &mut self,
+        _position: P,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn clear(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn clear_region(
+        &mut self,
+        _clear_type: ClearType,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn size(&self) -> Result<Size, Self::Error> {
+        Ok(Size::default())
+    }
+
+    fn window_size(&mut self) -> Result<WindowSize, Self::Error> {
+        Ok(WindowSize {
+            columns_rows: Size::default(),
+            pixels: Size::default(),
+        })
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 

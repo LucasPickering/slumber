@@ -1,5 +1,5 @@
 use anyhow::Context;
-use slumber_util::{ResultTraced, paths};
+use slumber_util::{ResultTracedAnyhow, paths};
 use std::{
     fs::{self, File, OpenOptions},
     io,

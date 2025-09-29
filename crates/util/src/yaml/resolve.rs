@@ -986,7 +986,7 @@ pub enum ReferenceError {
 
     /// Error while loading another source for a reference
     #[error(transparent)]
-    Nested(Box<super::Error>),
+    Nested(Box<super::YamlErrorKind>),
 
     /// Reference parsed correctly but doesn't point to a resource
     #[error("Resource does not exist: `{0}`")]

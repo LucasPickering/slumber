@@ -3,7 +3,10 @@
 use crate::{
     collection::{HasId, ProfileId, RecipeId},
     database::CollectionDatabase,
-    http::{Exchange, HttpEngine, RequestSeed, TriggeredRequestError},
+    http::{
+        Exchange, HttpEngine, RequestSeed, StoredRequestError,
+        TriggeredRequestError,
+    },
     render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
 };
 use async_trait::async_trait;
@@ -61,9 +64,10 @@ impl HttpProvider for TestHttpProvider {
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<Exchange>> {
+    ) -> Result<Option<Exchange>, StoredRequestError> {
         self.database
             .get_latest_request(profile_id.into(), recipe_id)
+            .map_err(StoredRequestError::new)
     }
 
     async fn send_request(

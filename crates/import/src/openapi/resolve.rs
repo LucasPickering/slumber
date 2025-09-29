@@ -12,7 +12,7 @@ use openapiv3::{
     Components, Example, Parameter, ReferenceOr, RequestBody, Schema,
     SecurityScheme,
 };
-use slumber_util::ResultTraced;
+use slumber_util::ResultTracedAnyhow;
 use std::borrow::Cow;
 use thiserror::Error;
 use winnow::{Parser, combinator::preceded, error::EmptyError, token::rest};
@@ -24,7 +24,7 @@ pub struct ReferenceResolver(Components);
 /// An error that can occur while resolving a reference
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ResolveError {
-    #[error("`{_0}` refers to an object that does not exist in the schema")]
+    #[error("`{0}` refers to an object that does not exist in the schema")]
     UnknownReference(String),
     #[error("`{reference}` is an invalid reference for type `{expected_type}`")]
     InvalidReference {

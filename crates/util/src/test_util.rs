@@ -1,4 +1,4 @@
-use crate::{ResultTraced, paths::get_repo_root};
+use crate::{ResultTracedAnyhow, paths::get_repo_root};
 use anyhow::Context;
 use rstest::fixture;
 use std::{
@@ -107,6 +107,7 @@ pub fn assert_result<TA, TE, E>(
     TE: Debug,
     E: 'static + Debug + Error + Send + Sync,
 {
+    // Convert to anyhow so the string contains the entire chain
     let result = result.map_err(anyhow::Error::from);
     match expected {
         Ok(expected) => {

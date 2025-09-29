@@ -48,11 +48,10 @@ use crate::{
     http::curl::CurlBuilder,
     render::TemplateContext,
 };
-use anyhow::Context;
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
 use futures::{
-    Future, StreamExt, TryStreamExt,
+    Future, StreamExt, TryFutureExt, TryStreamExt,
     future::{self, OptionFuture, try_join_all},
     stream::BoxStream,
     try_join,
@@ -267,7 +266,11 @@ impl HttpEngine {
                 // request
                 RenderedBody::Raw(bytes) => Ok(Some(bytes)),
                 RenderedBody::Stream(stream) => {
-                    let bytes = stream.stream.try_collect::<BytesMut>().await?;
+                    let bytes = stream
+                        .stream
+                        .try_collect::<BytesMut>()
+                        .await
+                        .map_err(RequestBuildErrorKind::BodyStream)?;
                     Ok(Some(bytes.into()))
                 }
 
@@ -368,18 +371,21 @@ impl RequestSeed {
     /// Run the given future and convert any error into [RequestBuildError]
     async fn run_future<T>(
         &self,
-        future: impl Future<Output = anyhow::Result<T>>,
+        future: impl Future<Output = Result<T, RequestBuildErrorKind>>,
         context: &TemplateContext,
     ) -> Result<T, RequestBuildError> {
         let start_time = Utc::now();
-        future.await.traced().map_err(|error| RequestBuildError {
-            profile_id: context.selected_profile.clone(),
-            recipe_id: self.recipe_id.clone(),
-            id: self.id,
-            start_time,
-            end_time: Utc::now(),
-            source: error,
-        })
+        future
+            .await
+            .map_err(|error| RequestBuildError {
+                profile_id: context.selected_profile.clone(),
+                recipe_id: self.recipe_id.clone(),
+                id: self.id,
+                start_time,
+                end_time: Utc::now(),
+                error,
+            })
+            .traced()
     }
 }
 
@@ -430,7 +436,7 @@ impl RequestTicket {
                 request: self.record,
                 start_time,
                 end_time,
-                error: error.into(),
+                error,
             })
             .inspect_err(|err| error!(error = err as &dyn Error)),
         }
@@ -468,14 +474,14 @@ impl Recipe {
     async fn render_url(
         &self,
         context: &TemplateContext,
-    ) -> anyhow::Result<Url> {
+    ) -> Result<Url, RequestBuildErrorKind> {
         let url = self
             .url
             .render_string(&context.streaming(false))
             .await
-            .context("Rendering URL")?;
+            .map_err(RequestBuildErrorKind::UrlRender)?;
         url.parse::<Url>()
-            .with_context(|| format!("Invalid URL: `{url}`"))
+            .map_err(|error| RequestBuildErrorKind::UrlInvalid { url, error })
     }
 
     /// Render query key=value params
@@ -483,7 +489,7 @@ impl Recipe {
         &self,
         options: &BuildOptions,
         context: &TemplateContext,
-    ) -> anyhow::Result<Vec<(String, String)>> {
+    ) -> Result<Vec<(String, String)>, RequestBuildErrorKind> {
         let iter =
             self.query_iter().enumerate().filter_map(|(i, (k, _, v))| {
                 // Look up and apply override. We do this by index because the
@@ -491,15 +497,16 @@ impl Recipe {
                 let template = options.query_parameters.get(i, v)?;
 
                 Some(async move {
-                    Ok::<_, anyhow::Error>((
-                        k.to_owned(),
-                        template
-                            .render_string(&context.streaming(false))
-                            .await
-                            .context(format!(
-                                "Rendering query parameter `{k}`"
-                            ))?,
-                    ))
+                    let value = template
+                        .render_string(&context.streaming(false))
+                        .await
+                        .map_err(|error| {
+                            RequestBuildErrorKind::QueryRender {
+                                parameter: k.to_owned(),
+                                error,
+                            }
+                        })?;
+                    Ok((k.to_owned(), value))
                 })
             });
         future::try_join_all(iter).await
@@ -511,7 +518,7 @@ impl Recipe {
         &self,
         options: &BuildOptions,
         context: &TemplateContext,
-    ) -> anyhow::Result<HeaderMap> {
+    ) -> Result<HeaderMap, RequestBuildErrorKind> {
         let mut headers = HeaderMap::new();
 
         // Render headers in an iterator so we can parallelize
@@ -544,11 +551,14 @@ impl Recipe {
         context: &TemplateContext,
         header: &str,
         value_template: &Template,
-    ) -> anyhow::Result<(HeaderName, HeaderValue)> {
+    ) -> Result<(HeaderName, HeaderValue), RequestBuildErrorKind> {
         let mut value: Vec<u8> = value_template
             .render_bytes(&context.streaming(false))
             .await
-            .context(format!("Rendering header `{header}`"))?
+            .map_err(|error| RequestBuildErrorKind::HeaderRender {
+                header: header.to_owned(),
+                error,
+            })?
             .into();
 
         // Strip leading/trailing line breaks because they're going to trigger a
@@ -558,16 +568,20 @@ impl Recipe {
         // left in for backward compatibility.
         trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
 
-        // String -> header conversions are fallible, if headers
-        // are invalid
-        Ok::<(HeaderName, HeaderValue), anyhow::Error>((
-            header
-                .try_into()
-                .context(format!("Error encoding header name `{header}`"))?,
-            value.try_into().context(format!(
-                "Error encoding value for header `{header}`"
-            ))?,
-        ))
+        // String -> header conversions are fallible
+        let name: HeaderName = header.try_into().map_err(|error| {
+            RequestBuildErrorKind::HeaderInvalidName {
+                header: header.to_owned(),
+                error,
+            }
+        })?;
+        let value: HeaderValue = value.try_into().map_err(|error| {
+            RequestBuildErrorKind::HeaderInvalidValue {
+                header: header.to_owned(),
+                error,
+            }
+        })?;
+        Ok((name, value))
     }
 
     /// Render authentication and return the same data structure, with resolved
@@ -576,7 +590,7 @@ impl Recipe {
         &self,
         options: &BuildOptions,
         context: &TemplateContext,
-    ) -> anyhow::Result<Option<Authentication<String>>> {
+    ) -> Result<Option<Authentication<String>>, RequestBuildErrorKind> {
         let authentication = options
             .authentication
             .as_ref()
@@ -586,19 +600,16 @@ impl Recipe {
             Some(Authentication::Basic { username, password }) => {
                 let (username, password) =
                     try_join!(
-                        async {
-                            username
-                                .render_string(&context)
-                                .await
-                                .context("Rendering username")
-                        },
+                        username
+                            .render_string(&context)
+                            .map_err(RequestBuildErrorKind::AuthUsernameRender),
                         async {
                             OptionFuture::from(password.as_ref().map(
                                 |password| password.render_string(&context),
                             ))
                             .await
                             .transpose()
-                            .context("Rendering password")
+                            .map_err(RequestBuildErrorKind::AuthPasswordRender)
                         },
                     )?;
                 Ok(Some(Authentication::Basic { username, password }))
@@ -608,7 +619,7 @@ impl Recipe {
                 let token = token
                     .render_string(&context)
                     .await
-                    .context("Rendering bearer token")?;
+                    .map_err(RequestBuildErrorKind::AuthTokenRender)?;
                 Ok(Some(Authentication::Bearer { token }))
             }
             None => Ok(None),
@@ -620,7 +631,7 @@ impl Recipe {
         &self,
         options: &BuildOptions,
         context: &TemplateContext,
-    ) -> anyhow::Result<Option<RenderedBody>> {
+    ) -> Result<Option<RenderedBody>, RequestBuildErrorKind> {
         let Some(body) = options.body.as_ref().or(self.body.as_ref()) else {
             return Ok(None);
         };
@@ -630,18 +641,22 @@ impl Recipe {
             RecipeBody::Raw(body) => RenderedBody::Raw(
                 body.render_bytes(&context.streaming(false))
                     .await
-                    .context("Rendering body")?,
+                    .map_err(RequestBuildErrorKind::BodyRender)?,
             ),
             // Stream body is rendered as a stream (!!)
             RecipeBody::Stream(body) => {
                 let output = body.render(&context.streaming(true)).await;
                 let source = output.stream_source().cloned();
-                let stream =
-                    output.try_into_stream().context("Rendering body")?.boxed();
+                let stream = output
+                    .try_into_stream()
+                    .map_err(RequestBuildErrorKind::BodyRender)?
+                    .boxed();
                 RenderedBody::Stream(BodyStream { stream, source })
             }
             RecipeBody::Json(json) => RenderedBody::Json(
-                json.render(context).await.context("Rendering body")?,
+                json.render(context)
+                    .await
+                    .map_err(RequestBuildErrorKind::BodyRender)?,
             ),
             RecipeBody::FormUrlencoded(fields) => {
                 let iter = fields.iter().enumerate().filter_map(
@@ -652,10 +667,16 @@ impl Recipe {
                             let value = template
                                 .render_string(&context.streaming(false))
                                 .await
-                                .context(format!(
-                                    "Rendering form field `{field}`"
-                                ))?;
-                            Ok::<_, anyhow::Error>((field.clone(), value))
+                                .map_err(|error| {
+                                    RequestBuildErrorKind::BodyFormFieldRender {
+                                        field: field.clone(),
+                                        error,
+                                    }
+                                })?;
+                            Ok::<_, RequestBuildErrorKind>((
+                                field.clone(),
+                                value,
+                            ))
                         })
                     },
                 );
@@ -677,12 +698,15 @@ impl Recipe {
                             let source = output.stream_source().cloned();
                             let stream = output
                                 .try_into_stream()
-                                .context(format!(
-                                    "Rendering form field `{field}`"
-                                ))?
+                                .map_err(|error| {
+                                    RequestBuildErrorKind::BodyFormFieldRender {
+                                        field: field.clone(),
+                                        error,
+                                    }
+                                })?
                                 .boxed();
 
-                            Ok::<_, anyhow::Error>((
+                            Ok::<_, RequestBuildErrorKind>((
                                 field.clone(),
                                 BodyStream { stream, source },
                             ))
@@ -733,7 +757,7 @@ impl RenderedBody {
     async fn apply(
         self,
         builder: RequestBuilder,
-    ) -> anyhow::Result<RequestBuilder> {
+    ) -> Result<RequestBuilder, RequestBuildErrorKind> {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
@@ -760,9 +784,9 @@ impl RenderedBody {
                         // Files can be handled natively by reqwest, which gets
                         // bonus support for Content-Type and
                         // Content-Disposition goodies
-                        Some(StreamSource::File { path }) => {
-                            Part::file(path).await?
-                        }
+                        Some(StreamSource::File { path }) => Part::file(path)
+                            .await
+                            .map_err(RequestBuildErrorKind::BodyFileStream)?,
                         // Any other stream can be streamed directly as bytes
                         _ => Part::stream(Body::wrap_stream(stream.stream)),
                     };

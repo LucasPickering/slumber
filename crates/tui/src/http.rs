@@ -7,17 +7,16 @@ use crate::{
     context::TuiContext,
     message::{Message, MessageSender},
 };
-use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use itertools::Itertools;
 use reqwest::StatusCode;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    database::{CollectionDatabase, ProfileFilter},
+    database::{CollectionDatabase, DatabaseError, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
-        RequestRecord, RequestSeed, TriggeredRequestError,
+        RequestRecord, RequestSeed, StoredRequestError, TriggeredRequestError,
     },
     render::{HttpProvider, TemplateContext},
 };
@@ -357,7 +356,7 @@ impl RequestStore {
         &mut self,
         profile_filter: ProfileFilter,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<usize> {
+    ) -> Result<usize, DatabaseError> {
         self.requests.retain(|_, state| {
             // Keep items that _don't_ match
             !(state.recipe_id() == recipe_id
@@ -426,7 +425,7 @@ impl HttpProvider for TuiHttpProvider {
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<Exchange>> {
+    ) -> Result<Option<Exchange>, StoredRequestError> {
         // Defer the fetch into a message because we can't access the request
         // store from another task
         let (tx, rx) = oneshot::channel();
@@ -435,7 +434,7 @@ impl HttpProvider for TuiHttpProvider {
             recipe_id: recipe_id.clone(),
             channel: tx.into(),
         });
-        rx.await.context("Error fetching request")
+        rx.await.map_err(StoredRequestError::new)
     }
 
     async fn send_request(

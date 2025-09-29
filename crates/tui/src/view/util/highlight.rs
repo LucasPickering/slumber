@@ -9,7 +9,7 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 use slumber_core::http::content_type::ContentType;
-use slumber_util::ResultTraced;
+use slumber_util::ResultTracedAnyhow;
 use std::{
     borrow::Cow,
     cell::RefCell,

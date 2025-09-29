@@ -38,7 +38,7 @@ impl DeserializeYaml for Template {
 
     fn deserialize(
         yaml: SourcedYaml,
-    ) -> Result<Self, LocatedError<slumber_util::yaml::Error>> {
+    ) -> Result<Self, LocatedError<slumber_util::yaml::YamlErrorKind>> {
         if let YamlData::Value(scalar) = yaml.data {
             // Accept any scalar for a template. We'll treat everything as the
             // equivalent string representation

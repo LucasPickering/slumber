@@ -21,8 +21,8 @@ use slumber_template::Template;
 use slumber_util::{
     deserialize_enum, impl_deserialize_from,
     yaml::{
-        self, DeserializeYaml, Error, Expected, Field, LocatedError,
-        SourcedYaml, StructDeserializer, yaml_parse_panic,
+        self, DeserializeYaml, Expected, Field, LocatedError, SourcedYaml,
+        StructDeserializer, yaml_parse_panic,
     },
 };
 
@@ -494,7 +494,7 @@ mod tests {
     use serde_yaml::Mapping;
     use slumber_util::{
         assert_err,
-        yaml::{deserialize_yaml, yaml_enum, yaml_mapping},
+        yaml::{YamlErrorKind, deserialize_yaml, yaml_enum, yaml_mapping},
     };
 
     /// Test error cases for deserializing a profile map
@@ -611,7 +611,7 @@ mod tests {
     /// Helper for deserializing in RecipeTree's tests. We export this
     pub fn deserialize_recipe_tree(
         yaml: serde_yaml::Value,
-    ) -> anyhow::Result<RecipeTree> {
-        deserialize_yaml(yaml).map_err(|error| error.error.into())
+    ) -> Result<RecipeTree, YamlErrorKind> {
+        deserialize_yaml(yaml).map_err(|error| error.error)
     }
 }

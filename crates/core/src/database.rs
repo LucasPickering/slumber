@@ -11,17 +11,18 @@ use crate::{
     database::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
 };
-use anyhow::{Context, anyhow};
 use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
 use serde::{Serialize, de::DeserializeOwned};
 use slumber_util::{ResultTraced, paths};
 use std::{
     borrow::Cow,
     fmt::Debug,
+    io,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use thiserror::Error;
 use tracing::{debug, info, trace};
 use uuid::Uuid;
 
@@ -54,29 +55,33 @@ impl Database {
     /// Load the database. This will perform migrations, but can be called from
     /// anywhere in the app. The migrations will run on first connection, and
     /// not after that.
-    pub fn load() -> anyhow::Result<Self> {
+    pub fn load() -> Result<Self, DatabaseError> {
         Self::from_path(&Self::path())
     }
 
     /// [Self::load], but from a particular data directory. Useful only for
     /// tests, when the default DB path shouldn't be used.
-    pub fn from_directory(directory: &Path) -> anyhow::Result<Self> {
+    pub fn from_directory(directory: &Path) -> Result<Self, DatabaseError> {
         let path = directory.join(Self::FILE);
         Self::from_path(&path)
     }
 
-    fn from_path(path: &Path) -> anyhow::Result<Self> {
-        paths::create_parent(path)?;
+    fn from_path(path: &Path) -> Result<Self, DatabaseError> {
+        paths::create_parent(path).map_err(|_| DatabaseError::Directory)?;
 
         info!(?path, "Loading database");
-        let mut connection = Connection::open(path)?;
-        connection.pragma_update(
-            Some(DatabaseName::Main),
-            "foreign_keys",
-            "ON",
-        )?;
-        // Use WAL for concurrency
-        connection.pragma_update(None, "journal_mode", "WAL")?;
+        let mut connection = Connection::open(path)
+            .and_then(|conn| {
+                conn.pragma_update(
+                    Some(DatabaseName::Main),
+                    "foreign_keys",
+                    "ON",
+                )?;
+                // Use WAL for concurrency
+                conn.pragma_update(None, "journal_mode", "WAL")?;
+                Ok(conn)
+            })
+            .map_err(DatabaseError::add_context("Opening database"))?;
         Self::migrate(&mut connection)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
@@ -89,9 +94,10 @@ impl Database {
     }
 
     /// Apply database migrations
-    fn migrate(connection: &mut Connection) -> anyhow::Result<()> {
-        migrations::migrations().to_latest(connection)?;
-        Ok(())
+    fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
+        migrations::migrations()
+            .to_latest(connection)
+            .map_err(DatabaseError::Migrate)
     }
 
     /// Get a reference to the DB connection. Panics if the lock is poisoned
@@ -100,13 +106,17 @@ impl Database {
     }
 
     /// Get a list of all collections
-    pub fn get_collections(&self) -> anyhow::Result<Vec<CollectionMetadata>> {
+    pub fn get_collections(
+        &self,
+    ) -> Result<Vec<CollectionMetadata>, DatabaseError> {
+        // Wish we had try blocks ¯\_(ツ)_/¯
         self.connection()
-            .prepare("SELECT * FROM collections")?
-            .query_map([], |row| row.try_into())
-            .context("Error fetching collections")?
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .context("Error extracting collection data")
+            .prepare("SELECT * FROM collections")
+            .and_then(|mut stmt| {
+                stmt.query_map([], |row| row.try_into())?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .map_err(DatabaseError::add_context("Querying collections"))
             .traced()
     }
 
@@ -116,7 +126,7 @@ impl Database {
     pub fn get_collection_id(
         &self,
         path: &Path,
-    ) -> anyhow::Result<CollectionId> {
+    ) -> Result<CollectionId, DatabaseError> {
         // Convert to canonicalize and make serializable
         let path = CollectionPath::try_from_path_maybe_missing(path)?;
 
@@ -126,14 +136,16 @@ impl Database {
                 named_params! {":path": &path},
                 |row| row.get::<_, CollectionId>("id"),
             )
-            .map_err(|err| match err {
+            .map_err(|error| match error {
                 rusqlite::Error::QueryReturnedNoRows => {
-                    // Use Display impl here because this will get shown in
-                    // CLI output
-                    anyhow!("Unknown collection `{path}`")
+                    DatabaseError::ResourceUnknown {
+                        kind: "collection",
+                        id: path.to_string(),
+                    }
                 }
-                other => anyhow::Error::from(other)
-                    .context("Error fetching collection ID"),
+                _ => {
+                    DatabaseError::with_context(error, "Querying collection ID")
+                }
             })
             .traced()
     }
@@ -142,19 +154,24 @@ impl Database {
     pub fn get_collection_metadata(
         &self,
         id: CollectionId,
-    ) -> anyhow::Result<CollectionMetadata> {
+    ) -> Result<CollectionMetadata, DatabaseError> {
         self.connection()
             .query_row(
                 "SELECT * FROM collections WHERE id = :id",
                 named_params! {":id": id},
                 |row| CollectionMetadata::try_from(row),
             )
-            .map_err(|err| match err {
+            .map_err(|error| match error {
                 rusqlite::Error::QueryReturnedNoRows => {
-                    anyhow!("Unknown collection `{id}`")
+                    DatabaseError::ResourceUnknown {
+                        kind: "collection",
+                        id: id.to_string(),
+                    }
                 }
-                other => anyhow::Error::from(other)
-                    .context("Error fetching collection ID"),
+                _ => DatabaseError::with_context(
+                    error,
+                    "Querying collection metadata",
+                ),
             })
             .traced()
     }
@@ -164,7 +181,7 @@ impl Database {
     pub fn delete_collection(
         &self,
         collection: CollectionId,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DatabaseError> {
         // Delete all rows referencing the collection before deleting the
         // collection. It would be nice to use `ON DELETE CASCADE`, but you can
         // only set that when the table is created. Sqlite doesn't allowing
@@ -178,19 +195,23 @@ impl Database {
             "DELETE FROM collections WHERE id = :id",
         ];
 
-        // Shitty try block!
-        (|| {
-            let mut connection = self.connection();
-            let tx = connection.transaction()?;
-            for statement in statements {
-                tx.prepare(statement)?
-                    .execute(named_params! {":id": collection})?;
-            }
-            tx.commit()?;
-            Ok::<(), anyhow::Error>(())
-        })()
-        .context(format!("Error deleting collection `{collection}`"))
-        .traced()
+        let mut connection = self.connection();
+        connection
+            .transaction()
+            .and_then(|tx| {
+                for statement in statements {
+                    tx.prepare(statement)?
+                        .execute(named_params! {":id": collection})?;
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .map_err({
+                DatabaseError::add_context(format!(
+                    "Deleting collection `{collection}`"
+                ))
+            })
+            .traced()
     }
 
     /// Migrate all data for one collection into another, deleting the source
@@ -199,7 +220,7 @@ impl Database {
         &self,
         source: CollectionId,
         target: CollectionId,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), DatabaseError> {
         info!(?source, ?target, "Merging database state");
         let mut connection = self.connection();
         let tx = connection.transaction()?;
@@ -210,7 +231,7 @@ impl Database {
                 WHERE collection_id = :source",
             named_params! {":source": source, ":target": target},
         )
-        .context("Error migrating table `requests_v2`")
+        .map_err(DatabaseError::add_context("Merging table `requests_v2`"))
         .traced()?;
         tx.execute(
             // Overwrite UI state. Maybe this isn't the best UX, but sqlite
@@ -220,14 +241,14 @@ impl Database {
                 WHERE collection_id = :source",
             named_params! {":source": source, ":target": target},
         )
-        .context("Error migrating table `ui_state_v2`")
+        .map_err(DatabaseError::add_context("Merging table `ui_state_v2`"))
         .traced()?;
 
         tx.execute(
             "DELETE FROM collections WHERE id = :source",
             named_params! {":source": source},
         )
-        .context("Error deleting source collection")
+        .map_err(DatabaseError::add_context("Deleting source collection"))
         .traced()?;
         tx.commit()?;
 
@@ -235,33 +256,39 @@ impl Database {
     }
 
     /// Get all requests for all collections
-    pub fn get_all_requests(&self) -> anyhow::Result<Vec<ExchangeSummary>> {
-        trace!("Fetching requests for all collections");
+    pub fn get_all_requests(
+        &self,
+    ) -> Result<Vec<ExchangeSummary>, DatabaseError> {
+        // Wish we had try blocks ¯\_(ツ)_/¯
         self.connection()
             .prepare(
                 "SELECT id, recipe_id, profile_id, start_time, end_time,
                     status_code FROM requests_v2 ORDER BY start_time DESC",
-            )?
-            .query_map((), |row| row.try_into())
-            .context("Error fetching request history from database")
-            .traced()?
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .context("Error extracting request history")
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map((), |row| row.try_into())?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .map_err(DatabaseError::add_context("Querying requests"))
+            .traced()
     }
 
     /// Delete a single exchange by ID. Return the number of deleted requests
     pub fn delete_request(
         &self,
         request_id: RequestId,
-    ) -> anyhow::Result<usize> {
-        info!(%request_id, "Deleting request");
-
+    ) -> Result<usize, DatabaseError> {
+        trace!(%request_id, "Deleting request");
         self.connection()
             .execute(
                 "DELETE FROM requests_v2 WHERE id = :request_id",
                 named_params! {":request_id": request_id},
             )
-            .context(format!("Error deleting request {request_id}"))
+            .map_err({
+                DatabaseError::add_context(format!(
+                    "Deleting request `{request_id}`"
+                ))
+            })
             .traced()
     }
 
@@ -271,7 +298,7 @@ impl Database {
     pub fn into_collection(
         self,
         file: &CollectionFile,
-    ) -> anyhow::Result<CollectionDatabase> {
+    ) -> Result<CollectionDatabase, DatabaseError> {
         // Convert to canonicalize and make serializable
         let path = CollectionPath::try_from_path(file.path())?;
 
@@ -286,7 +313,7 @@ impl Database {
                     ":path": &path,
                 },
             )
-            .context("Error setting collection ID")
+            .map_err(DatabaseError::add_context("Setting collection ID"))
             .traced()?;
         let collection_id = self
             .connection()
@@ -295,7 +322,7 @@ impl Database {
                 named_params! {":path": &path},
                 |row| row.get::<_, CollectionId>("id"),
             )
-            .context("Error fetching collection ID")
+            .map_err(DatabaseError::add_context("Querying collection ID"))
             .traced()?;
 
         Ok(CollectionDatabase {
@@ -316,7 +343,7 @@ pub struct CollectionDatabase {
 
 impl CollectionDatabase {
     /// Get metadata for the collection associated with this DB handle
-    pub fn metadata(&self) -> anyhow::Result<CollectionMetadata> {
+    pub fn metadata(&self) -> Result<CollectionMetadata, DatabaseError> {
         self.database
             .connection()
             .query_row(
@@ -324,7 +351,7 @@ impl CollectionDatabase {
                 named_params! {":id": self.collection_id},
                 |row| row.try_into(),
             )
-            .context("Error fetching collection path")
+            .map_err(DatabaseError::add_context("Querying collection path"))
             .traced()
     }
 
@@ -346,7 +373,7 @@ impl CollectionDatabase {
                 "UPDATE collections SET name = :name WHERE id = :id",
                 named_params! {":id": self.collection_id, ":name": name},
             )
-            .context("Error updating collection name")
+            .map_err(DatabaseError::add_context("Updating collection name"))
             .traced();
     }
 
@@ -354,7 +381,7 @@ impl CollectionDatabase {
     pub fn get_request(
         &self,
         request_id: RequestId,
-    ) -> anyhow::Result<Option<Exchange>> {
+    ) -> Result<Option<Exchange>, DatabaseError> {
         trace!(request_id = %request_id, "Fetching request from database");
         self.database
             .connection()
@@ -371,9 +398,9 @@ impl CollectionDatabase {
                 |row| row.try_into(),
             )
             .optional()
-            .with_context(|| {
-                format!("Error fetching request {request_id} from database")
-            })
+            .map_err(DatabaseError::add_context(format!(
+                "Querying request {request_id} from database"
+            )))
             .traced()
     }
 
@@ -384,7 +411,7 @@ impl CollectionDatabase {
         &self,
         profile_id: ProfileFilter,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<Exchange>> {
+    ) -> Result<Option<Exchange>, DatabaseError> {
         trace!(
             profile_id = ?profile_id,
             recipe_id = %recipe_id,
@@ -412,12 +439,10 @@ impl CollectionDatabase {
                 |row| row.try_into(),
             )
             .optional()
-            .with_context(|| {
-                format!(
-                    "Error fetching request [profile={profile_id:?}; \
+            .map_err(DatabaseError::add_context(format!(
+                "Querying request [profile={profile_id:?}; \
                     recipe={recipe_id}] from database"
-                )
-            })
+            )))
             .traced()
     }
 
@@ -426,7 +451,7 @@ impl CollectionDatabase {
         &self,
         profile_filter: ProfileFilter,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Vec<ExchangeSummary>> {
+    ) -> Result<Vec<ExchangeSummary>, DatabaseError> {
         trace!(
             profile_id = ?profile_filter,
             recipe_id = %recipe_id,
@@ -456,14 +481,18 @@ impl CollectionDatabase {
                 },
                 |row| row.try_into(),
             )
-            .context("Error fetching request history from database")
+            .map_err(DatabaseError::add_context(
+                "Querying request history from database",
+            ))
             .traced()?
             .collect::<rusqlite::Result<Vec<_>>>()
-            .context("Error extracting request history")
+            .map_err(DatabaseError::add_context("Extracting request history"))
     }
 
     /// Get all requests for this collection
-    pub fn get_all_requests(&self) -> anyhow::Result<Vec<ExchangeSummary>> {
+    pub fn get_all_requests(
+        &self,
+    ) -> Result<Vec<ExchangeSummary>, DatabaseError> {
         trace!("Fetching requests for collection");
         self.database
             .connection()
@@ -471,15 +500,19 @@ impl CollectionDatabase {
                 "SELECT id, recipe_id, profile_id, start_time, end_time,
                     status_code FROM requests_v2
                 WHERE collection_id = :collection_id ORDER BY start_time DESC",
-            )?
-            .query_map(
-                named_params! {":collection_id": self.collection_id},
-                |row| row.try_into(),
             )
-            .context("Error fetching request history from database")
-            .traced()?
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .context("Error extracting request history")
+            .and_then(|mut stmt| {
+                stmt.query_map(
+                    named_params! {":collection_id": self.collection_id},
+                    |row| row.try_into(),
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .map_err(DatabaseError::add_context(format!(
+                "Querying all requests for collection `{}`",
+                self.collection_id
+            )))
+            .traced()
     }
 
     /// Add a new exchange to history. The HTTP engine is responsible for
@@ -487,7 +520,10 @@ impl CollectionDatabase {
     /// response should be stored. In-flight requests, invalid requests, and
     /// requests that failed to complete (e.g. because of a network error)
     /// should not (and cannot) be stored.
-    pub fn insert_exchange(&self, exchange: &Exchange) -> anyhow::Result<()> {
+    pub fn insert_exchange(
+        &self,
+        exchange: &Exchange,
+    ) -> Result<(), DatabaseError> {
         debug!(
             id = %exchange.id,
             url = %exchange.request.url,
@@ -548,10 +584,12 @@ impl CollectionDatabase {
                     ":response_body": exchange.response.body.bytes().deref(),
                 },
             )
-            .context(format!(
-                "Error saving request {} to database",
-                exchange.id
-            ))
+            .map_err({
+                DatabaseError::add_context(format!(
+                    "Inserting request `{}`",
+                    exchange.id
+                ))
+            })
             .traced()?;
         Ok(())
     }
@@ -562,7 +600,7 @@ impl CollectionDatabase {
         &self,
         profile_id: ProfileFilter,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<usize> {
+    ) -> Result<usize, DatabaseError> {
         info!(
             collection = ?self.metadata(),
             %recipe_id,
@@ -587,12 +625,19 @@ impl CollectionDatabase {
                     ":recipe_id": recipe_id,
                 },
             )
-            .context("Error deleting requests")
+            .map_err({
+                DatabaseError::add_context(format!(
+                    "Deleting requests for recipe `{recipe_id}`"
+                ))
+            })
             .traced()
     }
 
     /// Delete a single request by ID
-    pub fn delete_request(&self, request_id: RequestId) -> anyhow::Result<()> {
+    pub fn delete_request(
+        &self,
+        request_id: RequestId,
+    ) -> Result<(), DatabaseError> {
         info!(
             collection = ?self.metadata(),
             %request_id,
@@ -604,7 +649,11 @@ impl CollectionDatabase {
                 "DELETE FROM requests_v2 WHERE id = :request_id",
                 named_params! {":request_id": request_id},
             )
-            .context(format!("Error deleting request {request_id}"))
+            .map_err({
+                DatabaseError::add_context(format!(
+                    "Deleting request `{request_id}`"
+                ))
+            })
             .traced()?;
         Ok(())
     }
@@ -615,7 +664,7 @@ impl CollectionDatabase {
         &self,
         key_type: &str,
         key: K,
-    ) -> anyhow::Result<Option<V>>
+    ) -> Result<Option<V>, DatabaseError>
     where
         K: Debug + Serialize,
         V: Debug + DeserializeOwned,
@@ -639,7 +688,9 @@ impl CollectionDatabase {
                 },
             )
             .optional()
-            .context(format!("Error fetching UI state for {key:?}"))
+            .map_err(DatabaseError::add_context(format!(
+                "Querying UI state key `{key:?}`"
+            )))
             .traced()?;
         debug!(?key, ?value, "Fetched UI state");
         Ok(value)
@@ -651,7 +702,7 @@ impl CollectionDatabase {
         key_type: &str,
         key: K,
         value: V,
-    ) -> anyhow::Result<()>
+    ) -> Result<(), DatabaseError>
     where
         K: Debug + Serialize,
         V: Debug + Serialize,
@@ -667,11 +718,15 @@ impl CollectionDatabase {
                 named_params! {
                     ":collection_id": self.collection_id,
                     ":key_type": key_type,
-                    ":key": JsonEncoded(key),
+                    ":key": JsonEncoded(&key),
                     ":value": JsonEncoded(value),
                 },
             )
-            .context("Error saving UI state to database")
+            .map_err({
+                DatabaseError::add_context(format!(
+                    "Inserting UI state key `{key:?}`"
+                ))
+            })
             .traced()?;
         Ok(())
     }
@@ -797,6 +852,66 @@ impl From<Option<Option<ProfileId>>> for ProfileFilter<'static> {
             Some(Some(profile_id)) => Self::Some(Cow::Owned(profile_id)),
             Some(None) => Self::None,
             None => Self::All,
+        }
+    }
+}
+
+/// Any error that can occur while accessing the local database
+#[derive(Debug, Error)]
+pub enum DatabaseError {
+    /// An error with additional context attached
+    #[error("{context}")]
+    Context { context: String, error: Box<Self> },
+
+    /// Error creating the parent directory of the DB file
+    #[error("Error creating data directory")]
+    Directory,
+
+    /// Error applying migrations to the DBs
+    #[error(transparent)]
+    Migrate(rusqlite_migration::Error),
+
+    /// Error getting the path for a collection file
+    #[error("Getting collection path `{}`", path.display())]
+    Path {
+        path: PathBuf,
+        #[source]
+        error: io::Error,
+    },
+
+    /// Queried for some resource by a unique identifier, but it wasn't found
+    /// in the DB
+    #[error("Unknown {kind} `{id}`")]
+    ResourceUnknown { kind: &'static str, id: String },
+
+    /// Any SQL error. Generally this should be wrapped in a [Self::Context]
+    #[error(transparent)]
+    Sqlite(#[from] rusqlite::Error),
+}
+
+impl DatabaseError {
+    /// Create a function that will attach the given context to an error.
+    /// Convenient to pass to [Result::map_err].
+    pub fn add_context<Ctx, E>(context: Ctx) -> impl FnOnce(E) -> Self
+    where
+        Ctx: Into<String>,
+        E: Into<Self>,
+    {
+        move |error| Self::Context {
+            context: context.into(),
+            error: Box::new(error.into()),
+        }
+    }
+
+    /// Attach context to an error error
+    pub fn with_context<Ctx, E>(error: E, context: Ctx) -> Self
+    where
+        Ctx: Into<String>,
+        E: Into<Self>,
+    {
+        Self::Context {
+            context: context.into(),
+            error: Box::new(error.into()),
         }
     }
 }

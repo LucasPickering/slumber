@@ -1,7 +1,6 @@
 //! Recipe/folder tree structure
 
 use crate::collection::{Folder, HasId, Recipe, RecipeId};
-use anyhow::anyhow;
 use derive_more::From;
 use indexmap::{IndexMap, map::Values};
 use serde::Serialize;
@@ -138,9 +137,11 @@ impl RecipeTree {
     }
 
     /// Get a folder/recipe by ID. Return an error if the ID isn't in the tree
-    pub fn try_get(&self, id: &RecipeId) -> anyhow::Result<&RecipeNode> {
-        self.get(id)
-            .ok_or_else(|| anyhow!("No recipe node with ID `{}`", id,))
+    pub fn try_get(
+        &self,
+        id: &RecipeId,
+    ) -> Result<&RecipeNode, UnknownRecipeError> {
+        self.get(id).ok_or_else(|| UnknownRecipeError(id.clone()))
     }
 
     /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
@@ -151,9 +152,12 @@ impl RecipeTree {
 
     /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
     /// folder, return an error that can be presented to the user
-    pub fn try_get_recipe(&self, id: &RecipeId) -> anyhow::Result<&Recipe> {
+    pub fn try_get_recipe(
+        &self,
+        id: &RecipeId,
+    ) -> Result<&Recipe, UnknownRecipeError> {
         self.get_recipe(id)
-            .ok_or_else(|| anyhow!("No recipe with ID `{}`", id,))
+            .ok_or_else(|| UnknownRecipeError(id.clone()))
     }
 
     /// Get all **recipe** IDs in the tree. Useful for printing a list to the
@@ -254,6 +258,12 @@ impl RecipeNode {
         }
     }
 }
+
+/// Error when requesting a recipe/recipe node by ID that doesn't existing in
+/// the tree
+#[derive(Debug, Error)]
+#[error("No recipe with ID `{0}`")]
+pub struct UnknownRecipeError(pub RecipeId);
 
 #[cfg(test)]
 mod tests {

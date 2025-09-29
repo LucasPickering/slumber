@@ -5,12 +5,12 @@
 //! not a value, use [ContentType]. If you want to parse dynamically based on
 //! the response's metadata, use [ResponseRecord::parse_body].
 
-use anyhow::{Context, anyhow};
 use derive_more::{Deref, Display, From};
 use mime::{APPLICATION, JSON, Mime};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, fmt::Debug};
+use std::{borrow::Cow, fmt::Debug, str::Utf8Error};
+use thiserror::Error;
 
 /// All supported content types. Each variant should have a corresponding
 /// implementation of [ResponseContent].
@@ -31,12 +31,11 @@ pub enum ContentType {
 
 impl ContentType {
     /// Parse a MIME string and map it to a known content type
-    fn parse_mime(mime_type: &str) -> anyhow::Result<Self> {
+    fn parse_mime(mime_type: &str) -> Result<Self, ContentTypeError> {
         let mime: Mime = mime_type
             .parse()
-            .with_context(|| format!("Invalid content type `{mime_type}`"))?;
-        Self::from_mime(&mime)
-            .ok_or_else(|| anyhow!("Unknown content type `{mime_type}`"))
+            .map_err(|_| ContentTypeError::MimeInvalid(mime_type.to_owned()))?;
+        Self::from_mime(&mime).ok_or(ContentTypeError::MimeUnknown(mime))
     }
 
     /// Get a known content type from a pre-parsed MIME type. Return `None` if
@@ -61,13 +60,13 @@ impl ContentType {
     }
 
     /// Parse the content type from the `Content-Type` header
-    pub fn from_headers(headers: &HeaderMap) -> anyhow::Result<Self> {
+    pub fn from_headers(headers: &HeaderMap) -> Result<Self, ContentTypeError> {
         let header_value = headers
             .get(header::CONTENT_TYPE)
             .map(HeaderValue::as_bytes)
-            .ok_or_else(|| anyhow!("Response has no content-type header"))?;
+            .ok_or(ContentTypeError::HeaderMissing)?;
         let header_value = std::str::from_utf8(header_value)
-            .context("content-type header is not valid utf-8")?;
+            .map_err(ContentTypeError::HeaderInvalid)?;
         Self::parse_mime(header_value)
     }
 
@@ -76,7 +75,7 @@ impl ContentType {
     pub fn parse_content(
         self,
         content: &[u8],
-    ) -> anyhow::Result<Box<dyn ResponseContent>> {
+    ) -> Result<Box<dyn ResponseContent>, ContentTypeError> {
         match self {
             Self::Json => Ok(Box::new(Json::parse(content)?)),
         }
@@ -140,7 +139,7 @@ pub trait ResponseContent: Debug + Display + Send + Sync {
     fn content_type(&self) -> ContentType;
 
     /// Parse the response body as this type
-    fn parse(body: &[u8]) -> anyhow::Result<Self>
+    fn parse(body: &[u8]) -> Result<Self, ContentTypeError>
     where
         Self: Sized;
 
@@ -162,7 +161,7 @@ impl ResponseContent for Json {
         ContentType::Json
     }
 
-    fn parse(body: &[u8]) -> anyhow::Result<Self> {
+    fn parse(body: &[u8]) -> Result<Self, ContentTypeError> {
         Ok(Self(serde_json::from_slice(body)?))
     }
 
@@ -174,6 +173,31 @@ impl ResponseContent for Json {
     fn as_any(&self) -> &dyn std::any::Any {
         self as &dyn std::any::Any
     }
+}
+
+/// Error parsing a content type or extracting the content type from a response
+#[derive(Debug, Error)]
+pub enum ContentTypeError {
+    /// Error parsing content as JSON
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+
+    /// Input was not a valid MIME type
+    #[error("Invalid content type `{0}`")]
+    MimeInvalid(String),
+
+    /// Input was a valid MIME type but not one that maps to a known content
+    /// type
+    #[error("Unknown content type `{0}`")]
+    MimeUnknown(Mime),
+
+    /// Response doesn't have a `Content-Type` header
+    #[error("Response has no Content-Type header")]
+    HeaderMissing,
+
+    /// Response has a `Content-Type` header but it's not UTF-8
+    #[error("Content-Type header is not valid UTF-8")]
+    HeaderInvalid(#[source] Utf8Error),
 }
 
 #[cfg(test)]
@@ -252,13 +276,21 @@ mod tests {
 
     /// Test various failure cases
     #[rstest]
-    #[case::no_content_type(None::<&str>, "", "no content-type header")]
+    #[case::no_content_type(
+        None::<&str>,
+        "",
+        "Response has no Content-Type header",
+    )]
     #[case::unknown_content_type(
         Some("bad-header"),
         "",
         "Invalid content type `bad-header`"
     )]
-    #[case::invalid_header_utf8(Some(b"\xc3\x28".as_slice()), "", "not valid utf-8")]
+    #[case::invalid_header_utf8(
+        Some(b"\xc3\x28".as_slice()),
+        "",
+        "Content-Type header is not valid UTF-8",
+    )]
     #[case::invalid_content(
         Some("application/json"),
         "not json!",

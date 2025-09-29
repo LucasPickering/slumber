@@ -14,12 +14,12 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
     http::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
-        ResponseRecord, TriggeredRequestError,
+        ResponseRecord, StoredRequestError, TriggeredRequestError,
     },
     render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
     util::MaybeStr,
 };
-use slumber_util::ResultTraced;
+use slumber_util::{ResultTraced, ResultTracedAnyhow};
 use std::{
     error::Error,
     fs::OpenOptions,
@@ -124,11 +124,11 @@ impl Subcommand for RequestCommand {
                 // If the build failed because triggered requests are disabled,
                 // replace it with a custom error message
                 if error.has_trigger_disabled_error() {
-                    error.source.context(
+                    anyhow::Error::from(error.error).context(
                         "Triggered requests are disabled with `--dry-run`",
                     )
                 } else {
-                    error.source
+                    error.error.into()
                 }
             },
         )?;
@@ -318,9 +318,10 @@ impl HttpProvider for CliHttpProvider {
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<Exchange>> {
+    ) -> Result<Option<Exchange>, StoredRequestError> {
         self.database
             .get_latest_request(profile_id.into(), recipe_id)
+            .map_err(StoredRequestError::new)
     }
 
     async fn send_request(
@@ -367,12 +368,12 @@ impl Prompter for CliPrompter {
                 input = input.default(default);
             }
             input.interact()
-        };
+        }
+        .context("Error reading value from prompt")
+        .traced();
 
         // If we failed to read the value, print an error and report nothing
-        if let Ok(value) =
-            result.context("Error reading value from prompt").traced()
-        {
+        if let Ok(value) = result {
             prompt.channel.respond(value);
         }
     }

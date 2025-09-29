@@ -27,7 +27,7 @@ use anyhow::Context;
 use editor_command::EditorBuilder;
 use serde::Serialize;
 use slumber_util::{
-    ResultTraced, doc_link, git_link,
+    ResultTracedAnyhow, doc_link, git_link,
     paths::{self, create_parent, expand_home},
     yaml,
 };
@@ -133,9 +133,7 @@ impl Config {
                 // Filesystem error shouldn't be fatal because it may be a
                 // weird fs error the user can't or doesn't want tofix. Just use
                 // a default config.
-                if let Some(yaml::Error::Io { error, .. }) =
-                    error.downcast_ref::<yaml::Error>()
-                {
+                if let yaml::YamlErrorKind::Io { error, .. } = &error.kind {
                     error!(
                         error = error as &dyn Error,
                         "Error opening config file {path:?}"
@@ -152,7 +150,7 @@ impl Config {
                 } else {
                     // Error occurred during deserialization - the user probably
                     // wants to fix this
-                    Err(error)
+                    Err(error.into())
                 }
             }
         }

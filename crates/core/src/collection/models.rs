@@ -14,8 +14,15 @@ use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_template::{Template, TemplateParseError};
-use slumber_util::{ResultTraced, doc_link, yaml};
-use std::{iter, path::Path};
+use slumber_util::{
+    ResultTraced, doc_link, yaml,
+    yaml::{YamlError, YamlErrorKind},
+};
+use std::{
+    fmt, io, iter,
+    path::{Path, PathBuf},
+};
+use thiserror::Error;
 use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -48,52 +55,65 @@ pub struct Collection {
 
 impl Collection {
     /// Load collection from a file
-    pub fn load(path: &Path) -> anyhow::Result<Self> {
+    pub fn load(path: &Path) -> Result<Self, CollectionError> {
         info!(?path, "Loading collection file");
         yaml::deserialize_file(path)
-            .map_err(|error| {
-                // If this looks like a v3 collection, give some extra help
-                if error
-                    .chain()
-                    .filter_map(|error| error.downcast_ref::<yaml::Error>())
-                    .any(Self::is_v3_error)
-                {
-                    error.context(format!(
-                        "This looks like a collection from Slumber v3. \
-                        Migrate to v4 or downgrade your installation to 3.x.\
-                        \n{}",
-                        doc_link("other/v4_migration")
-                    ))
-                } else {
-                    error
-                }
-            })
+            .map_err(CollectionError::Yaml)
             .traced()
     }
 
     /// Load collection from a YAML string
-    pub fn parse(input: &str) -> anyhow::Result<Self> {
-        yaml::deserialize_str(input).traced()
+    pub fn parse(input: &str) -> Result<Self, CollectionError> {
+        yaml::deserialize_str(input)
+            .map_err(CollectionError::Yaml)
+            .traced()
+    }
+}
+
+impl Collection {
+    /// Get the profile marked as `default: true`, if any. At most one profile
+    /// can be marked as default.
+    pub fn default_profile(&self) -> Option<&Profile> {
+        self.profiles.values().find(|profile| profile.default)
+    }
+}
+
+/// Test-only helpers
+#[cfg(any(test, feature = "test"))]
+impl Collection {
+    /// Get the ID of the first **recipe** (not recipe node) in the list. Panic
+    /// if empty. This is useful because the default collection factory includes
+    /// one recipe.
+    pub fn first_recipe_id(&self) -> &RecipeId {
+        self.recipes
+            .recipe_ids()
+            .next()
+            .expect("Collection has no recipes")
     }
 
-    /// Does the deserialization error lead us to believe the collection is in
-    /// the v3 format? If so we'll give the user an extra message suggesting an
-    /// upgrade to v4
-    fn is_v3_error(error: &yaml::Error) -> bool {
-        match error {
-            // Look for:
-            // - `chains` field
-            // - `<<` merge key
-            // - `!tag`
-            // - `chains.` in a template
-            yaml::Error::UnexpectedField(field) => field == "chains",
-            yaml::Error::UnsupportedMerge => true,
-            yaml::Error::Unexpected { actual, .. } => actual.starts_with("tag"),
-            yaml::Error::Other(error) => error
-                // Check if there's a template containing a chain reference
-                .downcast_ref::<TemplateParseError>()
-                .is_some_and(|error| error.to_string().contains("{{chains.")),
-            _ => false,
+    /// Get the ID of the first profile in the list. Panic if empty. This is
+    /// useful because the default collection factory includes one profile.
+    pub fn first_profile_id(&self) -> &ProfileId {
+        self.profiles.first().expect("Collection has no profiles").0
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory for Collection {
+    fn factory((): ()) -> Self {
+        use crate::test_util::by_id;
+        // Include a body in the recipe, so body-related behavior can be tested
+        let recipe = Recipe {
+            body: Some(RecipeBody::Json(
+                r#"{"message": "hello"}"#.parse().unwrap(),
+            )),
+            ..Recipe::factory(())
+        };
+        let profile = Profile::factory(());
+        Collection {
+            name: None,
+            recipes: by_id([recipe]).into(),
+            profiles: by_id([profile]),
         }
     }
 }
@@ -496,51 +516,64 @@ impl From<&str> for RecipeBody {
     }
 }
 
-impl Collection {
-    /// Get the profile marked as `default: true`, if any. At most one profile
-    /// can be marked as default.
-    pub fn default_profile(&self) -> Option<&Profile> {
-        self.profiles.values().find(|profile| profile.default)
-    }
+/// Error that can occur while loading a collection
+#[derive(Debug, Error)]
+pub enum CollectionError {
+    /// Error getting the current working directory
+    #[error(transparent)]
+    CurrentDir(io::Error),
+
+    /// File system error
+    #[error("Error loading `{}`", path.display())]
+    Io {
+        path: PathBuf,
+        #[source]
+        error: io::Error,
+    },
+
+    /// No collection file exists that the given path or in the given directory
+    #[error("No collection file found in `{}` or its ancestors", path.display())]
+    NoFile { path: PathBuf },
+
+    /// Error parsing/deserializing the YAML
+    #[error(fmt = fmt_yaml_error)]
+    Yaml(#[source] YamlError),
 }
 
-/// Test-only helpers
-#[cfg(any(test, feature = "test"))]
-impl Collection {
-    /// Get the ID of the first **recipe** (not recipe node) in the list. Panic
-    /// if empty. This is useful because the default collection factory includes
-    /// one recipe.
-    pub fn first_recipe_id(&self) -> &RecipeId {
-        self.recipes
-            .recipe_ids()
-            .next()
-            .expect("Collection has no recipes")
+/// Display a YAML error.  If the error makes it look like the user's trying to
+/// load a v3 collection in v4, give some extra help
+fn fmt_yaml_error(error: &YamlError, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{error}")?;
+    if is_v3_error(error) {
+        write!(
+            f,
+            "\nThis looks like a collection from Slumber v3. \
+            Migrate to v4 or downgrade your installation to 3.x.\
+            \n{}",
+            doc_link("other/v4_migration")
+        )?;
     }
-
-    /// Get the ID of the first profile in the list. Panic if empty. This is
-    /// useful because the default collection factory includes one profile.
-    pub fn first_profile_id(&self) -> &ProfileId {
-        self.profiles.first().expect("Collection has no profiles").0
-    }
+    Ok(())
 }
 
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for Collection {
-    fn factory((): ()) -> Self {
-        use crate::test_util::by_id;
-        // Include a body in the recipe, so body-related behavior can be tested
-        let recipe = Recipe {
-            body: Some(RecipeBody::Json(
-                r#"{"message": "hello"}"#.parse().unwrap(),
-            )),
-            ..Recipe::factory(())
-        };
-        let profile = Profile::factory(());
-        Collection {
-            name: None,
-            recipes: by_id([recipe]).into(),
-            profiles: by_id([profile]),
-        }
+/// Does the deserialization error lead us to believe the collection is in
+/// the v3 format? If so we'll give the user an extra message suggesting an
+/// upgrade to v4
+fn is_v3_error(error: &YamlError) -> bool {
+    match &error.kind {
+        // Look for:
+        // - `chains` field
+        // - `<<` merge key
+        // - `!tag`
+        // - `chains.` in a template
+        YamlErrorKind::UnexpectedField(field) => field == "chains",
+        YamlErrorKind::UnsupportedMerge => true,
+        YamlErrorKind::Unexpected { actual, .. } => actual.starts_with("tag"),
+        YamlErrorKind::Other(error) => error
+            // Check if there's a template containing a chain reference
+            .downcast_ref::<TemplateParseError>()
+            .is_some_and(|error| error.to_string().contains("{{chains.")),
+        _ => false,
     }
 }
 

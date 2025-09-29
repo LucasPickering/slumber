@@ -13,7 +13,6 @@ pub use json::JsonTemplate;
 pub use models::*;
 pub use recipe_tree::*;
 
-use anyhow::{Context, anyhow};
 use itertools::Itertools;
 use std::{
     env,
@@ -46,8 +45,13 @@ impl CollectionFile {
     /// Get a handle to the collection file, returning an error if none is
     /// available. This will use the override if given, otherwise it will fall
     /// back to searching the given directory for a collection.
-    pub fn new(override_path: Option<PathBuf>) -> anyhow::Result<Self> {
-        Self::with_dir(env::current_dir()?, override_path)
+    pub fn new(
+        override_path: Option<PathBuf>,
+    ) -> Result<Self, CollectionError> {
+        Self::with_dir(
+            env::current_dir().map_err(CollectionError::CurrentDir)?,
+            override_path,
+        )
     }
 
     /// Get a handle to the collection file, searching a specific directory.
@@ -55,14 +59,15 @@ impl CollectionFile {
     pub fn with_dir(
         mut dir: PathBuf,
         override_path: Option<PathBuf>,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, CollectionError> {
         // If the override is a dir, search that dir instead. If it's a file,
         // just return it
         if let Some(override_path) = override_path {
             let joined = dir.join(override_path);
             if fs::metadata(&joined)
-                .with_context(|| {
-                    format!("Error loading `{}`", joined.display())
+                .map_err(|error| CollectionError::Io {
+                    path: joined.clone(),
+                    error,
                 })?
                 .is_dir()
             {
@@ -73,18 +78,14 @@ impl CollectionFile {
         }
 
         detect_path(&dir)
-            .ok_or_else(|| {
-                anyhow!(
-                "No collection file found in current or ancestor directories"
-            )
-            })
+            .ok_or_else(|| CollectionError::NoFile { path: dir })
             .map(Self)
     }
 
     /// Load collection from this file. Use [Self::new] to get a handle to the
     /// file. This pattern enables the TUI to start up and watch the collection
     /// file, even if it's invalid.
-    pub fn load(&self) -> anyhow::Result<Collection> {
+    pub fn load(&self) -> Result<Collection, CollectionError> {
         Collection::load(&self.0)
     }
 
@@ -207,10 +208,7 @@ mod tests {
     /// Test that with_dir fails when no collection file is found and no
     /// override is given
     #[rstest]
-    #[case::no_file(
-        None,
-        "No collection file found in current or ancestor directories"
-    )]
+    #[case::no_file(None, "No collection file found")]
     #[case::override_doesnt_exist(
         Some("./bogus/"),
         if cfg!(unix) {
@@ -228,7 +226,8 @@ mod tests {
             CollectionFile::with_dir(
                 temp_dir.to_path_buf(),
                 override_path.map(PathBuf::from)
-            ),
+            )
+            .map_err(anyhow::Error::from),
             expected_err
         );
     }
@@ -280,7 +279,10 @@ mod tests {
         #[case] yaml: &str,
         #[case] expected_error: &str,
     ) {
-        assert_err!(Collection::parse(yaml), expected_error);
+        assert_err!(
+            Collection::parse(yaml).map_err(anyhow::Error::from),
+            expected_error
+        );
     }
 
     /// Should detect various indicators that the collection is v3 collection

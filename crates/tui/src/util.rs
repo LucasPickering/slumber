@@ -10,7 +10,7 @@ use crossterm::{
 };
 use futures::{FutureExt, future};
 use slumber_core::render::Prompt;
-use slumber_util::{ResultTraced, paths::expand_home};
+use slumber_util::{ResultTracedAnyhow, paths::expand_home};
 use std::{
     env,
     fs::{self, File},

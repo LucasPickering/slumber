@@ -32,7 +32,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::RecipeNodeType;
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display for a request/response exchange. This allows the user to switch
@@ -263,7 +263,7 @@ impl ExchangePaneContent {
             RequestState::Building { .. } => ExchangePaneContentState::Building,
             RequestState::BuildError { error } => {
                 ExchangePaneContentState::BuildError {
-                    error: error.generate(),
+                    error: (error as &dyn Error).generate(),
                 }
             }
             RequestState::Loading { request, .. } => {
@@ -293,7 +293,7 @@ impl ExchangePaneContent {
                 ExchangePaneContentState::RequestError {
                     request: RequestView::new(Arc::clone(&error.request))
                         .into(),
-                    error: error.generate(),
+                    error: (error as &dyn Error).generate(),
                 }
             }
         };

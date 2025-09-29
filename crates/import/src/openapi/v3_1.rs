@@ -17,7 +17,7 @@ use slumber_core::{
     http::HttpMethod,
 };
 use slumber_template::Template;
-use slumber_util::ResultTraced;
+use slumber_util::ResultTracedAnyhow;
 use std::{iter, mem};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, warn};

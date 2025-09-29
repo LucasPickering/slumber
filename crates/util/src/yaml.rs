@@ -7,28 +7,25 @@
 //! by serde/serde_yaml, because there's no need for error messages and the
 //! derive macros are sufficient to generate the corresponding YAML.
 
+mod error;
 mod resolve;
 
+pub use error::{Expected, LocatedError, YamlError, YamlErrorKind};
 #[cfg(feature = "test")]
 pub use test_util::*;
 
-use crate::yaml::resolve::ReferenceError;
 use indexmap::{IndexMap, IndexSet};
-use itertools::Itertools;
 use saphyr::{
     AnnotatedMapping, AnnotatedNode, LoadableYamlNode, MarkedYaml, Marker,
-    Scalar, ScanError, YamlData,
+    Scalar, YamlData,
 };
 use std::{
-    error::Error as StdError,
     fs,
     hash::{Hash, Hasher},
-    io,
     path::{Path, PathBuf},
 };
-use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, LocatedError<Error>>;
+pub type Result<T> = std::result::Result<T, LocatedError<YamlErrorKind>>;
 
 /// Load YAML from a file and deserialize it into type `T`.
 ///
@@ -37,7 +34,7 @@ pub type Result<T> = std::result::Result<T, LocatedError<Error>>;
 /// data types. We do this rather than use serde_yaml because it provides:
 /// - Better error messages
 /// - Source span tracking
-pub fn deserialize_file<T>(path: &Path) -> anyhow::Result<T>
+pub fn deserialize_file<T>(path: &Path) -> std::result::Result<T, YamlError>
 where
     T: DeserializeYaml,
 {
@@ -48,23 +45,19 @@ where
         .and_then(|yaml| {
             yaml.resolve_references(&mut source_map).map_err(|error| {
                 LocatedError {
-                    error: Error::Reference(error.error),
+                    error: YamlErrorKind::Reference(error.error),
                     location: error.location,
                 }
             })
         })
         // Deserialize as T
         .and_then(T::deserialize)
-        .map_err(|error| {
-            // Make the location presentable
-            let location = error.location.resolve(&source_map);
-            anyhow::Error::from(error.error)
-                .context(format!("Error at {location}"))
-        })
+        // Make the location presentable
+        .map_err(|error| error.resolve(&source_map))
 }
 
 /// Parse a string into YAML, then deserialize it into `T`
-pub fn deserialize_str<T>(yaml: &str) -> anyhow::Result<T>
+pub fn deserialize_str<T>(yaml: &str) -> std::result::Result<T, YamlError>
 where
     T: DeserializeYaml,
 {
@@ -78,7 +71,7 @@ where
 fn deserialize<T>(
     parse_result: Result<SourcedYaml>,
     mut source_map: SourceMap,
-) -> anyhow::Result<T>
+) -> std::result::Result<T, YamlError>
 where
     T: DeserializeYaml,
 {
@@ -87,19 +80,15 @@ where
         .and_then(|yaml| {
             yaml.resolve_references(&mut source_map).map_err(|error| {
                 LocatedError {
-                    error: Error::Reference(error.error),
+                    error: YamlErrorKind::Reference(error.error),
                     location: error.location,
                 }
             })
         })
         // Deserialize as T
         .and_then(T::deserialize)
-        .map_err(|error| {
-            // Make the location presentable
-            let location = error.location.resolve(&source_map);
-            anyhow::Error::from(error.error)
-                .context(format!("Error at {location}"))
-        })
+        // Make the location presentable
+        .map_err(|error| error.resolve(&source_map))
 }
 
 /// Deserialize from YAML into the implementing type
@@ -136,6 +125,8 @@ macro_rules! impl_deserialize_from {
 #[macro_export]
 macro_rules! deserialize_enum {
     ($yaml:expr, $($tag:literal => $f:expr),* $(,)?) => {
+            use $crate::yaml::{LocatedError, YamlErrorKind};
+
             const TYPE_FIELD: &str = "type";
             const EXPECTED: Expected =
                 Expected::OneOf(&[$(&Expected::Literal($tag),)*]);
@@ -146,7 +137,7 @@ macro_rules! deserialize_enum {
             let kind_yaml = mapping
                 .remove(&SourcedYaml::value_from_str(TYPE_FIELD))
                 .ok_or(LocatedError {
-                    error: Error::MissingField {
+                    error: YamlErrorKind::MissingField {
                         field: TYPE_FIELD,
                         expected: EXPECTED,
                     },
@@ -164,7 +155,7 @@ macro_rules! deserialize_enum {
                 $($tag => $f(yaml),)*
                 // Unknown tag
                 _ => Err(LocatedError {
-                    error: Error::Unexpected {
+                    error: YamlErrorKind::Unexpected {
                         expected: EXPECTED,
                         actual: format!("{kind:?}"),
                     },
@@ -271,7 +262,7 @@ impl<'input> SourcedYaml<'input> {
     fn load(path: &Path, source: SourceId) -> Result<Self> {
         let content =
             fs::read_to_string(path).map_err(|error| LocatedError {
-                error: Error::Io {
+                error: YamlErrorKind::Io {
                     error,
                     source: path.display().to_string(),
                 },
@@ -379,7 +370,7 @@ impl<'input> SourcedYaml<'input> {
             // provide a helpful error
             if mapping.contains_key(&SourcedYaml::value_from_str("<<")) {
                 Err(LocatedError {
-                    error: Error::UnsupportedMerge,
+                    error: YamlErrorKind::UnsupportedMerge,
                     location: self.location,
                 })
             } else {
@@ -573,155 +564,6 @@ pub struct ResolvedSourceLocation {
     column: u32,
 }
 
-/// An error paired with the source location in YAML where the error occurred
-///
-/// This doesn't implement `Error` because this isn't immediately displayable.
-/// The location needs to be resolved to make this presentable.
-#[derive(Debug)]
-pub struct LocatedError<E> {
-    /// Error that occurred
-    pub error: E,
-    /// Source location of the error. This is an *unresolved* location, meaning
-    /// it contains a source ID instead of a source path.
-    pub location: SourceLocation,
-}
-
-impl<E> LocatedError<E> {
-    /// Move the inner error out
-    pub fn into_error(self) -> E {
-        self.error
-    }
-}
-
-impl LocatedError<Error> {
-    /// Create a new [Other](Self::Other) from any error type
-    pub fn other(
-        error: impl Into<Box<dyn StdError + Send + Sync>>,
-        location: SourceLocation,
-    ) -> Self {
-        Self {
-            error: Error::Other(error.into()),
-            location,
-        }
-    }
-
-    fn scan(error: ScanError, source_id: SourceId) -> Self {
-        let location = SourceLocation::from_marker(source_id, *error.marker());
-        Self {
-            error: Error::Scan(error),
-            location,
-        }
-    }
-
-    /// Create a new [UnexpectedType](Self::UnexpectedType) from the expected
-    /// type and actual value
-    pub fn unexpected(expected: Expected, actual: SourcedYaml) -> Self {
-        // Find a useful representation of the received value
-        let actual_string = match actual.data {
-            // Scalars are unlikely to be big so we can include the actual value
-            YamlData::Value(Scalar::Null) => "null".into(),
-            YamlData::Value(Scalar::Boolean(b)) => format!("`{b}`"),
-            YamlData::Value(Scalar::Integer(i)) => format!("`{i}`"),
-            YamlData::Value(Scalar::FloatingPoint(f)) => format!("`{f}`"),
-            // Use debug format to get wrapping quotes
-            YamlData::Value(Scalar::String(s)) => format!("{s:?}"),
-            YamlData::Tagged(tag, _) => format!("tag `{tag}`"),
-            // Collections could be large so just include the type
-            YamlData::Sequence(_) => "sequence".into(),
-            YamlData::Mapping(_) => "mapping".into(),
-            YamlData::Representation(_, _, _)
-            | YamlData::Alias(_)
-            | YamlData::BadValue => yaml_parse_panic(),
-        };
-        Self {
-            location: actual.location,
-            error: Error::Unexpected {
-                expected,
-                actual: actual_string,
-            },
-        }
-    }
-}
-
-/// An error that can occur while deserializing a YAML value
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Error opening {source}")]
-    Io {
-        #[source]
-        error: io::Error,
-        source: String,
-    },
-
-    #[error("Expected field `{field}` with {expected}")]
-    MissingField {
-        field: &'static str,
-        expected: Expected,
-    },
-
-    /// External error type
-    #[error(transparent)]
-    Other(Box<dyn 'static + StdError + Send + Sync>),
-
-    /// Error parsing or resolving a reference under a `$ref` tag
-    #[error(transparent)]
-    Reference(ReferenceError),
-
-    /// Error parsing YAML
-    #[error(transparent)]
-    Scan(saphyr::ScanError),
-
-    /// Expected a particular type or value, but received something else
-    #[error("Expected {expected}, received {actual}")]
-    Unexpected {
-        expected: Expected,
-        /// Pre-formatted "actual" value. Getting an owned YAML value from
-        /// is complicated so it's easier to store it as the presentation
-        /// string
-        actual: String,
-    },
-
-    /// Struct received an extra field
-    #[error("Unexpected field `{0}`")]
-    UnexpectedField(String),
-
-    /// Special error case to identify the `<<` key. We want to report this in
-    /// both static and dynamic mappings because the user almost definitely
-    /// doesn't want the literal key `<<`.
-    #[error("YAML merge syntax `<<` is not supported")]
-    UnsupportedMerge,
-}
-
-/// When a value is expected but is either incorrect or missing, this type
-/// allows the caller to declare what they expected to find
-#[derive(Debug, derive_more::Display)]
-pub enum Expected {
-    /// Expected null
-    #[display("null")]
-    Null,
-    /// Expected a string
-    #[display("string")]
-    String,
-    /// Expected a boolean
-    #[display("boolean")]
-    Boolean,
-    /// Expected an integer or float
-    #[display("number")]
-    Number,
-    /// Expected a sequence
-    #[display("sequence")]
-    Sequence,
-    /// Expected a mapping
-    #[display("mapping")]
-    Mapping,
-    /// Expected a string literal
-    #[display("{_0:?}")]
-    Literal(&'static str),
-    /// Expected one of a static set of types (for enum discriminants)
-    #[display("one of {}", _0.iter().format(", "))]
-    OneOf(&'static [&'static Self]),
-}
-
 /// Utility for deserializing a struct or enum variant from a YAML mapping.
 /// Initialize this struct with a YAML value, and it will:
 /// - Ensure the value is a mapping
@@ -751,7 +593,7 @@ impl<'a> StructDeserializer<'a> {
             Ok(default)
         } else {
             Err(LocatedError {
-                error: Error::MissingField {
+                error: YamlErrorKind::MissingField {
                     field: field.name,
                     expected: T::expected(),
                 },
@@ -767,7 +609,7 @@ impl<'a> StructDeserializer<'a> {
             // If the key isn't a string, it's reasonable to return a type error
             let key = key.try_into_string()?;
             Err(LocatedError {
-                error: Error::UnexpectedField(key),
+                error: YamlErrorKind::UnexpectedField(key),
                 location: key_location,
             })
         } else {

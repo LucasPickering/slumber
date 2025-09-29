@@ -2,13 +2,14 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    database::{CollectionId, CollectionMetadata, ProfileFilter},
+    database::{
+        CollectionId, CollectionMetadata, DatabaseError, ProfileFilter,
+    },
     http::{
         Exchange, ExchangeSummary, HttpMethod, HttpVersion, RequestId,
         RequestRecord, ResponseRecord,
     },
 };
-use anyhow::Context;
 use bytes::Bytes;
 use core::str;
 use derive_more::Display;
@@ -131,9 +132,12 @@ impl CollectionPath {
     /// canonicalized to deduplicate potential differences due to symlinks, cwd,
     /// etc. This ensures that any two references to the same file will always
     /// match the same
-    pub fn try_from_path(path: &Path) -> anyhow::Result<Self> {
+    pub fn try_from_path(path: &Path) -> Result<Self, DatabaseError> {
         path.canonicalize()
-            .context(format!("Error canonicalizing path `{}`", path.display()))
+            .map_err(|error| DatabaseError::Path {
+                path: path.to_owned(),
+                error,
+            })
             .traced()
             .map(Self)
     }
@@ -149,11 +153,16 @@ impl CollectionPath {
     ///
     /// Fails if the path is relative and the current working directory does not
     /// exist.
-    pub fn try_from_path_maybe_missing(path: &Path) -> anyhow::Result<Self> {
+    pub fn try_from_path_maybe_missing(
+        path: &Path,
+    ) -> Result<Self, DatabaseError> {
         // Try to canonicalize first
         Self::try_from_path(path).or_else(|_| {
             let base = if path.is_relative() {
-                env::current_dir().context("Error getting current directory")?
+                env::current_dir().map_err(|error| DatabaseError::Path {
+                    path: path.to_owned(),
+                    error,
+                })?
             } else {
                 // Path is absolute - no need to append it to a base path
                 PathBuf::new()

@@ -1,11 +1,12 @@
 use super::*;
 use crate::test_util::{TestHarness, harness};
-use anyhow::anyhow;
 use chrono::Utc;
 use rstest::rstest;
 use slumber_core::http::{
-    Exchange, RequestBuildError, RequestError, RequestRecord,
+    Exchange, RequestBuildError, RequestBuildErrorKind, RequestError,
+    RequestRecord,
 };
+use slumber_template::RenderError;
 use slumber_util::{Factory, assert_matches};
 use std::{
     sync::{
@@ -92,7 +93,9 @@ async fn test_life_cycle_build_error() {
             id,
             start_time: Utc::now(),
             end_time: Utc::now(),
-            source: anyhow!("oh no!"),
+            error: RequestBuildErrorKind::UrlRender(
+                RenderError::FunctionUnknown,
+            ),
         }
         .into(),
     );
@@ -120,9 +123,11 @@ async fn test_life_cycle_request_error() {
     store.loading(Arc::clone(&exchange.request));
     assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
 
+    // reqwest doesn't let you build an error directly
+    let error = reqwest::get("fake").await.unwrap_err();
     store.request_error(
         RequestError {
-            error: anyhow!("oh no!"),
+            error,
             request: exchange.request,
             start_time: Utc::now(),
             end_time: Utc::now(),
@@ -269,6 +274,9 @@ fn test_load_latest_local(harness: TestHarness) {
 #[rstest]
 #[tokio::test]
 async fn test_load_summaries(harness: TestHarness) {
+    // reqwest doesn't let you build an error directly. We'll use this later
+    let error = reqwest::get("fake").await.unwrap_err();
+
     let mut store = harness.request_store.borrow_mut();
     let profile_id = ProfileId::factory(());
     let recipe_id = RecipeId::factory(());
@@ -306,7 +314,9 @@ async fn test_load_summaries(harness: TestHarness) {
                 id: build_error_id,
                 start_time: Utc::now(),
                 end_time: Utc::now(),
-                source: anyhow!("oh no!"),
+                error: RequestBuildErrorKind::UrlRender(
+                    RenderError::FunctionUnknown,
+                ),
             }
             .into(),
         },
@@ -331,7 +341,7 @@ async fn test_load_summaries(harness: TestHarness) {
         request_error_id,
         RequestState::RequestError {
             error: RequestError {
-                error: anyhow!("oh no!"),
+                error,
                 request: request.into(),
                 start_time: Utc::now(),
                 end_time: Utc::now(),

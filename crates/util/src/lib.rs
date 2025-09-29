@@ -19,6 +19,7 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use serde::{Deserialize, de::Error as _};
 use std::{
+    error::Error,
     fmt::{self, Debug, Display},
     ops::Deref,
     str::FromStr,
@@ -72,6 +73,7 @@ impl<'a, T: Copy> Mapping<'a, T> {
             .flat_map(|(_, strings)| strings.iter().copied())
     }
 }
+
 /// Extension trait for [Result]
 pub trait ResultTraced<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.
@@ -79,7 +81,22 @@ pub trait ResultTraced<T, E>: Sized {
     fn traced(self) -> Self;
 }
 
-impl<T> ResultTraced<T, anyhow::Error> for anyhow::Result<T> {
+impl<T, E: 'static + Error> ResultTraced<T, E> for Result<T, E> {
+    fn traced(self) -> Self {
+        self.inspect_err(|err| error!(error = err as &dyn Error))
+    }
+}
+
+/// [ResultTraced] but for the `anyhow` result. This has to be a separate trait
+/// because we can't put a blanket impl on std `Error` *and* `anyhow::Result`,
+/// as the two "could" conflict in the future.
+pub trait ResultTracedAnyhow<T, E>: Sized {
+    /// If this is an error, trace it. Return the same result.
+    #[must_use]
+    fn traced(self) -> Self;
+}
+
+impl<T> ResultTracedAnyhow<T, anyhow::Error> for anyhow::Result<T> {
     fn traced(self) -> Self {
         self.inspect_err(|err| error!(error = err.deref()))
     }

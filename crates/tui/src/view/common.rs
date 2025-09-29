@@ -27,11 +27,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 use reqwest::{StatusCode, header::HeaderValue};
-use slumber_core::{
-    collection::Profile,
-    http::{RequestBuildError, RequestError},
-    util::MaybeStr,
-};
+use slumber_core::{collection::Profile, util::MaybeStr};
+use std::{error::Error, ops::Deref, ptr};
 
 /// A container with a title and border
 pub struct Pane<'a> {
@@ -203,7 +200,9 @@ impl Generate for &HeaderValue {
     }
 }
 
-impl Generate for &anyhow::Error {
+// Render the error chain. This can't be a blanket impl on `E: Error` because
+// that generates potential "conflicts"
+impl Generate for &dyn Error {
     /// 'static because string is generated
     type Output<'this>
         = Paragraph<'static>
@@ -214,20 +213,27 @@ impl Generate for &anyhow::Error {
     where
         Self: 'this,
     {
-        let chain = self.chain();
         let mut lines: Vec<Line> = Vec::new();
-        for (i, (position, error)) in chain.with_position().enumerate() {
-            let icon = match position {
-                Position::First | Position::Only => "",
-                Position::Middle => "└┬",
-                Position::Last => "└─",
+        // Walk down the error chain and build out a tree thing
+        let mut next = Some(self);
+        // unstable: Use error.sources()
+        // https://github.com/rust-lang/rust/issues/58520
+        while let Some(error) = next {
+            next = error.source();
+            let icon = if ptr::eq(self, error) {
+                // This is the first in the chain
+                ""
+            } else if next.is_some() {
+                "└┬"
+            } else {
+                "└─"
             };
             for (position, line) in error.to_string().lines().with_position() {
                 let line = if let Position::First | Position::Only = position {
                     format!(
                         "{indent:width$}{icon}{line}",
                         indent = "",
-                        width = i.saturating_sub(1)
+                        width = lines.len().saturating_sub(1)
                     )
                 } else {
                     line.to_owned()
@@ -239,7 +245,8 @@ impl Generate for &anyhow::Error {
     }
 }
 
-impl Generate for &RequestBuildError {
+impl Generate for &anyhow::Error {
+    /// 'static because string is generated
     type Output<'this>
         = Paragraph<'static>
     where
@@ -249,22 +256,6 @@ impl Generate for &RequestBuildError {
     where
         Self: 'this,
     {
-        // Defer to the underlying anyhow error
-        self.source.generate()
-    }
-}
-
-impl Generate for &RequestError {
-    type Output<'this>
-        = Paragraph<'static>
-    where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        // Defer to the underlying anyhow error
-        self.error.generate()
+        (self.deref() as &dyn Error).generate()
     }
 }

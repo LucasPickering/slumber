@@ -69,7 +69,7 @@ impl TuiState {
                     Self(TuiStateInner::Error {
                         database,
                         collection_file,
-                        error,
+                        error: error.into(),
                         messages_tx,
                         _watcher: watcher,
                     })
@@ -297,7 +297,9 @@ impl LoadedState {
                         Ok(collection) => {
                             Message::CollectionEndReload(collection)
                         }
-                        Err(error) => Message::Error { error },
+                        Err(error) => Message::Error {
+                            error: error.into(),
+                        },
                     };
                     messages_tx.send(message);
                 });

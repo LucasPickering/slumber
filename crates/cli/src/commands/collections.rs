@@ -94,7 +94,9 @@ impl CollectionSpecifier {
                 database.get_collection_metadata(*id)?;
                 Ok(*id)
             }
-            Self::Path(path) => database.get_collection_id(path),
+            Self::Path(path) => database
+                .get_collection_id(path)
+                .map_err(anyhow::Error::from),
         }
     }
 }

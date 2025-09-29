@@ -21,7 +21,7 @@ use rest_parser::{
     headers::Authorization as RestAuthorization,
     template::Template as RestTemplate,
 };
-use slumber_util::ResultTraced;
+use slumber_util::ResultTracedAnyhow;
 use tracing::error;
 
 use crate::ImportInput;

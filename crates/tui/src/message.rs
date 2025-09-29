@@ -15,7 +15,7 @@ use slumber_core::{
     render::{Prompt, ResponseChannel, Select},
 };
 use slumber_template::{RenderedOutput, Template};
-use slumber_util::ResultTraced;
+use slumber_util::ResultTracedAnyhow;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;

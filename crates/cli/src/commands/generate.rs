@@ -35,12 +35,12 @@ impl Subcommand for GenerateCommand {
                         // If the build failed because triggered requests are
                         // disabled, replace it with a custom error message
                         if error.has_trigger_disabled_error() {
-                            error.source.context(
+                            anyhow::Error::from(error.error).context(
                                 "Triggered requests are disabled by default; \
                                  pass `--execute-triggers` to enable",
                             )
                         } else {
-                            error.source
+                            error.error.into()
                         }
                     })?;
                 println!("{command}");

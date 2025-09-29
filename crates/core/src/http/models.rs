@@ -4,10 +4,11 @@
 //! exchange is incomplete or failed.
 
 use crate::{
-    collection::{Authentication, ProfileId, RecipeBody, RecipeId},
+    collection::{
+        Authentication, ProfileId, RecipeBody, RecipeId, UnknownRecipeError,
+    },
     http::content_type::ContentType,
 };
-use anyhow::Context;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From, FromStr};
@@ -15,11 +16,14 @@ use itertools::Itertools;
 use mime::Mime;
 use reqwest::{
     Body, Client, Request, StatusCode, Url,
-    header::{self, HeaderMap},
+    header::{self, HeaderMap, InvalidHeaderName, InvalidHeaderValue},
 };
 use serde::{Deserialize, Serialize};
-use slumber_template::Template;
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use slumber_template::{RenderError, Template};
+use std::{
+    collections::HashMap, error::Error, fmt::Debug, io, str::Utf8Error,
+    sync::Arc,
+};
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
 use tracing::error;
@@ -485,18 +489,6 @@ impl RequestRecord {
     pub fn body(&self) -> Option<&[u8]> {
         self.body.as_deref()
     }
-
-    /// Get the body of the request, decoded as UTF-8. Returns an error if the
-    /// body isn't valid UTF-8.
-    pub fn body_str(&self) -> anyhow::Result<Option<&str>> {
-        if let Some(body) = &self.body {
-            Ok(Some(
-                std::str::from_utf8(body).context("Error decoding body")?,
-            ))
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -804,10 +796,9 @@ impl PartialEq for ResponseBody {
 #[derive(Debug, Error)]
 #[error("Error building request {id}")]
 pub struct RequestBuildError {
-    /// There are multiple possible error types and anyhow's Error makes
-    /// display easier
+    /// Underlying error
     #[source]
-    pub source: anyhow::Error,
+    pub error: RequestBuildErrorKind,
 
     /// ID of the profile being rendered under
     pub profile_id: Option<ProfileId>,
@@ -826,12 +817,20 @@ impl RequestBuildError {
     /// [TriggeredRequestError::NotAllowed]? This makes it easy to attach
     /// additional error context.
     pub fn has_trigger_disabled_error(&self) -> bool {
-        self.source.chain().any(|error| {
-            matches!(
+        // Walk down the error chain
+        // unstable: Use error.sources()
+        // https://github.com/rust-lang/rust/issues/58520
+        let mut next: Option<&dyn Error> = Some(self);
+        while let Some(error) = next {
+            if matches!(
                 error.downcast_ref(),
                 Some(TriggeredRequestError::NotAllowed)
-            )
-        })
+            ) {
+                return true;
+            }
+            next = error.source();
+        }
+        false
     }
 }
 
@@ -843,8 +842,94 @@ impl PartialEq for RequestBuildError {
             && self.id == other.id
             && self.start_time == other.start_time
             && self.end_time == other.end_time
-            && self.source.to_string() == other.source.to_string()
+            && self.error.to_string() == other.error.to_string()
     }
+}
+
+/// The various errors that can occur while building a request. This provides
+/// the error for [RequestBuildError], which then attaches additional context.
+#[derive(Debug, Error)]
+pub enum RequestBuildErrorKind {
+    /// Error rendering username in Basic auth
+    #[error("Rendering password")]
+    AuthPasswordRender(#[source] RenderError),
+    /// Error rendering token in Bearer auth
+    #[error("Rendering bearer token")]
+    AuthTokenRender(#[source] RenderError),
+    /// Error rendering username in Basic auth
+    #[error("Rendering username")]
+    AuthUsernameRender(#[source] RenderError),
+
+    /// Error streaming directly from a file to a request body (via reqwest)
+    #[error("Streaming request body")]
+    BodyFileStream(#[source] io::Error),
+    /// Error rendering a body to bytes/stream
+    #[error("Rendering form field `{field}`")]
+    BodyFormFieldRender {
+        field: String,
+        #[source]
+        error: RenderError,
+    },
+    /// Error rendering a body to bytes/stream
+    #[error("Rendering body")]
+    BodyRender(#[source] RenderError),
+    /// Error while streaming bytes for a body
+    #[error("Streaming request body")]
+    BodyStream(#[source] RenderError),
+
+    /// Error assembling the final request
+    #[error(transparent)]
+    Build(#[from] reqwest::Error),
+
+    /// Header name does not meet the HTTP spec
+    #[error("Invalid header name `{header}`")]
+    HeaderInvalidName {
+        header: String,
+        #[source]
+        error: InvalidHeaderName,
+    },
+    /// Header name does not meet the HTTP spec
+    #[error("Invalid header name `{header}`")]
+    HeaderInvalidValue {
+        header: String,
+        #[source]
+        error: InvalidHeaderValue,
+    },
+    /// Header value does not meet the HTTP spec
+    #[error("Invalid value for header `{header}`")]
+    HeaderRender {
+        header: String,
+        #[source]
+        error: RenderError,
+    },
+
+    /// Attempted to generate a cURL command for a request with non-UTF-8
+    /// values, which we don't support representing in the generated command
+    #[error("Non-text value in curl output")]
+    CurlInvalidUtf8(#[source] Utf8Error),
+
+    /// Error rendering query parameter
+    #[error("Rendering query parameter `{parameter}`")]
+    QueryRender {
+        parameter: String,
+        #[source]
+        error: RenderError,
+    },
+
+    /// Tried to build a recipe that doesn't exist
+    #[error(transparent)]
+    RecipeUnknown(#[from] UnknownRecipeError),
+
+    /// URL rendered correctly but the result isn't a valid URL
+    #[error("Invalid URL")]
+    UrlInvalid {
+        url: String,
+        #[source]
+        error: url::ParseError,
+    },
+    /// Error rendering URL
+    #[error("Rendering URL")]
+    UrlRender(#[source] RenderError),
 }
 
 /// An error that can occur during a request. This does *not* including building
@@ -856,10 +941,9 @@ impl PartialEq for RequestBuildError {
     .request.id,
 )]
 pub struct RequestError {
-    /// Underlying error. This will always be a `reqwest::Error`, but wrapping
-    /// it in anyhow makes it easier to render
+    /// Underlying error
     #[source]
-    pub error: anyhow::Error,
+    pub error: reqwest::Error,
 
     /// The request that caused all this ruckus
     pub request: Arc<RequestRecord>,
@@ -876,6 +960,17 @@ impl PartialEq for RequestError {
             && self.request == other.request
             && self.start_time == other.start_time
             && self.end_time == other.end_time
+    }
+}
+
+/// Error fetching a previous request in [HttpProvider::get_latest_request]
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct StoredRequestError(pub Box<dyn 'static + Error + Send + Sync>);
+
+impl StoredRequestError {
+    pub fn new<E: 'static + Error + Send + Sync>(error: E) -> Self {
+        Self(Box::new(error))
     }
 }
 

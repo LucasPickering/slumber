@@ -86,12 +86,13 @@ pub fn create_parent(path: &Path) -> anyhow::Result<()> {
 /// absolute path.
 #[cfg(any(debug_assertions, test))]
 pub fn get_repo_root() -> &'static Path {
-    use crate::ResultTraced;
     use std::{process::Command, sync::OnceLock};
 
     static CACHE: OnceLock<PathBuf> = OnceLock::new();
 
     CACHE.get_or_init(|| {
+        use crate::ResultTracedAnyhow;
+
         let try_get = || -> anyhow::Result<PathBuf> {
             let output = Command::new("git")
                 .args(["rev-parse", "--show-toplevel"])

@@ -1,8 +1,7 @@
 use crate::{
     collection::Authentication,
-    http::{BodyStream, HttpMethod, RenderedBody},
+    http::{BodyStream, HttpMethod, RenderedBody, RequestBuildErrorKind},
 };
-use anyhow::Context;
 use bytes::BytesMut;
 use futures::TryStreamExt;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
@@ -39,7 +38,10 @@ impl CurlBuilder {
     }
 
     /// Add an entire map of headers to the command
-    pub fn headers(mut self, headers: &HeaderMap) -> anyhow::Result<Self> {
+    pub fn headers(
+        mut self,
+        headers: &HeaderMap,
+    ) -> Result<Self, RequestBuildErrorKind> {
         for (name, value) in headers {
             self = self.header(name, value)?;
         }
@@ -51,7 +53,7 @@ impl CurlBuilder {
         mut self,
         name: &HeaderName,
         value: &HeaderValue,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, RequestBuildErrorKind> {
         let value = as_text(value.as_bytes())?;
         self.push(["--header".into(), format!("'{name}: {value}'").into()]);
         Ok(self)
@@ -87,7 +89,10 @@ impl CurlBuilder {
 
     /// Add a body to the command. This is async because the body may be an
     /// stream that needs to be resolved.
-    pub async fn body(mut self, body: RenderedBody) -> anyhow::Result<Self> {
+    pub async fn body(
+        mut self,
+        body: RenderedBody,
+    ) -> Result<Self, RequestBuildErrorKind> {
         match body {
             RenderedBody::Raw(bytes) => {
                 let body = as_text(&bytes)?;
@@ -107,7 +112,11 @@ impl CurlBuilder {
             // Any other type of has to be resolved eagerly since curl
             // doesn't support them natively
             RenderedBody::Stream(stream) => {
-                let bytes = stream.stream.try_collect::<BytesMut>().await?;
+                let bytes = stream
+                    .stream
+                    .try_collect::<BytesMut>()
+                    .await
+                    .map_err(RequestBuildErrorKind::BodyStream)?;
                 let body = as_text(&bytes)?;
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
@@ -132,8 +141,11 @@ impl CurlBuilder {
                         let path = path.to_string_lossy();
                         format!("'{field}=@{path}'")
                     } else {
-                        let bytes =
-                            stream.stream.try_collect::<BytesMut>().await?;
+                        let bytes = stream
+                            .stream
+                            .try_collect::<BytesMut>()
+                            .await
+                            .map_err(RequestBuildErrorKind::BodyStream)?;
                         let text = as_text(&bytes)?;
                         format!("'{field}={text}'")
                     };
@@ -156,7 +168,6 @@ impl CurlBuilder {
 }
 
 /// Convert bytes to text, or return an error if it's not UTF-8
-fn as_text(bytes: &[u8]) -> anyhow::Result<&str> {
-    std::str::from_utf8(bytes)
-        .context("curl command generation only supports text values")
+fn as_text(bytes: &[u8]) -> Result<&str, RequestBuildErrorKind> {
+    std::str::from_utf8(bytes).map_err(RequestBuildErrorKind::CurlInvalidUtf8)
 }

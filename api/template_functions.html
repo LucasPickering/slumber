@@ -1,0 +1,618 @@
+<!--
+Copied from https://github.com/rust-lang/mdBook/blob/v0.4.43/src/theme/index.hbs
+Overridden to remove prev/next page buttons because they're big and useless
+-->
+
+
+<!DOCTYPE HTML>
+<html lang="en" class="dark sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Template Functions - Slumber</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/pagetoc.css">
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "dark";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('dark')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Slumber</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber/edit/master/docs/src/api/template_functions.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="template-functions"><a class="header" href="#template-functions">Template Functions</a></h1>
+<h2 id="reading-function-signatures"><a class="header" href="#reading-function-signatures">Reading Function Signatures</a></h2>
+<p>The function signatures below borrow from TypeScript to describe the arguments a function accepts and the value it returns:</p>
+<pre><code class="language-typescript">f(arg1: boolean, arg2: string[], arg3?: string): bytes
+</code></pre>
+<p>The function <code>f</code> accepts two required positional arguments (<code>arg1</code> and <code>arg2</code>) and one optional keyword argument (<code>arg3</code>), and returns a <code>bytes</code>.</p>
+<h3 id="types"><a class="header" href="#types">Types</a></h3>
+<p><code>value</code> is the top-level type. It represents any <a href="../user_guide/templates/values.html">template value</a>.</p>
+<p>The following types are scalar (i.e. not collections):</p>
+<ul>
+<li><code>boolean</code></li>
+<li><code>float</code></li>
+<li><code>integer</code></li>
+<li><code>string</code></li>
+<li><code>bytes</code></li>
+</ul>
+<p>Array types accept an array of a single type: <code>string[]</code> accepts <code>["a", "b", "c"]</code> but not <code>["a", 1, false]</code>.</p>
+<p>Type unions allow values that match <em>any</em> of the members: <code>"a" | "b"</code> accepts the string <code>"a"</code> or the string <code>"b"</code>.</p>
+<p>Some functions define custom types such as <code>JsonPath</code>, which are generally a narrowing of the <code>string</code> type. These will be described on a case-by-case basis in the function descriptions.</p>
+<h3 id="arguments"><a class="header" href="#arguments">Arguments</a></h3>
+<p>Arguments with a <code>?</code> are optional keyword arguments. Those without <code>?</code> are required positional arguments. See <a href="../user_guide/templates/functions.html#arguments">Arguments</a> for more.</p>
+<h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
+<!-- Function docs are autogenerated. See crates/core/src/render/functions.rs -->
+<h3 id="base64"><a class="header" href="#base64">base64</a></h3>
+<pre><code class="language-typescript">base64(value: bytes, decode?: boolean): bytes
+</code></pre>
+<p>Encode or decode content to/from base64.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>decode</code>: Decode the input from base64 to its original value instead of
+encoding it <em>to</em> base64</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>decode=true</code> and the string is not valid base64</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ base64("test") }} =&gt; "dGVzdA=="
+{{ base64("dGVzdA==", decode=true) }} =&gt; "test"
+</code></pre>
+<h3 id="boolean"><a class="header" href="#boolean">boolean</a></h3>
+<pre><code class="language-typescript">boolean(value: value): boolean
+</code></pre>
+<p>Convert a value to a boolean. Empty values such as <code>0</code>, <code>""</code> or <code>[]</code>
+convert to <code>false</code>. Anything else converts to <code>true</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: Value to convert</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ boolean(null) }} =&gt; false
+{{ boolean(0) }} =&gt; false
+{{ boolean(1) }} =&gt; true
+{{ boolean('') }} =&gt; false
+{{ boolean('0') }} =&gt; true
+{{ boolean([]) }} =&gt; false
+{{ boolean([0]) }} =&gt; true
+</code></pre>
+<h3 id="command"><a class="header" href="#command">command</a></h3>
+<pre><code class="language-typescript">command(command: string[], cwd?: string, stdin?: bytes): bytes
+</code></pre>
+<p>Run a command in a subprocess and return its stdout output. While the output
+type is <code>bytes</code>, <a href="../user_guide/templates/values.html#bytes-vs-string">in most cases you can use it interchangeably as a
+string</a>.</p>
+<p>This function supports <a href="../user_guide/streaming.html">streaming</a>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>command</code>: Command to run, in the form <code>[program, arg1, arg2, ...]</code></li>
+<li><code>cwd</code>: Directory to execute the subprocess in. Defaults to the directory
+containing the collection file. For example, if the collection is
+<code>/data/slumber.yml</code>, the subprocess will execute in <code>/data</code> regardless of
+where Slumber is invoked from. The given path will be resolved relative to
+that default.</li>
+<li><code>stdin</code>: Data to pipe to the subprocess's stdin</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If the command fails to initialize (e.g. the program is unknown)</li>
+<li>If the subprocess exits with a non-zero status code</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ command(["echo", "hello"]) }} =&gt; "hello\n"
+{{ command(["grep", "1"], stdin="line 1\nline2") }} =&gt; "line 1\n"
+</code></pre>
+<blockquote>
+<p><code>command</code> is commonly paired with <a href="#trim"><code>trim</code></a> to remove trailing
+newlines from command output: <code>{{ command(["echo", "hello"]) | trim() }}</code></p>
+</blockquote>
+<h3 id="concat"><a class="header" href="#concat">concat</a></h3>
+<pre><code class="language-typescript">concat(elements: string[]): string
+</code></pre>
+<p>Concatenate any number of strings together</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>elements</code>: Strings to concatenate together. Any non-string values will be
+stringified</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ concat(['My name is ', name, ' and I am ', age]) }} =&gt; "My name is Ted and I am 37"
+{{ file("data.json") | jsonpath("$.users[*].name") | concat() }} =&gt; Concatenate all names in the JSON together
+</code></pre>
+<h3 id="debug"><a class="header" href="#debug">debug</a></h3>
+<pre><code class="language-typescript">debug(value: value): value
+</code></pre>
+<p>Print a value to stdout, returning the same value. This isn't very useful
+in the TUI because stdout gets clobbered, but it can be helpful for
+debugging templates with the CLI.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: The value to print and return</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ debug("hello") }} =&gt; "hello" (also prints "hello" to stdout)
+{{ file("data.json") | debug() | jsonpath("$.data") }} =&gt; Extract data field and print intermediate result
+</code></pre>
+<h3 id="env"><a class="header" href="#env">env</a></h3>
+<pre><code class="language-typescript">env(variable: string): string
+</code></pre>
+<p>Get the value of an environment variable, or <code>""</code> if not set.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>variable</code>: Name of the environment variable to read</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ env("HOME") }} =&gt; "/home/username"
+{{ env("NONEXISTENT") }} =&gt; null
+</code></pre>
+<h3 id="file"><a class="header" href="#file">file</a></h3>
+<pre><code class="language-typescript">file(path: string): bytes
+</code></pre>
+<p>Load contents of a file. While the output type is <code>bytes</code>,
+<a href="../user_guide/templates/values.html#bytes-vs-string">in most cases you can use it interchangeably as a
+string</a>. <code>bytes</code>
+support means you can also use this to load binary files such as images,
+which can be useful for request bodies.</p>
+<p>This function supports <a href="../user_guide/streaming.html">streaming</a>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>path</code>: Path to the file to read, relative to the collection file
+(<code>slumber.yml</code>) in use. A leading <code>~</code> will be expanded to your home
+directory (<code>$HOME</code>).</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If an I/O error occurs while opening the file (e.g. file missing)</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ file("config.json") }} =&gt; Contents of config.json file
+</code></pre>
+<h3 id="float"><a class="header" href="#float">float</a></h3>
+<pre><code class="language-typescript">float(value: value): float
+</code></pre>
+<p>Convert a value to a float</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: Value to convert</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a string or byte string that doesn't parse to a float, or an
+inconvertible type such as an array</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ float('3.5') }} =&gt; 3.5
+{{ float(b'3.5') }} =&gt; 3.5
+{{ float(3) }} =&gt; 3.0
+{{ float(null) }} =&gt; 0.0
+{{ float(false) }} =&gt; 0.0
+{{ float(true) }} =&gt; 1.0
+</code></pre>
+<h3 id="integer"><a class="header" href="#integer">integer</a></h3>
+<pre><code class="language-typescript">integer(value: value): integer
+</code></pre>
+<p>Convert a value to an int</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: Value to convert</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a string or byte string that doesn't parse to an integer, or
+an inconvertible type such as an array</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ integer('3') }} =&gt; 3
+{{ integer(b'3') }} =&gt; 3
+{{ integer(3.5) }} =&gt; 3
+{{ integer(null) }} =&gt; 0
+{{ integer(false) }} =&gt; 0
+{{ integer(true) }} =&gt; 1
+</code></pre>
+<h3 id="json_parse"><a class="header" href="#json_parse">json_parse</a></h3>
+<pre><code class="language-typescript">json_parse(value: string): value
+</code></pre>
+<p>Parse a JSON string to a template value.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: JSON string</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is not valid JSON</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ json_parse('{"name": "Alice"}') }} =&gt; {"name": "Alice"}
+# Commonly combined with file() or response() because they spit out raw JSON
+{{ file('body.json') | json_parse() }} =&gt; {"name": "Alice"}"
+{{ response('get_user') | json_parse() }} =&gt; {"name": "Alice"}"
+</code></pre>
+<p>This can be used in <code>json</code> request bodies to create dynamic non-string
+values.</p>
+<pre><code class="language-yaml">body:
+type: json
+data: {
+"data": "{{ response('get_user') | json_parse() }}"
+}
+</code></pre>
+<p>This will render a request body like:</p>
+<pre><code class="language-json">{"data": {"name": "Alice"}}
+</code></pre>
+<h3 id="jsonpath"><a class="header" href="#jsonpath">jsonpath</a></h3>
+<pre><code class="language-typescript">jsonpath(query: JsonPath, value: value, mode?: "auto" | "single" | "array"): value
+</code></pre>
+<p>Transform a JSON value using a JSONPath query. See
+<a href="https://datatracker.ietf.org/doc/html/rfc9535">JSONPath specification</a> or
+<a href="https://jsonpath.com/">jsonpath.com</a> for query syntax.</p>
+<p>This function is most useful when used after a data-providing function such
+as <a href="#file"><code>file</code></a> or <a href="#response"><code>response</code></a>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: JSON value to query. If this is a string or bytes, it will be
+parsed as JSON before being queried. If it's already a structured value
+(bool, array, etc.), it will be mapped directly to JSON. This value is
+typically piped in from the output of <code>response()</code> or <code>file()</code>.</li>
+<li><code>query</code>: JSONPath query string</li>
+<li><code>mode</code> (default: <code>"auto"</code>): How to handle multiple results (see table
+below)</li>
+</ul>
+<p>An explanation of <code>mode</code> using this object as an example:</p>
+<pre><code class="language-json">[{ "name": "Apple" }, { "name": "Kiwi" }, { "name": "Mango" }]
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Mode</th><th>Description</th><th><code>$.id</code></th><th><code>$[0].name</code></th><th><code>$[*].name</code></th></tr></thead><tbody>
+<tr><td><code>auto</code></td><td>If query returns a single value, use it. If it returns multiple, use a JSON array</td><td>Error</td><td><code>Apple</code></td><td><code>["Apple", "Kiwi", "Mango"]</code></td></tr>
+<tr><td><code>single</code></td><td>If a query returns a single value, use it. Otherwise, error.</td><td>Error</td><td><code>Apple</code></td><td>Error</td></tr>
+<tr><td><code>array</code></td><td>Return results as an array, regardless of count.</td><td><code>[]</code></td><td><code>["Apple"]</code></td><td><code>["Apple", "Kiwi", "Mango"]</code></td></tr>
+</tbody></table>
+</div>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a string with invalid JSON</li>
+<li>If the query returns no results and <code>mode='auto'</code> or <code>mode='single'</code></li>
+<li>If the query returns 2+ results and <code>mode='single'</code></li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ response('get_user') | jsonpath("$.first_name") }} =&gt; "Alice"
+</code></pre>
+<h3 id="prompt"><a class="header" href="#prompt">prompt</a></h3>
+<pre><code class="language-typescript">prompt(message?: string, default?: string, sensitive?: boolean): string
+</code></pre>
+<p>Prompt the user to enter a text value.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>message</code>: Optional prompt message to display to the user</li>
+<li><code>default</code>: Optional default value to pre-fill the input</li>
+<li><code>sensitive</code>: Mask the input while typing. Unlike the
+<a href="#sensitive"><code>sensitive</code></a> function, which masks <em>output</em> values, this flag
+enables masking on the input <em>and</em> output. This means it's redundant to
+combine <code>sensitive</code> with <code>prompt</code>.</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If the user doesn't give a response</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh"># Prompt with no message. User may be confused!
+{{ prompt() }} =&gt; "What do I put here? Help!!"
+# Prompts with custom message
+{{ prompt(message="Enter your name") }} =&gt; "Barry Barracuda"
+# Mask input while the user types
+{{ prompt(message="Password", sensitive=true) }} =&gt; "hunter2"
+</code></pre>
+<h3 id="response"><a class="header" href="#response">response</a></h3>
+<pre><code class="language-typescript">response(recipe_id: string, trigger?: "never" | "no_history" | "always" | Duration): bytes
+</code></pre>
+<p>Load the most recent response body for the given recipe and current profile.
+While the output type is <code>bytes</code>, <a href="../user_guide/templates/values.html#bytes-vs-string">in most cases you can use it
+interchangeably as a
+string</a>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>recipe_id</code>: ID (<strong>not</strong> name) of the recipe to load the response from</li>
+<li><code>trigger</code>: When to execute the upstream request</li>
+</ul>
+<p>An explanation of <code>trigger</code>:</p>
+<div class="table-wrapper"><table><thead><tr><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>"never"</code></td><td>Never trigger. The most recent response in history for the upstream recipe will always be used; error if there is none</td></tr>
+<tr><td><code>"no_history"</code></td><td>Trigger only if there is no response in history for the upstream recipe</td></tr>
+<tr><td><code>"always"</code></td><td>Always execute the upstream request</td></tr>
+<tr><td><code>Duration</code></td><td>Trigger if the most recent response for the upstream recipe is older than some duration, or there is none</td></tr>
+</tbody></table>
+</div>
+<p><code>Duration</code> is a <code>string</code> in the format <code>&lt;quantity&gt;&lt;unit&gt;...</code>, e.g. <code>"3h"</code>.
+Supported units are:</p>
+<ul>
+<li><code>s</code> (seconds)</li>
+<li><code>m</code> (minutes)</li>
+<li><code>h</code> (hours)</li>
+<li><code>d</code> (days)</li>
+</ul>
+<p>Multiple units can be combined:</p>
+<ul>
+<li><code>"10h5m"</code>: 10 hours and 5 minutes</li>
+<li><code>"3d2s"</code>: 3 days and 2 seconds</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>recipe</code> isn't in the collection</li>
+<li>If there is no request in history and <code>trigger='never'</code></li>
+<li>If a request is triggered and failed</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh"># Use the most recent response body. Error if there are no responses in history
+{{ response("login") }} =&gt; {"token": "abc123"}
+# Re-execute if older than 1 hour
+{{ response("login", trigger="1h") }} =&gt; {"token": "abc123"}
+# Combine with jsonpath for data extraction
+{{ response("login") | jsonpath("$.token") }} =&gt; "abc123"
+</code></pre>
+<blockquote>
+<p><code>response</code> is commonly combined with <a href="#jsonpath"><code>jsonpath</code></a> to extract
+data from JSON responses</p>
+</blockquote>
+<h3 id="response_header"><a class="header" href="#response_header">response_header</a></h3>
+<pre><code class="language-typescript">response_header(recipe_id: string, header: string, trigger?: "never" | "no_history" | "always" | Duration): bytes
+</code></pre>
+<p>Load a header value from the most recent response for a recipe and the
+current profile. While the output type is <code>bytes</code>,
+<a href="../user_guide/templates/values.html#bytes-vs-string">in most cases you can use it interchangeably as a
+string</a>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>recipe_id</code>: ID (<strong>not</strong> name) of the recipe to load the response from</li>
+<li><code>header</code>: Name of the header to extract (case-insensitive)</li>
+<li><code>trigger</code>: When to execute the upstream request vs using the cached
+response; <a href="#response">see <code>response</code></a></li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>recipe</code> isn't in the collection</li>
+<li>If there is no request in history and <code>trigger='never'</code></li>
+<li>If a request is triggered and failed</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh"># Fetch current rate limit, refreshed if older than 5 minutes
+{{ response_header("get_rate_limit", "X-Rate-Limit", trigger="5m") }} =&gt; Value of X-Rate-Limit response header
+</code></pre>
+<h3 id="select"><a class="header" href="#select">select</a></h3>
+<pre><code class="language-typescript">select(options: string[], message?: string): string
+</code></pre>
+<p>Ask the user to select a value from a list.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>options</code>: List of options to choose from</li>
+<li><code>message</code>: Descriptive message to display to the user</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>options</code> is empty</li>
+<li>If the user doesn't give a response</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ select(["dev", "staging", "prod"]) }} =&gt; "dev"
+# Custom prompt message
+{{ select(["GET", "POST", "PUT"], message="HTTP method") }} =&gt; "POST"
+</code></pre>
+<h3 id="sensitive"><a class="header" href="#sensitive">sensitive</a></h3>
+<pre><code class="language-typescript">sensitive(value: string): string
+</code></pre>
+<p>Mark a value as sensitive, masking it in template previews. This has no
+impact on how requests are actually sent, it only prevents sensitive values
+such as passwords from being displayed in the recipe preview.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: String to mask</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ sensitive("hunter2") }} =&gt; "•••••••" (in preview)
+</code></pre>
+<h3 id="string"><a class="header" href="#string">string</a></h3>
+<pre><code class="language-typescript">string(value: value): string
+</code></pre>
+<p>Stringify a value. Any value can be converted to a string except for
+non-UTF-8 bytes</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: Value to stringify</li>
+</ul>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a byte string that isn't valid UTF-8</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ string('hello') }} =&gt; "hello"
+{{ string(b'hello') }} =&gt; "hello"
+{{ string([1, 2, 3]) }} =&gt; "[1, 2, 3]"
+</code></pre>
+<h3 id="trim"><a class="header" href="#trim">trim</a></h3>
+<pre><code class="language-typescript">trim(value: string, mode?: "start" | "end" | "both"): string
+</code></pre>
+<p>Trim whitespace from the beginning and/or end of a string.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value</code>: String to trim (typically piped in from a previous function with
+<code>|</code>)</li>
+<li><code>mode</code> (default: <code>"both"</code>): Section of the string to trim</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">{{ trim("  hello  ") }} =&gt; "hello"
+{{ trim("  hello  ", mode="start") }} =&gt; "hello  "
+# Remove trailing newline from command output
+{{ command(["echo", "hello"]) | trim() }} =&gt; "hello"
+</code></pre>
+
+                    </main>
+                </div>
+            </div>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../theme/pagetoc.js"></script>
+
+
+    </div>
+    </body>
+</html>

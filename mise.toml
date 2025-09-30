@@ -21,6 +21,7 @@ RUST_BACKTRACE = "1"
 [tools]
 "cargo:mdbook-pagetoc" = "0.2.0"
 mdbook = "0.4"
+python = "3.12"
 vhs = "latest"
 # ttyd is required for vhs. On macOS the only installation option is brew.
 # There are no prebuilt binaries for macOS so we can't install via mise

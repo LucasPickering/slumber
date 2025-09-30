@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # fmt: off
 #MISE description="Generate GIFs from VHS tapes"
-#MISE tools=["vhs"]
+#MISE tools=["python", "vhs"]
 # fmt: on
 
 """
@@ -12,8 +12,9 @@ import argparse
 import glob
 import os
 import re
-import shutil
 import subprocess
+from tempfile import TemporaryDirectory
+from threading import Thread
 
 TAPE_DIR = "tapes/"
 OUTPUT_REGEX = re.compile(r"^Output \"(?P<path>.*)\"$")
@@ -39,24 +40,37 @@ def generate_all(tapes: list[str]) -> None:
     if not tapes:
         tapes = get_tapes()
     print(f"Generating GIFs for: {tapes}")
-    print(f"GIFs will be visible in {GIF_MD_FILE}")
 
     run(["cargo", "build"])
-    # As each GIF is generated, add it to a markdown file so it can be reviewed easily
-    with open(GIF_MD_FILE, "w") as f:
-        for tape in tapes:
+
+    threads: list[Thread] = []
+    gifs: list[str] = []
+    for tape in tapes:
+
+        def do_it() -> None:
             gif = generate(tape)
+            gifs.append(gif)
+
+        thread = Thread(target=do_it)
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+
+    # Add the GIFs to a markdown file so we can check them in one spot
+    with open(GIF_MD_FILE, "w") as f:
+        for gif in sorted(gifs):  # Determinism!
             f.write(f"{gif}\n\n![]({gif})\n\n")
-            f.flush()
 
     print(f"Don't forget to check all GIFs in {GIF_MD_FILE} before pushing!")
 
 
 def generate(tape_path: str) -> str:
     """Generate a single GIF. Return the path to the generated GIF"""
-    print("Deleting data/")
-    shutil.rmtree("data/", ignore_errors=True)
-    run(["vhs", tape_path])
+    with TemporaryDirectory() as temp_dir:
+        # Use a temporary dir for the DB so each gif is isolated
+        run(["vhs", tape_path], env={"SLUMBER_DB": temp_dir})
     return get_gif_path(tape_path)
 
 
@@ -65,7 +79,7 @@ def check_all(tapes: list[str]) -> None:
     if not tapes:
         tapes = get_tapes()
     latest_commit = run(["git", "rev-parse", "HEAD"])
-    failed = []
+    failed: list[str] = []
     for tape in tapes:
         gif = get_gif_path(tape)
         good = check(gif_path=gif, latest_commit=latest_commit)
@@ -106,8 +120,10 @@ def get_gif_path(tape_path: str) -> str:
     raise ValueError(f"Tape file {tape_path} missing Output declaration")
 
 
-def run(command: list[str]) -> str:
-    output = subprocess.check_output(command)
+def run(command: list[str], env: dict[str, str] | None = None) -> str:
+    if env is None:
+        env = {}
+    output = subprocess.check_output(command, env={**os.environ, **env})
     return output.decode().strip()
 
 

@@ -19,6 +19,8 @@ Type "x"
 Sleep 1s
 Enter
 Sleep 2s
-Type ":wq"
+# Don't write to the file because that triggers a reload, which can affect other
+# gifs being rendered concurrently
+Type ":q"
 Enter
 Sleep 1s

@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [4.1.0] - 2025-09-30
+
+<!-- ANCHOR: changelog -->
+
 ### Added
 
 - Add support for streaming large HTTP bodies with the new `stream` body type [#256](https://github.com/LucasPickering/slumber/issues/256)

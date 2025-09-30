@@ -3390,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "slumber"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "console-subscriber",
@@ -3404,7 +3404,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_cli"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3437,7 +3437,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_config"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "derive_more 1.0.0",
@@ -3462,7 +3462,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_core"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3507,7 +3507,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_import"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3539,7 +3539,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_macros"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3548,7 +3548,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_template"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3576,7 +3576,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_tui"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3617,7 +3617,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_util"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "derive_more 1.0.0",

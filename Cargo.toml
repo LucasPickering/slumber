@@ -20,7 +20,7 @@ homepage = "https://slumber.lucaspickering.me"
 keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
 repository = "https://github.com/LucasPickering/slumber"
-version = "4.0.1"
+version = "4.1.0"
 # Keep in sync w/ rust-toolchain.toml
 rust-version = "1.88.0"
 
@@ -51,14 +51,14 @@ serde_json = {version = "1.0.120", default-features = false, features = ["preser
 serde_json_path = "0.7.1"
 serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
-slumber_cli = {path = "./crates/cli", version = "4.0.1" }
-slumber_config = {path = "./crates/config", version = "4.0.1" }
-slumber_core = {path = "./crates/core", version = "4.0.1" }
-slumber_import = {path = "./crates/import", version = "4.0.1" }
-slumber_macros = {path = "./crates/macros", version = "4.0.1" }
-slumber_template = {path = "./crates/template", version = "4.0.1" }
-slumber_tui = {path = "./crates/tui", version = "4.0.1" }
-slumber_util = {path = "./crates/util", version = "4.0.1" }
+slumber_cli = {path = "./crates/cli", version = "4.1.0" }
+slumber_config = {path = "./crates/config", version = "4.1.0" }
+slumber_core = {path = "./crates/core", version = "4.1.0" }
+slumber_import = {path = "./crates/import", version = "4.1.0" }
+slumber_macros = {path = "./crates/macros", version = "4.1.0" }
+slumber_template = {path = "./crates/template", version = "4.1.0" }
+slumber_tui = {path = "./crates/tui", version = "4.1.0" }
+slumber_util = {path = "./crates/util", version = "4.1.0" }
 strum = {version = "0.26.3", default-features = false}
 syn = "2.0.101"
 terminput = "0.5.3"

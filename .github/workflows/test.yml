@@ -69,7 +69,7 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       - name: Doc
-        run: cargo doc --no-deps --all-features --document-private-items
+        run: cargo doc --no-deps --all-features --document-private-items --workspace
         env:
           RUSTDOCFLAGS: -D warnings
 

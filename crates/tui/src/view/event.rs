@@ -34,7 +34,7 @@ pub trait EventHandler {
     /// queue subsequent events, and the given message sender to queue async
     /// messages.
     ///
-    /// Generally event matching should be done with [Event::m] and the
+    /// Generally event matching should be done with [Event::opt] and the
     /// matching methods defined by [OptionEvent].
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         Some(event)
@@ -182,9 +182,9 @@ impl<T: EventHandler> ToChild for T {
     }
 }
 
-/// A mutable reference to the contents of [PersistedLazy] must be wrapped in
-/// [PersistedLazyRefMut], which requires us to return an owned child rather
-/// than a borrowed one.
+/// A mutable reference to the contents of [persisted::PersistedLazy] must be
+/// wrapped in [PersistedLazyRefMut], which requires us to return an owned child
+/// rather than a borrowed one.
 impl<S, K, C> ToChild for persisted::PersistedLazy<S, K, C>
 where
     S: PersistedStore<K>,

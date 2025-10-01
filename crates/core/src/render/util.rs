@@ -77,13 +77,13 @@ pub(crate) enum FieldCacheOutcome {
     /// The value is already in the cache
     Hit(Value),
     /// The value is not in the cache. Caller is responsible for inserting it
-    /// by calling [FutureCacheGuard::set] once computed.
+    /// by calling [FieldCacheGuard::set] once computed.
     Miss(FieldCacheGuard),
 }
 
 /// A handle for writing a computed future value back into the cache. This is
 /// returned once per key, to the first caller of that key. The caller is then
-/// responsible for calling [FutureCacheGuard::set] to insert the value for
+/// responsible for calling [FieldCacheGuard::set] to insert the value for
 /// everyone else. Subsequent callers to the cache will block until `set` is
 /// called.
 #[derive(Debug)]

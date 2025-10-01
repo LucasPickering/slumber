@@ -30,7 +30,7 @@ pub const ENV_PREFIX: &str = "env.";
 /// immutability.
 ///
 /// The original string is *not* stored. To recover the source string, use the
-/// [Display] implementation.
+/// `Display` implementation.
 ///
 /// Invariants:
 /// - Two templates with the same source string will have the same set of
@@ -49,7 +49,7 @@ pub(super) struct Template {
 /// any non-empty string that contains only alphanumeric characters, `-`, or
 /// `_`.
 ///
-/// Construct via [FromStr](std::str::FromStr)
+/// Construct via [FromStr]
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Deserialize)]
 #[serde(transparent)]
 pub(super) struct Identifier(pub String);
@@ -122,7 +122,7 @@ pub enum TemplateInputChunk {
 ///
 /// Potential optimizations if parsing is slow:
 /// - Use take_till or similar in raw string parsing
-/// - https://docs.rs/winnow/latest/winnow/_topic/performance/index.html
+/// - <https://docs.rs/winnow/latest/winnow/_topic/performance/index.html>
 fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateInputChunk>> {
     repeat_till(
         0..,

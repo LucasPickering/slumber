@@ -173,10 +173,11 @@ impl TemplateContext {
     }
 }
 
-/// A wrapper for [TemplateContext] that provides the [Context] trait. While
-/// [TemplateContext] is intended to be used for multiple renders within a
-/// render group, this is meant for an individual render. As such, it captures
-/// settings that can vary across different renders in the same group.
+/// A wrapper for [TemplateContext] that provides the
+/// [slumber_template::Context] trait. While [TemplateContext] is intended to be
+/// used for multiple renders within a render group, this is meant for an
+/// individual render. As such, it captures settings that can vary across
+/// different renders in the same group.
 #[derive(Debug, Deref)]
 pub struct SingleRenderContext<'a> {
     #[deref]

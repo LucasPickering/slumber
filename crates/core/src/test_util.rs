@@ -25,7 +25,7 @@ pub fn invalid_utf8() -> Template {
 /// Create an HTTP engine for building/sending requests. We need to create a new
 /// engine for each test because each reqwest client is bound to a specific
 /// tokio runtime, and each test gets its own runtime.
-/// See https://github.com/LucasPickering/slumber/pull/524
+/// See <https://github.com/LucasPickering/slumber/pull/524>
 #[fixture]
 pub fn http_engine() -> HttpEngine {
     HttpEngine::new(&HttpEngineConfig {

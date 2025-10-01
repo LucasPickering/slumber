@@ -543,7 +543,8 @@ where
 ///
 /// Examples: `30s`, `5m`, `12h`, `3d`
 ///
-/// Unlike v4, this does *not* support composite durations, just <number><unit>
+/// Unlike v4, this does *not* support composite durations, just
+/// `<number><unit>`
 fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,

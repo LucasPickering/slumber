@@ -34,8 +34,7 @@ use std::{fmt::Debug, sync::Arc};
 /// field resolution and function calls can be asynchronous.
 pub trait Context: Sized + Send + Sync {
     /// Does the render target support streaming? Typically this should return
-    /// `false`. To enable streaming, just call [Template::render_stream] and
-    /// the context will be wrapped to enable streaming.
+    /// `false`.
     ///
     /// This is a method on the context to avoid plumbing around a second object
     /// to all render locations.
@@ -45,9 +44,7 @@ pub trait Context: Sized + Send + Sync {
     /// where fields are derived from. Fields can also be computed dynamically
     /// and be `async`. For example, fields can be loaded from a map of nested
     /// templates, in which case the nested template would need to be rendered
-    /// before this can be returned. Rendered fields will be cached via the
-    /// cache returned by [Self::field_cache], so the same field will never be
-    /// requested twice for this context object.
+    /// before this can be returned.
     fn get_field(
         &self,
         identifier: &Identifier,
@@ -66,7 +63,7 @@ pub trait Context: Sized + Send + Sync {
 /// immutability.
 ///
 /// The original string is *not* stored. To recover the source string, use the
-/// [Display] implementation.
+/// `Display` implementation.
 ///
 /// Invariants:
 /// - Two templates with the same source string will have the same set of

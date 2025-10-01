@@ -328,7 +328,7 @@ impl FromSql for SqlWrap<StatusCode> {
 /// Char between header name and value
 const HEADER_FIELD_DELIM: u8 = b':';
 /// Char between header lines
-/// https://www.rfc-editor.org/rfc/rfc9110.html#name-field-values
+/// <https://www.rfc-editor.org/rfc/rfc9110.html#name-field-values>
 const HEADER_LINE_DELIM: u8 = b'\n';
 
 impl ToSql for SqlWrap<&HeaderMap> {

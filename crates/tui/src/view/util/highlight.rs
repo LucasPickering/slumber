@@ -114,10 +114,10 @@ fn get_config(content_type: ContentType) -> HighlightConfiguration {
 
 /// All highlight names that we support
 ///
-/// https://tree-sitter.github.io/tree-sitter/syntax-highlighting#highlights
+/// <https://tree-sitter.github.io/tree-sitter/syntax-highlighting#highlights>
 ///
 /// This enum should be the union of all highlight names in all supported langs:
-/// - https://github.com/tree-sitter/tree-sitter-json/blob/94f5c527b2965465956c2000ed6134dd24daf2a7/queries/highlights.scm
+/// - <https://github.com/tree-sitter/tree-sitter-json/blob/94f5c527b2965465956c2000ed6134dd24daf2a7/queries/highlights.scm>
 #[derive(Copy, Clone, Debug, EnumIter)]
 enum HighlightName {
     Comment,

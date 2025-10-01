@@ -25,7 +25,7 @@ use std::marker::PhantomData;
 pub struct List<'a, Item> {
     items: Vec<ListItem<Item>>,
     /// This *shouldn't* be required, but without it we hit this ICE:
-    /// https://github.com/rust-lang/rust/issues/124189
+    /// <https://github.com/rust-lang/rust/issues/124189>
     phantom: PhantomData<&'a ()>,
 }
 

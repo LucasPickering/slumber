@@ -24,7 +24,7 @@ type RenderResult = Result<LazyValue, RenderError>;
 pub enum Expression {
     /// A literal value such as `3`, `false`, or `"hello"`
     Literal(Literal),
-    /// Field access, as defined by [TemplateContext::get]
+    /// Field access, as defined by [Context::get_field]
     Field(Identifier),
     /// Array literal: `[1, "hello", f()]`
     Array(Vec<Self>),

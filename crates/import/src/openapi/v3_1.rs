@@ -327,7 +327,7 @@ impl<'a> RecipeBuilder<'a> {
     }
 
     /// Imperatively update the recipe according to a single security scheme
-    /// https://spec.openapis.org/oas/v3.1.0.html#security-scheme-object
+    /// <https://spec.openapis.org/oas/v3.1.0.html#security-scheme-object>
     fn process_security_scheme(&mut self, security_scheme: SecurityScheme) {
         // Where we need an auth value but don't have one, we'll create
         // a placeholder template. This should improve discoverability for

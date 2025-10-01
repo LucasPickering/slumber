@@ -458,7 +458,7 @@ impl AnnotatedNode for SourcedYaml<'_> {
 /// clone expensive paths into each one. The map also makes it easy to cache
 /// sources that get referenced multiple times.
 #[derive(Debug, Default)]
-struct SourceMap {
+pub struct SourceMap {
     /// A bijection between source IDs and paths. Each path is unique and gets
     /// assigned a unique ID. The ID is an index into this set.
     sources: IndexSet<PathBuf>,
@@ -594,7 +594,7 @@ impl<E> LocatedError<E> {
 }
 
 impl LocatedError<Error> {
-    /// Create a new [Other](Self::Other) from any error type
+    /// Create a new [Other](Error::Other) from any error type
     pub fn other(
         error: impl Into<Box<dyn StdError + Send + Sync>>,
         location: SourceLocation,
@@ -613,7 +613,7 @@ impl LocatedError<Error> {
         }
     }
 
-    /// Create a new [UnexpectedType](Self::UnexpectedType) from the expected
+    /// Create a new [Unexpected](Error::Unexpected) from the expected
     /// type and actual value
     pub fn unexpected(expected: Expected, actual: SourcedYaml) -> Self {
         // Find a useful representation of the received value

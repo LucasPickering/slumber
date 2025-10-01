@@ -204,8 +204,8 @@ impl<T> Component<T> {
             })
     }
 
-    /// Get a `Component` wrapping a [Child], which holds an [EventHandler]
-    /// trait object. Useful for returning from `[EventHandler::children]`.
+    /// Get a `Component` wrapping a [Child], which holds an `EventHandler`
+    /// trait object. Useful for returning from `EventHandler::children`.
     pub fn to_child_mut(&mut self) -> Component<Child<'_>>
     where
         T: ToChild,

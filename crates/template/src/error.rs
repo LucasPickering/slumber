@@ -157,7 +157,7 @@ pub struct WithValue<E> {
     pub value: Value,
     /// The error that occurred during conversion. This error is transparent,
     /// meaning we include its message in our own `Display` impl and
-    /// [StdError::source] returns its source
+    /// `Error::source` returns its source
     pub error: E,
 }
 
@@ -177,7 +177,7 @@ impl<E> WithValue<E> {
 }
 
 /// An error that can occur while converting from [Value] to some other type.
-/// This is returned from [TryFromValue].
+/// This is returned from [TryFromValue](crate::TryFromValue).
 #[derive(Debug, Error)]
 pub enum ValueError {
     /// Failed to parse a string to a float

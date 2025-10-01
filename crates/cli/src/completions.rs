@@ -108,7 +108,7 @@ pub fn complete_collection_specifier() -> ArgValueCompleter {
 /// For now we just lean on the default collection paths. In the future we
 /// should be able to look for a --file arg in the command and use that path,
 /// but clap doesn't support that yet
-/// https://github.com/clap-rs/clap/issues/5784
+/// <https://github.com/clap-rs/clap/issues/5784>
 fn load_collection() -> anyhow::Result<Collection> {
     let collection_file = CollectionFile::new(None)?;
     collection_file.load()

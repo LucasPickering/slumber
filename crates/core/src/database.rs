@@ -37,7 +37,7 @@ use uuid::Uuid;
 ///
 /// This uses an `Arc` internally, so it's safe and cheap to clone.
 ///
-/// Schema is defined in [migrations]
+/// Schema is defined in `migrations`
 #[derive(Clone, Debug)]
 pub struct Database {
     /// Data is stored in a sqlite DB. Mutex is needed for multi-threaded

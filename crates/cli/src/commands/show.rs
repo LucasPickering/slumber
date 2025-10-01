@@ -30,6 +30,7 @@ enum ShowTarget {
         /// See docs for how you can configure which editor to use:
         /// https://slumber.lucaspickering.me/user_guide/tui/editor.html#editing
         #[clap(long)]
+        #[expect(rustdoc::bare_urls)]
         edit: bool,
     },
     /// Print current request collection
@@ -42,6 +43,7 @@ enum ShowTarget {
         /// See docs for how you can configure which editor to use:
         /// https://slumber.lucaspickering.me/user_guide/tui/editor.html#editing
         #[clap(long)]
+        #[expect(rustdoc::bare_urls)]
         edit: bool,
     },
 }

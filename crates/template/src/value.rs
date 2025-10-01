@@ -204,8 +204,8 @@ impl<T: Into<Value>> From<T> for LazyValue {
     }
 }
 
-/// Metadata about the source of a [Stream]. This helps consumers present the
-/// stream to the user, e.g. in a template preview
+/// Metadata about the source of a [Stream](LazyValue::Stream). This helps
+/// consumers present the stream to the user, e.g. in a template preview
 #[derive(Clone, Debug, Display, PartialEq)]
 pub enum StreamSource {
     /// Stream from a subprocess
@@ -345,7 +345,7 @@ impl TryFromValue for serde_json::Value {
 }
 
 /// Implement [TryFromValue] for the given type by converting the [Value] to a
-/// [String], then using `T`'s [FromStr] implementation to convert to `T`.
+/// [String], then using `T`'s `FromStr` implementation to convert to `T`.
 ///
 /// This could be a derive macro, but decl is much simpler
 #[macro_export]
@@ -371,7 +371,7 @@ macro_rules! impl_try_from_value_str {
 ///
 /// This container holds all the data a template function may need to construct
 /// its own arguments. All given positional and keyword arguments are expected
-/// to be used, and [assert_consumed](Self::assert_consumed) should be called
+/// to be used, and [ensure_consumed](Self::ensure_consumed) should be called
 /// after extracting arguments to ensure no additional ones were passed.
 #[derive(Debug)]
 pub struct Arguments<'ctx, Ctx> {

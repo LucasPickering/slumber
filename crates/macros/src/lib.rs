@@ -170,9 +170,9 @@ impl ArgumentInfo {
 /// Track what attributes are on a function argument
 #[derive(Default)]
 struct ArgumentAttributes {
-    /// #[context] attribute is present
+    /// `#[context]` attribute is present
     context: bool,
-    /// #[kwarg] attribute is present
+    /// `#[kwarg]` attribute is present
     kwarg: bool,
 }
 

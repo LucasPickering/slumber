@@ -3,7 +3,8 @@
 //! [ResponseContent]. If you want to parse as a statically known content type,
 //! just use that struct. If you just need to refer to the content _type_, and
 //! not a value, use [ContentType]. If you want to parse dynamically based on
-//! the response's metadata, use [ResponseRecord::parse_body].
+//! the response's metadata, use [ContentType::from_headers] and
+//! [ContentType::parse_content].
 
 use anyhow::{Context, anyhow};
 use derive_more::{Deref, Display, From};

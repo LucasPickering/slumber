@@ -1,6 +1,6 @@
 //! Import request collections from VSCode `.rest` files or Jetbrains `.http`
-//! files. VSCode: https://github.com/Huachao/vscode-restclient
-//! Jetbrains: https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html
+//! files. VSCode: <https://github.com/Huachao/vscode-restclient>
+//! Jetbrains: <https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html>
 
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;

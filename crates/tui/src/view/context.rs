@@ -102,14 +102,14 @@ impl ViewContext {
         Self::with(|context| f(&context.database))
     }
 
-    /// Execute a function with immutable access to the [RecipeOverideStore]
+    /// Execute a function with immutable access to the [RecipeOverrideStore]
     pub fn with_override_store<T>(
         f: impl FnOnce(&RecipeOverrideStore) -> T,
     ) -> T {
         Self::with(|context| f(&context.recipe_override_store))
     }
 
-    /// Execute a function with mutable access to the [RecipeOverideStore]
+    /// Execute a function with mutable access to the [RecipeOverrideStore]
     pub fn with_override_store_mut<T>(
         f: impl FnOnce(&mut RecipeOverrideStore) -> T,
     ) -> T {
@@ -157,7 +157,7 @@ impl ViewContext {
     }
 }
 
-/// External data passed to [EventHandler::update]. This holds data that cannot
+/// External data passed to `EventHandler::update`. This holds data that cannot
 /// be held in [ViewContext], typically because of borrowing reasons.
 pub struct UpdateContext<'a> {
     pub request_store: &'a mut RequestStore,

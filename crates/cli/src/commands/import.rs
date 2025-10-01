@@ -16,6 +16,7 @@ use tracing::info;
 /// See docs for more info on formats:
 /// https://slumber.lucaspickering.me/cli/import.html
 #[derive(Clone, Debug, Parser)]
+#[expect(rustdoc::bare_urls)]
 pub struct ImportCommand {
     /// Input format
     format: Format,

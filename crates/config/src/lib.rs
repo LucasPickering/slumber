@@ -101,11 +101,12 @@ impl Config {
     /// Path to the configuration file, in this precedence:
     /// - Value of `$SLUMBER_CONFIG_PATH`
     /// - `$DATA_DIR/slumber/config.yml` **if the file exists**, where
-    ///   `$DATA_DIR` is defined by [dirs::data_dir]. This is a legacy location,
-    ///   supported for backward compatibility only. See this issue for more:
-    ///   https://github.com/LucasPickering/slumber/issues/371
+    ///   `$DATA_DIR` is defined by [paths::data_directory]. This is a legacy
+    ///   location, supported for backward compatibility only. See this issue
+    ///   for more:
+    ///   <https://github.com/LucasPickering/slumber/issues/371>
     /// - `$CONFIG_DIR/slumber/config.yml`, where `$CONFIG_DIR` is defined by
-    ///   [dirs::config_dir]
+    ///   [paths::config_directory]
     pub fn path() -> PathBuf {
         if let Ok(path) = env::var(PATH_ENV_VAR) {
             return expand_home(PathBuf::from(path)).into_owned();

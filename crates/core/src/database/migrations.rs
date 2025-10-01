@@ -112,7 +112,7 @@ pub fn migrations() -> Migrations<'static> {
 /// \>=3.0.0; they'll need to go to something in between (probably the final 2.x
 /// version) first.
 ///
-/// See https://github.com/LucasPickering/slumber/issues/306 for more info
+/// See <https://github.com/LucasPickering/slumber/issues/306> for more info
 fn migrate_requests_v2(transaction: &Transaction) -> HookResult {
     // There are 3 possible scenarios to cover:
     // 1. Fresh DB - user is starting Slumber for the first time on >=3.0.0

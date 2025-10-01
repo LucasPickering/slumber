@@ -35,7 +35,7 @@ struct Args {
 enum Subcommand {
     /// Check if the preprocessor supports a particular renderer
     ///
-    /// https://rust-lang.github.io/mdBook/for_developers/preprocessors.html#hooking-into-mdbook
+    /// <https://rust-lang.github.io/mdBook/for_developers/preprocessors.html#hooking-into-mdbook>
     Supports { renderer: String },
 }
 

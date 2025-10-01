@@ -99,7 +99,7 @@ impl FromStr for Identifier {
 ///
 /// Potential optimizations if parsing is slow:
 /// - Use take_till or similar in raw string parsing
-/// - https://docs.rs/winnow/latest/winnow/_topic/performance/index.html
+/// - <https://docs.rs/winnow/latest/winnow/_topic/performance/index.html>
 fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateChunk>> {
     repeat_till(
         0..,

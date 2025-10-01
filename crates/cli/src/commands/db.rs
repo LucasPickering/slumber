@@ -12,7 +12,7 @@ use tokio::process::Command;
 /// requires `sqlite3` to be installed. You can customize which binary to invoke
 /// with `--shell`. Read more about the Slumber database:
 ///
-/// https://slumber.lucaspickering.me/user_guide/database.html
+/// <https://slumber.lucaspickering.me/user_guide/database.html>
 ///
 /// This is simply an alias to make it easy to run your preferred SQLite shell
 /// against the Slumber database. These two commands are equivalent:
@@ -33,6 +33,7 @@ use tokio::process::Command;
 ///
 ///   slumber db 'select 1'
 #[derive(Clone, Debug, Parser)]
+#[expect(rustdoc::invalid_html_tags)]
 #[clap(verbatim_doc_comment)]
 pub struct DbCommand {
     /// Program to execute

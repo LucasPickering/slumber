@@ -4,30 +4,6 @@
   "description": "App-level configuration, which is global across all sessions and\ncollections. This is *not* meant to modifiable during a session. If changes\nare made to the config file while a TUI session is running, they won't be\npicked up until the app restarts.",
   "type": "object",
   "properties": {
-    "commands": {
-      "description": "Configuration for in-app query and export commands",
-      "$ref": "#/$defs/CommandsConfig",
-      "default": {
-        "shell": [
-          "/bin/sh",
-          "-c"
-        ],
-        "default_query": {}
-      }
-    },
-    "editor": {
-      "description": "Command to use for in-app editing. If provided, overrides\n`VISUAL`/`EDITOR` environment variables. This only supports a single\ncommand, *not* a content type map. This is because there isn't much\nvalue in it, and plumbing the content type around to support it is\nannoying.",
-      "type": [
-        "string",
-        "null"
-      ],
-      "default": null
-    },
-    "pager": {
-      "description": "Command to use to browse response bodies. If provided, overrides\n`PAGER` environment variable.  This could be a single command, or a map\nof {content_type: command} to use different commands based on response\ntype. Aliased for backward compatibility with the old name.",
-      "$ref": "#/$defs/MimeMap",
-      "default": {}
-    },
     "ignore_certificate_hosts": {
       "description": "TLS cert errors on these hostnames are ignored. Be careful!",
       "type": "array",
@@ -48,8 +24,32 @@
       "type": "boolean",
       "default": true
     },
+    "commands": {
+      "description": "Configuration for in-app query and export commands",
+      "$ref": "#/$defs/CommandsConfig",
+      "default": {
+        "shell": [
+          "/bin/sh",
+          "-c"
+        ],
+        "default_query": {}
+      }
+    },
+    "editor": {
+      "description": "Command to use for in-app editing. If provided, overrides\n`VISUAL`/`EDITOR` environment variables. This only supports a\nsingle command, *not* a content type map. This is because\nthere isn't much value in it, and plumbing the content type\naround to support it is annoying.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "pager": {
+      "description": "Command to use to browse response bodies. If provided, overrides\n`PAGER` environment variable.  This could be a single command, or a\nmap of {content_type: command} to use different commands\nbased on response type. Aliased for backward compatibility\nwith the old name.",
+      "$ref": "#/$defs/MimeMap",
+      "default": {}
+    },
     "preview_templates": {
-      "description": "Should templates be rendered inline in the UI, or should we show the\nraw text?",
+      "description": "Should templates be rendered inline in the UI, or should we show\nthe raw text?",
       "type": "boolean",
       "default": true
     },
@@ -170,13 +170,16 @@
       }
     },
     "persist": {
-      "description": "Enable/disable persistence for all TUI requests? The CLI ignores this\nin favor of the absence/presence of the `--persist` flag",
+      "description": "Enable/disable persistence for all TUI requests? The CLI ignores\nthis in favor of the absence/presence of the `--persist`\nflag",
       "type": "boolean",
       "default": true
     }
   },
   "examples": [
     {
+      "ignore_certificate_hosts": [],
+      "large_body_size": 1000000,
+      "follow_redirects": true,
       "commands": {
         "shell": [
           "/bin/sh",
@@ -186,9 +189,6 @@
       },
       "editor": null,
       "pager": {},
-      "ignore_certificate_hosts": [],
-      "large_body_size": 1000000,
-      "follow_redirects": true,
       "preview_templates": true,
       "input_bindings": {
         "quit": [

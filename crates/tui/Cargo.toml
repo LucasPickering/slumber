@@ -29,7 +29,7 @@ reqwest = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}
 shell-words = "1.1.0"
-slumber_config = {workspace = true}
+slumber_config = {workspace = true, features = ["tui"]}
 slumber_core = {workspace = true}
 slumber_template = {workspace = true}
 slumber_util = {workspace = true}

@@ -13,17 +13,17 @@ version = {workspace = true}
 [dependencies]
 anyhow = {workspace = true}
 derive_more = {workspace = true, features = ["deref", "display"]}
-editor-command = "1.0.0"
-glob = "0.3.2"
+editor-command = {version = "1.0.0", optional = true}
+glob = {version = "0.3.2", optional = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
-mime = {workspace = true}
-ratatui-core = {version = "0.1.0-alpha.6", default-features = false, features = ["serde"]}
+mime = {workspace = true, optional = true}
+ratatui-core = {version = "0.1.0-alpha.6", default-features = false, features = ["serde"], optional = true}
 schemars = {workspace = true, features = ["indexmap2"], optional = true}
-serde = {workspace = true}
+serde = {workspace = true, features = ["derive"]}
 serde_yaml = {workspace = true}
 slumber_util = {workspace = true}
-terminput = {workspace = true}
+terminput = {workspace = true, optional = true}
 tracing = {workspace = true}
 
 [dev-dependencies]
@@ -36,6 +36,8 @@ slumber_util = {workspace = true, features = ["test"]}
 
 [features]
 schema = ["dep:schemars"]
+# TUI-specific config fields and dependencies are gated behind this flag
+tui = ["dep:editor-command", "dep:glob", "dep:mime", "dep:ratatui-core", "dep:terminput"]
 
 [lints]
 workspace = true

@@ -7,7 +7,7 @@ edition = "2024"
 # Script doesn't support workspaces yet so we have to redefine deps
 clap = {version = "4", default-features = false, features = ["derive", "std"]}
 schemars = "1.0"
-slumber_config = {path = "../crates/config", features = ["schema"]}
+slumber_config = {path = "../crates/config", features = ["schema", "tui"]}
 slumber_core = {path = "../crates/core", features = ["schema"]}
 serde_json = "1.0"
 ---

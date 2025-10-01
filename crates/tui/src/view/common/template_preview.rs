@@ -82,7 +82,7 @@ impl TemplatePreview {
 
         // Trigger a task to render the preview and write the answer back into
         // the mutex
-        if tui_context.config.preview_templates {
+        if tui_context.config.tui.preview_templates {
             let destination = Arc::clone(&text);
             let on_complete = move |c| {
                 Self::calculate_rendered_text(

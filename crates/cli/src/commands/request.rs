@@ -303,8 +303,8 @@ impl DisplayExchangeCommand {
     }
 }
 
-/// [HttpProvider] for the CLI. This will _not_ performance any persistence;
-/// that should be handled by the request command implementation as needed.
+/// [HttpProvider] for the CLI. This will _not_ perform any persistence; that
+/// should be handled by the request command implementation as needed.
 #[derive(Debug)]
 struct CliHttpProvider {
     database: CollectionDatabase,
@@ -382,6 +382,7 @@ impl Prompter for CliPrompter {
         let result = DialoguerSelect::new()
             .with_prompt(select.message)
             .items(&select.options)
+            .default(0)
             .interact();
 
         // If we failed to read the value, print an error and report nothing

@@ -34,7 +34,7 @@ pub struct ResponseBodyView {
 impl ResponseBodyView {
     pub fn new(recipe_id: RecipeId, response: Arc<ResponseRecord>) -> Self {
         // Select default query based on content type
-        let config = &TuiContext::get().config.commands;
+        let config = &TuiContext::get().config.tui.commands;
         let mime = response.mime();
         let default_query = mime
             .as_ref()

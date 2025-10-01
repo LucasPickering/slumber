@@ -71,7 +71,7 @@ impl View {
     ) -> Self {
         ViewContext::init(Arc::clone(collection), database, messages_tx);
 
-        let debug_monitor = if TuiContext::get().config.debug {
+        let debug_monitor = if TuiContext::get().config.tui.debug {
             Some(DebugMonitor::default())
         } else {
             None

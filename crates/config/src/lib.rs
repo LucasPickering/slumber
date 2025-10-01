@@ -14,17 +14,13 @@
 //! do so at your own risk of breakage.
 
 mod cereal;
-mod input;
-mod mime;
-mod theme;
+#[cfg(feature = "tui")]
+mod tui;
 
-pub use input::{Action, InputBinding, InputMap, KeyCombination};
-pub use theme::Theme;
+#[cfg(feature = "tui")]
+pub use tui::*;
 
-use crate::mime::MimeMap;
-use ::mime::Mime;
 use anyhow::Context;
-use editor_command::EditorBuilder;
 use serde::Serialize;
 use slumber_util::{
     ResultTraced, doc_link, git_link,
@@ -37,7 +33,6 @@ use std::{
     fs::File,
     io::{self, Write},
     path::{Path, PathBuf},
-    process::Command,
 };
 use tracing::{error, info};
 
@@ -48,7 +43,7 @@ const FILE: &str = "config.yml";
 /// collections. This is *not* meant to modifiable during a session. If changes
 /// are made to the config file while a TUI session is running, they won't be
 /// picked up until the app restarts.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(
@@ -63,38 +58,15 @@ const FILE: &str = "config.yml";
     )
 )]
 pub struct Config {
-    /// Configuration for in-app query and export commands
-    pub commands: CommandsConfig,
-    /// Command to use for in-app editing. If provided, overrides
-    /// `VISUAL`/`EDITOR` environment variables. This only supports a single
-    /// command, *not* a content type map. This is because there isn't much
-    /// value in it, and plumbing the content type around to support it is
-    /// annoying.
-    pub editor: Option<String>,
-    /// Command to use to browse response bodies. If provided, overrides
-    /// `PAGER` environment variable.  This could be a single command, or a map
-    /// of {content_type: command} to use different commands based on response
-    /// type. Aliased for backward compatibility with the old name.
-    #[serde(alias = "viewer", default)]
-    pub pager: MimeMap<String>,
+    /// HTTP engine configuration, which will be flattened for ser/de
     #[serde(flatten)]
     pub http: HttpEngineConfig,
-    /// Should templates be rendered inline in the UI, or should we show the
-    /// raw text?
-    pub preview_templates: bool,
-    /// Overrides for default key bindings
-    pub input_bindings: InputMap,
-    /// Visual configuration for the TUI (e.g. colors)
-    pub theme: Theme,
-    /// Enable debug monitor in TUI
-    ///
-    /// Mainly meant for development so don't expose it
-    #[serde(skip_serializing)]
-    #[cfg_attr(feature = "schema", schemars(skip))]
-    pub debug: bool,
-    /// Enable/disable persistence for all TUI requests? The CLI ignores this
-    /// in favor of the absence/presence of the `--persist` flag
-    pub persist: bool,
+    /// TUI configuration, which will be flattened for ser/de. Only included if
+    /// the `tui` flag is enabled, which allows non-TUI consumers to omit a
+    /// bunch of extra dependencies.
+    #[cfg(feature = "tui")]
+    #[serde(flatten)]
+    pub tui: tui::TuiConfig,
 }
 
 impl Config {
@@ -162,10 +134,14 @@ impl Config {
     /// Get a command to open the given file in the user's configured editor.
     /// Default editor is `vim`. Return an error if the command couldn't be
     /// built.
-    pub fn editor_command(&self, file: &Path) -> anyhow::Result<Command> {
-        EditorBuilder::new()
+    #[cfg(feature = "tui")]
+    pub fn editor_command(
+        &self,
+        file: &Path,
+    ) -> anyhow::Result<std::process::Command> {
+        editor_command::EditorBuilder::new()
             // Config field takes priority over environment variables
-            .source(self.editor.as_deref())
+            .source(self.tui.editor.as_deref())
             .environment()
             .source(Some("vim"))
             .path(file)
@@ -181,20 +157,21 @@ impl Config {
     /// Get a command to open the given file in the user's configured file
     /// pager. Default is `less` on Unix, `more` on Windows. Return an error
     /// if the command couldn't be built.
+    #[cfg(feature = "tui")]
     pub fn pager_command(
         &self,
         file: &Path,
-        mime: Option<&Mime>,
-    ) -> anyhow::Result<Command> {
+        mime: Option<&mime::Mime>,
+    ) -> anyhow::Result<std::process::Command> {
         // Use a built-in pager
         let default = if cfg!(windows) { "more" } else { "less" };
 
         // Select command from the config based on content type
         let config_command = mime
-            .and_then(|mime| self.pager.get(mime))
+            .and_then(|mime| self.tui.pager.get(mime))
             .map(String::as_str);
 
-        EditorBuilder::new()
+        editor_command::EditorBuilder::new()
             // Config field takes priority over environment variables
             .source(config_command)
             .source(env::var("PAGER").ok())
@@ -253,22 +230,6 @@ impl Config {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            commands: CommandsConfig::default(),
-            editor: Default::default(),
-            pager: Default::default(),
-            http: Default::default(),
-            preview_templates: true,
-            input_bindings: Default::default(),
-            theme: Default::default(),
-            debug: false,
-            persist: true,
-        }
-    }
-}
-
 /// Configuration for the engine that handles HTTP requests
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -303,45 +264,13 @@ impl Default for HttpEngineConfig {
     }
 }
 
-/// Configuration for in-app query and export commands
-#[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(default))]
-pub struct CommandsConfig {
-    /// Wrapping shell to parse and execute commands
-    /// If empty, commands will be parsed with shell-words and run natievly
-    pub shell: Vec<String>,
-    /// Default query command for responses
-    #[serde(default)]
-    pub default_query: MimeMap<String>,
-}
-
-impl Default for CommandsConfig {
-    fn default() -> Self {
-        // We use the defaults from docker, because it's well tested and
-        // reasonably intuitive
-        // https://docs.docker.com/reference/dockerfile/#shell
-        let default_shell: &[&str] = if cfg!(windows) {
-            &["cmd", "/S", "/C"]
-        } else {
-            &["/bin/sh", "-c"]
-        };
-
-        Self {
-            shell: default_shell.iter().map(ToString::to_string).collect(),
-            default_query: MimeMap::default(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use env_lock::EnvGuard;
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
-    use slumber_util::{TempDir, assert_err, temp_dir};
+    use slumber_util::{TempDir, temp_dir};
     use std::fs;
 
     struct ConfigPath {
@@ -392,7 +321,7 @@ mod tests {
     /// readonly
     #[rstest]
     fn test_load_file_exists_readonly(config_path: ConfigPath) {
-        fs::write(&config_path.path, "debug: true\n").unwrap();
+        fs::write(&config_path.path, "large_body_size: 1000\n").unwrap();
         let mut permissions =
             fs::metadata(&config_path.path).unwrap().permissions();
         permissions.set_readonly(true);
@@ -402,8 +331,12 @@ mod tests {
         assert_eq!(
             config,
             Config {
-                debug: true,
-                ..Config::default()
+                http: HttpEngineConfig {
+                    large_body_size: 1000,
+                    ..Default::default()
+                },
+                #[cfg(feature = "tui")]
+                tui: TuiConfig::default(),
             }
         );
     }
@@ -448,9 +381,13 @@ mod tests {
 
     /// Loading a config file with contents that don't deserialize correctly
     /// returns an error
+    #[cfg(feature = "tui")] // Extra fields only error if the TUI flag is on
     #[rstest]
     fn test_load_file_invalid(config_path: ConfigPath) {
         fs::write(&config_path.path, "fake_field: true\n").unwrap();
-        assert_err!(Config::load(), "Unexpected field `fake_field`");
+        slumber_util::assert_err!(
+            Config::load(),
+            "Unexpected field `fake_field`"
+        );
     }
 }

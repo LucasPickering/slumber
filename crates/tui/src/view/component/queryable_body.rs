@@ -205,7 +205,7 @@ impl QueryableBody {
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
     ) -> AbortHandle {
         util::spawn(async move {
-            let shell = &TuiContext::get().config.commands.shell;
+            let shell = &TuiContext::get().config.tui.commands.shell;
             let result = util::run_command(shell, &command, Some(&body))
                 .await
                 .with_context(|| format!("Error running `{command}`"));

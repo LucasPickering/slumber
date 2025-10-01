@@ -623,7 +623,7 @@ impl LoadedState {
         match result {
             Ok(exchange) => {
                 // Persist in the DB if not disabled by global config or recipe
-                let persist = TuiContext::get().config.persist
+                let persist = TuiContext::get().config.tui.persist
                     && self
                         .collection
                         .recipes

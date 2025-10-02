@@ -106,12 +106,14 @@ impl Collection {
     /// :param recipe: ID of the recipe
     /// :param profile: ID of the profile to use when building the request.
     ///   Defaults to the default profile in the collection, if any.
+    /// :param overrides: Override individual profile fields with static values
     /// :return: The returned server response
-    #[pyo3(signature = (recipe, profile=None))]
+    #[pyo3(signature = (recipe, profile=None, overrides=IndexMap::new()))]
     async fn request(
         &self,
         recipe: String,
         profile: Option<String>,
+        overrides: IndexMap<String, String>,
     ) -> anyhow::Result<Response> {
         let recipe_id = RecipeId::from(recipe);
         let selected_profile = profile.map(ProfileId::from).or_else(|| {
@@ -125,7 +127,7 @@ impl Collection {
             collection: Arc::clone(&self.collection),
             selected_profile,
             http_provider: Box::new(self.http_provider.clone()),
-            overrides: Default::default(),
+            overrides,
             prompter: Box::new(PythonPrompter),
             show_sensitive: true,
             root_dir: self.collection_file.parent().to_owned(),

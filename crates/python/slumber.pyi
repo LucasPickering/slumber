@@ -2,12 +2,13 @@
 # https://pyo3.rs/v0.26.0/type-stub.html
 
 class Collection:
-    def __init__(self, path: str | None = None, trigger: bool = True) -> None: ...
+    def __init__(self, path: str | None = None) -> None: ...
     async def request(
         self,
         recipe: str,
         profile: str | None = None,
         overrides: dict[str, str] = {},
+        trigger: bool = True,
     ) -> "Response": ...
     def reload(self) -> None: ...
 

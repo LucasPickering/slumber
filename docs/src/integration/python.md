@@ -18,7 +18,7 @@ By default, the library loads the same collection file that the CLI/TUI would, [
 from slumber import Collection
 
 collection = Collection()
-response = collection.request('example_get')
+response = collection.request("example_get")
 print(response.context) # Response body as bytes
 print(response.text) # Response body as a str
 ```
@@ -43,7 +43,7 @@ import json
 from slumber import Collection
 
 collection = Collection()
-response = collection.request('example_get')
+response = collection.request("example_get")
 data = json.loads(response.text)
 ```
 
@@ -55,6 +55,20 @@ By default, Slumber will _not_ raise an error for 4xx/5xx status codes, only if 
 from slumber import Collection
 
 collection = Collection()
-response = collection.request('example_get')
+response = collection.request("example_get")
 response.raise_for_status()
+```
+
+### Override Profile Fields
+
+If you want to override individual profile fields in your script, you can use the `overrides=` kwarg to `request()`. For example, if you want to hardcode the `host` field instead of using the one from your profile:
+
+```py
+from slumber import Collection
+
+collection = Collection()
+response = collection.request(
+    "example_get",
+    overrides={"host": "http://localhost:3000"},
+)
 ```

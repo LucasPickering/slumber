@@ -18,7 +18,7 @@ Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and sha
 
 ## Features
 
-- Usable as a TUI or CLI
+- Usable as a TUI, CLI, or [Python package](https://slumber.lucaspickering.me/integration/python.html)
 - Source-first configuration, for easy persistence and sharing
 - [Import from external formats (e.g. Insomnia)](https://slumber.lucaspickering.me/user_guide/import.html)
 - [Build requests dynamically from other requests, files, and shell commands](https://slumber.lucaspickering.me/user_guide/templates/index.html)

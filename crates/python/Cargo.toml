@@ -1,6 +1,6 @@
 [package]
 authors = {workspace = true}
-description = "Python bindings for Slumber"
+description = "Python bindings for Slumber, the source-based REST/HTTP client"
 edition = {workspace = true}
 homepage = {workspace = true}
 keywords = {workspace = true}
@@ -9,7 +9,7 @@ name = "slumber_python"
 publish = false
 repository = {workspace = true}
 rust-version = {workspace = true}
-version = "0.0.1"
+version = "0.0.3"
 
 [package.metadata.release]
 release = false

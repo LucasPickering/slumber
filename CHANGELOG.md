@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Added
+
+- Add [Python bindings](https://slumber.lucaspickering.me/integration/python.html), allowing you to use your Slumber collection from Python scripts without having to invoke the CLI
+
 ## [4.1.0] - 2025-09-30
 
 <!-- ANCHOR: changelog -->

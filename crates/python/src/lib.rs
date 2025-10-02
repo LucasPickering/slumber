@@ -33,14 +33,28 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .unwrap()
 });
 
-/// TODO
+/// Python bindings for Slumber, the source-based REST/HTTP client.
+/// [Documentation](https://slumber.lucaspickering.me/integration/python.html)
 #[pymodule]
 mod slumber {
     #[pymodule_export]
     use super::{Collection, Response};
 }
 
-/// TODO
+/// A Slumber request collection
+///
+/// A request collection is the entrypoint for making requests in Slumber. It's
+/// defined in a YAML file (typically called `slumber.yml`).
+///
+///[See docs for more information on how to build a request collection](
+/// https://slumber.lucaspickering.me/api/request_collection/index.html)
+///
+/// ```python
+/// from slumber import Collection
+///
+/// collection = Collection()
+/// response = collection.request('get_current_user')
+/// ```
 #[pyclass]
 #[expect(clippy::struct_field_names)]
 struct Collection {
@@ -53,16 +67,20 @@ struct Collection {
 
 #[pymethods]
 impl Collection {
-    /// Load a request collection from the current directory
+    /// Load a request collection
     ///
-    /// The collection file is selected according to these rules:
-    /// https://slumber.lucaspickering.me/api/request_collection/index.html#format--loading
+    /// By default, the collection file is selected from the current directory
+    /// [according to these rules.]
+    /// (https://slumber.lucaspickering.me/api/request_collection/index.html#format--loading)
     ///
     /// :param path: Load a specific collection file. If a directory is given,
     ///   load a file from that directory using the rules linked above.
-    /// :param trigger: TODO
+    /// :param trigger: Trigger upstream requests? If disabled,
+    ///   `response()`/`response_header()` calls in request templates will never
+    ///   trigger request dependencies, meaning those requests must be run
+    ///   manually.
     #[new]
-    #[pyo3(signature = (path=None, trigger=false))]
+    #[pyo3(signature = (path=None, trigger=true))]
     fn new(path: Option<PathBuf>, trigger: bool) -> PyResult<Self> {
         let config = Config::load()?;
         let collection_file = CollectionFile::new(path)?;
@@ -136,9 +154,18 @@ impl Collection {
         };
         Ok(Response { request, response })
     }
+
+    /// Reload the collection from its file. Use this if you've made changes to
+    /// the YAML file during a Python session, and want those changes to be
+    /// reflected in Python.
+    fn reload(&mut self) -> anyhow::Result<()> {
+        let collection = self.collection_file.load()?;
+        self.collection = Arc::new(collection);
+        Ok(())
+    }
 }
 
-/// TODO
+/// HTTP response data
 #[pyclass]
 struct Response {
     request: RequestRecord,
@@ -190,10 +217,10 @@ impl Response {
             .map_err(anyhow::Error::from)
     }
 
-    /// TODO
+    /// If the response status code is >= 400, raise an exception
     fn raise_for_status(&self) -> anyhow::Result<()> {
         let status = self.response.status;
-        if status.is_success() {
+        if status.as_u16() < 400 {
             Ok(())
         } else {
             // TODO custom error type?
@@ -204,7 +231,6 @@ impl Response {
 
 // TODO dedupe HttpProvider/Prompter with CLI
 
-/// TODO
 #[derive(Clone, Debug)]
 struct PythonHttpProvider {
     database: CollectionDatabase,
@@ -238,7 +264,6 @@ impl HttpProvider for PythonHttpProvider {
     }
 }
 
-/// TODO
 #[derive(Debug)]
 struct PythonPrompter;
 

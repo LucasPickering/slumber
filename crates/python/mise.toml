@@ -6,12 +6,14 @@ uv = "0.8"
 python = "3.10"
 
 [tasks.dev]
-description = "Build the package and run dev.py"
+description = "Build the package in dev mode"
 sources = ["src/", "Cargo.toml", "pyproject.toml"]
-run = [
-    "maturin develop",
-    "uv run python -i dev.py",
-]
+run = ["maturin develop"]
+
+[tasks.run]
+description = "Run dev.py"
+depends = ["dev"]
+run = ["uv run python -i dev.py"]
 
 [tasks.setup]
 description = "First-time project setup"

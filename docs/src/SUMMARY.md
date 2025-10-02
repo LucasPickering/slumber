@@ -40,6 +40,7 @@
 
 # Integration
 
+- [Python](./integration/python.md)
 - [Neovim Integration](./integration/neovim-integration.md)
 
 # Troubleshooting

@@ -4,8 +4,6 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
-// TODO reorganize these
-
 pub mod collection;
 pub mod database;
 pub mod http;

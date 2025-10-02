@@ -11,10 +11,15 @@ sources = ["src/", "Cargo.toml", "pyproject.toml"]
 run = ["maturin develop"]
 
 [tasks.run]
-description = "Run dev.py"
 depends = ["dev"]
+description = "Run dev.py"
 run = ["uv run python -i dev.py"]
 
 [tasks.setup]
 description = "First-time project setup"
-run = "uv venv"
+run = "uv sync"
+
+[tasks.test]
+depends = ["dev"]
+description = "Run Python tests"
+run = "uv run pytest"

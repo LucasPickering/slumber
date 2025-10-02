@@ -61,8 +61,8 @@ struct Collection {
     tokio_handle: runtime::Handle,
     collection_file: CollectionFile,
     collection: Arc<slumber_core::collection::Collection>,
+    database: CollectionDatabase,
     http_engine: HttpEngine,
-    http_provider: PythonHttpProvider,
 }
 
 #[pymethods]
@@ -70,34 +70,25 @@ impl Collection {
     /// Load a request collection
     ///
     /// By default, the collection file is selected from the current directory
-    /// [according to these rules.]
-    /// (https://slumber.lucaspickering.me/api/request_collection/index.html#format--loading)
+    /// [according to these rules](https://slumber.lucaspickering.me/api/request_collection/index.html#format--loading).
     ///
     /// :param path: Load a specific collection file. If a directory is given,
     ///   load a file from that directory using the rules linked above.
-    /// :param trigger: Trigger upstream requests? If disabled,
-    ///   `response()`/`response_header()` calls in request templates will never
-    ///   trigger request dependencies, meaning those requests must be run
-    ///   manually.
     #[new]
-    #[pyo3(signature = (path=None, trigger=true))]
-    fn new(path: Option<PathBuf>, trigger: bool) -> PyResult<Self> {
+    #[pyo3(signature = (path=None))]
+    fn new(path: Option<PathBuf>) -> PyResult<Self> {
         let config = Config::load()?;
         let collection_file = CollectionFile::new(path)?;
         let collection = collection_file.load()?;
         let database = Database::load()?.into_collection(&collection_file)?;
         let http_engine = HttpEngine::new(&config.http);
-        let http_provider = PythonHttpProvider {
-            database,
-            http_engine: http_engine.clone(),
-            trigger_dependencies: trigger,
-        };
+
         Ok(Self {
             tokio_handle: RUNTIME.handle().clone(),
             collection_file,
             collection: Arc::new(collection),
+            database,
             http_engine,
-            http_provider,
         })
     }
 
@@ -107,13 +98,23 @@ impl Collection {
     /// :param profile: ID of the profile to use when building the request.
     ///   Defaults to the default profile in the collection, if any.
     /// :param overrides: Override individual profile fields with static values
+    /// :param trigger: Trigger upstream requests? If disabled,
+    ///   `response()`/`response_header()` calls in request templates will never
+    ///   trigger request dependencies, meaning those requests must be run
+    ///   manually.
     /// :return: The returned server response
-    #[pyo3(signature = (recipe, profile=None, overrides=IndexMap::new()))]
+    #[pyo3(signature = (
+        recipe,
+        profile=None,
+        overrides=IndexMap::new(),
+        trigger=true,
+    ))]
     async fn request(
         &self,
         recipe: String,
         profile: Option<String>,
         overrides: IndexMap<String, String>,
+        trigger: bool,
     ) -> anyhow::Result<Response> {
         let recipe_id = RecipeId::from(recipe);
         let selected_profile = profile.map(ProfileId::from).or_else(|| {
@@ -123,10 +124,15 @@ impl Collection {
                 .map(|profile| profile.id.clone())
         });
 
+        let http_provider = PythonHttpProvider {
+            database: self.database.clone(),
+            http_engine: self.http_engine.clone(),
+            trigger_dependencies: trigger,
+        };
         let context = TemplateContext {
             collection: Arc::clone(&self.collection),
             selected_profile,
-            http_provider: Box::new(self.http_provider.clone()),
+            http_provider: Box::new(http_provider),
             overrides,
             prompter: Box::new(PythonPrompter),
             show_sensitive: true,

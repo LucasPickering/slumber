@@ -1,0 +1,26 @@
+.profile_data:
+  host: "http://localhost"
+
+profiles:
+  default:
+    default: true
+    data:
+      $ref: "#/.profile_data"
+      name: "Default"
+  other:
+    data:
+      $ref: "#/.profile_data"
+      name: "Other"
+
+requests:
+  get:
+    method: GET
+    url: "{{ host }}/get"
+  post:
+    method: POST
+    url: "{{ host }}/post"
+    body: "{{ name }}"
+  trigger:
+    method: POST
+    url: "{{ host }}/post"
+    body: "{{ response('get', trigger='always') }}"

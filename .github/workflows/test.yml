@@ -129,3 +129,39 @@ jobs:
         run: cargo test --workspace --all-features --no-fail-fast
         env:
           RUST_BACKTRACE: 1
+
+  test_python:
+    name: Test Python - ${{ matrix.platform.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Run tests on every platform. This is a subset of the Rust targets we
+        # support, just one per OS.
+        platform:
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macOS-latest
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mise Install
+        uses: jdx/mise-action@v2
+        with:
+          working-directory: crates/python
+
+      - name: Cache Rust files
+        uses: swatinem/rust-cache@v2
+        with:
+          key: python-${{ matrix.platform.name }}
+
+      - name: Setup
+        working-directory: crates/python
+        run: mise setup
+
+      - name: Run tests
+        working-directory: crates/python
+        run: mise test

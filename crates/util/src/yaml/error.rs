@@ -88,7 +88,7 @@ impl<E> LocatedError<E> {
 }
 
 impl LocatedError<YamlErrorKind> {
-    /// Create a new [Other](Error::Other) from any error type
+    /// Create a new [Other](YamlErrorKind::Other) from any error type
     pub fn other(
         error: impl Into<Box<dyn StdError + Send + Sync>>,
         location: SourceLocation,
@@ -115,8 +115,8 @@ impl LocatedError<YamlErrorKind> {
         }
     }
 
-    /// Create a new [Unexpected](Error::Unexpected) from the expected type and
-    /// actual value
+    /// Create a new [Unexpected](YamlErrorKind::Unexpected) from the expected
+    /// type and actual value
     pub fn unexpected(expected: Expected, actual: SourcedYaml) -> Self {
         // Find a useful representation of the received value
         let actual_string = match actual.data {

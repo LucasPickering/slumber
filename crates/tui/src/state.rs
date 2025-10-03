@@ -309,7 +309,8 @@ impl LoadedState {
             }
             Message::CollectionEdit => {
                 let path = self.collection_file.path().to_owned();
-                let command = TuiContext::get().config.editor_command(&path)?;
+                let command =
+                    TuiContext::get().config.tui.editor_command(&path)?;
                 util::yield_terminal(command, &self.messages_tx)?;
             }
             Message::CopyRequestUrl => self.copy_request_url()?,
@@ -328,13 +329,14 @@ impl LoadedState {
             }
             Message::FileEdit { file, on_complete } => {
                 let command =
-                    TuiContext::get().config.editor_command(file.path())?;
+                    TuiContext::get().config.tui.editor_command(file.path())?;
                 util::yield_terminal(command, &self.messages_tx)?;
                 on_complete(file);
             }
             Message::FileView { file, mime } => {
                 let command = TuiContext::get()
                     .config
+                    .tui
                     .pager_command(file.path(), mime.as_ref())?;
                 util::yield_terminal(command, &self.messages_tx)?;
                 // Dropping the file deletes it, so we can't do it until after

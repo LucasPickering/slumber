@@ -3457,6 +3457,7 @@ dependencies = [
  "serde_yaml",
  "slumber_util",
  "terminput",
+ "thiserror 2.0.12",
  "tracing",
 ]
 

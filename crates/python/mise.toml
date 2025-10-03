@@ -10,9 +10,9 @@ description = "Build the package in dev mode"
 sources = ["src/", "Cargo.toml", "pyproject.toml"]
 run = ["maturin develop"]
 
-[tasks.run]
+[tasks.repl]
 depends = ["dev"]
-description = "Run dev.py"
+description = "Run dev.py and enter the Python REPL"
 run = ["uv run python -i dev.py"]
 
 [tasks.setup]

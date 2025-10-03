@@ -1,25 +1,29 @@
-use anyhow::anyhow;
 use async_trait::async_trait;
 use dialoguer::{Input, Password, Select as DialoguerSelect};
 use indexmap::IndexMap;
-use pyo3::{PyResult, pyclass, pymethods, pymodule};
+use pyo3::{
+    PyErr, PyResult,
+    exceptions::{PyRuntimeError, PyValueError},
+    pyclass, pymethods, pymodule,
+};
 use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
-        ResponseRecord, TriggeredRequestError,
+        ResponseRecord, StoredRequestError, TriggeredRequestError,
     },
     render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
 };
 use std::{
+    error::Error,
+    fmt::{self, Display},
     path::PathBuf,
+    str::Utf8Error,
     sync::{Arc, LazyLock},
 };
 use tokio::runtime::{self, Runtime};
-
-// TODO remove stack traces from errors
 
 /// reqwest specifically needs a tokio runtime, so we need to spawn this in
 /// addition to the python asyncio runtime. We'll spawn tasks on this rt and
@@ -77,10 +81,13 @@ impl Collection {
     #[new]
     #[pyo3(signature = (path=None))]
     fn new(path: Option<PathBuf>) -> PyResult<Self> {
-        let config = Config::load()?;
-        let collection_file = CollectionFile::new(path)?;
-        let collection = collection_file.load()?;
-        let database = Database::load()?.into_collection(&collection_file)?;
+        let config = Config::load().map_err(ErrorDisplay::new)?;
+        let collection_file =
+            CollectionFile::new(path).map_err(ErrorDisplay::new)?;
+        let collection = collection_file.load().map_err(ErrorDisplay::new)?;
+        let database = Database::load()
+            .and_then(|db| db.into_collection(&collection_file))
+            .map_err(ErrorDisplay::new)?;
         let http_engine = HttpEngine::new(&config.http);
 
         Ok(Self {
@@ -115,7 +122,7 @@ impl Collection {
         profile: Option<String>,
         overrides: IndexMap<String, String>,
         trigger: bool,
-    ) -> anyhow::Result<Response> {
+    ) -> PyResult<Response> {
         let recipe_id = RecipeId::from(recipe);
         let selected_profile = profile.map(ProfileId::from).or_else(|| {
             // Use the default profile if none is given
@@ -147,11 +154,14 @@ impl Collection {
         let exchange = self
             .tokio_handle
             .spawn(async move {
-                let ticket = http_engine.build(seed, &context).await?;
-                let exchange = ticket.send().await?;
-                Ok::<_, anyhow::Error>(exchange)
+                let ticket = http_engine
+                    .build(seed, &context)
+                    .await
+                    .map_err(ErrorDisplay::new)?;
+                ticket.send().await.map_err(ErrorDisplay::new)
             })
-            .await??;
+            .await
+            .map_err(ErrorDisplay::new)??;
 
         // This is safe because no one else has the request/response
         let Ok(request) = Arc::try_unwrap(exchange.request) else {
@@ -166,8 +176,9 @@ impl Collection {
     /// Reload the collection from its file. Use this if you've made changes to
     /// the YAML file during a Python session, and want those changes to be
     /// reflected in Python.
-    fn reload(&mut self) -> anyhow::Result<()> {
-        let collection = self.collection_file.load()?;
+    fn reload(&mut self) -> PyResult<()> {
+        let collection =
+            self.collection_file.load().map_err(ErrorDisplay::new)?;
         self.collection = Arc::new(collection);
         Ok(())
     }
@@ -202,12 +213,13 @@ impl Response {
 
     /// HTTP headers of the response
     #[getter]
-    fn headers(&self) -> anyhow::Result<IndexMap<String, String>> {
+    fn headers(&self) -> PyResult<IndexMap<String, String>> {
         self.response
             .headers
             .iter()
             .map(|(name, value)| {
-                Ok((name.to_string(), value.to_str()?.to_owned()))
+                let value = value.to_str().map_err(ErrorDisplay::new)?;
+                Ok((name.to_string(), value.to_owned()))
             })
             .collect()
     }
@@ -220,24 +232,20 @@ impl Response {
 
     /// Response content decoded as UTF-8
     #[getter]
-    fn text(&self) -> anyhow::Result<&str> {
+    fn text(&self) -> Result<&str, Utf8Error> {
         std::str::from_utf8(self.response.body.bytes())
-            .map_err(anyhow::Error::from)
     }
 
     /// If the response status code is >= 400, raise an exception
-    fn raise_for_status(&self) -> anyhow::Result<()> {
+    fn raise_for_status(&self) -> PyResult<()> {
         let status = self.response.status;
         if status.as_u16() < 400 {
             Ok(())
         } else {
-            // TODO custom error type?
-            Err(anyhow!("Status code {status}"))
+            Err(PyValueError::new_err(format!("Status code {status}")))
         }
     }
 }
-
-// TODO dedupe HttpProvider/Prompter with CLI
 
 #[derive(Clone, Debug)]
 struct PythonHttpProvider {
@@ -252,9 +260,10 @@ impl HttpProvider for PythonHttpProvider {
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<Exchange>> {
+    ) -> Result<Option<Exchange>, StoredRequestError> {
         self.database
             .get_latest_request(profile_id.into(), recipe_id)
+            .map_err(StoredRequestError::new)
     }
 
     async fn send_request(
@@ -277,9 +286,9 @@ struct PythonPrompter;
 
 impl Prompter for PythonPrompter {
     fn prompt(&self, prompt: Prompt) {
-        // This will implicitly queue the prompts by blocking the main thread.
-        // Since the CLI has nothing else to do while waiting on a response,
-        // that's fine.
+        // This will implicitly queue the prompts by blocking the only worker
+        // thread. Since the library has nothing to do while waiting on a
+        // response, that's fine
         let result = if prompt.sensitive {
             Password::new()
                 .with_prompt(prompt.message)
@@ -309,5 +318,36 @@ impl Prompter for PythonPrompter {
         if let Ok(value) = result {
             select.channel.respond(select.options.swap_remove(value));
         }
+    }
+}
+
+/// Wrapper to stringify an error and convert it to Python. This is clumsy
+/// because it converts everything to a `RuntimeError`, but it's simple and
+/// effective.
+struct ErrorDisplay(Box<dyn 'static + Error + Send + Sync>);
+
+impl ErrorDisplay {
+    fn new(error: impl 'static + Error + Send + Sync) -> Self {
+        Self(Box::new(error))
+    }
+}
+
+impl Display for ErrorDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Write the entire error chain
+        let error = &self.0;
+        write!(f, "{error}")?;
+        let mut source = error.source();
+        while let Some(error) = source {
+            write!(f, ": {error}")?;
+            source = error.source();
+        }
+        Ok(())
+    }
+}
+
+impl From<ErrorDisplay> for PyErr {
+    fn from(value: ErrorDisplay) -> Self {
+        PyRuntimeError::new_err(value.to_string())
     }
 }

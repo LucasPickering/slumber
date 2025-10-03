@@ -343,9 +343,9 @@ mod tests {
     #[rstest]
     fn test_load_file_invalid(config_path: ConfigPath) {
         fs::write(&config_path.path, "fake_field: true\n").unwrap();
-        slumber_util::assert_err!(
-            Config::load().map_err(anyhow::Error::from),
-            "Unexpected field `fake_field`"
+        slumber_util::assert_err(
+            Config::load(),
+            "Unexpected field `fake_field`",
         );
     }
 }

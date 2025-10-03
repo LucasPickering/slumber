@@ -1380,11 +1380,7 @@ data:
         source_map.add_source(temp_dir.join("root.yml"));
 
         let result = input.resolve_references(&mut source_map);
-        assert_err!(
-            // Convert to anyhow error so the message includes the full chain
-            result.map_err(|error| anyhow::Error::from(error.error)),
-            expected_error
-        );
+        assert_err(result.map_err(LocatedError::into_error), expected_error);
     }
 
     /// Test [Reference::depends_on]

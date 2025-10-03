@@ -27,7 +27,6 @@ thiserror = {workspace = true}
 tracing = {workspace = true}
 
 [dev-dependencies]
-anyhow = {workspace = true}
 dirs = {workspace = true}
 env-lock = {workspace = true}
 pretty_assertions = {workspace = true}

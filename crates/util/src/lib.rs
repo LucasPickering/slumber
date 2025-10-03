@@ -15,7 +15,6 @@ pub mod yaml;
 #[cfg(any(test, feature = "test"))]
 pub use test_util::*;
 
-use anyhow::anyhow;
 use itertools::Itertools;
 use serde::{Deserialize, de::Error as _};
 use std::{
@@ -27,7 +26,9 @@ use std::{
 };
 use tracing::error;
 use winnow::{
-    ModalResult, Parser, ascii::digit1, combinator::repeat, token::take_while,
+    ModalResult, Parser,
+    ascii::digit1,
+    combinator::{alt, repeat},
 };
 
 /// Link to the GitHub New Issue form
@@ -96,7 +97,13 @@ pub trait ResultTracedAnyhow<T, E>: Sized {
     fn traced(self) -> Self;
 }
 
-impl<T> ResultTracedAnyhow<T, anyhow::Error> for anyhow::Result<T> {
+// A blanket impl that covers `anyhow::Error` without actually referring to it.
+// This allows us to omit anyhow as a dependency, so downstream consumers don't
+// pull it in unless they need it.
+impl<T, E> ResultTracedAnyhow<T, E> for Result<T, E>
+where
+    E: Deref<Target = dyn Error + Send + Sync>,
+{
     fn traced(self) -> Self {
         self.inspect_err(|err| error!(error = err.deref()))
     }
@@ -171,7 +178,7 @@ impl Display for TimeSpan {
 }
 
 impl FromStr for TimeSpan {
-    type Err = String;
+    type Err = TimeSpanParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         fn quantity(input: &mut &str) -> ModalResult<u64> {
@@ -179,9 +186,13 @@ impl FromStr for TimeSpan {
         }
 
         fn unit(input: &mut &str) -> ModalResult<DurationUnit> {
-            take_while(1.., char::is_alphabetic)
-                .parse_to()
-                .parse_next(input)
+            alt((
+                "s".map(|_| DurationUnit::Second),
+                "m".map(|_| DurationUnit::Minute),
+                "h".map(|_| DurationUnit::Hour),
+                "d".map(|_| DurationUnit::Day),
+            ))
+            .parse_next(input)
         }
 
         // Parse one or more quantity-unit pairs and sum them all up
@@ -191,17 +202,7 @@ impl FromStr for TimeSpan {
                 |acc, (quantity, unit)| acc + (quantity * unit.seconds()),
             )
             .parse(s)
-            // The format is so simple there isn't much value in spitting out a
-            // specific parsing error, just use a canned one
-            .map_err(|_| {
-                format!(
-                    "Invalid duration, must be `(<quantity><unit>)+` \
-                    (e.g. `12d` or `1h30m`). Units are {}",
-                    DurationUnit::ALL.iter().format_with(", ", |unit, f| f(
-                        &format_args!("`{unit}`")
-                    ))
-                )
-            })?;
+            .map_err(|_| TimeSpanParseError)?;
 
         Ok(Self(Duration::from_secs(seconds)))
     }
@@ -216,6 +217,27 @@ impl<'de> Deserialize<'de> for TimeSpan {
         s.parse().map_err(D::Error::custom)
     }
 }
+
+/// Error for [TimeSpan]'s `FromStr` impl
+#[derive(Debug)]
+pub struct TimeSpanParseError;
+
+impl Display for TimeSpanParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The format is so simple there isn't much value in spitting out a
+        // specific parsing error, just use a canned one
+        write!(
+            f,
+            "Invalid duration, must be `(<quantity><unit>)+` \
+                (e.g. `12d` or `1h30m`). Units are {}",
+            DurationUnit::ALL
+                .iter()
+                .format_with(", ", |unit, f| f(&format_args!("`{unit}`")))
+        )
+    }
+}
+
+impl Error for TimeSpanParseError {}
 
 /// Supported units for duration parsing/formatting
 #[derive(Debug)]
@@ -246,20 +268,6 @@ impl Display for DurationUnit {
             Self::Minute => write!(f, "m"),
             Self::Hour => write!(f, "h"),
             Self::Day => write!(f, "d"),
-        }
-    }
-}
-
-impl FromStr for DurationUnit {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "s" => Ok(Self::Second),
-            "m" => Ok(Self::Minute),
-            "h" => Ok(Self::Hour),
-            "d" => Ok(Self::Day),
-            _ => Err(anyhow!("Invalid duration unit `{s}`")),
         }
     }
 }
@@ -327,10 +335,6 @@ mod tests {
         #[case] s: &'static str,
         #[case] expected_error: &str,
     ) {
-        assert_err!(
-            // Map to anyhow error because assert_err! requires it
-            s.parse::<TimeSpan>().map_err(anyhow::Error::msg),
-            expected_error
-        );
+        assert_err(s.parse::<TimeSpan>(), expected_error);
     }
 }

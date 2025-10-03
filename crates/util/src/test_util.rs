@@ -1,5 +1,4 @@
-use crate::{ResultTracedAnyhow, paths::get_repo_root};
-use anyhow::Context;
+use crate::paths::get_repo_root;
 use rstest::fixture;
 use std::{
     env,
@@ -9,6 +8,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
+use tracing::error;
 use uuid::Uuid;
 
 /// Test-only trait to build a placeholder instance of a struct. This is similar
@@ -61,23 +61,24 @@ impl Deref for TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         // Clean up
-        let _ = fs::remove_dir_all(&self.0)
-            .with_context(|| {
-                format!(
-                    "Error deleting temporary directory `{}`",
-                    self.0.display()
-                )
-            })
-            .traced();
+        if let Err(error) = fs::remove_dir_all(&self.0) {
+            error!(
+                error = &error as &dyn Error,
+                "Error deleting temporary directory `{}`",
+                self.0.display()
+            );
+        }
     }
 }
 
 /// Assert a result is the `Err` variant and the stringified error contains
-/// the given message. The `Err` variant type must implement `Display`. For most
-/// errors it's easiest to convert to `anyhow::Error` so that the error includes
-/// the entire chain.
+/// the given message. If you have an error that implements [std::error::Error],
+/// you should use the function [assert_err] instead. This is only useful for
+/// `anyhow` errors.
 #[macro_export]
 macro_rules! assert_err {
+    // I'd like to get rid of this and fully replace it with the function
+    // assert_err(), but that one doesn't work well with anyhow errors
     ($result:expr, $msg:expr) => {{
         let error = $result.unwrap_err();
         let msg = $msg;
@@ -89,15 +90,33 @@ macro_rules! assert_err {
     }};
 }
 
+/// Assert a result is the `Err` variant and the stringified error *contains*
+/// the given message. The `Err` variant type must implement `Display`. The
+/// error will be formatted with its entire chain of sources, to make nested
+/// errors easy to match.
+#[track_caller]
+pub fn assert_err<T, E>(result: Result<T, E>, expected_error: &str)
+where
+    T: Debug,
+    E: 'static + Debug + Error + Send + Sync,
+{
+    let error = result.unwrap_err();
+    let actual = format_error_chain(error);
+    assert!(
+        actual.contains(expected_error),
+        "Expected error message to contain {expected_error:?}, but was: \
+        {actual:?}"
+    );
+}
+
 /// Assert that a result value matches the expected result. If the expectation
 /// is `Ok`, then the value will be unwrapped to `Ok` and checked for equality
 /// against the expected value. If the expectation is `Err`, the value will be
 /// unwrapped to `Err` and checked that the error message **contains** the
 /// expected `Err` string.
 ///
-/// The error is converted to `anyhow` so it will contain the entire chain of
-/// context when stringified. This makes it easier to match nested error
-/// messages.
+/// The error will be formatted with its entire chain of sources, to make nested
+/// errors easy to match.
 #[track_caller]
 pub fn assert_result<TA, TE, E>(
     result: Result<TA, E>,
@@ -107,23 +126,25 @@ pub fn assert_result<TA, TE, E>(
     TE: Debug,
     E: 'static + Debug + Error + Send + Sync,
 {
-    // Convert to anyhow so the string contains the entire chain
-    let result = result.map_err(anyhow::Error::from);
     match expected {
         Ok(expected) => {
             let value = result.unwrap();
             assert_eq!(value, expected);
         }
-        Err(expected) => {
-            let error = result.unwrap_err();
-            let actual = format!("{error:#}");
-            assert!(
-                actual.contains(expected),
-                "Expected error message to contain {expected:?}, but was: \
-                {actual:?}"
-            );
-        }
+        Err(expected) => assert_err(result, expected),
     }
+}
+
+/// Stringify an error with all its causes
+fn format_error_chain(error: impl Error) -> String {
+    let mut s = error.to_string();
+    let mut source = error.source();
+    while let Some(error) = source {
+        s.push_str(": ");
+        s.push_str(&error.to_string());
+        source = error.source();
+    }
+    s
 }
 
 /// Assert the given expression matches a pattern and optional condition.

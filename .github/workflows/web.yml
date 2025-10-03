@@ -29,7 +29,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
 
       - name: Install tools
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
 
       - name: Build site
         run: mdbook build docs/

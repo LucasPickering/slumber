@@ -1,0 +1,140 @@
+name: Python
+
+on:
+  push:
+    tags:
+      - "**[0-9]+.[0-9]+.[0-9]+*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # linux
+          - label: linux
+            target: x86_64
+            runner: ubuntu-latest
+            manylinux: manylinux_2_28
+          - label: linux
+            target: x86
+            runner: ubuntu-latest
+            manylinux: manylinux_2_28
+          - label: linux
+            target: aarch64
+            runner: ubuntu-latest
+            manylinux: manylinux_2_28
+          - label: linux
+            target: armv7
+            runner: ubuntu-latest
+            manylinux: manylinux_2_28
+          - label: linux
+            target: s390x
+            runner: ubuntu-latest
+            manylinux: manylinux_2_28
+          - label: linux
+            target: ppc64le
+            runner: ubuntu-latest
+            manylinux: manylinux_2_28
+
+          # musllinux
+          - label: musllinux
+            target: x86_64
+            runner: ubuntu-latest
+            manylinux: musllinux_1_2
+          - label: musllinux
+            target: x86
+            runner: ubuntu-latest
+            manylinux: musllinux_1_2
+          - label: musllinux
+            target: aarch64
+            runner: ubuntu-latest
+            manylinux: musllinux_1_2
+          - label: musllinux
+            target: armv7
+            runner: ubuntu-latest
+            manylinux: musllinux_1_2
+
+          # macos
+          - label: macos
+            target: x86_64
+            runner: macos-13
+          - label: macos
+            target: aarch64
+            runner: macos-14
+
+          # windows
+          - label: windows
+            target: x64
+            runner: windows-latest
+          - label: windows
+            target: x86
+            runner: windows-latest
+            python_architecture: x86
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          architecture: ${{ matrix.platform.python_architecture }}
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/python
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --find-interpreter
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          manylinux: ${{ matrix.platform.manylinux }}
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform.label }}-${{ matrix.platform.target }}
+          path: crates/python/dist
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/python
+          command: sdist
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: crates/python/dist
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    needs: [build, sdist]
+    permissions:
+      # Use to sign the release artifacts
+      id-token: write
+      # Used to upload release artifacts
+      contents: write
+      # Used to generate artifact attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "wheels-*/*"
+      - name: Publish to PyPI
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: PyO3/maturin-action@v1
+        with:
+          command: upload
+          args: --non-interactive --skip-existing wheels-*/*
+          environment: pypi

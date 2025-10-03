@@ -1,8 +1,8 @@
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use path_clean::PathClean;
 use std::{
     borrow::Cow,
-    fs,
+    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -70,13 +70,17 @@ fn debug_or(path: PathBuf) -> PathBuf {
 }
 
 /// Ensure the parent directory of a file path exists
-pub fn create_parent(path: &Path) -> anyhow::Result<()> {
+pub fn create_parent(path: &Path) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| {
-        anyhow!("Cannot create directory for path {path:?}; it has no parent")
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "Cannot create directory for path {path}; it has no parent",
+                path = path.display()
+            ),
+        )
     })?;
     fs::create_dir_all(parent)
-        .context("Error creating directory {parent:?}")?;
-    Ok(())
 }
 
 /// Get path to the root of the git repo. This is needed because this crate

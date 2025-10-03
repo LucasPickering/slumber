@@ -67,7 +67,7 @@ impl Database {
     }
 
     fn from_path(path: &Path) -> Result<Self, DatabaseError> {
-        paths::create_parent(path).map_err(|_| DatabaseError::Directory)?;
+        paths::create_parent(path).map_err(DatabaseError::Directory)?;
 
         info!(?path, "Loading database");
         let mut connection = Connection::open(path)
@@ -865,7 +865,7 @@ pub enum DatabaseError {
 
     /// Error creating the parent directory of the DB file
     #[error("Error creating data directory")]
-    Directory,
+    Directory(#[source] io::Error),
 
     /// Error applying migrations to the DBs
     #[error(transparent)]

@@ -20,12 +20,11 @@ mod tui;
 #[cfg(feature = "tui")]
 pub use tui::*;
 
-use anyhow::Context;
 use serde::Serialize;
 use slumber_util::{
-    ResultTracedAnyhow, doc_link, git_link,
+    ResultTraced, doc_link, git_link,
     paths::{self, create_parent, expand_home},
-    yaml,
+    yaml::{self, YamlError},
 };
 use std::{
     env,
@@ -34,6 +33,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
+use thiserror::Error;
 use tracing::{error, info};
 
 const PATH_ENV_VAR: &str = "SLUMBER_CONFIG_PATH";
@@ -96,7 +96,7 @@ impl Config {
     /// default value. This only returns an error if the file could be read, but
     /// deserialization failed. This is *not* async because it's only run during
     /// startup, when all operations are synchronous.
-    pub fn load() -> anyhow::Result<Self> {
+    pub fn load() -> Result<Self, ConfigError> {
         let path = Self::path();
         info!(?path, "Loading configuration file");
 
@@ -129,66 +129,11 @@ impl Config {
         }
     }
 
-    /// Get a command to open the given file in the user's configured editor.
-    /// Default editor is `vim`. Return an error if the command couldn't be
-    /// built.
-    #[cfg(feature = "tui")]
-    pub fn editor_command(
-        &self,
-        file: &Path,
-    ) -> anyhow::Result<std::process::Command> {
-        editor_command::EditorBuilder::new()
-            // Config field takes priority over environment variables
-            .source(self.tui.editor.as_deref())
-            .environment()
-            .source(Some("vim"))
-            .path(file)
-            .build()
-            .with_context(|| {
-                format!(
-                    "Error opening editor; see {}",
-                    doc_link("user_guide/tui/editor"),
-                )
-            })
-    }
-
-    /// Get a command to open the given file in the user's configured file
-    /// pager. Default is `less` on Unix, `more` on Windows. Return an error
-    /// if the command couldn't be built.
-    #[cfg(feature = "tui")]
-    pub fn pager_command(
-        &self,
-        file: &Path,
-        mime: Option<&mime::Mime>,
-    ) -> anyhow::Result<std::process::Command> {
-        // Use a built-in pager
-        let default = if cfg!(windows) { "more" } else { "less" };
-
-        // Select command from the config based on content type
-        let config_command = mime
-            .and_then(|mime| self.tui.pager.get(mime))
-            .map(String::as_str);
-
-        editor_command::EditorBuilder::new()
-            // Config field takes priority over environment variables
-            .source(config_command)
-            .source(env::var("PAGER").ok())
-            .source(Some(default))
-            .path(file)
-            .build()
-            .with_context(|| {
-                format!(
-                    "Error opening pager; see {}",
-                    doc_link("user_guide/tui/editor"),
-                )
-            })
-    }
-
     /// When the config file fails to open, we'll attempt to create a new one
     /// with placeholder content. Whether or not the
     // create succeeds, we're going to just log the error and use a
     // default config.
-    fn create_new(path: &Path) -> anyhow::Result<()> {
+    fn create_new(path: &Path) -> Result<(), ConfigError> {
         // You could do this read/create all in one operation using
         // OpenOptions::new().create(true).append(true).read(true),
         // but that requires write permission on the file even if it
@@ -206,7 +151,10 @@ impl Config {
                 file.write_all(&Self::default_content())?;
                 Ok(())
             })
-            .context("Error creating config file {path:?}")
+            .map_err(|error| ConfigError::Create {
+                path: path.to_owned(),
+                error,
+            })
     }
 
     /// Pre-populated content for a new config file. Include all default values
@@ -260,6 +208,18 @@ impl Default for HttpEngineConfig {
             follow_redirects: true,
         }
     }
+}
+
+/// Error creating or loading a config file
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    /// Creating a file on disk
+    #[error("Error creating config file {}", path.display())]
+    Create { path: PathBuf, error: io::Error },
+
+    /// Error parsing/deserializing the YAML
+    #[error(transparent)]
+    Yaml(#[from] YamlError),
 }
 
 #[cfg(test)]
@@ -384,7 +344,7 @@ mod tests {
     fn test_load_file_invalid(config_path: ConfigPath) {
         fs::write(&config_path.path, "fake_field: true\n").unwrap();
         slumber_util::assert_err!(
-            Config::load(),
+            Config::load().map_err(anyhow::Error::from),
             "Unexpected field `fake_field`"
         );
     }

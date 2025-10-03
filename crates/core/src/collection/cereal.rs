@@ -391,8 +391,8 @@ impl DeserializeYaml for JsonTemplate {
 }
 
 /// A Slumber-specific error that can occur while deserializing a YAML value.
-/// Generic YAML errors are defined in [slumber_util::yaml::Error]. This only
-/// holds errors specific to collection deserialization.
+/// Generic YAML errors are defined in [slumber_util::yaml::YamlError]. This
+/// only holds errors specific to collection deserialization.
 #[derive(Debug, thiserror::Error)]
 enum CerealError {
     /// JSON body contained a float value that isn't representable in JSON

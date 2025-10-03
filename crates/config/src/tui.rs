@@ -8,7 +8,12 @@ pub use input::{Action, InputBinding, InputMap, KeyCombination};
 pub use theme::Theme;
 
 use crate::tui::mime::MimeMap;
+use ::mime::Mime;
+use editor_command::EditorBuilderError;
 use serde::Serialize;
+use slumber_util::doc_link;
+use std::{env, path::Path};
+use thiserror::Error;
 
 /// Configuration specific to the TUI
 #[derive(Debug, Serialize)]
@@ -57,6 +62,51 @@ pub struct TuiConfig {
     pub persist: bool,
 }
 
+impl TuiConfig {
+    /// Get a command to open the given file in the user's configured editor.
+    /// Default editor is `vim`. Return an error if the command couldn't be
+    /// built.
+    pub fn editor_command(
+        &self,
+        file: &Path,
+    ) -> Result<std::process::Command, EditorError> {
+        editor_command::EditorBuilder::new()
+            // Config field takes priority over environment variables
+            .source(self.editor.as_deref())
+            .environment()
+            .source(Some("vim"))
+            .path(file)
+            .build()
+            .map_err(EditorError::Editor)
+    }
+
+    /// Get a command to open the given file in the user's configured file
+    /// pager. Default is `less` on Unix, `more` on Windows. Return an error
+    /// if the command couldn't be built.
+    pub fn pager_command(
+        &self,
+        file: &Path,
+        mime: Option<&Mime>,
+    ) -> Result<std::process::Command, EditorError> {
+        // Use a built-in pager
+        let default = if cfg!(windows) { "more" } else { "less" };
+
+        // Select command from the config based on content type
+        let config_command = mime
+            .and_then(|mime| self.pager.get(mime))
+            .map(String::as_str);
+
+        editor_command::EditorBuilder::new()
+            // Config field takes priority over environment variables
+            .source(config_command)
+            .source(env::var("PAGER").ok())
+            .source(Some(default))
+            .path(file)
+            .build()
+            .map_err(EditorError::Pager)
+    }
+}
+
 impl Default for TuiConfig {
     fn default() -> Self {
         Self {
@@ -70,6 +120,16 @@ impl Default for TuiConfig {
             persist: true,
         }
     }
+}
+
+/// Error opening a configured editor/pager
+#[derive(Debug, Error)]
+pub enum EditorError {
+    #[error("Error opening editor; see {}", doc_link("user_guide/tui/editor"))]
+    Editor(#[source] EditorBuilderError),
+
+    #[error("Error opening pager; see {}", doc_link("user_guide/tui/editor"))]
+    Pager(#[source] EditorBuilderError),
 }
 
 /// Configuration for in-app query and export commands

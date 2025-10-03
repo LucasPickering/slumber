@@ -1,6 +1,5 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use anyhow::{anyhow, bail};
 use derive_more::{Deref, Display};
 use indexmap::{IndexMap, indexmap};
 use itertools::Itertools;
@@ -19,6 +18,7 @@ use std::{
     str::FromStr,
 };
 use terminput::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode};
+use thiserror::Error;
 
 /// Key code to string mappings
 const KEY_CODES: Mapping<'static, KeyCode> = Mapping::new(&[
@@ -357,7 +357,7 @@ impl From<KeyCode> for KeyCombination {
 }
 
 impl FromStr for KeyCombination {
-    type Err = anyhow::Error;
+    type Err = InputParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Last char should be the primary one, everything before should be
@@ -365,9 +365,7 @@ impl FromStr for KeyCombination {
         // Filtering out empty elements is easier than building a regex to split
         let mut tokens =
             s.trim().split(Self::SEPARATOR).filter(|s| !s.is_empty());
-        let code = tokens
-            .next_back()
-            .ok_or_else(|| anyhow!("Empty key combination"))?;
+        let code = tokens.next_back().ok_or(InputParseError::Empty)?;
         let mut modifiers = KeyModifiers::NONE;
         // `backtab` is what crossterm calls `shift tab`. We supported it in the
         // past because this used to map directly to crossterm. Keeping this
@@ -385,7 +383,7 @@ impl FromStr for KeyCombination {
             let modifier = parse_key_modifier(modifier)?;
             // Prevent duplicate
             if modifiers.contains(modifier) {
-                bail!("Duplicate modifier {modifier:?}");
+                return Err(InputParseError::DuplicateModifier { modifier });
             }
             modifiers |= modifier;
         }
@@ -517,18 +515,43 @@ impl DeserializeYaml for InputMap {
     }
 }
 
+/// Error parsing input combination
+#[derive(Debug, Error)]
+pub enum InputParseError {
+    /// Combination contains the same modifier twice
+    #[error("Duplicate modifier {modifier:?}")]
+    DuplicateModifier { modifier: KeyModifiers },
+
+    /// Input is empty
+    #[error("Empty key combination")]
+    Empty,
+
+    /// Key code doesn't match any known keys
+    #[error(
+        "Invalid key code {input:?}; key combinations should be space-separated"
+    )]
+    InvalidKeyCode { input: String },
+
+    /// Key modifier doesn't match any known modifiers
+    #[error(
+        "Invalid key modifier {input:?}; must be one of {:?}",
+        KEY_MODIFIERS.all_strings().collect_vec(),
+    )]
+    InvalidKeyModifier { input: String },
+}
+
 /// Parse a plain key code
-fn parse_key_code(s: &str) -> anyhow::Result<KeyCode> {
+fn parse_key_code(s: &str) -> Result<KeyCode, InputParseError> {
     // Check for plain char code
     if let Ok(c) = s.parse::<char>() {
         Ok(KeyCode::Char(c))
     } else {
         // Don't include the full list of options in the error message, too long
-        KEY_CODES.get(s).ok_or_else(|| {
-            anyhow!(
-                "Invalid key code {s:?}; key combinations should be space-separated"
-            )
-        })
+        KEY_CODES
+            .get(s)
+            .ok_or_else(|| InputParseError::InvalidKeyCode {
+                input: s.to_owned(),
+            })
     }
 }
 
@@ -550,13 +573,12 @@ fn stringify_key_code(code: KeyCode) -> Cow<'static, str> {
 }
 
 /// Parse a key modifier
-fn parse_key_modifier(s: &str) -> anyhow::Result<KeyModifiers> {
-    KEY_MODIFIERS.get(s).ok_or_else(|| {
-        anyhow!(
-            "Invalid key modifier {s:?}; must be one of {:?}",
-            KEY_MODIFIERS.all_strings().collect_vec()
-        )
-    })
+fn parse_key_modifier(s: &str) -> Result<KeyModifiers, InputParseError> {
+    KEY_MODIFIERS
+        .get(s)
+        .ok_or_else(|| InputParseError::InvalidKeyModifier {
+            input: s.to_owned(),
+        })
 }
 
 /// Convert key modifier to string. Inverse of parsing

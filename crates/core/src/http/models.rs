@@ -963,7 +963,7 @@ impl PartialEq for RequestError {
     }
 }
 
-/// Error fetching a previous request in [HttpProvider::get_latest_request]
+/// Error fetching a previous request while rendering a new request
 #[derive(Debug, Error)]
 #[error(transparent)]
 pub struct StoredRequestError(pub Box<dyn 'static + Error + Send + Sync>);

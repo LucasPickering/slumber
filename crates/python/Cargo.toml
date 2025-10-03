@@ -20,11 +20,10 @@ name = "slumber"
 crate-type = ["cdylib"]
 
 [dependencies]
-anyhow = {workspace = true}
 async-trait = {workspace = true}
 dialoguer = {workspace = true, features = ["password"]}
 indexmap = {workspace = true}
-pyo3 = {version = "0.26.0", features = ["anyhow", "experimental-async", "indexmap"]}
+pyo3 = {version = "0.26.0", features = ["experimental-async", "indexmap"]}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 tokio = {workspace = true, features = ["rt-multi-thread"]}

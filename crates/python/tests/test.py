@@ -77,3 +77,18 @@ async def test_trigger_disabled(collection: Collection) -> None:
 
     with pytest.raises(match="Triggered request execution not allowed"):
         await collection.request("trigger", trigger=False)
+
+
+async def test_raise_for_status(
+    collection: Collection, httpserver: HTTPServer
+) -> None:
+    """Raise an exception with raise_for_status()"""
+    httpserver.expect_request("/get", method="GET").respond_with_response(
+        Response(status=400)
+    )
+    host = httpserver.url_for("")
+
+    response = await collection.request("get", overrides={"host": host})
+    with pytest.raises(ValueError) as exc:
+        response.raise_for_status()
+    assert str(exc.value) == "Status code 400 Bad Request"

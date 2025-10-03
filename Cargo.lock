@@ -2555,7 +2555,6 @@ version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ba0117f4212101ee6544044dae45abe1083d30ce7b29c4b5cbdfa2354e07383"
 dependencies = [
- "anyhow",
  "indexmap 2.9.0",
  "indoc",
  "libc",
@@ -3612,7 +3611,6 @@ dependencies = [
 name = "slumber_python"
 version = "0.0.3"
 dependencies = [
- "anyhow",
  "async-trait",
  "dialoguer",
  "indexmap 2.9.0",

@@ -3549,7 +3549,6 @@ dependencies = [
 name = "slumber_template"
 version = "4.1.0"
 dependencies = [
- "anyhow",
  "bytes",
  "derive_more 1.0.0",
  "futures",

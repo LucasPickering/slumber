@@ -1,4 +1,3 @@
-use anyhow::Context;
 use path_clean::PathClean;
 use std::{
     borrow::Cow,
@@ -86,8 +85,8 @@ pub fn create_parent(path: &Path) -> io::Result<()> {
 /// Get path to the root of the git repo. This is needed because this crate
 /// doesn't live at the repo root, so we can't use `CARGO_MANIFEST_DIR`. Path
 /// will be cached so subsequent calls are fast. If the path can't be found,
-/// fall back to the current working directory instead. Always returns an
-/// absolute path.
+/// panic. This is only used in debug builds so it should always be in a git
+/// repo.
 #[cfg(any(debug_assertions, test))]
 pub fn get_repo_root() -> &'static Path {
     use std::{process::Command, sync::OnceLock};
@@ -95,19 +94,12 @@ pub fn get_repo_root() -> &'static Path {
     static CACHE: OnceLock<PathBuf> = OnceLock::new();
 
     CACHE.get_or_init(|| {
-        use crate::ResultTracedAnyhow;
-
-        let try_get = || -> anyhow::Result<PathBuf> {
-            let output = Command::new("git")
-                .args(["rev-parse", "--show-toplevel"])
-                .output()?;
-            let path = String::from_utf8(output.stdout)?;
-            Ok(path.trim().into())
-        };
-        try_get()
-            .context("Error getting repo root path")
-            .traced()
-            .unwrap_or_default()
+        let output = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .unwrap();
+        let path = String::from_utf8(output.stdout).unwrap();
+        path.trim().into()
     })
 }
 

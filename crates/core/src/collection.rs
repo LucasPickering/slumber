@@ -222,13 +222,12 @@ mod tests {
         #[case] override_path: Option<&str>,
         #[case] expected_err: &str,
     ) {
-        assert_err!(
+        assert_err(
             CollectionFile::with_dir(
                 temp_dir.to_path_buf(),
-                override_path.map(PathBuf::from)
-            )
-            .map_err(anyhow::Error::from),
-            expected_err
+                override_path.map(PathBuf::from),
+            ),
+            expected_err,
         );
     }
 
@@ -279,10 +278,7 @@ mod tests {
         #[case] yaml: &str,
         #[case] expected_error: &str,
     ) {
-        assert_err!(
-            Collection::parse(yaml).map_err(anyhow::Error::from),
-            expected_error
-        );
+        assert_err(Collection::parse(yaml), expected_error);
     }
 
     /// Should detect various indicators that the collection is v3 collection

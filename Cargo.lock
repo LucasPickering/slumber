@@ -3439,7 +3439,6 @@ dependencies = [
 name = "slumber_config"
 version = "4.1.0"
 dependencies = [
- "anyhow",
  "derive_more 1.0.0",
  "dirs",
  "editor-command",
@@ -3465,7 +3464,6 @@ dependencies = [
 name = "slumber_core"
 version = "4.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "base64 0.22.1",
  "bytes",
@@ -3620,7 +3618,6 @@ dependencies = [
 name = "slumber_util"
 version = "4.1.0"
 dependencies = [
- "anyhow",
  "derive_more 1.0.0",
  "dirs",
  "env-lock",

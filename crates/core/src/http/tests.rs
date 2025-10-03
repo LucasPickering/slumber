@@ -863,13 +863,9 @@ async fn test_profile_duplicate_error(http_engine: HttpEngine) {
     let context = template_context(recipe, None);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    assert_err!(
-        http_engine
-            .build(seed, &context)
-            .await
-            // Include full error chain in the message
-            .map_err(anyhow::Error::from),
-        "fake_fn(): Unknown function"
+    assert_err(
+        http_engine.build(seed, &context).await,
+        "fake_fn(): Unknown function",
     );
 }
 

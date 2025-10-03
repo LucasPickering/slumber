@@ -105,9 +105,8 @@ async fn test_render_stream_chunk_error() {
         .render(&context)
         .await
         .try_into_stream()
-        .map(|_| "stream") // Stream doesn't impl Debug :(
-        .map_err(anyhow::Error::from); // Include chain in error output
-    assert_err!(result, "unknown(): Unknown function");
+        .map(|_| "stream");
+    assert_err(result, "unknown(): Unknown function");
 }
 
 /// Render to a byte stream, but there's an error while collecting one of the
@@ -117,13 +116,13 @@ async fn test_render_stream_collect_error() {
     let template: Template = "{{ file('fake.txt') }}".into();
     let context = TestContext { can_stream: true };
     let stream = template.render(&context).await.try_into_stream().unwrap();
-    assert_err!(
+    assert_err(
         stream.try_collect::<BytesMut>().await,
         if cfg!(unix) {
             "No such file or directory"
         } else {
             "The system cannot find the file specified"
-        }
+        },
     );
 }
 
@@ -220,13 +219,9 @@ async fn test_function_error(
     #[case] template: Template,
     #[case] expected_error: &str,
 ) {
-    assert_err!(
-        // Use anyhow to get the error message to include the whole chain
-        template
-            .render_string(&TestContext::default())
-            .await
-            .map_err(anyhow::Error::from),
-        expected_error
+    assert_err(
+        template.render_string(&TestContext::default()).await,
+        expected_error,
     );
 }
 

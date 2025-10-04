@@ -12,7 +12,12 @@ description = "Generate favicon for the site from the logo image"
 run = "magick -background transparent $MISE_PROJECT_ROOT/static/slumber.png -define icon:auto-resize=64 $MISE_PROJECT_ROOT/docs/theme/favicon.png"
 sources = ["docs/theme/favicon.png"]
 
+[tasks.mdbook]
+# .rs scripts don't support #MISE headers so task metadata is defined here
+description = "Generate doc content from Rust code"
+
 [tasks.test]
+description = "Run tests"
 run = "cargo test"
 
 [env]
@@ -21,7 +26,3 @@ RUST_BACKTRACE = "1"
 [tools]
 "cargo:mdbook-pagetoc" = "0.2.0"
 mdbook = "0.4"
-python = "3.12"
-vhs = "latest"
-# ttyd is required for vhs. On macOS the only installation option is brew.
-# There are no prebuilt binaries for macOS so we can't install via mise

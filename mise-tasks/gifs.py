@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # fmt: off
 #MISE description="Generate GIFs from VHS tapes"
-#MISE tools=["python", "vhs"]
+#MISE tools={python = "3.12", vhs = "latest"}
+# ttyd is required for vhs. On macOS the only installation option is brew.
+# There are no prebuilt binaries for macOS so we can't install via mise
 # fmt: on
 
 """

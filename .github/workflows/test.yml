@@ -152,6 +152,8 @@ jobs:
         uses: jdx/mise-action@v3
         with:
           working_directory: crates/python
+          # Only install needed tools
+          install_args: python
 
       - name: Cache Rust files
         uses: swatinem/rust-cache@v2

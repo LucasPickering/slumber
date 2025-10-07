@@ -877,9 +877,9 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "editor-command"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee98e369cc618396b828ba0231d5bc39857ee1d8e9dcb1c1adef49a21bb5c427"
+checksum = "233f7e1e39795915a24f5eac451b7f4e73b090ca60dd5d2bc7a06cc929e021b1"
 dependencies = [
  "shell-words",
 ]

@@ -160,7 +160,10 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
-    use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
+    use slumber_util::{
+        Factory, TempDir, assert_err, temp_dir, test_data_dir,
+        yaml::SourceLocation,
+    };
     use std::{fs, fs::File};
 
     /// Test various cases of [CollectionFile::with_dir]
@@ -377,6 +380,7 @@ requests:
                 }),
                 RecipeNode::Folder(Folder {
                     id: "users".into(),
+                    location: SourceLocation::default(),
                     name: Some("Users".into()),
                     children: by_id([
                         RecipeNode::Recipe(Recipe {

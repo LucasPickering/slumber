@@ -7,7 +7,8 @@
 
 use crate::{Config, HttpEngineConfig};
 use slumber_util::yaml::{
-    self, DeserializeYaml, Expected, Field, SourcedYaml, StructDeserializer,
+    self, DeserializeYaml, Expected, Field, SourceMap, SourcedYaml,
+    StructDeserializer,
 };
 
 impl DeserializeYaml for Config {
@@ -15,18 +16,24 @@ impl DeserializeYaml for Config {
         Expected::Mapping
     }
 
-    fn deserialize(mut yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        mut yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         // Drop all fields starting with `.`
         yaml.drop_dot_fields();
 
+        let default = Self::default();
         let mut deserializer = StructDeserializer::new(yaml)?;
 
         let config = Self {
+            editor: deserializer
+                .get(Field::new("editor").or(default.editor), source_map)?,
             // Both these configs get flattened to the top, so they share the
             // same deserializer
-            http: deserialize_http_config(&mut deserializer)?,
+            http: deserialize_http_config(&mut deserializer, source_map)?,
             #[cfg(feature = "tui")]
-            tui: tui::deserialize_tui_config(&mut deserializer)?,
+            tui: tui::deserialize_tui_config(&mut deserializer, source_map)?,
         };
 
         // If we're not running in TUI mode, we know there's still TUI fields
@@ -44,17 +51,23 @@ impl DeserializeYaml for Config {
 /// Deserialize HTTP-specific config fields from an existing deserializer
 fn deserialize_http_config(
     deserializer: &mut StructDeserializer,
+    source_map: &SourceMap,
 ) -> yaml::Result<HttpEngineConfig> {
     let default = HttpEngineConfig::default();
     Ok(HttpEngineConfig {
         ignore_certificate_hosts: deserializer.get(
             Field::new("ignore_certificate_hosts")
                 .or(default.ignore_certificate_hosts),
+            source_map,
         )?,
-        large_body_size: deserializer
-            .get(Field::new("large_body_size").or(default.large_body_size))?,
-        follow_redirects: deserializer
-            .get(Field::new("follow_redirects").or(default.follow_redirects))?,
+        large_body_size: deserializer.get(
+            Field::new("large_body_size").or(default.large_body_size),
+            source_map,
+        )?,
+        follow_redirects: deserializer.get(
+            Field::new("follow_redirects").or(default.follow_redirects),
+            source_map,
+        )?,
     })
 }
 
@@ -65,30 +78,35 @@ mod tui {
     use ratatui_core::style::Color;
     use serde::de::{self, value::StringDeserializer};
     use slumber_util::yaml::{
-        self, DeserializeYaml, Expected, Field, LocatedError, SourcedYaml,
-        StructDeserializer,
+        self, DeserializeYaml, Expected, Field, LocatedError, SourceMap,
+        SourcedYaml, StructDeserializer,
     };
 
     /// Deserialize TUI-specific config fields from an existing deserializer
     pub fn deserialize_tui_config(
         deserializer: &mut StructDeserializer,
+        source_map: &SourceMap,
     ) -> yaml::Result<TuiConfig> {
         let default = TuiConfig::default();
         Ok(TuiConfig {
             commands: deserializer
-                .get(Field::new("commands").or(default.commands))?,
-            editor: deserializer
-                .get(Field::new("editor").or(default.editor))?,
-            pager: deserializer.get(Field::new("pager").or(default.pager))?,
+                .get(Field::new("commands").or(default.commands), source_map)?,
+            pager: deserializer
+                .get(Field::new("pager").or(default.pager), source_map)?,
             preview_templates: deserializer.get(
                 Field::new("preview_templates").or(default.preview_templates),
+                source_map,
             )?,
-            input_bindings: deserializer
-                .get(Field::new("input_bindings").or(default.input_bindings))?,
-            theme: deserializer.get(Field::new("theme").or(default.theme))?,
-            debug: deserializer.get(Field::new("debug").or(default.debug))?,
+            input_bindings: deserializer.get(
+                Field::new("input_bindings").or(default.input_bindings),
+                source_map,
+            )?,
+            theme: deserializer
+                .get(Field::new("theme").or(default.theme), source_map)?,
+            debug: deserializer
+                .get(Field::new("debug").or(default.debug), source_map)?,
             persist: deserializer
-                .get(Field::new("persist").or(default.persist))?,
+                .get(Field::new("persist").or(default.persist), source_map)?,
         })
     }
 
@@ -97,14 +115,18 @@ mod tui {
             Expected::Mapping
         }
 
-        fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        fn deserialize(
+            yaml: SourcedYaml,
+            source_map: &SourceMap,
+        ) -> yaml::Result<Self> {
             let default = Self::default();
             let mut deserializer = StructDeserializer::new(yaml)?;
             let config = Self {
                 shell: deserializer
-                    .get(Field::new("shell").or(default.shell))?,
+                    .get(Field::new("shell").or(default.shell), source_map)?,
                 default_query: deserializer.get(
                     Field::new("default_query").or(default.default_query),
+                    source_map,
                 )?,
             };
             deserializer.done()?;
@@ -117,7 +139,10 @@ mod tui {
             Expected::Mapping
         }
 
-        fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        fn deserialize(
+            yaml: SourcedYaml,
+            source_map: &SourceMap,
+        ) -> yaml::Result<Self> {
             let default = Self::default();
             let mut deserializer = StructDeserializer::new(yaml)?;
             let config = Self {
@@ -125,30 +150,35 @@ mod tui {
                     .get::<Adopt<_>>(
                         Field::new("primary_color")
                             .or(Adopt(default.primary_color)),
+                        source_map,
                     )?
                     .0,
                 primary_text_color: deserializer
                     .get::<Adopt<_>>(
                         Field::new("primary_text_color")
                             .or(Adopt(default.primary_text_color)),
+                        source_map,
                     )?
                     .0,
                 secondary_color: deserializer
                     .get::<Adopt<_>>(
                         Field::new("secondary_color")
                             .or(Adopt(default.secondary_color)),
+                        source_map,
                     )?
                     .0,
                 success_color: deserializer
                     .get::<Adopt<_>>(
                         Field::new("success_color")
                             .or(Adopt(default.success_color)),
+                        source_map,
                     )?
                     .0,
                 error_color: deserializer
                     .get::<Adopt<_>>(
                         Field::new("error_color")
                             .or(Adopt(default.error_color)),
+                        source_map,
                     )?
                     .0,
             };
@@ -166,7 +196,10 @@ mod tui {
             Expected::String
         }
 
-        fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+        fn deserialize(
+            yaml: SourcedYaml,
+            _source_map: &SourceMap,
+        ) -> yaml::Result<Self> {
             let location = yaml.location;
             let s = yaml.try_into_string()?;
             // Use the serde implementation for backward compatibility

@@ -15,7 +15,7 @@ use slumber_core::{
     render::{Prompt, ResponseChannel, Select},
 };
 use slumber_template::{RenderedOutput, Template};
-use slumber_util::ResultTracedAnyhow;
+use slumber_util::{ResultTracedAnyhow, yaml::SourceLocation};
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
@@ -55,7 +55,13 @@ pub enum Message {
     /// Store a reloaded collection value in state
     CollectionEndReload(Collection),
     /// Open the collection in the user's editor
-    CollectionEdit,
+    CollectionEdit {
+        /// Optional file+line+column to open. If omitted, open the root
+        /// collection file to line 1 column 1. The path will *typically* be
+        /// the root file but not necessarily, as you can also edit locations
+        /// from other referenced files.
+        location: Option<SourceLocation>,
+    },
     /// Switch to a different collection file. This will start an entirely new
     /// TUI session for the new collection
     CollectionSelect(PathBuf),

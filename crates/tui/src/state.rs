@@ -19,7 +19,7 @@ use slumber_core::{
     render::{Prompter, TemplateContext},
 };
 use slumber_template::{RenderedOutput, Template};
-use slumber_util::ResultTraced;
+use slumber_util::{ResultTraced, yaml::SourceLocation};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -307,11 +307,8 @@ impl LoadedState {
             Message::CollectionEndReload(collection) => {
                 self.reload_collection(collection);
             }
-            Message::CollectionEdit => {
-                let path = self.collection_file.path().to_owned();
-                let command =
-                    TuiContext::get().config.tui.editor_command(&path)?;
-                util::yield_terminal(command, &self.messages_tx)?;
+            Message::CollectionEdit { location } => {
+                self.edit_collection(location)?;
             }
             Message::CopyRequestUrl => self.copy_request_url()?,
             Message::CopyRequestBody => self.copy_request_body()?,
@@ -328,17 +325,20 @@ impl LoadedState {
                 )?;
             }
             Message::FileEdit { file, on_complete } => {
-                let command =
-                    TuiContext::get().config.tui.editor_command(file.path())?;
-                util::yield_terminal(command, &self.messages_tx)?;
+                let editor = TuiContext::get().config.editor()?;
+                util::yield_terminal(
+                    editor.open(file.path()),
+                    &self.messages_tx,
+                )?;
                 on_complete(file);
             }
             Message::FileView { file, mime } => {
-                let command = TuiContext::get()
-                    .config
-                    .tui
-                    .pager_command(file.path(), mime.as_ref())?;
-                util::yield_terminal(command, &self.messages_tx)?;
+                let pager =
+                    TuiContext::get().config.tui.pager(mime.as_ref())?;
+                util::yield_terminal(
+                    pager.open(file.path()),
+                    &self.messages_tx,
+                )?;
                 // Dropping the file deletes it, so we can't do it until after
                 // the command is done
                 drop(file);
@@ -436,6 +436,20 @@ impl LoadedState {
             self.messages_tx(),
         );
         self.view.notify("Reloaded collection");
+    }
+
+    /// Open the collection file in the user's editor
+    fn edit_collection(
+        &self,
+        location: Option<SourceLocation>,
+    ) -> anyhow::Result<()> {
+        let editor = TuiContext::get().config.editor()?;
+        let command = if let Some(location) = location {
+            editor.open_at(location.source, location.line, location.column)
+        } else {
+            editor.open(self.collection_file.path())
+        };
+        util::yield_terminal(command, &self.messages_tx)
     }
 
     /// Update the collection name in the DB according to the loaded collection.

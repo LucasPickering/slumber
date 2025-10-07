@@ -21,7 +21,7 @@ use rest_parser::{
     headers::Authorization as RestAuthorization,
     template::Template as RestTemplate,
 };
-use slumber_util::ResultTracedAnyhow;
+use slumber_util::{ResultTracedAnyhow, yaml::SourceLocation};
 use tracing::error;
 
 use crate::ImportInput;
@@ -169,6 +169,7 @@ fn try_build_recipe(
 
     Ok(Recipe {
         id,
+        location: SourceLocation::default(),
         persist: true,
         name: name.into(),
         method,

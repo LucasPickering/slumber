@@ -10,7 +10,7 @@ use crate::{
 };
 use indexmap::indexmap;
 use serde_json::json;
-use slumber_util::Factory;
+use slumber_util::{Factory, yaml::SourceLocation};
 
 impl Collection {
     /// JSON Schema example value
@@ -32,6 +32,7 @@ impl Collection {
                 Recipe::example().into(),
                 Folder {
                     id: "my_folder".into(),
+                    location: SourceLocation::default(),
                     name: Some("My Folder".to_owned()),
                     children: by_id([
                         Recipe::factory("recipe1").into(),
@@ -64,6 +65,7 @@ impl Folder {
     pub fn example() -> Self {
         Folder {
             id: "my_folder".into(),
+            location: SourceLocation::default(),
             name: Some("My Folder".into()),
             children: by_id([Recipe::example().into()]),
         }
@@ -75,6 +77,7 @@ impl Recipe {
     pub fn example() -> Self {
         Recipe {
             id: "my_recipe".into(),
+            location: SourceLocation::default(),
             name: Some("My Recipe".into()),
             method: HttpMethod::Post,
             persist: true,

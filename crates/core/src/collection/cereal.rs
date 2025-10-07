@@ -21,8 +21,8 @@ use slumber_template::Template;
 use slumber_util::{
     deserialize_enum, impl_deserialize_from,
     yaml::{
-        self, DeserializeYaml, Expected, Field, LocatedError, SourcedYaml,
-        StructDeserializer, yaml_parse_panic,
+        self, DeserializeYaml, Expected, Field, LocatedError, SourceMap,
+        SourcedYaml, StructDeserializer, yaml_parse_panic,
     },
 };
 
@@ -34,7 +34,10 @@ impl DeserializeYaml for Collection {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let mut deserializer = StructDeserializer::new(yaml)?;
 
         // Drop all fields starting with `.`
@@ -43,13 +46,14 @@ impl DeserializeYaml for Collection {
         });
 
         let collection = Self {
-            name: deserializer.get(Field::new("name").opt())?,
+            name: deserializer.get(Field::new("name").opt(), source_map)?,
             profiles: deserializer
-                .get::<Adopt<_>>(Field::new("profiles").opt())?
+                .get::<Adopt<_>>(Field::new("profiles").opt(), source_map)?
                 .0,
             // Internally we call these recipes, but extensive market research
             // shows that `requests` is more intuitive to the user
-            recipes: deserializer.get(Field::new("requests").opt())?,
+            recipes: deserializer
+                .get(Field::new("requests").opt(), source_map)?,
         };
         deserializer.done()?;
         Ok(collection)
@@ -64,7 +68,10 @@ impl DeserializeYaml for Adopt<IndexMap<ProfileId, Profile>> {
         Expected::Mapping
     }
 
-    fn deserialize(mut yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        mut yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         yaml.drop_dot_fields();
 
         // Enforce that only one profile can be the default
@@ -74,8 +81,8 @@ impl DeserializeYaml for Adopt<IndexMap<ProfileId, Profile>> {
             .into_iter()
             .map(|(k, v)| {
                 let value_location = v.location;
-                let key = ProfileId::deserialize(k)?;
-                let mut value = Profile::deserialize(v)?;
+                let key = ProfileId::deserialize(k, source_map)?;
+                let mut value = Profile::deserialize(v, source_map)?;
                 value.set_id(key.clone());
 
                 // Check if another profile is already the default
@@ -105,13 +112,17 @@ impl DeserializeYaml for Profile {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let mut deserializer = StructDeserializer::new(yaml)?;
         let profile = Self {
             id: ProfileId::default(), // Will be set by parent based on key
-            name: deserializer.get(Field::new("name").opt())?,
-            default: deserializer.get(Field::new("default").opt())?,
-            data: deserializer.get(Field::new("data").opt())?,
+            name: deserializer.get(Field::new("name").opt(), source_map)?,
+            default: deserializer
+                .get(Field::new("default").opt(), source_map)?,
+            data: deserializer.get(Field::new("data").opt(), source_map)?,
         };
         deserializer.done()?;
         Ok(profile)
@@ -123,10 +134,13 @@ impl DeserializeYaml for RecipeTree {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let location = yaml.location;
         let recipes: Adopt<IndexMap<RecipeId, RecipeNode>> =
-            Adopt::deserialize(yaml)?;
+            Adopt::deserialize(yaml, source_map)?;
         // Build a tree from the map
         RecipeTree::new(recipes.0)
             .map_err(|error| LocatedError::other(error, location))
@@ -141,12 +155,15 @@ impl DeserializeYaml for Adopt<IndexMap<RecipeId, RecipeNode>> {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         yaml.try_into_mapping()?
             .into_iter()
             .map(|(k, v)| {
-                let key = RecipeId::deserialize(k)?;
-                let mut value = RecipeNode::deserialize(v)?;
+                let key = RecipeId::deserialize(k, source_map)?;
+                let mut value = RecipeNode::deserialize(v, source_map)?;
                 value.set_id(key.clone());
                 Ok((key, value))
             })
@@ -160,7 +177,10 @@ impl DeserializeYaml for RecipeNode {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         // Recipe nodes are untagged enums. They're written very frequently,
         // have distinct required fields that we can key on, and there's minimal
         // risk that we'll need to add new variants. Forcing users to require a
@@ -176,9 +196,9 @@ impl DeserializeYaml for RecipeNode {
         // Do a little heuristicking to guess what the variant is. This gives
         // slightly better error messages
         if has("method") || has("url") {
-            Recipe::deserialize(yaml).map(RecipeNode::Recipe)
+            Recipe::deserialize(yaml, source_map).map(RecipeNode::Recipe)
         } else if has("requests") {
-            Folder::deserialize(yaml).map(RecipeNode::Folder)
+            Folder::deserialize(yaml, source_map).map(RecipeNode::Folder)
         } else {
             Err(LocatedError::other(
                 CerealError::UnknownRecipeNodeVariant,
@@ -193,22 +213,31 @@ impl DeserializeYaml for Recipe {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        let location = yaml.location.resolve(source_map);
         let mut deserializer = StructDeserializer::new(yaml)?;
         let recipe = Recipe {
             id: RecipeId::default(), // Will be set by parent based on key
-            name: deserializer.get(Field::new("name").opt())?,
-            persist: deserializer.get(Field::new("persist").or(true))?,
-            method: deserializer.get(Field::new("method"))?,
-            url: deserializer.get(Field::new("url"))?,
-            body: deserializer.get(Field::new("body").opt())?,
+            location,
+            name: deserializer.get(Field::new("name").opt(), source_map)?,
+            persist: deserializer
+                .get(Field::new("persist").or(true), source_map)?,
+            method: deserializer.get(Field::new("method"), source_map)?,
+            url: deserializer.get(Field::new("url"), source_map)?,
+            body: deserializer.get(Field::new("body").opt(), source_map)?,
             authentication: deserializer
-                .get(Field::new("authentication").opt())?,
-            query: deserializer.get(Field::new("query").opt())?,
+                .get(Field::new("authentication").opt(), source_map)?,
+            query: deserializer.get(Field::new("query").opt(), source_map)?,
             // Lower-case all headers for consistency. HTTP/1.1 headers are
             // case-insensitive and HTTP/2 enforces lower casing.
             headers: deserializer
-                .get::<IndexMap<String, Template>>(Field::new("headers").opt())?
+                .get::<IndexMap<String, Template>>(
+                    Field::new("headers").opt(),
+                    source_map,
+                )?
                 .into_iter()
                 .map(|(k, v)| (k.to_lowercase(), v))
                 .collect(),
@@ -223,14 +252,19 @@ impl DeserializeYaml for Folder {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        let location = yaml.location.resolve(source_map);
         let mut deserializer = StructDeserializer::new(yaml)?;
         let folder = Folder {
             id: RecipeId::default(), // Will be set by parent based on key
-            name: deserializer.get(Field::new("name").opt())?,
+            location,
+            name: deserializer.get(Field::new("name").opt(), source_map)?,
             // `requests` matches the root field name
             children: deserializer
-                .get::<Adopt<_>>(Field::new("requests").opt())?
+                .get::<Adopt<_>>(Field::new("requests").opt(), source_map)?
                 .0,
         };
         deserializer.done()?;
@@ -243,9 +277,12 @@ impl DeserializeYaml for HttpMethod {
         Expected::String
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let location = yaml.location;
-        let s = String::deserialize(yaml)?;
+        let s = String::deserialize(yaml, source_map)?;
         s.parse()
             .map_err(|error| LocatedError::other(error, location))
     }
@@ -257,13 +294,16 @@ impl DeserializeYaml for QueryParameterValue {
     }
 
     /// Deserialize from a single template or a list of templates
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         if yaml.data.is_sequence() {
             // Deserialize vec
-            DeserializeYaml::deserialize(yaml).map(Self::Many)
+            DeserializeYaml::deserialize(yaml, source_map).map(Self::Many)
         } else {
             // Deserialize template
-            DeserializeYaml::deserialize(yaml).map(Self::One)
+            DeserializeYaml::deserialize(yaml, source_map).map(Self::One)
         }
     }
 }
@@ -273,20 +313,23 @@ impl DeserializeYaml for Authentication {
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         deserialize_enum! {
             yaml,
             "basic" => |yaml: SourcedYaml| {
                 let mut deserializer = StructDeserializer::new(yaml)?;
                 Ok(Authentication::Basic {
-                    username: deserializer.get(Field::new("username"))?,
-                    password: deserializer.get(Field::new("password").opt())?,
+                    username: deserializer.get(Field::new("username"), source_map)?,
+                    password: deserializer.get(Field::new("password").opt(), source_map)?,
                 })
             },
             "bearer" => |yaml: SourcedYaml| {
                 let mut deserializer = StructDeserializer::new(yaml)?;
                 Ok(Authentication::Bearer {
-                    token: deserializer.get(Field::new("token"))?,
+                    token: deserializer.get(Field::new("token"), source_map)?,
                 })
             },
         }
@@ -298,13 +341,17 @@ impl DeserializeYaml for RecipeBody {
         Expected::OneOf(&[&Expected::String, &Expected::Mapping])
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         /// Deserialize a struct with a single "data" field
         fn deserialize_data<T: DeserializeYaml>(
             yaml: SourcedYaml<'_>,
+            source_map: &SourceMap,
         ) -> yaml::Result<T> {
             let mut deserializer = StructDeserializer::new(yaml)?;
-            let data = deserializer.get(Field::new("data"))?;
+            let data = deserializer.get(Field::new("data"), source_map)?;
             deserializer.done()?;
             Ok(data)
         }
@@ -314,18 +361,22 @@ impl DeserializeYaml for RecipeBody {
         if yaml.data.is_mapping() {
             deserialize_enum! {
                 yaml,
-                "json" => |yaml| Ok(Self::Json(deserialize_data(yaml)?)),
+                "json" => |yaml| {
+                    Ok(Self::Json(deserialize_data(yaml, source_map)?))
+                },
                 "form_urlencoded" => |yaml| {
-                    Ok(Self::FormUrlencoded(deserialize_data(yaml)?))
+                    Ok(Self::FormUrlencoded(deserialize_data(yaml, source_map)?))
                 },
                 "form_multipart" => |yaml| {
-                    Ok(Self::FormMultipart(deserialize_data(yaml)?))
+                    Ok(Self::FormMultipart(deserialize_data(yaml, source_map)?))
                 },
-                "stream" => |yaml| Ok(Self::Stream(deserialize_data(yaml)?)),
+                "stream" => |yaml| {
+                    Ok(Self::Stream(deserialize_data(yaml, source_map)?))
+                },
             }
         } else {
             // Otherwise it's a raw body - deserialize as a template
-            Template::deserialize(yaml).map(Self::Raw)
+            Template::deserialize(yaml, source_map).map(Self::Raw)
         }
     }
 }
@@ -342,7 +393,11 @@ impl DeserializeYaml for JsonTemplate {
         ])
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    #[expect(clippy::only_used_in_recursion)]
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         match yaml.data {
             YamlData::Representation(_, _, _)
             | YamlData::BadValue
@@ -368,7 +423,7 @@ impl DeserializeYaml for JsonTemplate {
             YamlData::Sequence(sequence) => {
                 let values = sequence
                     .into_iter()
-                    .map(Self::deserialize)
+                    .map(|yaml| Self::deserialize(yaml, source_map))
                     .collect::<yaml::Result<_>>()?;
                 Ok(Self::Array(values))
             }
@@ -377,7 +432,7 @@ impl DeserializeYaml for JsonTemplate {
                     .into_iter()
                     .map(|(key, value)| {
                         let key = key.try_into_string()?;
-                        let value = Self::deserialize(value)?;
+                        let value = Self::deserialize(value, source_map)?;
                         Ok((key, value))
                     })
                     .collect::<yaml::Result<_>>()?;

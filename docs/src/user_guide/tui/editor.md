@@ -4,7 +4,7 @@
 
 ![Open collection file in vim](../../images/editor.gif)
 
-Slumber supports editing your collection file without leaving the app. To do so, open the actions menu (`x` by default), then select `Edit Collection`. Slumber will open an external editor to modify the file. To determine which editor to use, Slumber checks these places in the following order:
+Slumber supports editing your collection file without leaving the app. To do so, open the actions menu (`x` by default), then select `Edit Recipe`. Slumber will open an external editor to modify the selected recipe. To determine which editor to use, Slumber checks these places in the following order:
 
 - `editor` field of the [configuration file](../../api/configuration/index.md)
 - `VISUAL` environment variable
@@ -20,6 +20,8 @@ editor: code --wait
 ```
 
 The command will be parsed like a shell command (although a shell is never actually invoked). For exact details on parsing behavior, see [shell-words](https://docs.rs/shell-words/1.1.0/shell_words/fn.split.html).
+
+In order to open the editor to a particular line+column, Slumber uses the `editor-command` crate. Most editors support the format `file:line:column`. A few popular editors that don't support that format (`vim`, `emacs`, and `nano`) have custom behavior instead. See the [`open_at`](https://docs.rs/editor-command/latest/editor_command/struct.Editor.html#method.open_at) method for more details.
 
 ## Paging
 

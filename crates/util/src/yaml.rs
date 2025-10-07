@@ -51,7 +51,7 @@ where
             })
         })
         // Deserialize as T
-        .and_then(T::deserialize)
+        .and_then(|yaml| T::deserialize(yaml, &source_map))
         // Make the location presentable
         .map_err(|error| error.resolve(&source_map))
 }
@@ -86,7 +86,7 @@ where
             })
         })
         // Deserialize as T
-        .and_then(T::deserialize)
+        .and_then(|yaml| T::deserialize(yaml, &source_map))
         // Make the location presentable
         .map_err(|error| error.resolve(&source_map))
 }
@@ -97,7 +97,7 @@ pub trait DeserializeYaml: Sized {
     fn expected() -> Expected;
 
     /// Deserialize the given YAML value into this type
-    fn deserialize(yaml: SourcedYaml) -> Result<Self>;
+    fn deserialize(yaml: SourcedYaml, source_map: &SourceMap) -> Result<Self>;
 }
 
 /// Implement [DeserializeYaml] for a type `T` via type `U`, where `T: From<U>,
@@ -112,8 +112,10 @@ macro_rules! impl_deserialize_from {
 
             fn deserialize(
                 yaml: slumber_util::yaml::SourcedYaml,
+                source_map: &slumber_util::yaml::SourceMap,
             ) -> slumber_util::yaml::Result<Self> {
-                <$u as DeserializeYaml>::deserialize(yaml).map(<$t>::from)
+                <$u as DeserializeYaml>::deserialize(yaml, source_map)
+                    .map(<$t>::from)
             }
         }
     };
@@ -170,7 +172,7 @@ impl DeserializeYaml for bool {
         Expected::Boolean
     }
 
-    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml, _source_map: &SourceMap) -> Result<Self> {
         yaml.try_into_bool()
     }
 }
@@ -180,7 +182,7 @@ impl DeserializeYaml for usize {
         Expected::Number
     }
 
-    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml, _source_map: &SourceMap) -> Result<Self> {
         yaml.try_into_usize()
     }
 }
@@ -190,7 +192,7 @@ impl DeserializeYaml for String {
         Expected::String
     }
 
-    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml, _source_map: &SourceMap) -> Result<Self> {
         yaml.try_into_string()
     }
 }
@@ -204,11 +206,11 @@ impl<T: DeserializeYaml> DeserializeYaml for Option<T> {
         T::expected()
     }
 
-    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml, source_map: &SourceMap) -> Result<Self> {
         if yaml.data.is_null() {
             Ok(None)
         } else {
-            T::deserialize(yaml).map(Some)
+            T::deserialize(yaml, source_map).map(Some)
         }
     }
 }
@@ -221,9 +223,12 @@ where
         Expected::Sequence
     }
 
-    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml, source_map: &SourceMap) -> Result<Self> {
         let sequence = yaml.try_into_sequence()?;
-        sequence.into_iter().map(T::deserialize).collect()
+        sequence
+            .into_iter()
+            .map(|yaml| T::deserialize(yaml, source_map))
+            .collect()
     }
 }
 
@@ -237,10 +242,15 @@ where
         Expected::Mapping
     }
 
-    fn deserialize(yaml: SourcedYaml) -> Result<Self> {
+    fn deserialize(yaml: SourcedYaml, source_map: &SourceMap) -> Result<Self> {
         yaml.try_into_mapping()?
             .into_iter()
-            .map(|(k, v)| Ok((K::deserialize(k)?, V::deserialize(v)?)))
+            .map(|(k, v)| {
+                Ok((
+                    K::deserialize(k, source_map)?,
+                    V::deserialize(v, source_map)?,
+                ))
+            })
             .collect()
     }
 }
@@ -253,7 +263,7 @@ where
 /// displayed.
 #[derive(Clone, Debug, Eq)]
 pub struct SourcedYaml<'input> {
-    pub location: SourceLocation,
+    pub location: SourceIdLocation,
     pub data: YamlData<'input, Self>,
 }
 
@@ -266,7 +276,7 @@ impl<'input> SourcedYaml<'input> {
                     error,
                     source: path.display().to_string(),
                 },
-                location: SourceLocation::default(),
+                location: SourceIdLocation::default(),
             })?;
         Self::load_from_str(&content, source)
     }
@@ -291,7 +301,8 @@ impl<'input> SourcedYaml<'input> {
     /// Convert a [MarkedYaml] to [SourcedYaml] by transforming `Marker` spans
     /// to [SourceLocation]
     fn from_marked_yaml(yaml: MarkedYaml<'input>, source_id: SourceId) -> Self {
-        let location = SourceLocation::from_marker(source_id, yaml.span.start);
+        let location =
+            SourceIdLocation::from_marker(source_id, yaml.span.start);
 
         let data = match yaml.data {
             YamlData::Value(scalar) => YamlData::Value(scalar),
@@ -385,7 +396,7 @@ impl<'input> SourcedYaml<'input> {
     pub fn value_from_str(value: &'input str) -> Self {
         Self {
             data: YamlData::Value(Scalar::parse_from_cow(value.into())),
-            location: SourceLocation::default(),
+            location: SourceIdLocation::default(),
         }
     }
 
@@ -393,7 +404,7 @@ impl<'input> SourcedYaml<'input> {
     fn value_from_string(value: String) -> Self {
         Self {
             data: YamlData::Value(Scalar::parse_from_cow(value.into())),
-            location: SourceLocation::default(),
+            location: SourceIdLocation::default(),
         }
     }
 
@@ -412,7 +423,7 @@ impl<'a> From<YamlData<'a, SourcedYaml<'a>>> for SourcedYaml<'a> {
     fn from(value: YamlData<'a, SourcedYaml<'a>>) -> Self {
         Self {
             data: value,
-            location: SourceLocation::default(),
+            location: SourceIdLocation::default(),
         }
     }
 }
@@ -514,9 +525,11 @@ enum SourceId {
     Memory,
 }
 
-/// Source location of a YAML value
+/// Source location of a YAML value, where the source is a cheap ID.
+///
+/// To resolve this into a [SourceLocation], use [Self::resolve].
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct SourceLocation {
+pub struct SourceIdLocation {
     /// Source of the YAML document
     source: SourceId,
     /// 1-indexed line in the document
@@ -525,7 +538,7 @@ pub struct SourceLocation {
     column: u32,
 }
 
-impl SourceLocation {
+impl SourceIdLocation {
     fn from_marker(source_id: SourceId, marker: Marker) -> Self {
         Self {
             source: source_id,
@@ -538,12 +551,12 @@ impl SourceLocation {
     /// Resolve this source location by mapping its source ID to the
     /// corresponding string. This makes the location ready for display, at
     /// the cost of making it no longer `Copy`.
-    fn resolve(&self, source_map: &SourceMap) -> ResolvedSourceLocation {
+    pub fn resolve(&self, source_map: &SourceMap) -> SourceLocation {
         let source = source_map
             .get_path(self.source)
             .map(|path| path.display().to_string())
             .unwrap_or_default();
-        ResolvedSourceLocation {
+        SourceLocation {
             source,
             line: self.line,
             column: self.column,
@@ -551,17 +564,26 @@ impl SourceLocation {
     }
 }
 
-/// [SourceLocation], but the source name has been resolved from the source map
-/// to be presentable to the user
-#[derive(Clone, Debug, Default, derive_more::Display, Eq, Hash, PartialEq)]
+/// Location in a YAML document.
+///
+/// The source has been rendered to a presentable string (probably a path).
+#[derive(Clone, Debug, Default, derive_more::Display)]
 #[display("{source}:{line}:{column}")]
-pub struct ResolvedSourceLocation {
+pub struct SourceLocation {
     /// Display name (e.g. path) for the YAML source
-    source: String,
+    pub source: String,
     /// 1-indexed line in the file
-    line: u32,
+    pub line: u32,
     /// 1-indexed column in the file
-    column: u32,
+    pub column: u32,
+}
+
+// Ignore location in tests for simpler assertions
+#[cfg(feature = "test")]
+impl PartialEq for SourceLocation {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 /// Utility for deserializing a struct or enum variant from a YAML mapping.
@@ -572,7 +594,7 @@ pub struct ResolvedSourceLocation {
 ///     - NOTE: `done` needs to be called manually after deserialization!
 pub struct StructDeserializer<'a> {
     pub mapping: AnnotatedMapping<'a, SourcedYaml<'a>>,
-    pub location: SourceLocation,
+    pub location: SourceIdLocation,
 }
 
 impl<'a> StructDeserializer<'a> {
@@ -583,12 +605,16 @@ impl<'a> StructDeserializer<'a> {
     }
 
     /// Deserialize a field from the mapping
-    pub fn get<T: DeserializeYaml>(&mut self, field: Field<T>) -> Result<T> {
+    pub fn get<T: DeserializeYaml>(
+        &mut self,
+        field: Field<T>,
+        source_map: &SourceMap,
+    ) -> Result<T> {
         if let Some(value) = self
             .mapping
             .remove(&SourcedYaml::value_from_str(field.name))
         {
-            T::deserialize(value)
+            T::deserialize(value, source_map)
         } else if let Some(default) = field.default {
             Ok(default)
         } else {
@@ -669,7 +695,7 @@ pub fn yaml_parse_panic() -> ! {
 #[cfg(feature = "test")]
 mod test_util {
     use super::{DeserializeYaml, Result, SourcedYaml};
-    use crate::yaml::SourceId;
+    use crate::yaml::{SourceId, SourceMap};
     use std::iter;
 
     /// Deserialize a [serde_yaml::Value] using saphyr. Serde values are easier
@@ -679,7 +705,8 @@ mod test_util {
     ) -> Result<T> {
         let yaml_input = serde_yaml::to_string(&yaml).unwrap();
         let yaml = SourcedYaml::load_from_str(&yaml_input, SourceId::Memory)?;
-        T::deserialize(yaml)
+        let source_map = SourceMap::default();
+        T::deserialize(yaml, &source_map)
     }
 
     /// Build a YAML mapping

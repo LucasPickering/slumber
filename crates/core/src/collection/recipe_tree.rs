@@ -4,6 +4,7 @@ use crate::collection::{Folder, HasId, Recipe, RecipeId};
 use derive_more::From;
 use indexmap::{IndexMap, map::Values};
 use serde::Serialize;
+use slumber_util::yaml::SourceLocation;
 use strum::EnumDiscriminants;
 use thiserror::Error;
 
@@ -28,61 +29,6 @@ pub struct RecipeTree {
     #[serde(skip)]
     nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
 }
-
-/// A path into the recipe tree. Every constructed path is assumed to be valid,
-/// which must be enforced by the creator.
-#[derive(Clone, Debug, From, Eq, Hash, PartialEq)]
-pub struct RecipeLookupKey(Vec<RecipeId>);
-
-impl RecipeLookupKey {
-    /// How many nodes are above us in the tree?
-    pub fn depth(&self) -> usize {
-        self.0.len() - 1
-    }
-
-    /// Get all parent IDs, starting at the root
-    pub fn ancestors(&self) -> &[RecipeId] {
-        &self.0[0..self.0.len() - 1]
-    }
-}
-
-impl From<&Vec<&RecipeId>> for RecipeLookupKey {
-    fn from(value: &Vec<&RecipeId>) -> Self {
-        Self(value.iter().copied().cloned().collect())
-    }
-}
-
-impl IntoIterator for RecipeLookupKey {
-    type Item = RecipeId;
-    type IntoIter = <Vec<RecipeId> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-/// A node in the recipe tree, either a folder or recipe
-#[derive(Debug, From, Serialize, EnumDiscriminants)]
-#[strum_discriminants(name(RecipeNodeType))]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(untagged)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub enum RecipeNode {
-    Folder(Folder),
-    // Rename this variant to match the `requests` field in the root and
-    // folders
-    #[serde(rename = "request")]
-    Recipe(Recipe),
-}
-
-/// Error returned when attempting to build a [RecipeTree] with a duplicate
-/// recipe ID. IDs are unique throughout the entire tree.
-#[derive(Debug, Error)]
-#[error(
-    "Duplicate recipe/folder ID `{0}`; \
-    recipe/folder IDs must be globally unique"
-)]
-pub struct DuplicateRecipeIdError(RecipeId);
 
 impl RecipeTree {
     /// Create a new tree. If there are *any* duplicate IDs in the tree, the
@@ -234,11 +180,65 @@ impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
     }
 }
 
+/// A path into the recipe tree. Every constructed path is assumed to be valid,
+/// which must be enforced by the creator.
+#[derive(Clone, Debug, From, Eq, Hash, PartialEq)]
+pub struct RecipeLookupKey(Vec<RecipeId>);
+
+impl RecipeLookupKey {
+    /// How many nodes are above us in the tree?
+    pub fn depth(&self) -> usize {
+        self.0.len() - 1
+    }
+
+    /// Get all parent IDs, starting at the root
+    pub fn ancestors(&self) -> &[RecipeId] {
+        &self.0[0..self.0.len() - 1]
+    }
+}
+
+impl From<&Vec<&RecipeId>> for RecipeLookupKey {
+    fn from(value: &Vec<&RecipeId>) -> Self {
+        Self(value.iter().copied().cloned().collect())
+    }
+}
+
+impl IntoIterator for RecipeLookupKey {
+    type Item = RecipeId;
+    type IntoIter = <Vec<RecipeId> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+/// A node in the recipe tree, either a folder or recipe
+#[derive(Debug, From, Serialize, EnumDiscriminants)]
+#[strum_discriminants(name(RecipeNodeType))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum RecipeNode {
+    Folder(Folder),
+    // Rename this variant to match the `requests` field in the root and
+    // folders
+    #[serde(rename = "request")]
+    Recipe(Recipe),
+}
+
 impl RecipeNode {
     pub fn name(&self) -> &str {
         match self {
             Self::Folder(folder) => folder.name(),
             Self::Recipe(recipe) => recipe.name(),
+        }
+    }
+
+    /// Get the location where this node is defined in YAML
+    pub fn location(&self) -> &SourceLocation {
+        match self {
+            Self::Folder(folder) => &folder.location,
+            Self::Recipe(recipe) => &recipe.location,
         }
     }
 
@@ -258,6 +258,15 @@ impl RecipeNode {
         }
     }
 }
+
+/// Error returned when attempting to build a [RecipeTree] with a duplicate
+/// recipe ID. IDs are unique throughout the entire tree.
+#[derive(Debug, Error)]
+#[error(
+    "Duplicate recipe/folder ID `{0}`; \
+    recipe/folder IDs must be globally unique"
+)]
+pub struct DuplicateRecipeIdError(RecipeId);
 
 /// Error when requesting a recipe/recipe node by ID that doesn't existing in
 /// the tree

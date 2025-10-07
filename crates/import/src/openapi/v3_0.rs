@@ -18,7 +18,7 @@ use slumber_core::{
     http::HttpMethod,
 };
 use slumber_template::Template;
-use slumber_util::ResultTracedAnyhow;
+use slumber_util::{ResultTracedAnyhow, yaml::SourceLocation};
 use std::iter;
 use strum::IntoEnumIterator;
 use tracing::{debug, error, warn};
@@ -117,6 +117,7 @@ fn build_recipe_tree(
             let node = recipes.entry(folder_id.clone()).or_insert_with(|| {
                 Folder {
                     id: folder_id,
+                    location: SourceLocation::default(),
                     name: Some(tag),
                     children: IndexMap::default(),
                 }
@@ -265,6 +266,7 @@ impl<'a> RecipeBuilder<'a> {
 
         Recipe {
             id: builder.id,
+            location: SourceLocation::default(),
             persist: true,
             name: Some(builder.name),
             method: builder.method,

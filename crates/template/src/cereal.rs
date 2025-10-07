@@ -13,7 +13,7 @@ use serde::{
     },
 };
 use slumber_util::yaml::{
-    DeserializeYaml, Expected, LocatedError, SourcedYaml,
+    DeserializeYaml, Expected, LocatedError, SourceMap, SourcedYaml,
 };
 
 impl Serialize for Template {
@@ -38,6 +38,7 @@ impl DeserializeYaml for Template {
 
     fn deserialize(
         yaml: SourcedYaml,
+        _source_map: &SourceMap,
     ) -> Result<Self, LocatedError<slumber_util::yaml::YamlErrorKind>> {
         if let YamlData::Value(scalar) = yaml.data {
             // Accept any scalar for a template. We'll treat everything as the

@@ -20,6 +20,7 @@ mod tui;
 #[cfg(feature = "tui")]
 pub use tui::*;
 
+use editor_command::{Editor, EditorBuilder, EditorBuilderError};
 use serde::Serialize;
 use slumber_util::{
     ResultTraced, doc_link, git_link,
@@ -58,9 +59,22 @@ const FILE: &str = "config.yml";
     )
 )]
 pub struct Config {
+    /// Command to use for in-app editing. If provided, overrides
+    /// `VISUAL`/`EDITOR` environment variables.
+    // This only supports a single command, *not* a content type map. This is
+    // because there isn't much value in it, and plumbing the content type
+    // around to support it is annoying.
+    //
+    // We could potentially convert this to `Editor` during deserialization and
+    // load env vars/defaults there. That would centralize the error handling
+    // but would mean the serialized version of the config wouldn't necessarily
+    // match what was deserialized, and could vary based on env vars.
+    pub editor: Option<String>,
+
     /// HTTP engine configuration, which will be flattened for ser/de
     #[serde(flatten)]
     pub http: HttpEngineConfig,
+
     /// TUI configuration, which will be flattened for ser/de. Only included if
     /// the `tui` flag is enabled, which allows non-TUI consumers to omit a
     /// bunch of extra dependencies.
@@ -127,6 +141,19 @@ impl Config {
                 }
             }
         }
+    }
+
+    /// Get an [Editor] to open the given file in the user's configured editor.
+    /// Default editor is `vim`. Return an error if the command couldn't be
+    /// built.
+    pub fn editor(&self) -> Result<Editor, EditorError> {
+        EditorBuilder::new()
+            // Config field takes priority over environment variables
+            .string(self.editor.as_deref())
+            .environment()
+            .string(Some("vim"))
+            .build()
+            .map_err(EditorError)
     }
 
     /// When the config file fails to open, we'll attempt to create a new one
@@ -222,6 +249,11 @@ pub enum ConfigError {
     Yaml(#[from] YamlError),
 }
 
+/// Error opening a configured editor/pager
+#[derive(Debug, Error)]
+#[error("Error opening editor; see {}", doc_link("user_guide/tui/editor"))]
+pub struct EditorError(#[source] EditorBuilderError);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,6 +321,7 @@ mod tests {
         assert_eq!(
             config,
             Config {
+                editor: None,
                 http: HttpEngineConfig {
                     large_body_size: 1000,
                     ..Default::default()

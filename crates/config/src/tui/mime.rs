@@ -3,7 +3,7 @@ use indexmap::{IndexMap, indexmap};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
 use slumber_util::yaml::{
-    self, DeserializeYaml, Expected, LocatedError, SourcedYaml,
+    self, DeserializeYaml, Expected, LocatedError, SourceMap, SourcedYaml,
 };
 use std::str::FromStr;
 
@@ -50,10 +50,13 @@ impl DeserializeYaml for MimeMap<String> {
         Expected::OneOf(&[&Expected::String, &Expected::Mapping])
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let patterns: IndexMap<MimePattern, String> = if yaml.data.is_mapping()
         {
-            DeserializeYaml::deserialize(yaml)?
+            DeserializeYaml::deserialize(yaml, source_map)?
         } else {
             // Deserialize a single value as a map of {"*/*": value}
             let s = yaml.try_into_string()?;
@@ -121,7 +124,10 @@ impl DeserializeYaml for MimePattern {
         Expected::String
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        _source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let location = yaml.location;
         let s = yaml.try_into_string()?;
         s.parse()

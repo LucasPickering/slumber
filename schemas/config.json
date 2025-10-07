@@ -4,6 +4,14 @@
   "description": "App-level configuration, which is global across all sessions and\ncollections. This is *not* meant to modifiable during a session. If changes\nare made to the config file while a TUI session is running, they won't be\npicked up until the app restarts.",
   "type": "object",
   "properties": {
+    "editor": {
+      "description": "Command to use for in-app editing. If provided, overrides\n`VISUAL`/`EDITOR` environment variables.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
     "ignore_certificate_hosts": {
       "description": "TLS cert errors on these hostnames are ignored. Be careful!",
       "type": "array",
@@ -34,14 +42,6 @@
         ],
         "default_query": {}
       }
-    },
-    "editor": {
-      "description": "Command to use for in-app editing. If provided, overrides\n`VISUAL`/`EDITOR` environment variables. This only supports a\nsingle command, *not* a content type map. This is because\nthere isn't much value in it, and plumbing the content type\naround to support it is annoying.",
-      "type": [
-        "string",
-        "null"
-      ],
-      "default": null
     },
     "pager": {
       "description": "Command to use to browse response bodies. If provided, overrides\n`PAGER` environment variable.  This could be a single command, or a\nmap of {content_type: command} to use different commands\nbased on response type. Aliased for backward compatibility\nwith the old name.",
@@ -177,6 +177,7 @@
   },
   "examples": [
     {
+      "editor": null,
       "ignore_certificate_hosts": [],
       "large_body_size": 1000000,
       "follow_redirects": true,
@@ -187,7 +188,6 @@
         ],
         "default_query": {}
       },
-      "editor": null,
       "pager": {},
       "preview_templates": true,
       "input_bindings": {

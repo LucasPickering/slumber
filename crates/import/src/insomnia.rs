@@ -18,7 +18,7 @@ use slumber_core::{
     http::HttpMethod,
 };
 use slumber_template::Template;
-use slumber_util::NEW_ISSUE_LINK;
+use slumber_util::{NEW_ISSUE_LINK, yaml::SourceLocation};
 use std::{cmp::Ordering, collections::HashMap, fmt::Display, str::FromStr};
 use tracing::{debug, error, warn};
 
@@ -287,6 +287,7 @@ impl From<RequestGroup> for RecipeNode {
     fn from(folder: RequestGroup) -> Self {
         RecipeNode::Folder(Folder {
             id: folder.id.into(),
+            location: SourceLocation::default(),
             name: Some(folder.name),
             // This will be populated later
             children: IndexMap::new(),
@@ -343,6 +344,7 @@ impl From<Request> for RecipeNode {
 
         RecipeNode::Recipe(Recipe {
             id: request.id.into(),
+            location: SourceLocation::default(),
             persist: true,
             name: Some(request.name),
             method: request.method,

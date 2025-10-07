@@ -1,5 +1,5 @@
 use crate::yaml::{
-    ResolvedSourceLocation, SourceId, SourceLocation, SourceMap, SourcedYaml,
+    SourceId, SourceIdLocation, SourceLocation, SourceMap, SourcedYaml,
     resolve::ReferenceError, yaml_parse_panic,
 };
 use itertools::Itertools;
@@ -64,7 +64,7 @@ pub enum YamlErrorKind {
 pub struct YamlError {
     #[source]
     pub kind: YamlErrorKind,
-    pub location: ResolvedSourceLocation,
+    pub location: SourceLocation,
 }
 
 /// An error paired with the source location in YAML where the error occurred
@@ -77,7 +77,7 @@ pub struct LocatedError<E> {
     pub error: E,
     /// Source location of the error. This is an *unresolved* location, meaning
     /// it contains a source ID instead of a source path.
-    pub location: SourceLocation,
+    pub location: SourceIdLocation,
 }
 
 impl<E> LocatedError<E> {
@@ -91,7 +91,7 @@ impl LocatedError<YamlErrorKind> {
     /// Create a new [Other](YamlErrorKind::Other) from any error type
     pub fn other(
         error: impl Into<Box<dyn StdError + Send + Sync>>,
-        location: SourceLocation,
+        location: SourceIdLocation,
     ) -> Self {
         Self {
             error: YamlErrorKind::Other(error.into()),
@@ -100,7 +100,8 @@ impl LocatedError<YamlErrorKind> {
     }
 
     pub(super) fn scan(error: ScanError, source_id: SourceId) -> Self {
-        let location = SourceLocation::from_marker(source_id, *error.marker());
+        let location =
+            SourceIdLocation::from_marker(source_id, *error.marker());
         Self {
             error: YamlErrorKind::Scan(error),
             location,

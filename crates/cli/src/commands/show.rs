@@ -145,9 +145,9 @@ fn edit_and_validate(
     path: &Path,
     is_valid: impl Fn() -> bool,
 ) -> anyhow::Result<ExitCode> {
+    let editor = config.editor()?;
     loop {
-        let mut command = config.tui.editor_command(path)?;
-        let status = command.spawn()?.wait()?;
+        let status = editor.open(path).spawn()?.wait()?;
 
         // After editing, verify the file is valid. If not, offer to reopen
         if !is_valid()

@@ -15,8 +15,8 @@ use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_template::{Template, TemplateParseError};
 use slumber_util::{
-    ResultTraced, doc_link, yaml,
-    yaml::{YamlError, YamlErrorKind},
+    ResultTraced, doc_link,
+    yaml::{self, SourceLocation, YamlError, YamlErrorKind},
 };
 use std::{
     fmt, io, iter,
@@ -201,6 +201,9 @@ impl slumber_util::Factory for ProfileId {
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
+    /// Location where this folder is defined in YAML
+    #[serde(skip)]
+    pub location: SourceLocation,
     /// Display name
     pub name: Option<String>,
     /// Child requests of this folder
@@ -221,6 +224,7 @@ impl slumber_util::Factory for Folder {
     fn factory((): ()) -> Self {
         Self {
             id: RecipeId::factory(()),
+            location: SourceLocation::default(),
             name: None,
             children: IndexMap::new(),
         }
@@ -237,6 +241,9 @@ impl slumber_util::Factory for Folder {
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
+    /// Location where this recipe is defined in YAML
+    #[serde(skip)]
+    pub location: SourceLocation,
     /// Should requests and responses of this recipe be persisted in the local
     /// Slumber database?
     /// [See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)
@@ -331,6 +338,7 @@ impl slumber_util::Factory for Recipe {
     fn factory((): ()) -> Self {
         Self {
             id: RecipeId::factory(()),
+            location: SourceLocation::default(),
             persist: true,
             name: None,
             method: HttpMethod::Get,

@@ -7,13 +7,11 @@ mod theme;
 pub use input::{Action, InputBinding, InputMap, KeyCombination};
 pub use theme::Theme;
 
-use crate::tui::mime::MimeMap;
+use crate::{EditorError, tui::mime::MimeMap};
 use ::mime::Mime;
-use editor_command::EditorBuilderError;
+use editor_command::Editor;
 use serde::Serialize;
-use slumber_util::doc_link;
-use std::{env, path::Path};
-use thiserror::Error;
+use std::env;
 
 /// Configuration specific to the TUI
 #[derive(Debug, Serialize)]
@@ -23,13 +21,6 @@ use thiserror::Error;
 pub struct TuiConfig {
     /// Configuration for in-app query and export commands
     pub commands: CommandsConfig,
-
-    /// Command to use for in-app editing. If provided, overrides
-    /// `VISUAL`/`EDITOR` environment variables. This only supports a
-    /// single command, *not* a content type map. This is because
-    /// there isn't much value in it, and plumbing the content type
-    /// around to support it is annoying.
-    pub editor: Option<String>,
 
     /// Command to use to browse response bodies. If provided, overrides
     /// `PAGER` environment variable.  This could be a single command, or a
@@ -63,31 +54,10 @@ pub struct TuiConfig {
 }
 
 impl TuiConfig {
-    /// Get a command to open the given file in the user's configured editor.
-    /// Default editor is `vim`. Return an error if the command couldn't be
-    /// built.
-    pub fn editor_command(
-        &self,
-        file: &Path,
-    ) -> Result<std::process::Command, EditorError> {
-        editor_command::EditorBuilder::new()
-            // Config field takes priority over environment variables
-            .source(self.editor.as_deref())
-            .environment()
-            .source(Some("vim"))
-            .path(file)
-            .build()
-            .map_err(EditorError::Editor)
-    }
-
-    /// Get a command to open the given file in the user's configured file
+    /// Get an [Editor] to open the given file in the user's configured file
     /// pager. Default is `less` on Unix, `more` on Windows. Return an error
     /// if the command couldn't be built.
-    pub fn pager_command(
-        &self,
-        file: &Path,
-        mime: Option<&Mime>,
-    ) -> Result<std::process::Command, EditorError> {
+    pub fn pager(&self, mime: Option<&Mime>) -> Result<Editor, EditorError> {
         // Use a built-in pager
         let default = if cfg!(windows) { "more" } else { "less" };
 
@@ -98,12 +68,11 @@ impl TuiConfig {
 
         editor_command::EditorBuilder::new()
             // Config field takes priority over environment variables
-            .source(config_command)
-            .source(env::var("PAGER").ok())
-            .source(Some(default))
-            .path(file)
+            .string(config_command)
+            .string(env::var("PAGER").ok())
+            .string(Some(default))
             .build()
-            .map_err(EditorError::Pager)
+            .map_err(EditorError)
     }
 }
 
@@ -111,7 +80,6 @@ impl Default for TuiConfig {
     fn default() -> Self {
         Self {
             commands: CommandsConfig::default(),
-            editor: Default::default(),
             pager: Default::default(),
             preview_templates: true,
             input_bindings: Default::default(),
@@ -120,16 +88,6 @@ impl Default for TuiConfig {
             persist: true,
         }
     }
-}
-
-/// Error opening a configured editor/pager
-#[derive(Debug, Error)]
-pub enum EditorError {
-    #[error("Error opening editor; see {}", doc_link("user_guide/tui/editor"))]
-    Editor(#[source] EditorBuilderError),
-
-    #[error("Error opening pager; see {}", doc_link("user_guide/tui/editor"))]
-    Pager(#[source] EditorBuilderError),
 }
 
 /// Configuration for in-app query and export commands

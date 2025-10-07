@@ -3,8 +3,8 @@
 use crate::{
     NEW_ISSUE_LINK, paths,
     yaml::{
-        LocatedError, ResolvedSourceLocation, SourceId, SourceLocation,
-        SourceMap, SourcedYaml, yaml_parse_panic,
+        LocatedError, SourceId, SourceIdLocation, SourceLocation, SourceMap,
+        SourcedYaml, yaml_parse_panic,
     },
 };
 use derive_more::From;
@@ -548,7 +548,7 @@ impl<'input> SortedGraph<'input> {
 fn path_lookup<'input, 'value>(
     value: &'value SourcedYaml<'input>,
     path: &[String],
-) -> std::result::Result<&'value SourcedYaml<'input>, SourceLocation> {
+) -> std::result::Result<&'value SourcedYaml<'input>, SourceIdLocation> {
     if let [first, rest @ ..] = path {
         let location = value.location;
         // We need to go deeper. Value better be something we can drill into
@@ -830,7 +830,7 @@ struct YamlPath<'input> {
     segments: Vec<YamlPathSegment<'input>>,
     /// Source location of the *value* associated with this path. Used for
     /// error messages
-    location: SourceLocation,
+    location: SourceIdLocation,
 }
 
 impl<'input> YamlPath<'input> {
@@ -838,7 +838,7 @@ impl<'input> YamlPath<'input> {
         Self {
             source_id,
             segments: Vec::new(),
-            location: SourceLocation::default(),
+            location: SourceIdLocation::default(),
         }
     }
 
@@ -846,7 +846,7 @@ impl<'input> YamlPath<'input> {
     fn cons(
         &self,
         segment: impl Into<YamlPathSegment<'input>>,
-        location: SourceLocation,
+        location: SourceIdLocation,
     ) -> Self {
         let mut segments = self.segments.clone();
         segments.push(segment.into());
@@ -977,7 +977,7 @@ pub enum ReferenceError {
     )]
     ExpectedMapping {
         reference: Reference,
-        parent: ResolvedSourceLocation,
+        parent: SourceLocation,
     },
 
     /// Failed to parse a string to a reference
@@ -1400,7 +1400,7 @@ data:
         let path = YamlPath {
             source_id: SourceId::Memory,
             segments: segments.into_iter().map(YamlPathSegment::from).collect(),
-            location: SourceLocation::default(),
+            location: SourceIdLocation::default(),
         };
         let reference = SourceReference {
             source_id: reference_source_id,

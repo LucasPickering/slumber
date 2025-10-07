@@ -68,7 +68,7 @@ mod tests {
         http::HttpMethod,
         test_util::by_id,
     };
-    use slumber_util::{Factory, TempDir, temp_dir};
+    use slumber_util::{Factory, TempDir, temp_dir, yaml::SourceLocation};
     use std::fs;
 
     /// Test creating a new collection file, specifying the path in various ways
@@ -132,6 +132,7 @@ mod tests {
                 }),
                 RecipeNode::Folder(Folder {
                     id: "example_folder".into(),
+                    location: SourceLocation::default(),
                     name: Some("Example Folder".into()),
                     children: by_id([RecipeNode::Recipe(Recipe {
                         id: "example_post".into(),

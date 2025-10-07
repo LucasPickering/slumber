@@ -20,7 +20,7 @@ use slumber_core::collection as v4;
 use slumber_template::{
     Expression, Template as TemplateV4, TemplateChunk as TemplateChunkV4,
 };
-use slumber_util::TimeSpan;
+use slumber_util::{TimeSpan, yaml::SourceLocation};
 use std::{hash::Hash, ops::Deref};
 
 /// Import from the Slumber v3 collection format. The major changes:
@@ -152,6 +152,7 @@ impl IntoV4 for v3::Folder {
     ) -> anyhow::Result<Self::Output> {
         Ok(v4::Folder {
             id: self.id,
+            location: SourceLocation::default(),
             name: self.name,
             children: self.children.into_v4(chains)?,
         })
@@ -168,6 +169,7 @@ impl IntoV4 for v3::Recipe {
     ) -> anyhow::Result<Self::Output> {
         Ok(v4::Recipe {
             id: self.id,
+            location: SourceLocation::default(),
             persist: self.persist,
             name: self.name,
             method: self.method,

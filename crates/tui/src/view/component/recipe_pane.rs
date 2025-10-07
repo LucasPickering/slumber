@@ -284,12 +284,13 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     use slumber_core::{collection::Recipe, test_util::by_id};
-    use slumber_util::Factory;
+    use slumber_util::{Factory, yaml::SourceLocation};
 
     #[test]
     fn test_folder_tree() {
         let folder = Folder {
             id: "1f".into(),
+            location: SourceLocation::default(),
             name: None,
             children: by_id([
                 RecipeNode::Recipe(Recipe::factory("1.1r")),
@@ -297,6 +298,7 @@ mod tests {
                 // Nested folder
                 RecipeNode::Folder(Folder {
                     id: "1.3f".into(),
+                    location: SourceLocation::default(),
                     name: None,
                     children: by_id([RecipeNode::Recipe(Recipe::factory(
                         "1.3.1r",
@@ -305,6 +307,7 @@ mod tests {
                 // Empty folder
                 RecipeNode::Folder(Folder {
                     id: "1.4f".into(),
+                    location: SourceLocation::default(),
                     name: None,
                     children: Default::default(),
                 }),
@@ -312,11 +315,13 @@ mod tests {
                 // decorations don't appear
                 RecipeNode::Folder(Folder {
                     id: "1.5f".into(),
+                    location: SourceLocation::default(),
                     name: None,
                     children: by_id([
                         RecipeNode::Recipe(Recipe::factory("1.5.1r")),
                         RecipeNode::Folder(Folder {
                             id: "1.5.2f".into(),
+                            location: SourceLocation::default(),
                             name: None,
                             children: by_id([RecipeNode::Recipe(
                                 Recipe::factory("1.5.2.1r"),

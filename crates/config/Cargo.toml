@@ -12,7 +12,7 @@ version = {workspace = true}
 
 [dependencies]
 derive_more = {workspace = true, features = ["deref", "display"]}
-editor-command = {version = "1.0.0", optional = true}
+editor-command = "2.0.0"
 glob = {version = "0.3.2", optional = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
@@ -37,7 +37,7 @@ slumber_util = {workspace = true, features = ["test"]}
 [features]
 schema = ["dep:schemars"]
 # TUI-specific config fields and dependencies are gated behind this flag
-tui = ["dep:editor-command", "dep:glob", "dep:mime", "dep:ratatui-core", "dep:terminput"]
+tui = ["dep:glob", "dep:mime", "dep:ratatui-core", "dep:terminput"]
 
 [lints]
 workspace = true

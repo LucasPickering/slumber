@@ -9,7 +9,9 @@ use serde::{
 };
 use slumber_util::{
     Mapping, NEW_ISSUE_LINK,
-    yaml::{self, DeserializeYaml, Expected, LocatedError, SourcedYaml},
+    yaml::{
+        self, DeserializeYaml, Expected, LocatedError, SourceMap, SourcedYaml,
+    },
 };
 use std::{
     borrow::Cow,
@@ -220,7 +222,10 @@ impl DeserializeYaml for Action {
         Expected::String
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        _source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let location = yaml.location;
         let s = yaml.try_into_string()?;
         // Use serde's implementation for consistency with serialization
@@ -266,9 +271,12 @@ impl DeserializeYaml for InputBinding {
         Expected::Sequence
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         // Deserialize a list of key combinations
-        DeserializeYaml::deserialize(yaml).map(Self)
+        DeserializeYaml::deserialize(yaml, source_map).map(Self)
     }
 }
 
@@ -410,7 +418,10 @@ impl DeserializeYaml for KeyCombination {
         Expected::String
     }
 
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        _source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let location = yaml.location;
         let s = yaml.try_into_string()?;
         s.parse()
@@ -508,9 +519,12 @@ impl DeserializeYaml for InputMap {
     /// Deserialize an input map. First we deserialize the user's provided
     /// bindings, then we'll populate the map with the defaults so the consumer
     /// has access to all the bindings in one place
-    fn deserialize(yaml: SourcedYaml) -> yaml::Result<Self> {
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
         let user_bindings: IndexMap<Action, InputBinding> =
-            DeserializeYaml::deserialize(yaml)?;
+            DeserializeYaml::deserialize(yaml, source_map)?;
         Ok(Self::new(user_bindings))
     }
 }

@@ -41,7 +41,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId, RecipeNodeType},
+    collection::{Collection, ProfileId, RecipeId, RecipeNode, RecipeNodeType},
     http::RequestId,
 };
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
@@ -235,6 +235,21 @@ impl PrimaryView {
             }
         }
     }
+
+    /// Send a message to open the collection file to the selected
+    /// recipe/folder. If the collection is empty, just open to the start
+    fn edit_selected_recipe(&self) {
+        let collection = ViewContext::collection();
+        // Get the source location of the selected folder/recipe
+        let location = self
+            .recipe_list_pane
+            .data()
+            .selected_node()
+            .and_then(|(id, _)| collection.recipes.get(id))
+            .map(RecipeNode::location)
+            .cloned();
+        ViewContext::send_message(Message::CollectionEdit { location });
+    }
 }
 
 impl EventHandler for PrimaryView {
@@ -317,12 +332,10 @@ impl EventHandler for PrimaryView {
                         .select(&PrimaryPane::Exchange),
                 }
             })
+            // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {
-                // Handle our own menu action type
                 match menu_action {
-                    GlobalMenuAction::EditCollection => {
-                        ViewContext::send_message(Message::CollectionEdit);
-                    }
+                    GlobalMenuAction::EditRecipe => self.edit_selected_recipe(),
                 }
             })
     }
@@ -463,9 +476,10 @@ enum FullscreenMode {
 /// Menu actions available in all contexts
 #[derive(Copy, Clone, Debug, Display, EnumIter)]
 enum GlobalMenuAction {
-    /// Open the current collection file in an external editor
-    #[display("Edit Collection")]
-    EditCollection,
+    /// Open the collection file in an external editor, jumping to whatever
+    /// recipe is currently selected
+    #[display("Edit Recipe")]
+    EditRecipe,
 }
 
 impl IntoMenuAction<PrimaryView> for GlobalMenuAction {}
@@ -553,17 +567,22 @@ mod tests {
         assert_eq!(component.data().request_config(), Some(expected_config));
     }
 
-    /// Test "Edit Collection" action
+    /// Test "Edit Recipe" action
     #[rstest]
-    fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_recipe(mut harness: TestHarness, terminal: TestTerminal) {
         let mut component = create_component(&mut harness, &terminal);
         component.int().drain_draw().assert_empty();
 
         harness.clear_messages(); // Clear init junk
 
-        component.int().action("Edit Collection").assert_empty();
+        component.int().action("Edit Recipe").assert_empty();
         // Event should be converted into a message appropriately
-        assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
+        assert_matches!(
+            harness.pop_message_now(),
+            // The actual location is unimportant because the collection was
+            // generated in memory, but make sure it's populated
+            Message::CollectionEdit { location: Some(_) }
+        );
     }
 
     /// Test "Copy URL" action, which is available via the Recipe List or Recipe

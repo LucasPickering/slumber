@@ -3609,7 +3609,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_python"
-version = "0.0.3"
+version = "4.1.0"
 dependencies = [
  "async-trait",
  "dialoguer",

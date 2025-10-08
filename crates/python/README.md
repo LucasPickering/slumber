@@ -30,3 +30,7 @@ print(response.text)
 ```
 
 For more usage examples, [see the docs](https://slumber.lucaspickering.me/integration/python.html).
+
+## Versioning
+
+For simplicity, the version of this package is synched to the main Slumber version and follows the same [releases](https://github.com/LucasPickering/slumber/releases). That means there may be releases of this package that don't actually change anything, or version bumps that are higher than necessary (e.g. minor versions with only patch changes). The versioning **is still semver compliant**.

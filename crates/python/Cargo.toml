@@ -9,7 +9,8 @@ name = "slumber_python"
 publish = false
 repository = {workspace = true}
 rust-version = {workspace = true}
-version = "0.0.3"
+# See README about version management
+version = {workspace = true}
 
 [package.metadata.release]
 release = false

@@ -6,7 +6,7 @@ mod history;
 mod internal;
 mod misc;
 mod primary;
-mod profile_select;
+mod profile_list;
 mod queryable_body;
 mod recipe_list;
 mod recipe_pane;

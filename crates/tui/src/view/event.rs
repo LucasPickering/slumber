@@ -438,6 +438,11 @@ impl<T: Sized + LocalEvent> Emitter<T> {
             phantom: PhantomData,
         }
     }
+
+    /// TODO
+    pub fn menu(self, action: T, name: impl Into<String>) -> MenuAction {
+        MenuAction::new(self, action, name)
+    }
 }
 
 impl Emitter<dyn LocalEvent> {

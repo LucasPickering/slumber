@@ -143,22 +143,31 @@ pub struct MenuAction {
 }
 
 impl MenuAction {
-    /// Get a mapping function to generate menu actions from some type. Useful
-    /// for mapping an iterator of specific action types to this type.
-    pub fn with_data<Data, T>(
-        data: &Data,
+    /// TODO
+    pub fn new<T: LocalEvent>(
         emitter: Emitter<T>,
-    ) -> impl '_ + Fn(T) -> Self
-    where
-        T: IntoMenuAction<Data>,
-    {
-        move |action| Self {
-            name: action.label(data),
+        action: T,
+        name: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
             emitter: emitter.upcast(),
-            enabled: action.enabled(data),
-            shortcut: action.shortcut(data),
+            enabled: true,
+            shortcut: None,
             value: Box::new(action),
         }
+    }
+
+    /// TODO
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    /// TODO
+    pub fn shortcut(mut self, shortcut: Option<Action>) -> Self {
+        self.shortcut = shortcut;
+        self
     }
 }
 
@@ -184,24 +193,6 @@ impl Generate for &MenuAction {
     }
 }
 
-/// Trait for any type that can be converted into menu actions. This is useful
-/// both for static lists of actions (i.e. enums) and dynamic lists. Combine
-/// with [MenuAction::with_data] to implement [EventHandler::menu_actions].
-pub trait IntoMenuAction<Data>: LocalEvent {
-    /// Get the display label for the action
-    fn label(&self, _: &Data) -> String;
-
-    /// Should this action be enabled in the menu?
-    fn enabled(&self, _: &Data) -> bool {
-        true
-    }
-
-    /// What input action, if any, should trigger this menu action?
-    fn shortcut(&self, _: &Data) -> Option<Action> {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,7 +201,6 @@ mod tests {
         view::test_util::TestComponent,
     };
     use rstest::rstest;
-    use strum::{EnumIter, IntoEnumIterator};
     use terminput::KeyCode;
 
     /// A component that provides some actions
@@ -221,9 +211,17 @@ mod tests {
 
     impl EventHandler for Actionable {
         fn menu_actions(&self) -> Vec<MenuAction> {
-            TestMenuAction::iter()
-                .map(MenuAction::with_data(&(), self.emitter))
-                .collect()
+            let emitter = self.emitter;
+            vec![
+                emitter.menu(TestMenuAction::Flobrigate, "Flobrigate"),
+                emitter.menu(TestMenuAction::Profilate, "Profilate"),
+                emitter
+                    .menu(TestMenuAction::Disablify, "Disablify")
+                    .enabled(false),
+                emitter
+                    .menu(TestMenuAction::Shortcutticated, "Shortcutticated")
+                    .shortcut(Some(Action::Edit)),
+            ]
         }
     }
 
@@ -237,35 +235,12 @@ mod tests {
         }
     }
 
-    #[derive(Debug, PartialEq, EnumIter)]
+    #[derive(Debug, PartialEq)]
     enum TestMenuAction {
         Flobrigate,
         Profilate,
         Disablify,
         Shortcutticated,
-    }
-
-    impl IntoMenuAction<()> for TestMenuAction {
-        fn label(&self, (): &()) -> String {
-            match self {
-                Self::Flobrigate => "Flobrigate",
-                Self::Profilate => "Profilate",
-                Self::Disablify => "Disablify",
-                Self::Shortcutticated => "Shortcutticated",
-            }
-            .into()
-        }
-
-        fn enabled(&self, &(): &()) -> bool {
-            !matches!(self, Self::Disablify)
-        }
-
-        fn shortcut(&self, &(): &()) -> Option<Action> {
-            match self {
-                Self::Shortcutticated => Some(Action::Edit),
-                _ => None,
-            }
-        }
     }
 
     /// Test basic action menu interactions

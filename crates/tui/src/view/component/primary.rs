@@ -94,21 +94,22 @@ impl PrimaryView {
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty OR a folder is selected.
     pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
-        self.recipe_list_pane
-            .data()
-            .selected_node()
-            .and_then(|(id, kind)| {
-                if matches!(kind, RecipeNodeType::Recipe) {
-                    Some(id)
-                } else {
-                    None
-                }
-            })
+        self.selected_recipe_node().and_then(|(id, kind)| {
+            if matches!(kind, RecipeNodeType::Recipe) {
+                Some(id)
+            } else {
+                None
+            }
+        })
     }
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
         self.profile_pane.data().selected_profile_id()
+    }
+
+    fn selected_recipe_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
+        self.recipe_list_pane.data().selected_node()
     }
 
     /// Get a definition of the request that should be sent from the current
@@ -237,14 +238,12 @@ impl PrimaryView {
     }
 
     /// Send a message to open the collection file to the selected
-    /// recipe/folder. If the collection is empty, just open to the start
-    fn edit_selected_recipe(&self) {
+    /// recipe/folder. If there are no recipes, just open to the start
+    fn edit_collection(&self) {
         let collection = ViewContext::collection();
         // Get the source location of the selected folder/recipe
         let location = self
-            .recipe_list_pane
-            .data()
-            .selected_node()
+            .selected_recipe_node()
             .and_then(|(id, _)| collection.recipes.get(id))
             .map(RecipeNode::location)
             .cloned();
@@ -335,7 +334,9 @@ impl EventHandler for PrimaryView {
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {
                 match menu_action {
-                    GlobalMenuAction::EditRecipe => self.edit_selected_recipe(),
+                    GlobalMenuAction::EditCollection => {
+                        self.edit_collection();
+                    }
                 }
             })
     }
@@ -382,11 +383,8 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         );
 
         let collection = ViewContext::collection();
-        let selected_recipe_node = self
-            .recipe_list_pane
-            .data()
-            .selected_node()
-            .and_then(|(id, _)| {
+        let selected_recipe_node =
+            self.selected_recipe_node().and_then(|(id, _)| {
                 collection
                     .recipes
                     .try_get(id)
@@ -411,10 +409,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             || {
                 ExchangePane::new(
                     props.selected_request,
-                    self.recipe_list_pane
-                        .data()
-                        .selected_node()
-                        .map(|(_, node_type)| node_type),
+                    self.selected_recipe_node().map(|(_, node_type)| node_type),
                 )
                 .into()
             },
@@ -474,15 +469,25 @@ enum FullscreenMode {
 }
 
 /// Menu actions available in all contexts
-#[derive(Copy, Clone, Debug, Display, EnumIter)]
+#[derive(Copy, Clone, Debug, EnumIter)]
 enum GlobalMenuAction {
     /// Open the collection file in an external editor, jumping to whatever
-    /// recipe is currently selected
-    #[display("Edit Recipe")]
-    EditRecipe,
+    /// recipe/folder is currently selected
+    EditCollection,
 }
 
-impl IntoMenuAction<PrimaryView> for GlobalMenuAction {}
+impl IntoMenuAction<PrimaryView> for GlobalMenuAction {
+    fn label(&self, view: &PrimaryView) -> String {
+        match self {
+            Self::EditCollection => match view.selected_recipe_node() {
+                None => "Edit Collection",
+                Some((_, RecipeNodeType::Folder)) => "Edit Folder",
+                Some((_, RecipeNodeType::Recipe)) => "Edit Recipe",
+            },
+        }
+        .into()
+    }
+}
 
 /// Helper for adjusting pane behavior according to state
 struct Panes {

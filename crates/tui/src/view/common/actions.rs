@@ -19,7 +19,6 @@ use ratatui::{
     text::{Line, Span},
 };
 use slumber_config::Action;
-use std::fmt::Display;
 
 /// Modal to list and trigger arbitrary actions. The user opens the action menu
 /// with a keybinding, at which point the list of available actions is built
@@ -159,7 +158,7 @@ impl MenuAction {
         T: IntoMenuAction<Data>,
     {
         move |action| Self {
-            name: action.to_string(),
+            name: action.label(data),
             emitter: emitter.upcast(),
             enabled: action.enabled(data),
             shortcut: action.shortcut(data),
@@ -193,7 +192,10 @@ impl Generate for &MenuAction {
 /// Trait for any type that can be converted into menu actions. This is useful
 /// both for static lists of actions (i.e. enums) and dynamic lists. Combine
 /// with [MenuAction::with_data] to implement [EventHandler::menu_actions].
-pub trait IntoMenuAction<Data>: Display + LocalEvent {
+pub trait IntoMenuAction<Data>: LocalEvent {
+    /// Get the display label for the action
+    fn label(&self, _: &Data) -> String;
+
     /// Should this action be enabled in the menu?
     fn enabled(&self, _: &Data) -> bool {
         true
@@ -240,7 +242,7 @@ mod tests {
         }
     }
 
-    #[derive(Debug, derive_more::Display, PartialEq, EnumIter)]
+    #[derive(Debug, PartialEq, EnumIter)]
     enum TestMenuAction {
         // Disablify is first to test that disabled actions are skipped
         Disablify,
@@ -250,6 +252,16 @@ mod tests {
     }
 
     impl IntoMenuAction<()> for TestMenuAction {
+        fn label(&self, (): &()) -> String {
+            match self {
+                Self::Flobrigate => "Flobrigate",
+                Self::Profilate => "Profilate",
+                Self::Disablify => "Disablify",
+                Self::Shortcutticated => "Shortcutticated",
+            }
+            .into()
+        }
+
         fn enabled(&self, &(): &()) -> bool {
             !matches!(self, Self::Disablify)
         }

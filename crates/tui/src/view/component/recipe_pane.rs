@@ -210,6 +210,10 @@ pub enum RecipeMenuAction {
 }
 
 impl IntoMenuAction<RecipePane> for RecipeMenuAction {
+    fn label(&self, _: &RecipePane) -> String {
+        self.to_string()
+    }
+
     fn enabled(&self, data: &RecipePane) -> bool {
         match self {
             Self::CopyUrl | Self::CopyCurl | Self::DeleteRecipe => {

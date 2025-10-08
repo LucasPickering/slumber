@@ -224,11 +224,9 @@ struct SaveRecipeTableOverride {
     value: String,
 }
 
-#[derive(Debug, derive_more::Display)]
+#[derive(Debug)]
 enum RecipeTableMenuAction {
-    #[display("Edit {noun}")]
     Edit { noun: &'static str },
-    #[display("Reset {noun}")]
     Reset { noun: &'static str },
 }
 
@@ -239,6 +237,16 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: PersistedKey<Value = bool>,
 {
+    fn label(
+        &self,
+        _: &RecipeFieldTable<RowSelectKey, RowToggleKey>,
+    ) -> String {
+        match self {
+            Self::Edit { noun } => format!("Edit {noun}"),
+            Self::Reset { noun } => format!("Reset {noun}"),
+        }
+    }
+
     fn enabled(
         &self,
         data: &RecipeFieldTable<RowSelectKey, RowToggleKey>,

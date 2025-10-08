@@ -323,19 +323,25 @@ pub struct FormRowToggleKey {
 }
 
 /// Action menu items for a raw body
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
+#[derive(Copy, Clone, Debug, EnumIter)]
 enum RawBodyMenuAction {
-    #[display("View Body")]
     View,
-    #[display("Copy Body")]
     Copy,
-    #[display("Edit Body")]
     Edit,
-    #[display("Reset Body")]
     Reset,
 }
 
 impl IntoMenuAction<TextBody> for RawBodyMenuAction {
+    fn label(&self, _: &TextBody) -> String {
+        match self {
+            Self::View => "View Body",
+            Self::Copy => "Copy Body",
+            Self::Edit => "Edit Body",
+            Self::Reset => "Reset Body",
+        }
+        .into()
+    }
+
     fn enabled(&self, data: &TextBody) -> bool {
         match self {
             Self::View | Self::Copy | Self::Edit => true,

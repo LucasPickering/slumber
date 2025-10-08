@@ -194,15 +194,21 @@ impl Draw for AuthenticationDisplay {
 #[derive(Debug)]
 struct SaveAuthenticationOverride(String);
 
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
+#[derive(Copy, Clone, Debug, EnumIter)]
 enum AuthenticationMenuAction {
-    #[display("Edit Authentication")]
     Edit,
-    #[display("Reset Authentication")]
     Reset,
 }
 
 impl IntoMenuAction<AuthenticationDisplay> for AuthenticationMenuAction {
+    fn label(&self, _: &AuthenticationDisplay) -> String {
+        match self {
+            Self::Edit => "Edit Authentication",
+            Self::Reset => "Reset Authentication",
+        }
+        .into()
+    }
+
     fn enabled(&self, data: &AuthenticationDisplay) -> bool {
         match self {
             Self::Edit => true,

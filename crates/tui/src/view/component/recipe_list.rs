@@ -276,6 +276,10 @@ pub enum RecipeListPaneEvent {
 }
 
 impl IntoMenuAction<RecipeListPane> for RecipeMenuAction {
+    fn label(&self, _: &RecipeListPane) -> String {
+        self.to_string()
+    }
+
     fn enabled(&self, data: &RecipeListPane) -> bool {
         let has_recipe = data.selected_recipe_id().is_some();
         // Use a match so we have to think about this for any new variants

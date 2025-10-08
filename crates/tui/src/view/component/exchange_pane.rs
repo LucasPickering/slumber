@@ -509,25 +509,31 @@ impl ExchangePaneContentState {
 }
 
 /// Items in the actions popup menu for the Body
-#[derive(Copy, Clone, Debug, Display, EnumIter)]
+#[derive(Copy, Clone, Debug, EnumIter)]
 enum ExchangePaneMenuAction {
-    #[display("Copy URL")]
     CopyUrl,
-    #[display("Copy Request Body")]
     CopyRequestBody,
-    #[display("View Request Body")]
     ViewRequestBody,
-    #[display("Copy Response Body")]
     CopyResponseBody,
-    #[display("View Response Body")]
     ViewResponseBody,
-    #[display("Save Response Body as File")]
     SaveResponseBody,
-    #[display("Delete Request")]
     DeleteRequest,
 }
 
 impl IntoMenuAction<ExchangePaneContent> for ExchangePaneMenuAction {
+    fn label(&self, _: &ExchangePaneContent) -> String {
+        match self {
+            Self::CopyUrl => "Copy URL",
+            Self::CopyRequestBody => "Copy Request Body",
+            Self::ViewRequestBody => "View Request Body",
+            Self::CopyResponseBody => "Copy Response Body",
+            Self::ViewResponseBody => "View Response Body",
+            Self::SaveResponseBody => "Save Response Body as File",
+            Self::DeleteRequest => "Delete Request",
+        }
+        .into()
+    }
+
     fn enabled(&self, data: &ExchangePaneContent) -> bool {
         match self {
             Self::CopyUrl | Self::DeleteRequest => {

@@ -6,11 +6,7 @@ use crate::{
     view::{
         Component, ViewContext,
         common::{
-            Pane,
-            list::List,
-            modal::{Modal, ModalHandle},
-            table::Table,
-            template_preview::TemplatePreview,
+            Pane, list::List, table::Table, template_preview::TemplatePreview,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -19,34 +15,28 @@ use crate::{
             StateCell,
             select::{SelectState, SelectStateEvent, SelectStateEventType},
         },
-        util::persistence::Persisted,
+        util::persistence::PersistedLazy,
     },
 };
 use anyhow::anyhow;
 use itertools::Itertools;
 use persisted::PersistedKey;
-use ratatui::{
-    Frame,
-    layout::{Constraint, Layout},
-    text::{Line, Text},
-};
+use ratatui::{Frame, text::Text};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::collection::{Collection, HasId, Profile, ProfileId};
-use slumber_util::doc_link;
+use std::ops::Deref;
 
 /// Minimal pane to show the current profile, and handle interaction to open the
 /// profile list modal
+///
+/// TODO update comment, rename to ProfileList?
 #[derive(Debug)]
-pub struct ProfilePane {
-    /// Store just the ID of the selected profile. We'll load the full list
-    /// from the view context when opening the modal. It's not possible to
-    /// share selection state with the modal, because the two values aren't
-    /// necessarily the same: the user could highlight a profile without
-    /// actually selecting it.
-    selected_profile_id: Persisted<SelectedProfileKey>,
-    /// Handle events from the opened modal
-    modal_handle: ModalHandle<SelectProfile>,
+pub struct ProfileTab {
+    select: Component<
+        PersistedLazy<SelectedProfileKey, SelectState<ProfileListItem>>,
+    >,
+    emitter: Emitter<ProfileTabEvent>,
 }
 
 /// Persisted key for the ID of the selected profile
@@ -54,146 +44,42 @@ pub struct ProfilePane {
 #[persisted(Option<ProfileId>)]
 struct SelectedProfileKey;
 
-impl ProfilePane {
+impl ProfileTab {
     pub fn new(collection: &Collection) -> Self {
-        let mut selected_profile_id =
-            Persisted::new_default(SelectedProfileKey);
-
-        // Two invalid cases we need to handle here:
-        // - Nothing is persisted but the map has values now
-        // - Persisted ID isn't in the map now
-        // In either case, just fall back to:
-        // - Default profile if available
-        // - First profile if available
-        // - `None` if map is empty
-        match &*selected_profile_id {
-            Some(id) if collection.profiles.contains_key(id) => {}
-            _ => {
-                *selected_profile_id.get_mut() = collection
-                    .default_profile()
-                    .or(collection.profiles.values().next())
-                    .map(Profile::id)
-                    .cloned();
-            }
-        }
-
-        Self {
-            selected_profile_id,
-            modal_handle: ModalHandle::new(),
-        }
-    }
-
-    pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.selected_profile_id.as_ref()
-    }
-
-    /// Open the profile list modal
-    pub fn open_modal(&mut self) {
-        self.modal_handle
-            .open(ProfileListModal::new(self.selected_profile_id.as_ref()));
-    }
-}
-
-impl EventHandler for ProfilePane {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event
-            .opt()
-            .action(|action, propagate| match action {
-                Action::LeftClick => self.open_modal(),
-                _ => propagate.set(),
-            })
-            .emitted(
-                self.modal_handle.to_emitter(),
-                |SelectProfile(profile_id)| {
-                    // Handle message from the modal
-                    *self.selected_profile_id.get_mut() =
-                        Some(profile_id.clone());
-                    // Refresh template previews
-                    ViewContext::push_event(Event::HttpSelectRequest(None));
-                },
-            )
-    }
-}
-
-impl Draw for ProfilePane {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        let title = TuiContext::get()
-            .input_engine
-            .add_hint("Profile", Action::SelectProfileList);
-        let block = Pane {
-            title: &title,
-            has_focus: false,
-        }
-        .generate();
-        frame.render_widget(&block, metadata.area());
-        let area = block.inner(metadata.area());
-
-        // Grab global profile selection state
-        let collection = ViewContext::collection();
-        let selected_profile = (*self.selected_profile_id)
-            .as_ref()
-            .and_then(|profile_id| collection.profiles.get(profile_id));
-        frame.render_widget(
-            if let Some(profile) = selected_profile {
-                profile.name()
-            } else {
-                "No profiles defined"
-            },
-            area,
-        );
-    }
-}
-
-/// Modal to allow user to select a profile from a list and preview profile
-/// fields
-#[derive(Debug)]
-struct ProfileListModal {
-    emitter: Emitter<SelectProfile>,
-    select: Component<SelectState<ProfileListItem>>,
-    detail: Component<ProfileDetail>,
-}
-
-impl ProfileListModal {
-    pub fn new(selected_profile_id: Option<&ProfileId>) -> Self {
-        let profiles = ViewContext::collection()
+        let profiles = collection
             .profiles
             .values()
             .map(ProfileListItem::from)
             .collect();
-
         let select = SelectState::builder(profiles)
-            .preselect_opt(selected_profile_id)
             .subscribe([SelectStateEventType::Submit])
             .build();
+
         Self {
-            emitter: Default::default(),
-            select: select.into(),
-            detail: Default::default(),
+            select: PersistedLazy::new(SelectedProfileKey, select).into(),
+            emitter: Emitter::default(),
         }
     }
-}
 
-impl Modal for ProfileListModal {
-    fn title(&self) -> Line<'_> {
-        "Profiles".into()
-    }
-
-    fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Percentage(60), Constraint::Percentage(40))
+    pub fn selected_profile_id(&self) -> Option<&ProfileId> {
+        self.select.data().selected().map(|item| &item.id)
     }
 }
 
-impl EventHandler for ProfileListModal {
+impl EventHandler for ProfileTab {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.select.to_emitter(), |event| {
-            // Loaded request depends on the profile, so refresh on change
-            if let SelectStateEvent::Submit(index) = event {
-                // Close modal first so the parent can consume the emitted event
-                self.close(true);
-                let profile_id = self.select.data()[index].id.clone();
-                self.emitter.emit(SelectProfile(profile_id));
-            }
-        })
+        event
+            .opt()
+            .action(|action, propagate| match action {
+                Action::LeftClick => self.emitter.emit(ProfileTabEvent::Click),
+                _ => propagate.set(),
+            })
+            .emitted(self.select.to_emitter(), |event| match event {
+                SelectStateEvent::Submit(_) => {
+                    self.emitter.emit(ProfileTabEvent::Submit);
+                }
+                SelectStateEvent::Select(_) | SelectStateEvent::Toggle(_) => {}
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -201,7 +87,57 @@ impl EventHandler for ProfileListModal {
     }
 }
 
-impl Draw for ProfileListModal {
+impl Draw for ProfileTab {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+        let title = TuiContext::get()
+            .input_engine
+            .add_hint("Profile", Action::SelectProfileList);
+        let block = Pane {
+            title: &title,
+            has_focus: metadata.has_focus(),
+        }
+        .generate();
+        frame.render_widget(&block, metadata.area());
+        let area = block.inner(metadata.area());
+
+        // Grab global profile selection state
+        let collection = ViewContext::collection();
+        let selected_profile = self
+            .select
+            .data()
+            .selected()
+            .and_then(|item| collection.profiles.get(&item.id));
+
+        // If the tab is open, draw the entire list. Otherwise just draw the
+        // tab with the current profile
+        if metadata.has_focus() {
+            self.select.draw(
+                frame,
+                List::from(self.select.data().deref()),
+                area,
+                true,
+            );
+        } else {
+            frame.render_widget(
+                if let Some(profile) = selected_profile {
+                    profile.name()
+                } else {
+                    "No profiles defined"
+                },
+                area,
+            );
+        }
+    }
+}
+
+impl ToEmitter<ProfileTabEvent> for ProfileTab {
+    fn to_emitter(&self) -> Emitter<ProfileTabEvent> {
+        self.emitter
+    }
+}
+
+/* TODO
+impl Draw for ProfileList {
     fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Empty state
         let select = self.select.data();
@@ -236,16 +172,16 @@ impl Draw for ProfileListModal {
         }
     }
 }
+ */
 
-impl ToEmitter<SelectProfile> for ProfileListModal {
-    fn to_emitter(&self) -> Emitter<SelectProfile> {
-        self.emitter
-    }
-}
-
-/// Local event to pass selected profile ID from modal back to the parent
+/// Emitted event type for the profile tab
 #[derive(Debug)]
-struct SelectProfile(ProfileId);
+pub enum ProfileTabEvent {
+    /// Tab was clicked; focus it
+    Click,
+    /// Profile was submitted; close the tab and refresh previews
+    Submit,
+}
 
 /// Simplified version of [Profile], to be used in the display list. This
 /// only stores whatever data is necessary to render the list
@@ -296,14 +232,14 @@ impl Generate for &ProfileListItem {
     }
 }
 
-/// Display the contents of a profile
+/// Display the fields of a profile
 #[derive(Debug, Default)]
-struct ProfileDetail {
+pub struct ProfileDetail {
     fields: StateCell<ProfileId, Vec<(String, TemplatePreview)>>,
 }
 
-struct ProfileDetailProps<'a> {
-    profile_id: &'a ProfileId,
+pub struct ProfileDetailProps<'a> {
+    pub profile_id: &'a ProfileId,
 }
 
 impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
@@ -313,6 +249,14 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
         props: ProfileDetailProps<'a>,
         metadata: DrawMetadata,
     ) {
+        let block = Pane {
+            title: "TODO",
+            has_focus: false,
+        }
+        .generate();
+        let area = block.inner(metadata.area());
+        frame.render_widget(block, metadata.area());
+
         // Whenever the selected profile changes, rebuild the internal state.
         // This is needed because the template preview rendering is async.
         let profile_id = props.profile_id;
@@ -356,7 +300,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             alternate_row_style: true,
             ..Default::default()
         };
-        frame.render_widget(table.generate(), metadata.area());
+        frame.render_widget(table.generate(), area);
     }
 }
 
@@ -400,10 +344,10 @@ mod tests {
         }
 
         let expected = expected.map(ProfileId::from);
-        let component = ProfilePane::new(&Collection {
+        let component = ProfileTab::new(&Collection {
             profiles,
             ..Collection::factory(())
         });
-        assert_eq!(*component.selected_profile_id, expected);
+        assert_eq!(component.selected_profile_id(), expected.as_ref());
     }
 }

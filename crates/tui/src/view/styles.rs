@@ -72,7 +72,9 @@ pub struct StatusCodeStyles {
 /// Styles for Tab component
 #[derive(Debug)]
 pub struct TabStyles {
-    /// Highlighted tab in a tab group
+    /// Disabled tab text
+    pub disabled: Style,
+    /// Highlighted (selected) tab text
     pub highlight: Style,
 }
 
@@ -155,6 +157,8 @@ impl Styles {
                 error: Style::default().bg(theme.error_color),
             },
             tab: TabStyles {
+                // TODO add this to the theme (and use in list styles too)
+                disabled: Style::default().fg(Color::DarkGray),
                 highlight: Style::default()
                     .fg(theme.primary_color)
                     .add_modifier(Modifier::BOLD)

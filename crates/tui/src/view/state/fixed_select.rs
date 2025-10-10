@@ -36,32 +36,6 @@ where
     inner: SelectState<Item, State>,
 }
 
-pub struct FixedSelectStateBuilder<Item, State> {
-    /// Defer to SelectStateBuilder for everything
-    inner: SelectStateBuilder<Item, State>,
-}
-
-impl<Item, State> FixedSelectStateBuilder<Item, State> {
-    /// Which types of events should this emit?
-    pub fn subscribe(
-        mut self,
-        event_types: impl IntoIterator<Item = SelectStateEventType>,
-    ) -> Self {
-        self.inner = self.inner.subscribe(event_types);
-        self
-    }
-
-    pub fn build(self) -> FixedSelectState<Item, State>
-    where
-        Item: FixedSelect,
-        State: SelectStateData,
-    {
-        FixedSelectState {
-            inner: self.inner.preselect(&Item::default()).build(),
-        }
-    }
-}
-
 impl<Item, State> FixedSelectState<Item, State>
 where
     Item: FixedSelect,
@@ -224,6 +198,51 @@ where
 impl<T: FixedSelect> ToEmitter<SelectStateEvent> for FixedSelectState<T> {
     fn to_emitter(&self) -> Emitter<SelectStateEvent> {
         self.inner.to_emitter()
+    }
+}
+
+/// Wrapper around [SelectStateBuilder] to build a [FixedSelect]
+pub struct FixedSelectStateBuilder<Item, State> {
+    /// Defer to SelectStateBuilder for everything
+    inner: SelectStateBuilder<Item, State>,
+}
+
+impl<Item, State> FixedSelectStateBuilder<Item, State> {
+    /// Disable certain items in the list. Disabled items can still be selected,
+    /// but do not emit events.
+    pub fn disabled(mut self, disabled: impl IntoIterator<Item = Item>) -> Self
+    where
+        Item: FixedSelect,
+    {
+        // The inner builder disables by index, so we need to find the index for
+        // each value. This is O(n^2) but the lists are so small it doesn't
+        // matter.
+        let disabled_indexes = disabled
+            .into_iter()
+            // unwrap() is safet because Item::iter() contains all possible
+            // values of the enum
+            .map(|v1| Item::iter().position(|v2| v1 == v2).unwrap());
+        self.inner = self.inner.disabled_indexes(disabled_indexes);
+        self
+    }
+
+    /// Which types of events should this emit?
+    pub fn subscribe(
+        mut self,
+        event_types: impl IntoIterator<Item = SelectStateEventType>,
+    ) -> Self {
+        self.inner = self.inner.subscribe(event_types);
+        self
+    }
+
+    pub fn build(self) -> FixedSelectState<Item, State>
+    where
+        Item: FixedSelect,
+        State: SelectStateData,
+    {
+        FixedSelectState {
+            inner: self.inner.preselect(&Item::default()).build(),
+        }
     }
 }
 

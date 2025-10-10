@@ -175,7 +175,7 @@ requests:
             password: "{{ prompt(message='Password', default='hunter2', sensitive=true) }}"
 
       form_multipart:
-        $ref: "#/.authenticated"
+        $ref: "#/.base_request"
         method: POST
         url: "{{ host }}/anything"
         body:

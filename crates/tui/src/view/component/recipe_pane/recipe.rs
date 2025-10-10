@@ -9,6 +9,7 @@ use crate::view::{
     },
     draw::{Draw, DrawMetadata},
     event::{Child, EventHandler},
+    state::fixed_select::FixedSelectState,
     util::persistence::PersistedLazy,
 };
 use derive_more::Display;
@@ -18,6 +19,7 @@ use slumber_core::{
     collection::{Recipe, RecipeId},
     http::{BuildOptions, HttpMethod},
 };
+use std::iter;
 use strum::{EnumCount, EnumIter};
 
 /// Display a recipe. Not a recipe *node*, this is for genuine bonafide recipe.
@@ -38,8 +40,24 @@ impl RecipeDisplay {
     /// Initialize new recipe state. Should be called whenever the recipe or
     /// profile changes
     pub fn new(recipe: &Recipe) -> Self {
+        // Disable tabs that have no content
+        let disabled_tabs = iter::empty()
+            .chain(recipe.body.is_none().then_some(Tab::Body))
+            .chain(
+                recipe
+                    .authentication
+                    .is_none()
+                    .then_some(Tab::Authentication),
+            );
+        let tabs = PersistedLazy::new(
+            RecipeTabKey,
+            Tabs::new(
+                FixedSelectState::builder().disabled(disabled_tabs).build(),
+            ),
+        );
+
         Self {
-            tabs: Default::default(),
+            tabs: tabs.into(),
             method: recipe.method,
             url: TemplatePreview::new(recipe.url.clone(), None, false, false),
             query: RecipeFieldTable::new(

@@ -17,6 +17,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 use strum::EnumDiscriminants;
+use tracing::error;
 
 /// State manager for a dynamic list of items.
 ///
@@ -72,12 +73,13 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         mut self,
         disabled_indexes: impl IntoIterator<Item = usize>,
     ) -> Self {
-        // O(n^2)! We expect both lists to be very small so it's not an issue
-        for disabled in disabled_indexes {
-            for (i, item) in self.items.iter_mut().enumerate() {
-                if disabled == i {
-                    item.disabled = true;
-                }
+        for index in disabled_indexes {
+            // A slight UI bug is better than a crash, so if the index is
+            // unknown just log it
+            if let Some(item) = self.items.get_mut(index) {
+                item.disabled = true;
+            } else {
+                error!("Disabled index {index} out of bounds");
             }
         }
         self

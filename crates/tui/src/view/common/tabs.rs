@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use persisted::PersistedContainer;
-use ratatui::Frame;
+use ratatui::{Frame, style::Style, text::Line};
 use slumber_config::Action;
 use std::fmt::Debug;
 
@@ -19,6 +19,10 @@ pub struct Tabs<T: FixedSelect> {
 }
 
 impl<T: FixedSelect> Tabs<T> {
+    pub fn new(tabs: FixedSelectState<T, usize>) -> Self {
+        Self { tabs }
+    }
+
     pub fn selected(&self) -> T {
         self.tabs.selected()
     }
@@ -36,10 +40,19 @@ impl<T: FixedSelect> EventHandler for Tabs<T> {
 
 impl<T: FixedSelect> Draw for Tabs<T> {
     fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+        let styles = &TuiContext::get().styles.tab;
+        let titles = self.tabs.items_with_metadata().map(|item| {
+            let style = if item.disabled() {
+                styles.disabled
+            } else {
+                Style::default()
+            };
+            Line::styled(item.value.to_string(), style)
+        });
         frame.render_widget(
-            ratatui::widgets::Tabs::new(T::iter().map(|e| e.to_string()))
+            ratatui::widgets::Tabs::new(titles)
                 .select(self.tabs.selected_index())
-                .highlight_style(TuiContext::get().styles.tab.highlight),
+                .highlight_style(styles.highlight),
             metadata.area(),
         );
     }

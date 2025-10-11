@@ -136,7 +136,7 @@ impl Styles {
                     .bg(theme.primary_color)
                     .fg(theme.primary_text_color)
                     .add_modifier(Modifier::BOLD),
-                disabled: Style::default().fg(Color::DarkGray),
+                disabled: Style::default().add_modifier(Modifier::DIM),
             },
             modal: ModalStyles {
                 border: Style::default(),
@@ -157,8 +157,7 @@ impl Styles {
                 error: Style::default().bg(theme.error_color),
             },
             tab: TabStyles {
-                // TODO add this to the theme (and use in list styles too)
-                disabled: Style::default().fg(Color::DarkGray),
+                disabled: Style::default().add_modifier(Modifier::DIM),
                 highlight: Style::default()
                     .fg(theme.primary_color)
                     .add_modifier(Modifier::BOLD)

@@ -42,7 +42,7 @@ impl<T: FixedSelect> Draw for Tabs<T> {
     fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles.tab;
         let titles = self.tabs.items_with_metadata().map(|item| {
-            let style = if item.disabled() {
+            let style = if item.enabled() {
                 styles.disabled
             } else {
                 Style::default()

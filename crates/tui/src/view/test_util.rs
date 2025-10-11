@@ -7,7 +7,7 @@ use crate::{
     view::{
         UpdateContext,
         common::{
-            actions::{ActionsModal, MenuAction},
+            actions::ActionsModal,
             modal::{Modal, ModalQueue},
         },
         component::Component,
@@ -249,9 +249,9 @@ pub struct Interact<'term, 'a, Component, Props> {
     propagated: Vec<Event>,
 }
 
-impl<Component, Props> Interact<'_, '_, Component, Props>
+impl<Comp, Props> Interact<'_, '_, Comp, Props>
 where
-    Component: Draw<Props> + ToChild,
+    Comp: Draw<Props> + ToChild,
 {
     /// Drain all events in the queue, then draw the component to the terminal.
     ///
@@ -366,18 +366,34 @@ where
     pub fn action(self, name: &str) -> Self {
         let actions = self.component.component.collect_actions();
         // Find the index of the action in the list so we know how far to scroll
-        let action_index = actions
+        let action_opt = actions
             .iter()
-            .position(|action| action.to_string().contains(name))
-            .unwrap_or_else(|| panic!(
-                "No action containing string `{name}`. Available actions: {}",
-                actions.iter().map(MenuAction::to_string).format(", "),
-            ));
+            .enumerate()
+            .find(|(_, action)| action.to_string() == name);
+        let index = match action_opt {
+            Some((i, action)) if action.enabled() => i,
+            // Disabled actions can't be selected or triggered so this is
+            // probably a mistake
+            Some((_, action)) => panic!(
+                "Action `{action}` cannot be selected because it is disabled"
+            ),
+            None => panic!(
+                "No action `{name}`. Available actions: {}",
+                actions.iter().format(", "),
+            ),
+        };
+        // Disabled actions are auto-skipped, so don't include them in the
+        // number of hops to make
+        let steps = index
+            - actions[0..index]
+                .iter()
+                .filter(|action| !action.enabled())
+                .count();
         self.send_keys(
             // Open actions menu
             iter::once(KeyCode::Char('x'))
                 // Move down to select the matching action
-                .chain(iter::repeat_n(KeyCode::Down, action_index))
+                .chain(iter::repeat_n(KeyCode::Down, steps))
                 // Execute
                 .chain(iter::once(KeyCode::Enter)),
         )
@@ -400,7 +416,7 @@ where
     #[track_caller]
     pub fn assert_emitted<E>(self, expected: impl IntoIterator<Item = E>)
     where
-        Component: ToEmitter<E>,
+        Comp: ToEmitter<E>,
         E: LocalEvent + PartialEq,
     {
         let emitter = self.component.data().to_emitter();
@@ -418,6 +434,11 @@ where
             .collect::<Vec<_>>();
         let expected = expected.into_iter().collect_vec();
         assert_eq!(emitted, expected);
+    }
+
+    /// Get the underlying component value
+    pub fn component_data(&self) -> &Comp {
+        self.component.component.data().inner.data()
     }
 
     /// Get propagated events as a slice

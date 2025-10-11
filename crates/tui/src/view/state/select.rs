@@ -3,6 +3,7 @@ use crate::view::{
     draw::{Draw, DrawMetadata},
     event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
 };
+use itertools::Itertools;
 use persisted::PersistedContainer;
 use ratatui::{
     Frame,
@@ -40,16 +41,16 @@ where
 }
 
 /// An item in a select list, with additional metadata
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SelectItem<T> {
     pub value: T,
     /// If an item is disabled, we'll skip over it during selections
-    disabled: bool,
+    enabled: bool,
 }
 
 impl<T> SelectItem<T> {
-    pub fn disabled(&self) -> bool {
-        self.disabled
+    pub fn enabled(&self) -> bool {
+        self.enabled
     }
 }
 
@@ -77,7 +78,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
             // A slight UI bug is better than a crash, so if the index is
             // unknown just log it
             if let Some(item) = self.items.get_mut(index) {
-                item.disabled = true;
+                item.enabled = false;
             } else {
                 error!("Disabled index {index} out of bounds");
             }
@@ -124,7 +125,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
 
     /// Apply a case-insensitive text filter to the list. Any item whose label
     /// does not contain the text will be excluded from the list. During the
-    /// build, this should be called *before* and `preselect` functions to
+    /// build, this should be called *before* any `preselect` functions to
     /// ensure you don't select a value that will then be filtered out.
     pub fn filter(mut self, filter: &str) -> Self
     where
@@ -150,12 +151,21 @@ impl<Item, State> SelectStateBuilder<Item, State> {
             state: RefCell::default(),
             items: self.items,
         };
-        // Set initial value. Generally the index will be valid unless the list
-        // is empty, because it's either the default of 0 or was derived from
-        // a list search. Do a proper bounds check just to be safe though.
-        if self.preselect_index < select.items.len() {
+
+        // Set initial value. The given index can be invalid in three ways:
+        // - That item is disabled. Select the first enabled item
+        // - Index is out of bounds. Select the first enabled item
+        // - List is empty. Select nothing
+        if select
+            .items
+            .get(self.preselect_index)
+            .is_some_and(SelectItem::enabled)
+        {
             select.select_index(self.preselect_index);
+        } else if let Some(index) = select.first_enabled_index() {
+            select.select_index(index);
         }
+
         select
     }
 }
@@ -168,7 +178,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
                 .into_iter()
                 .map(|item| SelectItem {
                     value: item,
-                    disabled: false,
+                    enabled: true,
                 })
                 .collect(),
             preselect_index: 0,
@@ -237,6 +247,11 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
 
     /// Select an item by index
     pub fn select_index(&mut self, index: usize) {
+        // If the chosen item is out of bounds or disabled, do nothing
+        if self.items.get(index).is_none_or(|item| !item.enabled) {
+            return;
+        }
+
         let state = self.state.get_mut();
         let current = state.selected();
         state.select(Some(index));
@@ -288,29 +303,36 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Move some number of items up or down the list. Selection will wrap if
     /// it underflows/overflows.
     fn select_delta(&mut self, delta: isize) {
-        // If there's nothing in the list, we can't do anything
-        if !self.items.is_empty() {
-            let index = match self.state.get_mut().selected() {
-                Some(i) => {
-                    // Banking on the list not being longer than 2.4B items...
-                    (i as isize + delta).rem_euclid(self.items.len() as isize)
-                        as usize
-                }
-                // Nothing selected yet, pick the first item
-                None => 0,
-            };
-            self.select_index(index);
+        // Get a list of which items are enabled, where the first item is the
+        // currently selected one. We'll use this to figure out what item we
+        // select after n steps forward/back.
+        let mut enabled_indexes = (0..self.items.len()).collect_vec();
+        enabled_indexes.rotate_left(self.selected_index().unwrap_or(0));
+        // Filter out disabled items so they get skipped over
+        enabled_indexes.retain(|index| self.items[*index].enabled);
+
+        // If there are no enabled items, there's nothing we can do
+        if enabled_indexes.is_empty() {
+            return;
         }
+
+        // Banking on the list not being longer than 2.4B items...
+        let index_index =
+            delta.rem_euclid(enabled_indexes.len() as isize) as usize;
+        self.select_index(enabled_indexes[index_index]);
+    }
+
+    /// Get the index of the first item in the list that isn't disabled. `None`
+    /// if the list is empty or all items are disabled
+    fn first_enabled_index(&self) -> Option<usize> {
+        self.items.iter().position(SelectItem::enabled)
     }
 
     /// Helper to generate an emit an event for the currentl selected item. The
     /// event will *not* be emitted if no item is select, or the selected item
     /// is disabled.
     fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectStateEvent) {
-        if let Some(selected) = self.selected_index()
-            // Don't send event for disabled items
-            && !self.items[selected].disabled
-        {
+        if let Some(selected) = self.selected_index() {
             let event = event_fn(selected);
             // Check if the parent subscribed to this event type
             if self.is_subscribed(SelectStateEventType::from(&event)) {
@@ -509,12 +531,45 @@ mod tests {
         },
     };
     use persisted::{PersistedKey, PersistedStore};
+    use proptest::{collection, sample, test_runner::TestRunner};
     use ratatui::widgets::List;
-    use rstest::{fixture, rstest};
+    use rstest::rstest;
     use serde::Serialize;
     use slumber_core::collection::ProfileId;
     use slumber_util::assert_matches;
+    use std::{collections::HashSet, ops::Deref};
     use terminput::KeyCode;
+
+    /// Test preselection, where the initial selected state is modified at
+    /// build time. There are various cases to test related to the list being
+    /// empty, all items disabled, etc.
+    #[rstest]
+    // No explicit preselection
+    #[case::default(&[0, 1], &[], None, Some(0))]
+    #[case::empty(&[], &[], Some(0), None)]
+    // Invalid selection, and the first is disabled - default to the second
+    #[case::out_of_bounds(&[0, 1, 2], &[0], Some(3), Some(1))]
+    // First item is disabled - default to the second
+    #[case::default_disabled(&[0, 1], &[0], None, Some(1))]
+    // Chosen item is disabled - select the first enabled
+    #[case::selected_disabled(&[0, 1, 2, 3], &[0, 3], Some(3), Some(1))]
+    // All are disabled - nothing to default to
+    #[case::all_disabled_default(&[0, 1, 2], &[0, 1, 2], None, None)]
+    // All are disabled - selection doesn't work at all
+    #[case::all_disabled_default(&[0, 1, 2], &[0, 1, 2], Some(1), None)]
+    fn test_preselect(
+        #[case] items: &[usize],
+        #[case] disabled: &[usize],
+        #[case] preselect: Option<usize>,
+        #[case] expected_selected: Option<usize>,
+    ) {
+        let select: SelectState<usize, ListState> =
+            SelectState::builder(items.to_owned())
+                .disabled_indexes(disabled.to_owned())
+                .preselect_opt(preselect.as_ref())
+                .build();
+        assert_eq!(select.selected_index(), expected_selected);
+    }
 
     /// Apply a filter during build
     #[rstest]
@@ -543,28 +598,23 @@ mod tests {
 
     /// Test going up and down in the list
     #[rstest]
-    fn test_navigation(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
-    ) {
+    fn test_navigation(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c"];
+        let props_fn = props_fn(&items);
         let select = SelectState::builder(items).build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props.clone())
+            .with_props(props_fn())
             .build();
-        component
-            .int_props(|| props.clone())
-            .drain_draw()
-            .assert_empty();
+        component.int_props(&props_fn).drain_draw().assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .send_key(KeyCode::Down)
             .assert_empty();
         assert_eq!(component.data().selected(), Some(&"b"));
 
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .send_key(KeyCode::Up)
             .assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
@@ -572,22 +622,20 @@ mod tests {
 
     /// Test deleting the selected item
     #[rstest]
-    fn test_delete(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
-    ) {
+    fn test_delete(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c"];
+        let props_fn = props_fn(&items);
         let select = SelectState::builder(items)
             .subscribe([SelectStateEventType::Select])
             .build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props.clone())
+            .with_props(props_fn())
             .build();
 
         // Start by selecting the second item, so we can assert that we select
         // the one after it when possible
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .drain_draw() // Handle  initial state
             .send_key(KeyCode::Down)
             .assert_emitted([
@@ -600,7 +648,7 @@ mod tests {
         component.data_mut().delete_selected();
         assert_eq!(component.data().selected(), Some(&"c"));
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(1)]);
 
@@ -608,7 +656,7 @@ mod tests {
         component.data_mut().delete_selected();
         assert_eq!(component.data().selected(), Some(&"a"));
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
@@ -616,99 +664,77 @@ mod tests {
         component.data_mut().delete_selected();
         assert_eq!(component.data().selected(), None);
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([]);
 
         // Delete nothing; nothing should happen
         component.data_mut().delete_selected();
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([]);
     }
 
     /// Test select emitted event
     #[rstest]
-    fn test_select(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
-    ) {
+    fn test_select(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c"];
+        let props_fn = props_fn(&items);
         let select = SelectState::builder(items)
-            .disabled_indexes([2])
             .subscribe([SelectStateEventType::Select])
             .build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props.clone())
+            .with_props(props_fn())
             .build();
 
         // Initial selection
         assert_eq!(component.data().selected(), Some(&"a"));
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
+        // Select another one
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(1)]);
-
-        // "c" is disabled, should not trigger events
-        component
-            .int_props(|| props.clone())
-            .send_key(KeyCode::Down)
-            .assert_empty();
     }
 
     /// Test submit emitted event
     #[rstest]
-    fn test_submit(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
-    ) {
+    fn test_submit(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c"];
+        let props_fn = props_fn(&items);
         let select = SelectState::builder(items)
-            .disabled_indexes([2])
             .subscribe([SelectStateEventType::Submit])
             .build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props.clone())
+            .with_props(props_fn())
             .build();
-        component
-            .int_props(|| props.clone())
-            .drain_draw()
-            .assert_empty();
+        component.int_props(&props_fn).drain_draw().assert_empty();
 
         component
-            .int_props(|| props.clone())
+            .int_props(&props_fn)
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_emitted([SelectStateEvent::Submit(1)]);
-
-        // "c" is disabled, should not trigger events
-        component
-            .int_props(|| props.clone())
-            .send_keys([KeyCode::Down, KeyCode::Enter])
-            .assert_empty();
     }
 
     /// Test that submit and toggle input events are propagated if we're not
     /// subscribed to them
     #[rstest]
-    fn test_propagate(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
-    ) {
+    fn test_propagate(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c"];
+        let props_fn = props_fn(&items);
         let select = SelectState::builder(items).build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props.clone())
+            .with_props(props_fn())
             .build();
 
         assert_matches!(
             component
-                .int_props(|| props.clone())
+                .int_props(&props_fn)
                 .send_key(KeyCode::Enter)
                 .events(),
             &[Event::Input {
@@ -718,7 +744,7 @@ mod tests {
         );
         assert_matches!(
             component
-                .int_props(|| props.clone())
+                .int_props(&props_fn)
                 .send_key(KeyCode::Char(' '))
                 .events(),
             &[Event::Input {
@@ -728,9 +754,185 @@ mod tests {
         );
     }
 
+    /// Test that disabled items can never be selected. When navigating up/down,
+    /// they are skipped over. If a disabled item is specifically selected by
+    /// index/value, nothing happens.
+    #[rstest]
+    fn test_disabled(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c", "d", "e"];
+        let props_fn = props_fn(&items);
+        let select = SelectState::builder(items)
+            .disabled_indexes([1, 3])
+            // For simplicity, we're only looking for select events. Seems like
+            // a safe assumption that if it doesn't emit Select, it won't emit
+            // anything else.
+            .subscribe([SelectStateEventType::Select])
+            .build();
+        let mut component: TestComponent<'_, SelectState<&'static str>> =
+            TestComponent::builder(&harness, &terminal, select)
+                .with_props(props_fn())
+                .build();
+
+        assert_eq!(component.data().selected(), Some(&"a"));
+        component
+            .int_props(&props_fn)
+            .drain_draw()
+            .assert_emitted([SelectStateEvent::Select(0)]);
+
+        // Move down - skips over the disabled item
+        component
+            .int_props(&props_fn)
+            .send_key(KeyCode::Down)
+            .assert_emitted([SelectStateEvent::Select(2)]);
+        assert_eq!(component.data().selected(), Some(&"c"));
+
+        // Move down again - skips over the disabled item
+        component
+            .int_props(&props_fn)
+            .send_key(KeyCode::Down)
+            .assert_emitted([SelectStateEvent::Select(4)]);
+        assert_eq!(component.data().selected(), Some(&"e"));
+
+        // Move up - skips over the disabled item
+        component
+            .int_props(&props_fn)
+            .send_key(KeyCode::Up)
+            .assert_emitted([SelectStateEvent::Select(2)]);
+        assert_eq!(component.data().selected(), Some(&"c"));
+
+        // Select by value/index should do nothing if it's disabled
+        let select = component.data_mut();
+        // Make sure that *nothing* happens, and that it's not skipping to the
+        // next/previous enabled value
+        select.select(&"b");
+        assert_eq!(select.selected(), Some(&"c"));
+        select.select(&"d");
+        assert_eq!(select.selected(), Some(&"c"));
+        select.select_index(1);
+        assert_eq!(select.selected(), Some(&"c"));
+    }
+
+    /// Test some properties related to disabled items:
+    /// - Disabled items cannot be selected
+    /// - Disabled items never emit events
+    /// - If all items are disabled, nothing can be selected
+    /// - If only one item is enabled, selection events are never emitted after
+    ///   init (because the selection never changes)
+    ///
+    /// We'll disable some items and perform some actions, and after each
+    /// action, all those properties should be true.
+    #[rstest]
+    fn test_disabled_prop(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c", "d"];
+        let props_fn = props_fn(&items);
+
+        // I think the proptest! macro is annoying so I prefer manual
+        let test = |(disabled_indexes, inputs): (
+            HashSet<usize>,
+            Vec<KeyCode>,
+        )| {
+            let num_enabled = items.len() - disabled_indexes.len();
+            // For simplicity, we're only looking for select events.
+            // Seems like a safe assumption that if it doesn't emit
+            // Select, it won't emit anything else.
+            let select = SelectState::builder(items.clone())
+                .disabled_indexes(disabled_indexes)
+                .subscribe([SelectStateEventType::Select])
+                .build();
+            let mut component =
+                TestComponent::builder(&harness, &terminal, select)
+                    .with_props(props_fn())
+                    .build();
+
+            // Drain inital events and check state
+            let first_enabled = component.data().first_enabled_index();
+            component
+                .int_props(&props_fn)
+                .drain_draw()
+                // Event should be emitted iff there is 1+ enabled items
+                .assert_emitted(first_enabled.map(SelectStateEvent::Select));
+            assert_eq!(component.data().selected_index(), first_enabled);
+
+            for input in inputs {
+                let interact = component.int_props(&props_fn).send_key(input);
+                let select = interact.component_data();
+                let selected_index = select.selected_index();
+                match num_enabled {
+                    // All items are disabled
+                    0 => {
+                        assert_eq!(
+                            selected_index, None,
+                            "Selection should be none when all items are disabled"
+                        );
+                        // No items should emit events
+                        interact.assert_emitted([]);
+                    }
+                    // Exactly one item is enabled - the selection can never
+                    // change
+                    1 => {
+                        assert!(
+                            selected_index
+                                .map(|index| &select.items[index])
+                                .is_some_and(SelectItem::enabled),
+                            "Selection should not be disabled"
+                        );
+
+                        // Should not emit an event because the selection never
+                        // changes
+                        interact.assert_emitted([]);
+                    }
+                    // Multiple items are enabled
+                    2.. => {
+                        assert!(
+                            selected_index
+                                .map(|index| &select.items[index])
+                                .is_some_and(SelectItem::enabled),
+                            "Selection should not be disabled"
+                        );
+
+                        // Event should've been emitted for the selected item,
+                        // and *not* for any disabled items that may have been
+                        // skipped over
+                        let event =
+                            SelectStateEvent::Select(selected_index.unwrap());
+                        interact.assert_emitted([event]);
+                    }
+                }
+            }
+
+            Ok(())
+        };
+
+        let mut runner = TestRunner::default();
+        let range = || 0..items.len();
+        runner
+            .run(
+                &(
+                    collection::hash_set(range(), range()),
+                    collection::vec(
+                        sample::select(&[KeyCode::Up, KeyCode::Down]),
+                        0..8usize,
+                    ),
+                ),
+                test,
+            )
+            .unwrap();
+    }
+
     /// Test persisting selected item
     #[rstest]
-    fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
+    // First item gets selected by preselection, second by persistence
+    #[case::persisted("persisted", "persisted", &[0, 1])]
+    // If the persisted item is disabled, we'll select the first item instead
+    #[case::disabled("disabled", "default", &[0])]
+    fn test_persistence(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        #[case] persisted_id: &str,
+        #[case] expected_selected: &str,
+        // Which items emit Select events?
+        #[case] expected_event_indexes: &[usize],
+    ) {
         #[derive(Debug, PersistedKey, Serialize)]
         #[persisted(Option<ProfileId>)]
         struct Key;
@@ -756,19 +958,26 @@ mod tests {
             }
         }
 
-        let profile_id: ProfileId = "profile2".into();
-        let profile = ProfileItem(profile_id.clone());
+        impl From<&str> for ProfileItem {
+            fn from(id: &str) -> Self {
+                Self(id.into())
+            }
+        }
 
         DatabasePersistedStore::store_persisted(
             &Key,
-            &Some(profile_id.clone()),
+            &Some(persisted_id.into()),
         );
 
         // Second profile should be pre-selected because of persistence
-        let select =
-            SelectState::builder(vec![ProfileItem("profile1".into()), profile])
-                .subscribe([SelectStateEventType::Select])
-                .build();
+        let select: SelectState<ProfileItem> = SelectState::builder(vec![
+            "default".into(),
+            "persisted".into(),
+            "disabled".into(),
+        ])
+        .disabled_indexes([2])
+        .subscribe([SelectStateEventType::Select])
+        .build();
         let list = select
             .items()
             .map(|item| item.0.to_string())
@@ -781,24 +990,32 @@ mod tests {
         .with_props(list.clone())
         .build();
         assert_eq!(
-            component.data().selected().map(ProfileItem::id),
-            Some(&profile_id)
+            component.data().selected().map(|item| item.0.deref()),
+            Some(expected_selected)
         );
         component
             .int_props(|| list.clone())
             .drain_draw()
-            .assert_emitted([
-                // First item gets selected by preselection, second by
-                // persistence
-                SelectStateEvent::Select(0),
-                SelectStateEvent::Select(1),
-            ]);
+            .assert_emitted(
+                expected_event_indexes
+                    .iter()
+                    .copied()
+                    .map(SelectStateEvent::Select),
+            );
     }
 
-    #[fixture]
-    fn items() -> (Vec<&'static str>, List<'static>) {
-        let items = vec!["a", "b", "c"];
-        let list = items.iter().copied().collect();
-        (items, list)
+    /// Generate a function that returns props for a `SelectState` render. The
+    /// props are a `List` widget.
+    ///
+    /// This is needed to test event interactions even though nothing is
+    /// rendered, because the selected index state is passed into the widget
+    /// during the draw. If we use the default `List` value (empty list) for
+    /// this draw, then the selected index always gets clamped to 0 and copied
+    /// back into the `SelectState`.
+    fn props_fn(
+        items: &[&'static str],
+    ) -> impl 'static + Fn() -> List<'static> {
+        let items = items.to_owned();
+        move || List::from_iter(items.clone())
     }
 }

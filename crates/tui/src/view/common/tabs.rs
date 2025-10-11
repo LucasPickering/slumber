@@ -43,9 +43,9 @@ impl<T: FixedSelect> Draw for Tabs<T> {
         let styles = &TuiContext::get().styles.tab;
         let titles = self.tabs.items_with_metadata().map(|item| {
             let style = if item.enabled() {
-                styles.disabled
-            } else {
                 Style::default()
+            } else {
+                styles.disabled
             };
             Line::styled(item.value.to_string(), style)
         });

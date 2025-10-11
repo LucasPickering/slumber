@@ -66,7 +66,7 @@ where
             .into_iter()
             .map(|item| {
                 let mut list_item = TuiListItem::new(item.value.generate());
-                if item.disabled {
+                if !item.enabled {
                     list_item = list_item.set_style(styles.list.disabled);
                 }
                 list_item
@@ -88,14 +88,14 @@ where
 
 struct ListItem<T> {
     value: T,
-    disabled: bool,
+    enabled: bool,
 }
 
 impl<'a, T> From<&'a SelectItem<T>> for ListItem<&'a T> {
     fn from(item: &'a SelectItem<T>) -> Self {
         Self {
             value: &item.value,
-            disabled: item.enabled(),
+            enabled: item.enabled(),
         }
     }
 }

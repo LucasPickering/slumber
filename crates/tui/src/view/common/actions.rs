@@ -144,6 +144,11 @@ pub struct MenuAction {
 }
 
 impl MenuAction {
+    #[cfg(test)]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
     /// Get a mapping function to generate menu actions from some type. Useful
     /// for mapping an iterator of specific action types to this type.
     pub fn with_data<Data, T>(
@@ -237,9 +242,10 @@ mod tests {
 
     #[derive(Debug, derive_more::Display, PartialEq, EnumIter)]
     enum TestMenuAction {
+        // Disablify is first to test that disabled actions are skipped
+        Disablify,
         Flobrigate,
         Profilate,
-        Disablify,
         Shortcutticated,
     }
 
@@ -267,9 +273,6 @@ mod tests {
             .int()
             .action("Profilate")
             .assert_emitted([TestMenuAction::Profilate]);
-
-        // Selecting a disabled action does nothing
-        component.int().action("Disablify").assert_emitted([]);
 
         // Actions can be selected by shortcut
         component

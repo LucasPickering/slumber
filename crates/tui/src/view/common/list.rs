@@ -95,7 +95,7 @@ impl<'a, T> From<&'a SelectItem<T>> for ListItem<&'a T> {
     fn from(item: &'a SelectItem<T>) -> Self {
         Self {
             value: &item.value,
-            disabled: item.disabled(),
+            disabled: item.enabled(),
         }
     }
 }

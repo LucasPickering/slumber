@@ -3665,6 +3665,7 @@ dependencies = [
  "notify-debouncer-full",
  "persisted",
  "pretty_assertions",
+ "proptest",
  "ratatui",
  "reqwest",
  "rstest",

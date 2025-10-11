@@ -568,7 +568,7 @@ mod tests {
         // Select "Delete Requests" but decline the confirmation
         component
             .int_props(props_factory)
-            .action("Delete Request")
+            .action("Delete Requests")
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
             .assert_empty();
@@ -583,7 +583,7 @@ mod tests {
         // for All Profiles
         component
             .int_props(props_factory)
-            .action("Delete Request")
+            .action("Delete Requests")
             // Confirm
             .send_keys([KeyCode::Enter])
             .assert_empty();

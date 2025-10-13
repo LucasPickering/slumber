@@ -39,7 +39,7 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - name: Windows
-            os: windows-latest
+            os: windows-2025
             target: x86_64-pc-windows-msvc
           - name: macOS
             os: macOS-latest
@@ -108,7 +108,7 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - name: Windows
-            os: windows-latest
+            os: windows-2025
             target: x86_64-pc-windows-msvc
           - name: macOS
             os: macOS-latest
@@ -141,7 +141,7 @@ jobs:
           - name: Linux
             os: ubuntu-latest
           - name: Windows
-            os: windows-latest
+            os: windows-2025
           - name: macOS
             os: macOS-latest
     runs-on: ${{ matrix.platform.os }}

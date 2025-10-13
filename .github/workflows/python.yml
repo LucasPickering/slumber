@@ -72,10 +72,10 @@ jobs:
           # windows
           - label: windows
             target: x64
-            runner: windows-latest
+            runner: windows-2025
           - label: windows
             target: x86
-            runner: windows-latest
+            runner: windows-2025
             python_architecture: x86
     steps:
       - uses: actions/checkout@v4

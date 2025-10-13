@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - This will make it much easier to make tweaks to a recipe
 - The `Body` and `Authentication` tabs of the `Recipe` pane are now disabled if the recipe doesn't have a body/authentication (respectively)
 - Disabled actions can no longer be selected in the action menu
+- `slumber show config --edit` and `slumber show collection --edit` now display the error if the file is invalid after editing
 
 ## [4.1.0] - 2025-09-30
 

@@ -41,11 +41,7 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
             // Do *not* return the error, because that prints a stack trace
             // which is way too verbose. Just print the error messages instead
             .unwrap_or_else(|error| {
-                eprintln!("{error}");
-                error
-                    .chain()
-                    .skip(1)
-                    .for_each(|cause| eprintln!("  {cause}"));
+                slumber_cli::print_error(&error);
                 ExitCode::FAILURE
             })),
     }

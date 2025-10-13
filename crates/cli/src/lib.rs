@@ -107,3 +107,12 @@ trait Subcommand {
     /// Execute the subcommand
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode>;
 }
+
+/// Print an error chain to stderr
+pub fn print_error(error: &anyhow::Error) {
+    eprintln!("{error}");
+    error
+        .chain()
+        .skip(1)
+        .for_each(|cause| eprintln!("  {cause}"));
+}

@@ -1,10 +1,10 @@
-use crate::{GlobalArgs, Subcommand};
+use crate::{GlobalArgs, Subcommand, print_error};
 use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
 use slumber_core::{database::Database, util};
 use slumber_util::paths;
-use std::{path::Path, process::ExitCode};
+use std::{error::Error, fmt::Display, path::Path, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)
 #[derive(Clone, Debug, Parser)]
@@ -106,7 +106,7 @@ impl Subcommand for ShowCommand {
                     // fix it so we should open anyway
                     let config = Config::load().unwrap_or_default();
                     let path = Config::path();
-                    edit_and_validate(&config, &path, || Config::load().is_ok())
+                    edit_and_validate(&config, &path, Config::load)
                 } else {
                     let config = Config::load()?;
                     println!("{}", to_yaml(&config));
@@ -119,7 +119,7 @@ impl Subcommand for ShowCommand {
                 if edit {
                     let config = Config::load()?;
                     edit_and_validate(&config, collection_file.path(), || {
-                        collection_file.load().is_ok()
+                        collection_file.load()
                     })
                 } else {
                     let collection = collection_file.load()?;
@@ -140,23 +140,25 @@ fn to_yaml<T: Serialize>(value: &T) -> String {
 /// editor, check if the file is valid using the given predicate. If it's
 /// invalid, let the user know and offer to reopen it. This loop will repeat
 /// indefinitely until the file is valid or the user chooses to exit.
-fn edit_and_validate(
+fn edit_and_validate<T, E: 'static + Error + Send + Sync>(
     config: &Config,
     path: &Path,
-    is_valid: impl Fn() -> bool,
+    validate: impl Fn() -> Result<T, E>,
 ) -> anyhow::Result<ExitCode> {
     let editor = config.editor()?;
     loop {
         let status = editor.open(path).spawn()?.wait()?;
 
         // After editing, verify the file is valid. If not, offer to reopen
-        if !is_valid()
-            && util::confirm(format!(
+        if let Err(error) = validate() {
+            // Convert to anyhow for display
+            print_error(&error.into());
+            if util::confirm(format!(
                 "{path} is invalid, would you like to reopen it?",
                 path = path.display(),
-            ))
-        {
-            continue;
+            )) {
+                continue;
+            }
         }
 
         // https://doc.rust-lang.org/stable/std/process/struct.ExitStatus.html#differences-from-exitcode

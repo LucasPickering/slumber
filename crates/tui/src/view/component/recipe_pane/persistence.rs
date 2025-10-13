@@ -1,6 +1,15 @@
 //! Single-session persistence for recipe overrides
 
-use crate::view::{ViewContext, common::template_preview::TemplatePreview};
+use crate::{
+    util::ResultReported,
+    view::{
+        ViewContext,
+        common::{
+            modal::Modal, template_preview::TemplatePreview, text_box::TextBox,
+        },
+        component::misc::TextBoxModal,
+    },
+};
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
 use slumber_core::{collection::RecipeId, http::content_type::ContentType};
 use slumber_template::Template;
@@ -110,6 +119,33 @@ impl RecipeTemplate {
     pub fn is_overridden(&self) -> bool {
         self.0.override_template.is_some()
     }
+
+    /// Open a text box modal to edit this template. Accepts a callback that
+    /// will be called with a new template upon submission.
+    pub fn open_edit_modal(
+        &self,
+        title: String,
+        on_submit: impl 'static + FnOnce(Template),
+    ) {
+        let template = self.template().display().into_owned();
+        TextBoxModal::new(
+            title,
+            TextBox::default()
+                .default_value(template)
+                .validator(|value| value.parse::<Template>().is_ok()),
+            move |value| {
+                // The template *should* always parse because the text box
+                // has a validator, but this is just a safety check
+                if let Some(template) = value
+                    .parse::<Template>()
+                    .reported(&ViewContext::messages_tx())
+                {
+                    on_submit(template);
+                }
+            },
+        )
+        .open();
+    }
 }
 
 /// A template that can be previewed and overridden. Parent is responsible for
@@ -181,6 +217,13 @@ pub struct RecipeOverrideKey {
 }
 
 impl RecipeOverrideKey {
+    pub fn url(recipe_id: RecipeId) -> Self {
+        Self {
+            kind: RecipeOverrideKeyKind::Url,
+            recipe_id,
+        }
+    }
+
     pub fn body(recipe_id: RecipeId) -> Self {
         Self {
             kind: RecipeOverrideKeyKind::Body,
@@ -244,6 +287,7 @@ impl RecipeOverrideKey {
 /// through methods on [RecipeOverrideKey] to make usage a bit terser.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum RecipeOverrideKeyKind {
+    Url,
     Body,
     AuthenticationBasicUsername,
     AuthenticationBasicPassword,

@@ -1,11 +1,12 @@
 use crate::view::{
     Component,
-    common::{tabs::Tabs, template_preview::TemplatePreview},
+    common::tabs::Tabs,
     component::recipe_pane::{
         authentication::AuthenticationDisplay,
         body::RecipeBodyDisplay,
         persistence::RecipeOverrideKey,
         table::{RecipeFieldTable, RecipeFieldTableProps},
+        url::UrlDisplay,
     },
     draw::{Draw, DrawMetadata},
     event::{Child, EventHandler},
@@ -28,8 +29,8 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug)]
 pub struct RecipeDisplay {
     tabs: Component<PersistedLazy<RecipeTabKey, Tabs<Tab>>>,
-    url: TemplatePreview,
     method: HttpMethod,
+    url: Component<UrlDisplay>,
     query: Component<RecipeFieldTable<QueryRowKey, QueryRowToggleKey>>,
     headers: Component<RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>>,
     body: Component<Option<RecipeBodyDisplay>>,
@@ -59,7 +60,7 @@ impl RecipeDisplay {
         Self {
             tabs: tabs.into(),
             method: recipe.method,
-            url: TemplatePreview::new(recipe.url.clone(), None, false, false),
+            url: UrlDisplay::new(recipe.id.clone(), recipe.url.clone()).into(),
             query: RecipeFieldTable::new(
                 "Parameter",
                 QueryRowKey(recipe.id.clone()),
@@ -122,6 +123,7 @@ impl RecipeDisplay {
 
     /// Generate a [BuildOptions] instance based on current UI state
     pub fn build_options(&self) -> BuildOptions {
+        let url = self.url.data().override_value();
         let authentication = self.authentication.data().as_ref().and_then(
             super::authentication::AuthenticationDisplay::override_value,
         );
@@ -143,6 +145,7 @@ impl RecipeDisplay {
             .and_then(super::body::RecipeBodyDisplay::override_value);
 
         BuildOptions {
+            url,
             authentication,
             headers: self.headers.data().to_build_overrides(),
             query_parameters: self.query.data().to_build_overrides(),
@@ -156,6 +159,7 @@ impl EventHandler for RecipeDisplay {
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![
             self.tabs.to_child_mut(),
+            self.url.to_child_mut(),
             self.body.to_child_mut(),
             self.query.to_child_mut(),
             self.headers.to_child_mut(),
@@ -184,13 +188,14 @@ impl Draw for RecipeDisplay {
 
         // First line: Method + URL
         frame.render_widget(Paragraph::new(method), method_area);
-        frame.render_widget(&self.url, url_area);
+        frame.render_widget(self.url.data().preview(), url_area);
 
         // Navigation tabs
         self.tabs.draw(frame, (), tabs_area, true);
 
         // Recipe content
         match self.tabs.data().selected() {
+            Tab::Url => self.url.draw(frame, (), content_area, true),
             Tab::Body => self.body.draw_opt(frame, (), content_area, true),
             Tab::Query => self.query.draw(
                 frame,
@@ -236,6 +241,8 @@ struct RecipeTabKey;
 )]
 enum Tab {
     #[default]
+    #[display("URL")]
+    Url,
     Body,
     Query,
     Headers,

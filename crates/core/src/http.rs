@@ -151,7 +151,7 @@ impl HttpEngine {
 
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
-                recipe.render_url(context),
+                recipe.render_url(options, context),
                 recipe.render_query(options, context),
                 recipe.render_headers(options, context),
                 recipe.render_authentication(options, context),
@@ -221,7 +221,7 @@ impl HttpEngine {
 
             // Parallelization!
             let (url, query) = try_join!(
-                recipe.render_url(context),
+                recipe.render_url(options, context),
                 recipe.render_query(options, context),
             )?;
 
@@ -327,7 +327,7 @@ impl HttpEngine {
 
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
-                recipe.render_url(context),
+                recipe.render_url(options, context),
                 recipe.render_query(options, context),
                 recipe.render_headers(options, context),
                 recipe.render_authentication(options, context),
@@ -473,10 +473,11 @@ impl Recipe {
     /// Render base URL, *excluding* query params
     async fn render_url(
         &self,
+        options: &BuildOptions,
         context: &TemplateContext,
     ) -> Result<Url, RequestBuildErrorKind> {
-        let url = self
-            .url
+        let template = options.url.as_ref().unwrap_or(&self.url);
+        let url = template
             .render_string(&context.streaming(false))
             .await
             .map_err(RequestBuildErrorKind::UrlRender)?;

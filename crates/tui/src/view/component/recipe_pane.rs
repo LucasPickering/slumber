@@ -3,6 +3,7 @@ mod body;
 mod persistence;
 mod recipe;
 mod table;
+mod url;
 
 pub use persistence::RecipeOverrideStore;
 

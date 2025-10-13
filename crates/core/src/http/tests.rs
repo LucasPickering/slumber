@@ -525,6 +525,25 @@ async fn test_body_stream(
     assert_eq!(body, expected_body, "Incorrect body");
 }
 
+/// Test overriding URL in BuildOptions
+#[rstest]
+#[tokio::test]
+async fn test_override_url(http_engine: HttpEngine) {
+    let recipe = Recipe::factory(());
+    let context = template_context(recipe, None);
+
+    let seed = seed(
+        &context,
+        BuildOptions {
+            url: Some("http://custom-host/users/{{ username }}".into()),
+            ..Default::default()
+        },
+    );
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    assert_eq!(ticket.record.url.as_str(), "http://custom-host/users/user");
+}
+
 /// Test overriding authentication in BuildOptions
 #[rstest]
 #[tokio::test]

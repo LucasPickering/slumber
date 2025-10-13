@@ -1,0 +1,227 @@
+use crate::view::{
+    UpdateContext,
+    common::{
+        actions::{IntoMenuAction, MenuAction},
+        template_preview::TemplatePreview,
+    },
+    component::recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+    draw::{Draw, DrawMetadata},
+    event::{Emitter, Event, EventHandler, OptionEvent},
+};
+use derive_more::derive::Display;
+use ratatui::Frame;
+use slumber_config::Action;
+use slumber_core::collection::RecipeId;
+use slumber_template::Template;
+use strum::{EnumIter, IntoEnumIterator};
+
+/// URL display with override capabilities
+#[derive(Debug)]
+pub struct UrlDisplay {
+    /// Emitter for the callback from editing the URL
+    override_emitter: Emitter<SaveUrlOverride>,
+    /// Emitter for menu actions
+    actions_emitter: Emitter<UrlMenuAction>,
+    /// Rendered URL
+    url: RecipeTemplate,
+}
+
+impl UrlDisplay {
+    pub fn new(recipe_id: RecipeId, url: Template) -> Self {
+        let url = RecipeTemplate::new(
+            RecipeOverrideKey::url(recipe_id),
+            url,
+            None,
+            false,
+        );
+        Self {
+            override_emitter: Emitter::default(),
+            actions_emitter: Emitter::default(),
+            url,
+        }
+    }
+
+    /// Get current template preview, which may be overridden
+    pub fn preview(&self) -> &TemplatePreview {
+        self.url.preview()
+    }
+
+    /// If the template has been overridden, get the new template
+    pub fn override_value(&self) -> Option<Template> {
+        self.url
+            .is_overridden()
+            .then(|| self.url.template().clone())
+    }
+
+    /// Open a modal to let the user edit the temporary override URL
+    fn open_edit_modal(&self) {
+        let emitter = self.override_emitter;
+        self.url
+            .open_edit_modal("Edit URL".to_owned(), move |template| {
+                // Defer the state update into an event, so it can use &mut
+                emitter.emit(SaveUrlOverride(template));
+            });
+    }
+}
+
+impl EventHandler for UrlDisplay {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event
+            .opt()
+            .action(|action, propagate| match action {
+                Action::Edit => self.open_edit_modal(),
+                Action::Reset => self.url.reset_override(),
+                _ => propagate.set(),
+            })
+            .emitted(self.override_emitter, |SaveUrlOverride(template)| {
+                self.url.set_override(template);
+            })
+            .emitted(self.actions_emitter, |menu_action| match menu_action {
+                UrlMenuAction::Edit => self.open_edit_modal(),
+                UrlMenuAction::Reset => self.url.reset_override(),
+            })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        UrlMenuAction::iter()
+            .map(MenuAction::with_data(self, self.actions_emitter))
+            .collect()
+    }
+}
+
+impl Draw for UrlDisplay {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+        frame.render_widget(self.url.preview(), metadata.area());
+    }
+}
+
+/// Local event to save a user's override value(s). Triggered from the edit
+/// modal.
+#[derive(Debug)]
+struct SaveUrlOverride(Template);
+
+#[derive(Copy, Clone, Debug, Display, EnumIter)]
+enum UrlMenuAction {
+    #[display("Edit URL")]
+    Edit,
+    #[display("Reset URL")]
+    Reset,
+}
+
+impl IntoMenuAction<UrlDisplay> for UrlMenuAction {
+    fn enabled(&self, data: &UrlDisplay) -> bool {
+        match self {
+            Self::Edit => true,
+            Self::Reset => data.url.is_overridden(),
+        }
+    }
+
+    fn shortcut(&self, _: &UrlDisplay) -> Option<Action> {
+        match self {
+            Self::Edit => Some(Action::Edit),
+            Self::Reset => Some(Action::Reset),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_util::{TestHarness, TestTerminal, harness, terminal},
+        view::{
+            component::{
+                RecipeOverrideStore,
+                recipe_pane::persistence::RecipeOverrideValue,
+            },
+            test_util::TestComponent,
+        },
+    };
+    use persisted::PersistedStore;
+    use rstest::rstest;
+    use slumber_util::Factory;
+    use terminput::KeyCode;
+
+    /// Test edit/reset via keybind
+    #[rstest]
+    fn test_edit(harness: TestHarness, terminal: TestTerminal) {
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            UrlDisplay::new(
+                RecipeId::factory(()),
+                "/users/{{ username }}".into(),
+            ),
+        );
+
+        // Check initial state
+        assert_eq!(component.data().override_value(), None);
+
+        // Edit URL
+        component
+            .int()
+            .send_key(KeyCode::Char('e'))
+            .send_text("!!!")
+            .send_key(KeyCode::Enter)
+            .assert_empty();
+        assert_eq!(
+            component.data().override_value(),
+            Some("/users/{{ username }}!!!".into())
+        );
+
+        // Reset token
+        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        assert_eq!(component.data().override_value(), None);
+    }
+
+    /// Test edit/reset via menu action
+    #[rstest]
+    fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            UrlDisplay::new(
+                RecipeId::factory(()),
+                "/users/{{ username }}".into(),
+            ),
+        );
+
+        // Check initial state
+        assert_eq!(component.data().override_value(), None);
+
+        // Edit URL
+        component
+            .int()
+            .action("Edit URL")
+            .send_keys([KeyCode::Char('!'), KeyCode::Enter])
+            .assert_empty();
+        assert_eq!(
+            component.data().override_value(),
+            Some("/users/{{ username }}!".into())
+        );
+
+        // Edit URL
+        component.int().action("Reset URL").assert_empty();
+        assert_eq!(component.data().override_value(), None);
+    }
+
+    /// Basic auth fields should load persisted overrides
+    #[rstest]
+    fn test_persisted_load(harness: TestHarness, terminal: TestTerminal) {
+        let recipe_id = RecipeId::factory(());
+        RecipeOverrideStore::store_persisted(
+            &RecipeOverrideKey::url(recipe_id.clone()),
+            &RecipeOverrideValue::Override("persisted/url".into()),
+        );
+        let component = TestComponent::new(
+            &harness,
+            &terminal,
+            UrlDisplay::new(recipe_id, "default/url".into()),
+        );
+
+        assert_eq!(
+            component.data().override_value(),
+            Some("persisted/url".into())
+        );
+    }
+}

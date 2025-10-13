@@ -409,6 +409,78 @@ async fn test_integer(
     );
 }
 
+/// `jq()`
+#[rstest]
+// Default mode is auto
+#[case::mode_default_one(".[1]", None, None, Ok("b".into()))]
+#[case::mode_default_many(".", None, None, Ok(vec!["a", "b", "c"].into()))]
+#[case::error_auto_empty(
+    "empty",
+    Some("auto"),
+    None,
+    Err("No results from JSON query `empty`")
+)]
+#[case::mode_auto_one(".[1]", Some("auto"), None, Ok("b".into()))]
+#[case::mode_auto_many(".[]", Some("auto"), None, Ok(vec!["a", "b", "c"].into()))]
+#[case::mode_array_zero("empty", Some("array"), None, Ok(Value::Array(vec![])))]
+#[case::mode_array_one(".[1]", Some("array"), None, Ok(vec!["b"].into()))]
+#[case::mode_array_many(".[]", Some("array"), None, Ok(vec!["a", "b", "c"].into()))]
+#[case::error_single_empty(
+    "empty",
+    Some("single"),
+    None,
+    Err("No results from JSON query `empty`")
+)]
+#[case::mode_single_one(".[1]", Some("single"), None, Ok("b".into()))]
+#[case::error_single_many(
+    ".[]",
+    Some("single"),
+    None,
+    Err("Expected exactly one result from JSON query `.[]`, but got 3")
+)]
+#[case::error_parse(
+    "does not parse",
+    None,
+    None,
+    Err("expected nothing, got `not`")
+)]
+#[case::error_compile("asdf(.)", None, None, Err("Undefined function `asdf`"))]
+#[case::error_runtime("error(\"bad!\")", None, None, Err("jq(): \"bad!\""))]
+// Binary content can't be converted to JSON
+#[case::error_binary(
+    ".[1]",
+    None,
+    Some(invalid_utf8().into()),
+    Err("Error parsing JSON")
+)]
+#[tokio::test]
+async fn test_jq(
+    #[case] query: &str,
+    #[case] mode: Option<&str>,
+    #[case] json: Option<Expression>, // If not given, use a default
+    #[case] expected: Result<Value, &str>,
+) {
+    let json: Expression = json.unwrap_or_else(|| {
+        vec!["a", "b", "c"]
+            .into_iter()
+            .map(Expression::from)
+            .collect()
+    });
+    let template = Template::function_call(
+        "jq",
+        [query.into(), json],
+        [("mode", mode.map(Expression::from))],
+    );
+    assert_result(
+        template
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
+            .await,
+        expected,
+    );
+}
+
 /// `json_parse()`
 #[rstest]
 #[case::object(br#"{"a": 1, "b": 2}"#, Ok(json!({"a": 1, "b": 2}).into()))]
@@ -435,32 +507,33 @@ async fn test_json_parse(
 /// `jsonpath()`
 #[rstest]
 // Default mode is auto
-#[case::mode_default_one("$[1]", None, None, Ok("b"))]
-#[case::mode_default_many("$[*]", None, None, Ok("['a', 'b', 'c']"))]
+#[case::mode_default_one("$[1]", None, None, Ok("b".into()))]
+#[case::mode_default_many("$[*]", None, None, Ok(vec!["a", "b", "c"].into()))]
 #[case::error_auto_empty(
     "$[5]",
     Some("auto"),
     None,
-    Err("No results from JSONPath query")
+    Err("No results from JSON query `$[5]`")
 )]
-#[case::mode_auto_one("$[1]", Some("auto"), None, Ok("b"))]
-#[case::mode_auto_many("$[*]", Some("auto"), None, Ok("['a', 'b', 'c']"))]
-#[case::mode_array_zero("$[5]", Some("array"), None, Ok("[]"))]
-#[case::mode_array_one("$[1]", Some("array"), None, Ok("['b']"))]
-#[case::mode_array_many("$[*]", Some("array"), None, Ok("['a', 'b', 'c']"))]
+#[case::mode_auto_one("$[1]", Some("auto"), None, Ok("b".into()))]
+#[case::mode_auto_many("$[*]", Some("auto"), None, Ok(vec!["a", "b", "c"].into()))]
+#[case::mode_array_zero("$[5]", Some("array"), None, Ok(Value::Array(vec![])))]
+#[case::mode_array_one("$[1]", Some("array"), None, Ok(vec!["b"].into()))]
+#[case::mode_array_many("$[*]", Some("array"), None, Ok(vec!["a", "b", "c"].into()))]
 #[case::error_single_empty(
     "$[5]",
     Some("single"),
     None,
-    Err("Expected exactly one result")
+    Err("No results from JSON query `$[5]`")
 )]
-#[case::mode_single_one("$[1]", Some("single"), None, Ok("b"))]
+#[case::mode_single_one("$[1]", Some("single"), None, Ok("b".into()))]
 #[case::error_single_many(
     "$[*]",
     Some("single"),
     None,
-    Err("Expected exactly one result")
+    Err("Expected exactly one result from JSON query `$[*]`, but got 3")
 )]
+#[case::error_invalid_query("bad query", None, None, Err("parser error"))]
 // Binary content can't be converted to JSON
 #[case::error_binary(
     "$[1]",
@@ -473,7 +546,7 @@ async fn test_jsonpath(
     #[case] query: &str,
     #[case] mode: Option<&str>,
     #[case] json: Option<Expression>, // If not given, use a default
-    #[case] expected: Result<&str, &str>,
+    #[case] expected: Result<Value, &str>,
 ) {
     let json: Expression = json.unwrap_or_else(|| {
         vec!["a", "b", "c"]
@@ -488,7 +561,9 @@ async fn test_jsonpath(
     );
     assert_result(
         template
-            .render_string(&TemplateContext::factory(()).streaming(false))
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
             .await,
         expected,
     );

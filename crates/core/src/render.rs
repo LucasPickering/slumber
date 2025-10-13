@@ -25,7 +25,6 @@ use chrono::Utc;
 use derive_more::{Deref, From};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use serde_json_path::JsonPath;
 use slumber_template::{Arguments, Identifier, LazyValue, RenderError};
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -274,6 +273,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "file" => functions::file(arguments),
             "float" => functions::float(arguments),
             "integer" => functions::integer(arguments),
+            "jq" => functions::jq(arguments),
             "json_parse" => functions::json_parse(arguments),
             "jsonpath" => functions::jsonpath(arguments),
             "prompt" => functions::prompt(arguments).await,
@@ -480,6 +480,11 @@ pub enum FunctionError {
     #[error(transparent)]
     InvalidUtf8(#[from] std::string::FromUtf8Error),
 
+    /// Error executing a jq error. [jaq_core::Error] doesn't impl `Error` or
+    /// `Send` so we just stringify it
+    #[error("{0}")]
+    Jq(String),
+
     /// Error parsing JSON data
     #[error("Error parsing JSON")]
     JsonParse(
@@ -488,19 +493,16 @@ pub enum FunctionError {
         serde_json::Error,
     ),
 
-    /// JSONPath query returned 0 or 2+ results when we expected 1
+    /// jq/JSONPath query returned no results when it should have
+    #[error("No results from JSON query `{query}`")]
+    JsonQueryNoResults { query: String },
+
+    /// jq/JSONPath query returned 2+ results when we expected 1
     #[error(
-        "Expected exactly one result from JSONPath query `{query}`, \
+        "Expected exactly one result from JSON query `{query}`, \
         but got {actual_count}"
     )]
-    JsonPathExactlyOne {
-        query: JsonPath,
-        actual_count: usize,
-    },
-
-    /// JSONPath query returned no results when it should have
-    #[error("No results from JSONPath query `{query}`")]
-    JsonPathNoResults { query: JsonPath },
+    JsonQueryTooMany { query: String, actual_count: usize },
 
     /// An bubbled-up error from rendering a profile field value
     #[error("Rendering profile field `{field}`")]

@@ -9,8 +9,6 @@ use bytes::Bytes;
 use derive_more::FromStr;
 use futures::{FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::Itertools;
-use serde::{Deserialize, de::value::SeqDeserializer};
-use serde_json_path::NodeList;
 use slumber_macros::template;
 use slumber_template::{
     Expected, LazyValue, RenderError, StreamSource, TryFromValue, Value,
@@ -413,6 +411,168 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
     }
 }
 
+/// Transform a JSON value using a [jq](https://jqlang.org/manual/) query. For
+/// simple queries, [`jsonpath`](#jsonpath) is often simpler to use, but `jq` is
+/// much more powerful and flexible. In particular, `jq` can be used to
+/// construct new JSON values, while JSONPath can only extract from existing
+/// values.
+///
+/// This function is most useful when used after a data-providing function such
+/// as [`file`](#file) or [`response`](#response).
+///
+/// This relies on a pure Rust reimplmentation of `jq` called
+/// [jaq](https://github.com/01mf02/jaq). While largely compliant with the
+/// original `jq` behavior, [there are some differences](https://github.com/01mf02/jaq?tab=readme-ov-file#differences-between-jq-and-jaq).
+///
+/// **Parameters**
+///
+/// - `value`: JSON value to query. If this is a string or bytes, it will be
+///   parsed as JSON before being queried. If it's already a structured value
+///   (bool, array, etc.), it will be mapped directly to JSON. This value is
+///   typically piped in from the output of `response()` or `file()`.
+/// - `query`: `jq` query string (see `jq` docs linked above)
+/// - `mode` (default: `"auto"`): How to handle multiple results (see table
+///   below)
+///
+/// An explanation of `mode` using this object as an example:
+///
+/// ```json
+/// [{ "name": "Apple" }, { "name": "Kiwi" }, { "name": "Mango" }]
+/// ```
+///
+/// | Mode     | Description                                                                       | `$.id` | `$[0].name` | `$[*].name`                  |
+/// | -------- | --------------------------------------------------------------------------------- | ------ | ----------- | ---------------------------- |
+/// | `auto`   | If query returns a single value, use it. If it returns multiple, use a JSON array | Error  | `Apple`     | `["Apple", "Kiwi", "Mango"]` |
+/// | `single` | If a query returns a single value, use it. Otherwise, error.                      | Error  | `Apple`     | Error                        |
+/// | `array`  | Return results as an array, regardless of count.                                  | `[]`   | `["Apple"]` | `["Apple", "Kiwi", "Mango"]` |
+///
+/// **Errors**
+///
+/// - If `value` is a string with invalid JSON
+/// - If the query returns no results and `mode='auto'` or `mode='single'`
+/// - If the query returns 2+ results and `mode='single'`
+///
+/// **Examples**
+///
+/// ```sh
+/// {{ response('get_user') | jq(".first_name") }} => "Alice"
+/// ```
+#[template]
+pub fn jq(
+    query: JaqQuery,
+    value: JsonValue, // Value last so it can be piped in
+    #[kwarg] mode: JsonQueryMode,
+) -> Result<Value, FunctionError> {
+    // This uses jaq instead of jq-rs because the build process for jq-rs is
+    // not straightforward. I don't want to add any unnecessary build deps
+
+    // jaq has some very generic names, so use a local import to prevent
+    // cluttering the entire module
+    use jaq_core::{Ctx, RcIter};
+
+    // iterator over the output values
+    let inputs = RcIter::new(core::iter::empty());
+    let results = query
+        .filter
+        .run((Ctx::new([], &inputs), jaq_json::Val::from(value.0)));
+
+    let items = results
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| FunctionError::Jq(error.to_string()))?;
+    mode.get_values(query.query, items.into_iter().map(serde_json::Value::from))
+}
+
+/// Precompiled jaq query
+struct JaqQuery {
+    /// Original query
+    query: String,
+    /// Compiled jaq filter
+    filter: jaq_core::Filter<jaq_core::Native<jaq_json::Val>>,
+}
+
+impl FromStr for JaqQuery {
+    type Err = ValueError;
+
+    fn from_str(query: &str) -> Result<Self, ValueError> {
+        // jaq has some very generic names, so use a local import to prevent
+        // cluttering the entire module
+        use jaq_core::{
+            Compiler,
+            load::{Arena, File, Loader},
+        };
+
+        /// The error formatting is pretty junk because jaq's error types are
+        /// terrible. I did my best :)
+        fn format_errors<E>(errors: Vec<E>, f: impl Fn(E) -> String) -> String {
+            errors
+                .into_iter()
+                // The first term is the file+code, which we can throw away. We
+                // know the code didn't come from a file, and the code will be
+                // attached via WithValue already.
+                .map(f)
+                .format("; ")
+                .to_string()
+        }
+
+        let program = File {
+            code: query,
+            path: (),
+        };
+
+        // We could potentially put these in statics if the performance is bad
+        let loader = Loader::new(jaq_std::defs());
+        let arena = Arena::default();
+
+        // Parse the filter
+        let modules = loader.load(&arena, program).map_err(|errors| {
+            ValueError::other(format_errors(errors, |(_, error)| match error {
+                jaq_core::load::Error::Io(items) => {
+                    format_errors(items, |(path, error)| {
+                        format!("error loading `{path}`: {error}")
+                    })
+                }
+                jaq_core::load::Error::Lex(items) => {
+                    format_errors(items, |(expected, actual)| {
+                        format!(
+                            "expected {expected}, got `{actual}`",
+                            expected = expected.as_str()
+                        )
+                    })
+                }
+                jaq_core::load::Error::Parse(items) => {
+                    format_errors(items, |(expected, actual)| {
+                        format!(
+                            "expected {expected}, got `{actual}`",
+                            expected = expected.as_str()
+                        )
+                    })
+                }
+            }))
+        })?;
+
+        // Compile the filter
+        let filter = Compiler::default()
+            .with_funs(jaq_std::funs())
+            .compile(modules)
+            .map_err(|errors| {
+                // Yes, there's TWO levels of error lists!!
+                ValueError::other(format_errors(errors, |(_, errors)| {
+                    format_errors(errors, |(function, _)| {
+                        // This is seemingly the only possible compile error
+                        format!("Undefined function `{function}`")
+                    })
+                }))
+            })?;
+
+        Ok(Self {
+            query: query.to_owned(),
+            filter,
+        })
+    }
+}
+
+impl_try_from_value_str!(JaqQuery);
+
 /// Parse a JSON string to a template value.
 ///
 /// **Parameters**
@@ -455,7 +615,8 @@ pub fn json_parse(value: String) -> Result<serde_json::Value, FunctionError> {
 
 /// Transform a JSON value using a JSONPath query. See
 /// [JSONPath specification](https://datatracker.ietf.org/doc/html/rfc9535) or
-/// [jsonpath.com](https://jsonpath.com/) for query syntax.
+/// [jsonpath.com](https://jsonpath.com/) for query syntax. For more complex
+/// queries, you may want to use [`jq`](#jq) instead.
 ///
 /// This function is most useful when used after a data-providing function such
 /// as [`file`](#file) or [`response`](#response).
@@ -496,41 +657,14 @@ pub fn json_parse(value: String) -> Result<serde_json::Value, FunctionError> {
 #[template]
 pub fn jsonpath(
     query: JsonPath,
-    value: JsonPathValue, // Value last so it can be piped in
-    #[kwarg] mode: JsonPathMode,
+    value: JsonValue, // Value last so it can be piped in
+    #[kwarg] mode: JsonQueryMode,
 ) -> Result<Value, FunctionError> {
-    fn node_list_to_value(node_list: NodeList) -> Value {
-        Value::deserialize(SeqDeserializer::new(node_list.into_iter()))
-            // This conversion is infallible because JSON is a subset of Value
-            // and the NodeList produces an array of JSON values
-            .unwrap()
-    }
-
     let query = query.0;
     let node_list = query.query(&value.0);
 
     // Convert the node list to a template value based on mode
-    match mode {
-        JsonPathMode::Auto => match node_list.len() {
-            0 => Err(FunctionError::JsonPathNoResults { query }),
-            1 => {
-                let json = node_list.exactly_one().unwrap().clone();
-                Ok(Value::from_json(json))
-            }
-            2.. => Ok(node_list_to_value(node_list)),
-        },
-        JsonPathMode::Single => {
-            let json = node_list
-                .exactly_one()
-                .map_err(|_| FunctionError::JsonPathExactlyOne {
-                    query,
-                    actual_count: node_list.len(),
-                })?
-                .clone();
-            Ok(Value::from_json(json))
-        }
-        JsonPathMode::Array => Ok(node_list_to_value(node_list)),
-    }
+    mode.get_values(query.to_string(), node_list.into_iter().cloned())
 }
 
 /// Wrapper for [serde_json_path::JsonPath] to enable implementing
@@ -542,13 +676,13 @@ impl_try_from_value_str!(JsonPath);
 
 /// Wrapper for a JSON value to customize decoding. Strings are parsed as JSON
 /// instead of being treated as a JSON string literal. You can't really do
-/// anything with a JSONPath on a string so when a user pipes a string (or
+/// anything with a JSONPath or jq on a string so when a user pipes a string (or
 /// bytes) in, it's probably the output of a response or file that needs to
 /// be parsed. By parsing here, we save them an intermediate call to
 /// `json_parse()`.
-pub struct JsonPathValue(serde_json::Value);
+pub struct JsonValue(serde_json::Value);
 
-impl TryFromValue for JsonPathValue {
+impl TryFromValue for JsonValue {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         let json_value = match value {
             // Strings and bytes are treated as encoded JSON and parsed.
@@ -576,10 +710,10 @@ impl TryFromValue for JsonPathValue {
     }
 }
 
-/// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
+/// Control how a jq/JSONPath selector returns 0 vs 1 vs 2+ results
 #[derive(Copy, Clone, Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub enum JsonPathMode {
+pub enum JsonQueryMode {
     /// 0 - Error
     /// 1 - Single result
     /// 2 - Array of values
@@ -595,8 +729,67 @@ pub enum JsonPathMode {
     Array,
 }
 
+impl JsonQueryMode {
+    /// Extract values from a query result according to this mode. This takes an
+    /// iterator of JSON values so it works for both jq and jsonpath
+    fn get_values<Iter>(
+        self,
+        query: String,
+        values: Iter,
+    ) -> Result<Value, FunctionError>
+    where
+        Iter: IntoIterator<Item = serde_json::Value>,
+    {
+        enum Case {
+            None,
+            One,
+            Many,
+        }
+
+        // For each mode, there are 3 cases to handle: 0, 1, and 2+ values.
+        // We'll peek at the first two values to see which case we're handling
+        let mut iter = itertools::peek_nth(values);
+        let case =
+            match (iter.peek_nth(0).is_some(), iter.peek_nth(1).is_some()) {
+                (false, false) => Case::None,
+                (true, false) => Case::One,
+                (true, true) => Case::Many,
+                (false, true) => unreachable!(),
+            };
+
+        // Handle each possible case pair
+        match (self, case) {
+            (Self::Auto | Self::Single, Case::None) => {
+                Err(FunctionError::JsonQueryNoResults { query })
+            }
+            (Self::Auto, Case::One) => {
+                Ok(Value::from_json(iter.next().unwrap()))
+            }
+            (Self::Auto, Case::Many) => {
+                Ok(Value::Array(iter.map(Value::from_json).collect()))
+            }
+
+            (Self::Single, Case::One) => {
+                Ok(Value::from_json(iter.next().unwrap()))
+            }
+            (Self::Single, Case::Many) => {
+                Err(FunctionError::JsonQueryTooMany {
+                    query,
+                    actual_count: iter.count(),
+                })
+            }
+
+            // Case doesn't matter for mode=array, because we always return an
+            // array
+            (Self::Array, _) => {
+                Ok(Value::Array(iter.map(Value::from_json).collect()))
+            }
+        }
+    }
+}
+
 // Manual implementation provides the best error messages
-impl FromStr for JsonPathMode {
+impl FromStr for JsonQueryMode {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -611,7 +804,7 @@ impl FromStr for JsonPathMode {
     }
 }
 
-impl_try_from_value_str!(JsonPathMode);
+impl_try_from_value_str!(JsonQueryMode);
 
 /// Prompt the user to enter a text value.
 ///

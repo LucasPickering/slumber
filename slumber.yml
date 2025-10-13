@@ -5,7 +5,9 @@
 
 .base_profile_data:
   username: xX{{ command(['whoami']) | trim() | sensitive() }}Xx
-  fish_id: "{{ response('list_fish', trigger='no_history') | jsonpath('$[*].id') | select(message='Fish ID') }}"
+  fish_id: "{{ response('list_fish', trigger='no_history')
+    | jq('.[].id')
+    | select(message='Fish ID') }}"
   stream_compound: "command: {{ command(['echo', 'test']) }}\nfile: {{ file('Cargo.toml') }}"
 
 profiles:

@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Add [Python bindings](https://slumber.lucaspickering.me/integration/python.html), allowing you to use your Slumber collection from Python scripts without having to invoke the CLI
+- Add [`jq`](https://slumber.lucaspickering.me/api/template_functions.html#jq) function to the template language, to query and transform JSON with [jq](https://jqlang.org/manual/)
 
 ### Changed
 

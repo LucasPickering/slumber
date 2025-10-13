@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - This allows you to pass a list of values where the returned value is different from the string you see in the select list.
   - For example, to select a user from a list where you select users by name but the returned value is their ID: `select([{"label": "User 1", "value": 1}, {"label": "User 2", "value": 2}])`
   - [See docs for more](https://slumber.lucaspickering.me/api/template_functions.html#select)
+- Add URL tab to the recipe pane, allowing the URL to be temporarily overridden
 
 ### Changed
 

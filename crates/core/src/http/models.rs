@@ -283,6 +283,8 @@ impl RequestSeed {
 #[derive(Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct BuildOptions {
+    /// URL can be overridden but not disabled
+    pub url: Option<Template>,
     /// Authentication can be overridden, but not disabled. For simplicity,
     /// the override is wholesale rather than by field.
     pub authentication: Option<Authentication>,
@@ -290,7 +292,7 @@ pub struct BuildOptions {
     pub query_parameters: BuildFieldOverrides,
     pub form_fields: BuildFieldOverrides,
     /// Override body. This should *not* be used for form bodies, since those
-    /// can be override on a field-by-field basis.
+    /// can be overridden on a field-by-field basis.
     pub body: Option<RecipeBody>,
 }
 

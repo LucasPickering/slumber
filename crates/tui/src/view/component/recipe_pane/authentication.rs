@@ -1,17 +1,12 @@
 use crate::{
     context::TuiContext,
-    util::ResultReported,
     view::{
-        ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
-            modal::Modal,
             table::Table,
-            text_box::TextBox,
         },
         component::{
             Component,
-            misc::TextBoxModal,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
         },
         context::UpdateContext,
@@ -32,7 +27,7 @@ use strum::{EnumCount, EnumIter, IntoEnumIterator};
 /// Display authentication settings for a recipe
 #[derive(Debug)]
 pub struct AuthenticationDisplay {
-    /// Emitter for the callback from editing the body
+    /// Emitter for the callback from editing the authentication field(s)
     override_emitter: Emitter<SaveAuthenticationOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<AuthenticationMenuAction>,
@@ -72,8 +67,8 @@ impl AuthenticationDisplay {
             },
         };
         Self {
-            override_emitter: Default::default(),
-            actions_emitter: Default::default(),
+            override_emitter: Emitter::default(),
+            actions_emitter: Emitter::default(),
             state,
         }
     }
@@ -113,8 +108,8 @@ impl EventHandler for AuthenticationDisplay {
             })
             .emitted(
                 self.override_emitter,
-                |SaveAuthenticationOverride(value)| {
-                    self.state.set_override(&value);
+                |SaveAuthenticationOverride(template)| {
+                    self.state.set_override(template);
                 },
             )
             .emitted(self.actions_emitter, |menu_action| match menu_action {
@@ -189,10 +184,9 @@ impl Draw for AuthenticationDisplay {
 }
 
 /// Local event to save a user's override value(s). Triggered from the edit
-/// modal. These will be raw string values, consumer has to parse them to
-/// templates.
+/// modal.
 #[derive(Debug)]
-struct SaveAuthenticationOverride(String);
+struct SaveAuthenticationOverride(Template);
 
 #[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
 enum AuthenticationMenuAction {
@@ -249,48 +243,27 @@ impl State {
 
     /// Open a modal to let the user edit temporary override values
     fn open_edit_modal(&self, emitter: Emitter<SaveAuthenticationOverride>) {
-        let (label, value) = match &self {
+        let (label, template) = match &self {
             Self::Basic {
                 username,
                 password,
                 selected_field,
                 ..
             } => match selected_field.data().selected() {
-                BasicFields::Username => {
-                    ("username", username.template().display())
-                }
-                BasicFields::Password => {
-                    ("password", password.template().display())
-                }
+                BasicFields::Username => ("username", username),
+                BasicFields::Password => ("password", password),
             },
-            Self::Bearer { token, .. } => {
-                ("bearer token", token.template().display())
-            }
+            Self::Bearer { token, .. } => ("bearer token", token),
         };
-        TextBoxModal::new(
-            format!("Edit {label}"),
-            TextBox::default()
-                .default_value(value.into_owned())
-                .validator(|value| value.parse::<Template>().is_ok()),
-            move |value| {
-                // Defer the state update into an event, so it can get &mut
-                emitter.emit(SaveAuthenticationOverride(value));
-            },
-        )
-        .open();
+        template.open_edit_modal(format!("Edit {label}"), move |template| {
+            // Defer the state update into an event, so it can get &mut
+            emitter.emit(SaveAuthenticationOverride(template));
+        });
     }
 
     /// Override the value template for whichever field is selected, and
     /// recompute the template preview
-    fn set_override(&mut self, value: &str) {
-        let Some(template) = value
-            .parse::<Template>()
-            // The template *should* always parse because the text box has a
-            // validator, but this is just a safety check
-            .reported(&ViewContext::messages_tx())
-        else {
-            return;
-        };
+    fn set_override(&mut self, template: Template) {
         match self {
             Self::Basic {
                 username,
@@ -361,6 +334,7 @@ mod tests {
     use slumber_util::Factory;
     use terminput::KeyCode;
 
+    /// Test edit basic username+password token via keybinds
     #[rstest]
     fn test_edit_basic(harness: TestHarness, terminal: TestTerminal) {
         let authentication = Authentication::Basic {
@@ -415,6 +389,7 @@ mod tests {
         assert_eq!(component.data().override_value(), None);
     }
 
+    /// Test edit basic username via keybinds
     #[rstest]
     fn test_edit_basic_empty_password(
         harness: TestHarness,
@@ -446,6 +421,7 @@ mod tests {
         );
     }
 
+    /// Test edit bearer token via keybinds
     #[rstest]
     fn test_edit_bearer(harness: TestHarness, terminal: TestTerminal) {
         let authentication = Authentication::Bearer {
@@ -479,7 +455,7 @@ mod tests {
         assert_eq!(component.data().override_value(), None);
     }
 
-    /// Test edit menu action
+    /// Test edit/reset via menu action
     #[rstest]
     fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
         let authentication = Authentication::Bearer {
@@ -502,6 +478,12 @@ mod tests {
                 token: "i am a token!".into()
             })
         );
+
+        component
+            .int()
+            .action("Reset Authentication")
+            .assert_empty();
+        assert_eq!(component.data().override_value(), None);
     }
 
     /// Basic auth fields should load persisted overrides
@@ -535,7 +517,7 @@ mod tests {
         );
     }
 
-    /// Basic auth fields should load persisted overrides
+    /// Bearer auth fields should load persisted overrides
     #[rstest]
     fn test_persisted_load_bearer(
         harness: TestHarness,

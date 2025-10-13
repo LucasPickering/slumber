@@ -144,6 +144,21 @@ impl TemplateFunctionMetadata {
 
 impl Display for TemplateFunctionMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fmt_parameters(parameters: &[ParameterMetadata]) -> String {
+            // If the params get too long, overflow onto multiple lines
+            let one_line = parameters.iter().join(", ").to_string();
+            if one_line.len() <= 60 {
+                one_line
+            } else {
+                format!(
+                    "\n{}",
+                    parameters.iter().format_with("", |param, f| f(
+                        &format_args!("  {param},\n")
+                    ))
+                )
+            }
+        }
+
         write!(
             f,
             "### {name}
@@ -154,7 +169,7 @@ impl Display for TemplateFunctionMetadata {
 
 {doc}",
             name = self.name,
-            parameters = self.parameters.iter().join(", "),
+            parameters = fmt_parameters(&self.parameters),
             return_type = self.return_type,
             doc = self.doc_comment,
         )

@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add [Python bindings](https://slumber.lucaspickering.me/integration/python.html), allowing you to use your Slumber collection from Python scripts without having to invoke the CLI
 - Add [`jq`](https://slumber.lucaspickering.me/api/template_functions.html#jq) function to the template language, to query and transform JSON with [jq](https://jqlang.org/manual/)
+- `select()` now accepts a list of objects `{"label": "Label", "value": "Value"}` in addition to a list of strings [#609](https://github.com/LucasPickering/slumber/issues/609)
+  - This allows you to pass a list of values where the returned value is different from the string you see in the select list.
+  - For example, to select a user from a list where you select users by name but the returned value is their ID: `select([{"label": "User 1", "value": 1}, {"label": "User 2", "value": 2}])`
+  - [See docs for more](https://slumber.lucaspickering.me/api/template_functions.html#select)
 
 ### Changed
 

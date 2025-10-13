@@ -2,13 +2,16 @@
 
 use crate::{
     collection::RecipeId,
-    render::{FunctionError, Prompt, Select, SingleRenderContext},
+    render::{
+        FunctionError, Prompt, Select, SelectOption, SingleRenderContext,
+    },
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
 use futures::{FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::Itertools;
+use serde::{Deserialize, de::IntoDeserializer};
 use slumber_macros::template;
 use slumber_template::{
     Expected, LazyValue, RenderError, StreamSource, TryFromValue, Value,
@@ -972,7 +975,10 @@ pub async fn response_header(
 ///
 /// **Parameters**
 ///
-/// - `options`: List of options to choose from
+/// - `options`: List of options to choose from. Each option can be either a
+///   string *or* an object with the fields `"label"` and `"value"`. If an
+///   object is given, the `"label"` field will be shown to the user, but the
+///   corresponding `"value"` field will be returned.
 /// - `message`: Descriptive message to display to the user
 ///
 /// **Errors**
@@ -986,13 +992,19 @@ pub async fn response_header(
 /// {{ select(["dev", "staging", "prod"]) }} => "dev"
 /// # Custom prompt message
 /// {{ select(["GET", "POST", "PUT"], message="HTTP method") }} => "POST"
+/// # "label" will be shown to the user, but the corresponding "value" will be returned
+/// {{ select([{"label": "Sam", "value": 1}, {"label": "Mike", "value": 2}]) }} => 2
+/// # jq() can be used to construct labelled options dynamically
+/// {{ [{"name": "Sam", "id": 1}, {"name": "Mike", "id": 2}]
+///     | jq('[.[] | {label: .name, value: .id}]')
+///     | select(message="Select user") }}
 /// ```
 #[template]
 pub async fn select(
     #[context] context: &SingleRenderContext<'_>,
-    options: Vec<String>,
+    options: Vec<SelectOption>,
     #[kwarg] message: Option<String>,
-) -> Result<String, FunctionError> {
+) -> Result<Value, FunctionError> {
     // If there are no options, we can't show anything meaningful to the user.
     // We *could* just return an empty string but that may be confusing.
     // Something probably went wrong upstream so return an error.
@@ -1006,8 +1018,25 @@ pub async fn select(
         options,
         channel: tx.into(),
     });
-    let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
-    Ok(output)
+    rx.await.map_err(|_| FunctionError::PromptNoReply)
+}
+
+/// A select option can be given as an object of `{value, label}` or a single
+/// string (or other scalar value).
+impl TryFromValue for SelectOption {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
+        match value {
+            Value::Object(ref map) => {
+                // Use serde to deserialize the object into a struct
+                Self::deserialize(map.into_deserializer())
+                    .map_err(|error| WithValue::new(value, error))
+            }
+            value => Ok(Self {
+                label: value.clone().try_into_string()?,
+                value,
+            }),
+        }
+    }
 }
 
 /// Mark a value as sensitive, masking it in template previews. This has no

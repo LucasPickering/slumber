@@ -856,6 +856,7 @@ dependencies = [
  "clap",
  "itertools 0.13.0",
  "mdbook",
+ "quote",
  "serde_json",
  "syn 2.0.101",
 ]

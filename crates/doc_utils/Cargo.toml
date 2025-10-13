@@ -21,7 +21,8 @@ clap = {workspace = true, features = ["derive"]}
 itertools = {workspace = true}
 mdbook = {version = "0.4", default-features = false}
 serde_json = {workspace = true}
-syn = {workspace = true, features = ["extra-traits", "full"]}
+syn = {workspace = true, features = ["extra-traits", "full", "printing"]}
+quote = {workspace = true}
 
 [lints]
 workspace = true

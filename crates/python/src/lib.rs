@@ -315,8 +315,10 @@ impl Prompter for PythonPrompter {
             .default(0)
             .interact();
 
-        if let Ok(value) = result {
-            select.channel.respond(select.options.swap_remove(value));
+        if let Ok(index) = result {
+            select
+                .channel
+                .respond(select.options.swap_remove(index).value);
         }
     }
 }

@@ -844,26 +844,39 @@ async fn test_response_header(
 
 /// `select()`
 #[rstest]
-#[case::reply(vec!["first", "second"], Some(1), Ok("second"))]
+#[case::reply(
+    vec!["first".into(), "second".into()],
+    Some(1),
+    Ok("second".into()),
+)]
+#[case::labelled(
+    // Labelled objects are {"label": "Label", "value": "Value"}
+    vec![
+        [("label", "First".into()), ("value", 1.into())].into(),
+        [("label", "Second".into()), ("value", 2.into())].into(),
+    ],
+    Some(1),
+    Ok(2.into()), // value is returned, not label
+)]
 #[case::empty(vec![], None, Err("Select has no options"))]
-#[case::no_reply(vec!["test"], None, Err("No reply"))]
+#[case::no_reply(vec!["test".into()], None, Err("No reply"))]
 #[tokio::test]
 async fn test_select(
-    #[case] options: Vec<&str>,
+    #[case] options: Vec<Expression>,
     #[case] select: Option<usize>,
-    #[case] expected: Result<&str, &str>,
+    #[case] expected: Result<Value, &str>,
 ) {
-    let template = Template::function_call(
-        "select",
-        [options.into_iter().map(Expression::from).collect()],
-        [],
-    );
+    let template = Template::function_call("select", [options.into()], []);
     let context = TemplateContext {
         prompter: Box::new(TestSelectPrompter::new(select.into_iter())),
         ..TemplateContext::factory(())
     };
     assert_result(
-        template.render_bytes(&context.streaming(false)).await,
+        template
+            .render(&context.streaming(false))
+            .await
+            .try_collect_value()
+            .await,
         expected,
     );
 }

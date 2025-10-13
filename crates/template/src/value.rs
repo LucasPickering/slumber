@@ -15,9 +15,10 @@ use std::{collections::VecDeque, fmt::Debug, path::PathBuf};
 /// A runtime template value. This very similar to a JSON value, except:
 /// - Numbers do not support arbitrary size
 /// - Bytes are supported
-#[derive(Clone, Debug, From, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, From, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
+    #[default]
     Null,
     Boolean(bool),
     Integer(i64),

@@ -22,10 +22,11 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use derive_more::{Deref, From};
+use derive_more::{Deref, From, derive::Display};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use slumber_template::{Arguments, Identifier, LazyValue, RenderError};
+use serde::Deserialize;
+use slumber_template::{Arguments, Identifier, LazyValue, RenderError, Value};
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
 };
@@ -414,9 +415,21 @@ pub struct Select {
     /// Tell the user what we're asking for
     pub message: String,
     /// List of choices the user can pick from
-    pub options: Vec<String>,
-    /// How the prompter will pass the answer back
-    pub channel: ResponseChannel<String>,
+    pub options: Vec<SelectOption>,
+    /// How the prompter will pass the answer back. The returned value is the
+    /// `value` field from the selected [SelectOption]
+    pub channel: ResponseChannel<Value>,
+}
+
+/// An entry in a `select()` list
+#[derive(Debug, Display, Deserialize)]
+#[display("{label}")]
+pub struct SelectOption {
+    /// Label to display to the user for this option
+    pub label: String,
+    /// Underlying value to return if this option is selected. This will be the
+    /// same as the label if the input was a single string.
+    pub value: Value,
 }
 
 /// Channel used to return a response to a one-time request. This is its own

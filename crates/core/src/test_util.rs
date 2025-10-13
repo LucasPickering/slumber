@@ -145,8 +145,10 @@ impl Prompter for TestSelectPrompter {
 
     fn select(&self, mut select: Select) {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
-        if let Some(value) = self.responses.get(index) {
-            select.channel.respond(select.options.swap_remove(*value));
+        if let Some(value_index) = self.responses.get(index) {
+            select
+                .channel
+                .respond(select.options.swap_remove(*value_index).value);
         }
     }
 }

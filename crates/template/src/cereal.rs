@@ -3,7 +3,8 @@
 //! yet. Once saphyr supports serde, we can delete all of this and delete any
 //! `DeserializeYaml` implementations.
 
-use crate::{RenderError, Template, Value};
+use crate::{Template, Value, ValueError};
+use indexmap::IndexMap;
 use saphyr::{Scalar, YamlData};
 use serde::{
     Serialize,
@@ -72,18 +73,33 @@ impl schemars::JsonSchema for Template {
 
 /// Deserialize from a template [Value]. Used for deserializing values into
 /// function arguments
-pub struct ValueDeserializer(Value);
+pub struct ValueDeserializer<'de>(&'de Value);
 
-impl IntoDeserializer<'_, RenderError> for Value {
-    type Deserializer = ValueDeserializer;
+impl<'de> IntoDeserializer<'de, ValueError> for &'de Value {
+    type Deserializer = ValueDeserializer<'de>;
 
-    fn into_deserializer(self) -> ValueDeserializer {
+    fn into_deserializer(self) -> Self::Deserializer {
         ValueDeserializer(self)
     }
 }
 
-impl<'de> serde::Deserializer<'de> for ValueDeserializer {
-    type Error = RenderError;
+// Deserialize an object value
+impl<'de> IntoDeserializer<'de, ValueError> for &'de IndexMap<String, Value> {
+    type Deserializer = MapDeserializer<
+        'de,
+        Box<dyn 'de + Iterator<Item = (&'de str, &'de Value)>>,
+        ValueError,
+    >;
+
+    fn into_deserializer(self) -> Self::Deserializer {
+        MapDeserializer::new(Box::new(
+            self.iter().map(|(k, v)| (k.as_str(), v)),
+        ))
+    }
+}
+
+impl<'de> serde::Deserializer<'de> for ValueDeserializer<'de> {
+    type Error = ValueError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
@@ -91,10 +107,10 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
     {
         match self.0 {
             Value::Null => visitor.visit_none(),
-            Value::Boolean(b) => visitor.visit_bool(b),
-            Value::Integer(i) => visitor.visit_i64(i),
-            Value::Float(f) => visitor.visit_f64(f),
-            Value::String(string) => visitor.visit_string(string),
+            Value::Boolean(b) => visitor.visit_bool(*b),
+            Value::Integer(i) => visitor.visit_i64(*i),
+            Value::Float(f) => visitor.visit_f64(*f),
+            Value::String(s) => visitor.visit_str(s),
             Value::Bytes(buffer) => {
                 // In most cases where bytes are returned, the user actually
                 // wants a string (e.g. in a JSON value). If we can convert to
@@ -103,16 +119,16 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
                 // If the user actually wants bytes no matter what, the
                 // Deserialize impl should call deserialize_bytes or
                 // deserialize_byte_buf
-                match std::str::from_utf8(&buffer) {
+                match std::str::from_utf8(buffer) {
                     Ok(s) => visitor.visit_str(s),
-                    Err(_) => visitor.visit_bytes(&buffer),
+                    Err(_) => visitor.visit_bytes(buffer),
                 }
             }
             Value::Array(array) => {
-                visitor.visit_seq(&mut SeqDeserializer::new(array.into_iter()))
+                visitor.visit_seq(&mut SeqDeserializer::new(array.iter()))
             }
             Value::Object(object) => {
-                visitor.visit_map(&mut MapDeserializer::new(object.into_iter()))
+                visitor.visit_map(&mut object.into_deserializer())
             }
         }
     }
@@ -121,12 +137,12 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
         V: Visitor<'de>,
     {
         let unexpected = match self.0 {
-            Value::Bytes(buffer) => return visitor.visit_bytes(&buffer),
+            Value::Bytes(buffer) => return visitor.visit_bytes(buffer),
             Value::String(s) => return visitor.visit_bytes(s.as_bytes()),
             Value::Null => Unexpected::Unit,
-            Value::Boolean(b) => Unexpected::Bool(b),
-            Value::Integer(i) => Unexpected::Signed(i),
-            Value::Float(f) => Unexpected::Float(f),
+            Value::Boolean(b) => Unexpected::Bool(*b),
+            Value::Integer(i) => Unexpected::Signed(*i),
+            Value::Float(f) => Unexpected::Float(*f),
             Value::Array(_) => Unexpected::Seq,
             Value::Object(_) => Unexpected::Map,
         };
@@ -142,13 +158,13 @@ impl<'de> serde::Deserializer<'de> for ValueDeserializer {
     {
         let unexpected = match self.0 {
             Value::Bytes(buffer) => {
-                return visitor.visit_byte_buf(buffer.into());
+                return visitor.visit_bytes(buffer);
             }
-            Value::String(s) => return visitor.visit_byte_buf(s.into_bytes()),
+            Value::String(s) => return visitor.visit_bytes(s.as_bytes()),
             Value::Null => Unexpected::Unit,
-            Value::Boolean(b) => Unexpected::Bool(b),
-            Value::Integer(i) => Unexpected::Signed(i),
-            Value::Float(f) => Unexpected::Float(f),
+            Value::Boolean(b) => Unexpected::Bool(*b),
+            Value::Integer(i) => Unexpected::Signed(*i),
+            Value::Float(f) => Unexpected::Float(*f),
             Value::Array(_) => Unexpected::Seq,
             Value::Object(_) => Unexpected::Map,
         };

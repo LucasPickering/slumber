@@ -386,10 +386,12 @@ impl Prompter for CliPrompter {
             .interact();
 
         // If we failed to read the value, print an error and report nothing
-        if let Ok(value) =
+        if let Ok(index) =
             result.context("Error reading value from select").traced()
         {
-            select.channel.respond(select.options.swap_remove(value));
+            select
+                .channel
+                .respond(select.options.swap_remove(index).value);
         }
     }
 }

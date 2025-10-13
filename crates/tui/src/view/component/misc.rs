@@ -28,8 +28,9 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     database::ProfileFilter,
     http::RequestId,
-    render::{Prompt, Select},
+    render::{Prompt, Select, SelectOption},
 };
+use slumber_template::Value;
 use std::fmt::Debug;
 use strum::{EnumCount, EnumIter};
 
@@ -171,17 +172,17 @@ pub struct SelectListModal {
     /// Modal title, from the select message
     title: String,
     /// List of options to present to the user
-    options: Component<SelectState<String>>,
+    options: Component<SelectState<SelectOption>>,
     #[debug(skip)]
-    on_submit: Box<dyn 'static + FnOnce(String)>,
+    on_submit: Box<dyn 'static + FnOnce(Value)>,
 }
 
 impl SelectListModal {
     /// Create a modal that contains a list of options.
     pub fn new(
         title: String,
-        options: Vec<String>,
-        on_submit: impl 'static + FnOnce(String),
+        options: Vec<SelectOption>,
+        on_submit: impl 'static + FnOnce(Value),
     ) -> Self {
         Self {
             title,
@@ -205,7 +206,7 @@ impl Modal for SelectListModal {
         let options = self.options.data();
         let longest_option = options
             .items()
-            .map(std::string::String::len)
+            .map(|option| option.label.len())
             .max()
             .unwrap_or(10);
         // find our widest string to appropriately set width
@@ -222,8 +223,12 @@ impl Modal for SelectListModal {
         if submitted {
             // Return the user's value and close the prompt. Value can be empty
             // if the select list is empty
-            let selected =
-                self.options.into_data().into_selected().unwrap_or_default();
+            let selected = self
+                .options
+                .into_data()
+                .into_selected()
+                .map(|option| option.value)
+                .unwrap_or_default();
             (self.on_submit)(selected);
         }
     }
@@ -268,6 +273,21 @@ impl IntoModal for Select {
         SelectListModal::new(self.message, self.options, |response| {
             self.channel.respond(response);
         })
+    }
+}
+
+/// Render a select option via its label
+impl Generate for &SelectOption {
+    type Output<'this>
+        = Text<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        self.label.as_str().into()
     }
 }
 

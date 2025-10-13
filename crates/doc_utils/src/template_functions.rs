@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use itertools::Itertools;
+use quote::ToTokens;
 use std::{
     cell::LazyCell,
     collections::HashMap,
@@ -249,6 +250,8 @@ enum TypeDef {
     Value,
     /// A homogenous list
     List(&'static Self),
+    /// An object with a static set of fields
+    Struct(&'static [(&'static str, &'static Self)]),
     /// Any of a set of types
     Union(&'static [&'static Self]),
     /// A custom dynamic type. Typically a subset of `String`, such as
@@ -272,9 +275,13 @@ impl TypeDef {
             ty
         };
 
-        TYPE_MAP
-            .with(|map| map.get(ty).copied())
-            .ok_or_else(|| anyhow!("Unmapped type {ty:#?}"))
+        TYPE_MAP.with(|map| map.get(ty).copied()).ok_or_else(|| {
+            anyhow!(
+                "Unmapped type {}; add the type to type_map() in {}",
+                ty.to_token_stream(),
+                file!()
+            )
+        })
     }
 }
 
@@ -288,7 +295,24 @@ impl Display for TypeDef {
             Self::String => write!(f, "string"),
             Self::Literal(literal) => write!(f, "\"{literal}\""),
             Self::Value => write!(f, "value"),
-            Self::List(inner) => write!(f, "{inner}[]"),
+            Self::List(inner) => {
+                // Wrap unions in () to make the grouping clear
+                if let Self::Union(_) = inner {
+                    write!(f, "({inner})[]")
+                } else {
+                    write!(f, "{inner}[]")
+                }
+            }
+            Self::Struct(fields) => {
+                // { "field1": value1, "field2": value2 }
+                write!(
+                    f,
+                    "{{ {} }}",
+                    fields.iter().format_with(", ", |(field, value), f| f(
+                        &format_args!("\"{field}\": {value}")
+                    ))
+                )
+            }
             Self::Union(members) => {
                 write!(f, "{}", members.iter().format(" | "))
             }
@@ -334,6 +358,16 @@ fn type_map() -> HashMap<Type, TypeDef> {
                 &TypeDef::Literal("always"),
                 &TypeDef::Custom("Duration"),
             ]),
+        ),
+        (
+            parse_quote!(Vec<SelectOption>),
+            TypeDef::List(&TypeDef::Union(&[
+                &TypeDef::String,
+                &TypeDef::Struct(&[
+                    ("label", &TypeDef::String),
+                    ("value", &TypeDef::Value),
+                ]),
+            ])),
         ),
         (parse_quote!(String), TypeDef::String),
         // We're hiding streams from the type system, since they will

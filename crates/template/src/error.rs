@@ -99,15 +99,6 @@ impl RenderError {
     }
 }
 
-impl de::Error for RenderError {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: Display,
-    {
-        RenderError::Other(msg.to_string().into())
-    }
-}
-
 /// Information about where an error occurred
 #[derive(Debug, Display)]
 pub enum RenderErrorContext {
@@ -218,6 +209,15 @@ impl ValueError {
         error: impl 'static + Into<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Self {
         Self::Other(error.into())
+    }
+}
+
+impl de::Error for ValueError {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: Display,
+    {
+        Self::Other(msg.to_string().into())
     }
 }
 

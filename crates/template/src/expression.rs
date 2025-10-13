@@ -175,6 +175,7 @@ impl From<&'static [u8]> for Expression {
     }
 }
 
+// Bytes from byte literal. b"" literals are type &[u8; N], not &[u8]
 impl<const N: usize> From<&'static [u8; N]> for Expression {
     fn from(value: &'static [u8; N]) -> Self {
         value.as_slice().into()
@@ -184,6 +185,13 @@ impl<const N: usize> From<&'static [u8; N]> for Expression {
 impl From<Vec<Expression>> for Expression {
     fn from(values: Vec<Expression>) -> Self {
         Self::Array(values)
+    }
+}
+
+/// Object from (key, value) pairs
+impl<const N: usize> From<[(&str, Expression); N]> for Expression {
+    fn from(value: [(&str, Expression); N]) -> Self {
+        Self::Object(value.into_iter().map(|(k, v)| (k.into(), v)).collect())
     }
 }
 

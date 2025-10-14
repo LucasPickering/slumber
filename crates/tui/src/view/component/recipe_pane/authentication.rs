@@ -1,10 +1,7 @@
 use crate::{
     context::TuiContext,
     view::{
-        common::{
-            actions::{IntoMenuAction, MenuAction},
-            table::Table,
-        },
+        common::{actions::MenuAction, table::Table},
         component::{
             Component,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
@@ -22,7 +19,7 @@ use ratatui::{
 use slumber_config::Action;
 use slumber_core::collection::{Authentication, RecipeId};
 use slumber_template::Template;
-use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use strum::{EnumCount, EnumIter};
 
 /// Display authentication settings for a recipe
 #[derive(Debug)]
@@ -121,9 +118,16 @@ impl EventHandler for AuthenticationDisplay {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        AuthenticationMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        let emitter = self.actions_emitter;
+        vec![
+            emitter
+                .menu(AuthenticationMenuAction::Edit, "Edit Authentication")
+                .shortcut(Some(Action::Edit)),
+            emitter
+                .menu(AuthenticationMenuAction::Reset, "Reset Authentication")
+                .enable(self.state.is_overridden())
+                .shortcut(Some(Action::Reset)),
+        ]
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -188,34 +192,10 @@ impl Draw for AuthenticationDisplay {
 #[derive(Debug)]
 struct SaveAuthenticationOverride(Template);
 
-#[derive(Copy, Clone, Debug, EnumIter)]
+#[derive(Copy, Clone, Debug)]
 enum AuthenticationMenuAction {
     Edit,
     Reset,
-}
-
-impl IntoMenuAction<AuthenticationDisplay> for AuthenticationMenuAction {
-    fn label(&self, _: &AuthenticationDisplay) -> String {
-        match self {
-            Self::Edit => "Edit Authentication",
-            Self::Reset => "Reset Authentication",
-        }
-        .into()
-    }
-
-    fn enabled(&self, data: &AuthenticationDisplay) -> bool {
-        match self {
-            Self::Edit => true,
-            Self::Reset => data.state.is_overridden(),
-        }
-    }
-
-    fn shortcut(&self, _: &AuthenticationDisplay) -> Option<Action> {
-        match self {
-            Self::Edit => Some(Action::Edit),
-            Self::Reset => Some(Action::Reset),
-        }
-    }
 }
 
 /// Private to hide enum variants

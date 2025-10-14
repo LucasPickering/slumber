@@ -438,6 +438,12 @@ impl<T: Sized + LocalEvent> Emitter<T> {
             phantom: PhantomData,
         }
     }
+
+    /// Generate a menu action bound to this emitter. When fired, the action
+    /// will emit an event through this emitter.
+    pub fn menu(self, action: T, name: impl Into<String>) -> MenuAction {
+        MenuAction::new(self, action, name)
+    }
 }
 
 impl Emitter<dyn LocalEvent> {

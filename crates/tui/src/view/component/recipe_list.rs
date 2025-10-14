@@ -4,7 +4,7 @@ use crate::{
         Component, ViewContext,
         common::{
             Pane,
-            actions::{IntoMenuAction, MenuAction},
+            actions::MenuAction,
             list::List,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
@@ -29,7 +29,6 @@ use slumber_core::collection::{
     HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
 };
 use std::collections::HashSet;
-use strum::IntoEnumIterator;
 
 /// List/tree of recipes and folders. This is mostly just a list, but with some
 /// extra logic to allow expanding/collapsing nodes. This could be made into a
@@ -207,9 +206,10 @@ impl EventHandler for RecipeListPane {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        RecipeMenuAction::menu_actions(
+            self.actions_emitter,
+            self.selected_recipe_id().is_some(),
+        )
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -273,20 +273,6 @@ pub enum RecipeListPaneEvent {
     Click,
     /// Forward menu actions to the parent because it has the needed context
     Action(RecipeMenuAction),
-}
-
-impl IntoMenuAction<RecipeListPane> for RecipeMenuAction {
-    fn label(&self, _: &RecipeListPane) -> String {
-        self.to_string()
-    }
-
-    fn enabled(&self, data: &RecipeListPane) -> bool {
-        let has_recipe = data.selected_recipe_id().is_some();
-        // Use a match so we have to think about this for any new variants
-        match self {
-            Self::CopyUrl | Self::CopyCurl | Self::DeleteRecipe => has_recipe,
-        }
-    }
 }
 
 /// Simplified version of [RecipeNode], to be used in the display tree. This

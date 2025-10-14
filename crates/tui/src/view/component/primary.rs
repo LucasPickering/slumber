@@ -6,10 +6,7 @@ use crate::{
     util::ResultReported,
     view::{
         Component, ViewContext,
-        common::{
-            actions::{IntoMenuAction, MenuAction},
-            modal::Modal,
-        },
+        common::{actions::MenuAction, modal::Modal},
         component::{
             collection_select::CollectionSelect,
             exchange_pane::{ExchangePane, ExchangePaneEvent},
@@ -44,7 +41,7 @@ use slumber_core::{
     collection::{Collection, ProfileId, RecipeId, RecipeNode, RecipeNodeType},
     http::RequestId,
 };
-use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use strum::{EnumCount, EnumIter};
 
 /// Primary TUI view, which shows request/response panes
 #[derive(Debug)]
@@ -65,7 +62,7 @@ pub struct PrimaryView {
         Component<ExchangePane>,
     >,
 
-    global_actions_emitter: Emitter<GlobalMenuAction>,
+    global_actions_emitter: Emitter<PrimaryMenuAction>,
 }
 
 impl PrimaryView {
@@ -334,7 +331,7 @@ impl EventHandler for PrimaryView {
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {
                 match menu_action {
-                    GlobalMenuAction::EditCollection => {
+                    PrimaryMenuAction::EditCollection => {
                         self.edit_collection();
                     }
                 }
@@ -342,9 +339,16 @@ impl EventHandler for PrimaryView {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        GlobalMenuAction::iter()
-            .map(MenuAction::with_data(self, self.global_actions_emitter))
-            .collect()
+        let emitter = self.global_actions_emitter;
+        let edit_collection_name = match self.selected_recipe_node() {
+            None => "Edit Collection",
+            Some((_, RecipeNodeType::Folder)) => "Edit Folder",
+            Some((_, RecipeNodeType::Recipe)) => "Edit Recipe",
+        };
+        vec![
+            emitter
+                .menu(PrimaryMenuAction::EditCollection, edit_collection_name),
+        ]
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -469,24 +473,11 @@ enum FullscreenMode {
 }
 
 /// Menu actions available in all contexts
-#[derive(Copy, Clone, Debug, EnumIter)]
-enum GlobalMenuAction {
+#[derive(Copy, Clone, Debug)]
+enum PrimaryMenuAction {
     /// Open the collection file in an external editor, jumping to whatever
     /// recipe/folder is currently selected
     EditCollection,
-}
-
-impl IntoMenuAction<PrimaryView> for GlobalMenuAction {
-    fn label(&self, view: &PrimaryView) -> String {
-        match self {
-            Self::EditCollection => match view.selected_recipe_node() {
-                None => "Edit Collection",
-                Some((_, RecipeNodeType::Folder)) => "Edit Folder",
-                Some((_, RecipeNodeType::Recipe)) => "Edit Recipe",
-            },
-        }
-        .into()
-    }
 }
 
 /// Helper for adjusting pane behavior according to state

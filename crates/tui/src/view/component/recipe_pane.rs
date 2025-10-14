@@ -12,10 +12,7 @@ use crate::{
     message::RequestConfig,
     view::{
         Component,
-        common::{
-            Pane,
-            actions::{IntoMenuAction, MenuAction},
-        },
+        common::{Pane, actions::MenuAction},
         component::recipe_pane::recipe::RecipeDisplay,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -23,7 +20,6 @@ use crate::{
         state::StateCell,
     },
 };
-use derive_more::Display;
 use itertools::{Itertools, Position};
 use ratatui::{
     Frame,
@@ -35,7 +31,6 @@ use slumber_core::collection::{
     Folder, HasId, ProfileId, RecipeId, RecipeNode,
 };
 use slumber_util::doc_link;
-use strum::{EnumIter, IntoEnumIterator};
 
 /// Display for the current recipe node, which could be a recipe, a folder, or
 /// empty
@@ -88,9 +83,10 @@ impl EventHandler for RecipePane {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        RecipeMenuAction::menu_actions(
+            self.actions_emitter,
+            self.recipe_state.borrow().data().is_some(),
+        )
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -199,28 +195,29 @@ struct RecipeStateKey {
 /// Items in the actions popup menu. This is shared with the recipe list and
 /// handled in our parent to deduplicate the logic. Also the parent has access
 /// to needed context for the delete.
-#[derive(Copy, Clone, Debug, Display, EnumIter)]
+#[derive(Copy, Clone, Debug)]
 pub enum RecipeMenuAction {
-    #[display("Copy URL")]
     CopyUrl,
-    #[display("Copy as cURL")]
     CopyCurl,
-    #[display("Delete Requests")]
     DeleteRecipe,
 }
 
-impl IntoMenuAction<RecipePane> for RecipeMenuAction {
-    fn label(&self, _: &RecipePane) -> String {
-        self.to_string()
-    }
-
-    fn enabled(&self, data: &RecipePane) -> bool {
-        match self {
-            Self::CopyUrl | Self::CopyCurl | Self::DeleteRecipe => {
-                // Enabled if we have any recipe
-                data.recipe_state.borrow().data().is_some()
-            }
-        }
+impl RecipeMenuAction {
+    /// Build a list of these actions. This action is used in multiple
+    /// components so the list is centralized here
+    pub fn menu_actions(
+        emitter: Emitter<Self>,
+        has_recipe: bool,
+    ) -> Vec<MenuAction> {
+        vec![
+            emitter.menu(Self::CopyUrl, "Copy URL").enable(has_recipe),
+            emitter
+                .menu(Self::CopyCurl, "Copy as cURL")
+                .enable(has_recipe),
+            emitter
+                .menu(Self::DeleteRecipe, "Delete Requests")
+                .enable(has_recipe),
+        ]
     }
 }
 

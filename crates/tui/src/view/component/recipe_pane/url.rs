@@ -1,19 +1,14 @@
 use crate::view::{
     UpdateContext,
-    common::{
-        actions::{IntoMenuAction, MenuAction},
-        template_preview::TemplatePreview,
-    },
+    common::{actions::MenuAction, template_preview::TemplatePreview},
     component::recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     draw::{Draw, DrawMetadata},
     event::{Emitter, Event, EventHandler, OptionEvent},
 };
-use derive_more::derive::Display;
 use ratatui::Frame;
 use slumber_config::Action;
 use slumber_core::collection::RecipeId;
 use slumber_template::Template;
-use strum::{EnumIter, IntoEnumIterator};
 
 /// URL display with override capabilities
 #[derive(Debug)]
@@ -83,9 +78,16 @@ impl EventHandler for UrlDisplay {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        UrlMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        let emitter = self.actions_emitter;
+        vec![
+            emitter
+                .menu(UrlMenuAction::Edit, "Edit URL")
+                .shortcut(Some(Action::Edit)),
+            emitter
+                .menu(UrlMenuAction::Reset, "Reset URL")
+                .enable(self.url.is_overridden())
+                .shortcut(Some(Action::Reset)),
+        ]
     }
 }
 
@@ -100,28 +102,10 @@ impl Draw for UrlDisplay {
 #[derive(Debug)]
 struct SaveUrlOverride(Template);
 
-#[derive(Copy, Clone, Debug, Display, EnumIter)]
+#[derive(Copy, Clone, Debug)]
 enum UrlMenuAction {
-    #[display("Edit URL")]
     Edit,
-    #[display("Reset URL")]
     Reset,
-}
-
-impl IntoMenuAction<UrlDisplay> for UrlMenuAction {
-    fn enabled(&self, data: &UrlDisplay) -> bool {
-        match self {
-            Self::Edit => true,
-            Self::Reset => data.url.is_overridden(),
-        }
-    }
-
-    fn shortcut(&self, _: &UrlDisplay) -> Option<Action> {
-        match self {
-            Self::Edit => Some(Action::Edit),
-            Self::Reset => Some(Action::Reset),
-        }
-    }
 }
 
 #[cfg(test)]

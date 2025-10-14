@@ -3,12 +3,7 @@ use crate::{
     http::{RequestMetadata, ResponseMetadata},
     view::{
         RequestState,
-        common::{
-            Pane,
-            actions::{IntoMenuAction, MenuAction},
-            modal::Modal,
-            tabs::Tabs,
-        },
+        common::{Pane, actions::MenuAction, modal::Modal, tabs::Tabs},
         component::{
             Component,
             misc::DeleteRequestModal,
@@ -33,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::RecipeNodeType;
 use std::{error::Error, sync::Arc};
-use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use strum::{EnumCount, EnumIter};
 
 /// Display for a request/response exchange. This allows the user to switch
 /// between request and response. This is bound to a particular [RequestState],
@@ -365,9 +360,63 @@ impl EventHandler for ExchangePaneContent {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        ExchangePaneMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        let emitter = self.actions_emitter;
+        let request = self.state.request();
+        let has_request = request.is_some();
+        let has_request_body = request.is_some_and(RequestView::has_body);
+        let has_response_body = match self.state {
+            ExchangePaneContentState::Building
+            | ExchangePaneContentState::BuildError { .. }
+            | ExchangePaneContentState::Cancelled
+            | ExchangePaneContentState::Loading { .. }
+            | ExchangePaneContentState::RequestError { .. } => false,
+            ExchangePaneContentState::Response { .. } => true,
+        };
+        let selected_tab = self.tabs.data().selected();
+
+        vec![
+            emitter
+                .menu(ExchangePaneMenuAction::CopyUrl, "Copy URL")
+                .enable(has_request),
+            emitter
+                .menu(
+                    ExchangePaneMenuAction::CopyRequestBody,
+                    "Copy Request Body",
+                )
+                .enable(has_request_body),
+            emitter
+                .menu(
+                    ExchangePaneMenuAction::ViewRequestBody,
+                    "View Request Body",
+                )
+                .enable(has_request_body)
+                .shortcut(
+                    (selected_tab == Tab::Request).then_some(Action::View),
+                ),
+            emitter
+                .menu(
+                    ExchangePaneMenuAction::CopyResponseBody,
+                    "Copy Response Body",
+                )
+                .enable(has_response_body),
+            emitter
+                .menu(
+                    ExchangePaneMenuAction::ViewResponseBody,
+                    "View Response Body",
+                )
+                .enable(has_response_body)
+                .shortcut((selected_tab == Tab::Body).then_some(Action::View)),
+            emitter
+                .menu(
+                    ExchangePaneMenuAction::SaveResponseBody,
+                    "Save Response Body as File",
+                )
+                .enable(has_response_body),
+            emitter
+                .menu(ExchangePaneMenuAction::DeleteRequest, "Delete Request")
+                .enable(has_request)
+                .shortcut(Some(Action::Delete)),
+        ]
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -480,11 +529,6 @@ impl ExchangePaneContentState {
         }
     }
 
-    fn has_request_body(&self) -> bool {
-        self.request()
-            .is_some_and(super::request_view::RequestView::has_body)
-    }
-
     fn response(&self) -> Option<&ResponseBodyView> {
         match self {
             Self::Building
@@ -495,21 +539,10 @@ impl ExchangePaneContentState {
             Self::Response { response_body, .. } => Some(response_body.data()),
         }
     }
-
-    fn has_response_body(&self) -> bool {
-        match self {
-            Self::Building
-            | Self::BuildError { .. }
-            | Self::Cancelled
-            | Self::Loading { .. }
-            | Self::RequestError { .. } => false,
-            Self::Response { .. } => true,
-        }
-    }
 }
 
 /// Items in the actions popup menu for the Body
-#[derive(Copy, Clone, Debug, EnumIter)]
+#[derive(Copy, Clone, Debug)]
 enum ExchangePaneMenuAction {
     CopyUrl,
     CopyRequestBody,
@@ -518,57 +551,4 @@ enum ExchangePaneMenuAction {
     ViewResponseBody,
     SaveResponseBody,
     DeleteRequest,
-}
-
-impl IntoMenuAction<ExchangePaneContent> for ExchangePaneMenuAction {
-    fn label(&self, _: &ExchangePaneContent) -> String {
-        match self {
-            Self::CopyUrl => "Copy URL",
-            Self::CopyRequestBody => "Copy Request Body",
-            Self::ViewRequestBody => "View Request Body",
-            Self::CopyResponseBody => "Copy Response Body",
-            Self::ViewResponseBody => "View Response Body",
-            Self::SaveResponseBody => "Save Response Body as File",
-            Self::DeleteRequest => "Delete Request",
-        }
-        .into()
-    }
-
-    fn enabled(&self, data: &ExchangePaneContent) -> bool {
-        match self {
-            Self::CopyUrl | Self::DeleteRequest => {
-                data.state.request().is_some()
-            }
-            Self::CopyRequestBody | Self::ViewRequestBody => {
-                data.state.has_request_body()
-            }
-            Self::ViewResponseBody
-            | Self::CopyResponseBody
-            | Self::SaveResponseBody => data.state.has_response_body(),
-        }
-    }
-
-    fn shortcut(&self, data: &ExchangePaneContent) -> Option<Action> {
-        match self {
-            Self::CopyUrl
-            | Self::CopyRequestBody
-            | Self::CopyResponseBody
-            | Self::SaveResponseBody => None,
-            Self::ViewRequestBody => {
-                if matches!(data.tabs.data().selected(), Tab::Request) {
-                    Some(Action::View)
-                } else {
-                    None
-                }
-            }
-            Self::ViewResponseBody => {
-                if matches!(data.tabs.data().selected(), Tab::Body) {
-                    Some(Action::View)
-                } else {
-                    None
-                }
-            }
-            Self::DeleteRequest => Some(Action::Delete),
-        }
-    }
 }

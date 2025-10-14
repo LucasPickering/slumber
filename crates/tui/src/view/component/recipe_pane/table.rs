@@ -1,6 +1,6 @@
 use crate::view::{
     common::{
-        actions::{IntoMenuAction, MenuAction},
+        actions::MenuAction,
         table::{Table, ToggleRow},
     },
     component::{
@@ -159,21 +159,27 @@ where
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 // The selected row can't change while the action menu is open,
                 // so we don't need to plumb the index/key through
-                RecipeTableMenuAction::Edit { .. } => self.edit_selected_row(),
-                RecipeTableMenuAction::Reset { .. } => {
+                RecipeTableMenuAction::Edit => self.edit_selected_row(),
+                RecipeTableMenuAction::Reset => {
                     self.reset_selected_row();
                 }
             })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        [
-            RecipeTableMenuAction::Edit { noun: self.noun },
-            RecipeTableMenuAction::Reset { noun: self.noun },
+        let emitter = self.actions_emitter;
+        let noun = self.noun;
+        let selected = self.select.data().selected();
+        vec![
+            emitter
+                .menu(RecipeTableMenuAction::Edit, format!("Edit {noun}"))
+                .enable(selected.is_some())
+                .shortcut(Some(Action::Edit)),
+            emitter
+                .menu(RecipeTableMenuAction::Reset, format!("Reset {noun}"))
+                .enable(selected.is_some_and(|row| row.value.is_overridden()))
+                .shortcut(Some(Action::Reset)),
         ]
-        .into_iter()
-        .map(MenuAction::with_data(self, self.actions_emitter))
-        .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -223,49 +229,8 @@ struct SaveRecipeTableOverride {
 
 #[derive(Debug)]
 enum RecipeTableMenuAction {
-    Edit { noun: &'static str },
-    Reset { noun: &'static str },
-}
-
-impl<RowSelectKey, RowToggleKey>
-    IntoMenuAction<RecipeFieldTable<RowSelectKey, RowToggleKey>>
-    for RecipeTableMenuAction
-where
-    RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: PersistedKey<Value = bool>,
-{
-    fn label(
-        &self,
-        _: &RecipeFieldTable<RowSelectKey, RowToggleKey>,
-    ) -> String {
-        match self {
-            Self::Edit { noun } => format!("Edit {noun}"),
-            Self::Reset { noun } => format!("Reset {noun}"),
-        }
-    }
-
-    fn enabled(
-        &self,
-        data: &RecipeFieldTable<RowSelectKey, RowToggleKey>,
-    ) -> bool {
-        let selected = data.select.data().selected();
-        match self {
-            Self::Edit { .. } => selected.is_some(),
-            Self::Reset { .. } => {
-                selected.is_some_and(|row| row.value.is_overridden())
-            }
-        }
-    }
-
-    fn shortcut(
-        &self,
-        _: &RecipeFieldTable<RowSelectKey, RowToggleKey>,
-    ) -> Option<Action> {
-        match self {
-            Self::Edit { .. } => Some(Action::Edit),
-            Self::Reset { .. } => Some(Action::Reset),
-        }
-    }
+    Edit,
+    Reset,
 }
 
 #[derive(Debug)]

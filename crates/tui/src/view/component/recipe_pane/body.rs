@@ -4,7 +4,7 @@ use crate::{
     view::{
         Component, ViewContext,
         common::{
-            actions::{IntoMenuAction, MenuAction},
+            actions::MenuAction,
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         component::recipe_pane::{
@@ -29,7 +29,6 @@ use slumber_core::{
 };
 use slumber_template::Template;
 use std::fs;
-use strum::{EnumIter, IntoEnumIterator};
 use tracing::debug;
 
 /// Render recipe body. The variant is based on the incoming body type, and
@@ -279,9 +278,20 @@ impl EventHandler for TextBody {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RawBodyMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        let emitter = self.actions_emitter;
+        vec![
+            emitter
+                .menu(RawBodyMenuAction::View, "View Body")
+                .shortcut(Some(Action::View)),
+            emitter.menu(RawBodyMenuAction::Copy, "Copy Body"),
+            emitter
+                .menu(RawBodyMenuAction::Edit, "Edit Body")
+                .shortcut(Some(Action::Edit)),
+            emitter
+                .menu(RawBodyMenuAction::Reset, "Reset Body")
+                .enable(self.body.is_overridden())
+                .shortcut(Some(Action::Reset)),
+        ]
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -323,40 +333,12 @@ pub struct FormRowToggleKey {
 }
 
 /// Action menu items for a raw body
-#[derive(Copy, Clone, Debug, EnumIter)]
+#[derive(Copy, Clone, Debug)]
 enum RawBodyMenuAction {
     View,
     Copy,
     Edit,
     Reset,
-}
-
-impl IntoMenuAction<TextBody> for RawBodyMenuAction {
-    fn label(&self, _: &TextBody) -> String {
-        match self {
-            Self::View => "View Body",
-            Self::Copy => "Copy Body",
-            Self::Edit => "Edit Body",
-            Self::Reset => "Reset Body",
-        }
-        .into()
-    }
-
-    fn enabled(&self, data: &TextBody) -> bool {
-        match self {
-            Self::View | Self::Copy | Self::Edit => true,
-            Self::Reset => data.body.is_overridden(),
-        }
-    }
-
-    fn shortcut(&self, _: &TextBody) -> Option<Action> {
-        match self {
-            Self::View => Some(Action::View),
-            Self::Copy => None,
-            Self::Edit => Some(Action::Edit),
-            Self::Reset => Some(Action::Reset),
-        }
-    }
 }
 
 /// Local event to save a user's override body. Triggered from the on_complete

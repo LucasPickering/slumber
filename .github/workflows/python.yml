@@ -135,6 +135,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: PyO3/maturin-action@v1
         with:
+          working-directory: crates/python
           command: upload
           args: --non-interactive --skip-existing wheels-*/*
           environment: pypi

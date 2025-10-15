@@ -165,3 +165,5 @@ pr-run-mode = "plan"
 install-updater = false
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
+# Don't build non-distributed crates
+precise-builds = true

@@ -118,6 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     needs: [build, sdist]
+    environment: pypi
     permissions:
       # Use to sign the release artifacts
       id-token: write
@@ -131,11 +132,10 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: "wheels-*/*"
+      # Uses PyPI's trusted publishing, no token needed
+      # https://www.maturin.rs/distribution.html#using-pypis-trusted-publishing
       - name: Publish to PyPI
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: crates/python
           command: upload
           args: --non-interactive --skip-existing wheels-*/*
-          environment: pypi

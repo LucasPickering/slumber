@@ -5,7 +5,10 @@ use crate::{
     util::Flag,
     view::{
         Component, ViewContext,
-        common::{actions::MenuAction, modal::Modal},
+        common::{
+            actions::{MenuAction, MenuItem},
+            modal::Modal,
+        },
         context::UpdateContext,
         state::Notification,
     },
@@ -45,7 +48,7 @@ pub trait EventHandler {
     /// the user opens the actions menu, all available actions for all
     /// **focused** components will be collected and show in the menu. If an
     /// action is selected, an event will be emitted with that action value.
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         Vec::new()
     }
 
@@ -83,9 +86,9 @@ impl<T: EventHandler> EventHandler for Option<T> {
         }
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         if let Some(inner) = &self {
-            inner.menu_actions()
+            inner.menu()
         } else {
             Vec::new()
         }
@@ -367,7 +370,8 @@ impl<T: Any + Debug> LocalEvent for T {}
 /// ViewContext and therefore shouldn't be passed off the main thread, but there
 /// is one use case where it needs to be Send to be passed to the main loop via
 /// Message without actually changing threads.
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
+#[display("{id}")]
 pub struct Emitter<T: ?Sized> {
     id: EmitterId,
     phantom: PhantomData<T>,
@@ -487,6 +491,7 @@ pub trait ToEmitter<E: LocalEvent> {
     fn to_emitter(&self) -> Emitter<E>;
 }
 
+// Implement ToEmitter through Deref
 impl<T, E> ToEmitter<E> for T
 where
     T: Deref,

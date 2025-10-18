@@ -4,7 +4,7 @@ use crate::{
         Component, ViewContext,
         common::{
             Pane,
-            actions::MenuAction,
+            actions::MenuItem,
             list::List,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
@@ -205,7 +205,7 @@ impl EventHandler for RecipeListPane {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         RecipeMenuAction::menu_actions(
             self.actions_emitter,
             self.selected_recipe_id().is_some(),
@@ -465,7 +465,7 @@ mod tests {
         );
         // Clear initial events
         assert_matches!(
-            component.int().drain_draw().events(),
+            component.int().drain_draw().propagated(),
             &[Event::HttpSelectRequest(None)],
         );
 
@@ -476,7 +476,7 @@ mod tests {
         // Find something. Match should be caseless. Should trigger an event to
         // load the latest request
         assert_matches!(
-            component.int().send_text("2").events(),
+            component.int().send_text("2").propagated(),
             &[Event::HttpSelectRequest(None)]
         );
         let select = component.data().select.data();

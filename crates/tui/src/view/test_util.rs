@@ -364,39 +364,37 @@ where
     /// Open the actions menu, find the first action *containing* the given
     /// string, and execute it. Panic if no matching action exists
     pub fn action(self, name: &str) -> Self {
-        let actions = self.component.component.collect_actions();
+        let items = self.component.component.collect_actions();
         // Find the index of the action in the list so we know how far to scroll
-        let action_opt = actions
+        let item_opt = items
             .iter()
             .enumerate()
             .find(|(_, action)| action.to_string() == name);
-        let index = match action_opt {
-            Some((i, action)) if action.enabled() => i,
+        let index = match item_opt {
+            Some((i, item)) if item.enabled() => i,
             // Disabled actions can't be selected or triggered so this is
             // probably a mistake
-            Some((_, action)) => panic!(
-                "Action `{action}` cannot be selected because it is disabled"
+            Some((_, item)) => panic!(
+                "Action `{item}` cannot be selected because it is disabled"
             ),
             None => panic!(
                 "No action `{name}`. Available actions: {}",
-                actions.iter().format(", "),
+                items.iter().format(", "),
             ),
         };
         // Disabled actions are auto-skipped, so don't include them in the
         // number of hops to make
         let steps = index
-            - actions[0..index]
+            - items[0..index]
                 .iter()
                 .filter(|action| !action.enabled())
                 .count();
-        self.send_keys(
-            // Open actions menu
-            iter::once(KeyCode::Char('x'))
-                // Move down to select the matching action
-                .chain(iter::repeat_n(KeyCode::Down, steps))
-                // Execute
-                .chain(iter::once(KeyCode::Enter)),
-        )
+        // Open actions menu
+        self.send_key(KeyCode::Char('x'))
+            // Move down to select the matching action
+            .send_keys(iter::repeat_n(KeyCode::Down, steps))
+            // Execute
+            .send_key(KeyCode::Enter)
     }
 
     /// Assert that no events were propagated, i.e. the component handled all
@@ -426,8 +424,8 @@ where
             .map(|event| {
                 emitter.emitted(event).unwrap_or_else(|event| {
                     panic!(
-                        "Expected only emitted events to have been propagated, \
-                        but received: {event:#?}",
+                        "Expected only events emitted by {emitter} to have \
+                        been propagated, but received: {event:#?}",
                     )
                 })
             })
@@ -442,7 +440,7 @@ where
     }
 
     /// Get propagated events as a slice
-    pub fn events(&self) -> &[Event] {
+    pub fn propagated(&self) -> &[Event] {
         &self.propagated
     }
 }

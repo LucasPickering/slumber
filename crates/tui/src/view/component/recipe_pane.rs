@@ -12,7 +12,7 @@ use crate::{
     message::RequestConfig,
     view::{
         Component,
-        common::{Pane, actions::MenuAction},
+        common::{Pane, actions::MenuItem},
         component::recipe_pane::recipe::RecipeDisplay,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -82,7 +82,7 @@ impl EventHandler for RecipePane {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         RecipeMenuAction::menu_actions(
             self.actions_emitter,
             self.recipe_state.borrow().data().is_some(),
@@ -208,15 +208,20 @@ impl RecipeMenuAction {
     pub fn menu_actions(
         emitter: Emitter<Self>,
         has_recipe: bool,
-    ) -> Vec<MenuAction> {
+    ) -> Vec<MenuItem> {
         vec![
-            emitter.menu(Self::CopyUrl, "Copy URL").enable(has_recipe),
+            emitter
+                .menu(Self::CopyUrl, "Copy URL")
+                .enable(has_recipe)
+                .into(),
             emitter
                 .menu(Self::CopyCurl, "Copy as cURL")
-                .enable(has_recipe),
+                .enable(has_recipe)
+                .into(),
             emitter
                 .menu(Self::DeleteRecipe, "Delete Requests")
-                .enable(has_recipe),
+                .enable(has_recipe)
+                .into(),
         ]
     }
 }

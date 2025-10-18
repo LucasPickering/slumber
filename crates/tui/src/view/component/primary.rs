@@ -6,7 +6,7 @@ use crate::{
     util::ResultReported,
     view::{
         Component, ViewContext,
-        common::{actions::MenuAction, modal::Modal},
+        common::{actions::MenuItem, modal::Modal},
         component::{
             collection_select::CollectionSelect,
             exchange_pane::{ExchangePane, ExchangePaneEvent},
@@ -338,7 +338,7 @@ impl EventHandler for PrimaryView {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.global_actions_emitter;
         let edit_collection_name = match self.selected_recipe_node() {
             None => "Edit Collection",
@@ -347,7 +347,8 @@ impl EventHandler for PrimaryView {
         };
         vec![
             emitter
-                .menu(PrimaryMenuAction::EditCollection, edit_collection_name),
+                .menu(PrimaryMenuAction::EditCollection, edit_collection_name)
+                .into(),
         ]
     }
 
@@ -520,7 +521,7 @@ mod tests {
         let mut component = TestComponent::new(harness, terminal, view);
         // Initial events
         assert_matches!(
-            component.int().drain_draw().events(),
+            component.int().drain_draw().propagated(),
             &[Event::HttpSelectRequest(None)]
         );
         // Clear template preview messages so we can test what we want

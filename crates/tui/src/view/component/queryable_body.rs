@@ -716,7 +716,7 @@ mod tests {
         .await;
         // Success should push a notification
         assert_matches!(
-            component.int().drain_draw().events(),
+            component.int().drain_draw().propagated(),
             &[Event::Notify(_)]
         );
         let file_content = fs::read_to_string(&path).await.unwrap();

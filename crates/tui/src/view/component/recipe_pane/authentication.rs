@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     view::{
-        common::{actions::MenuAction, table::Table},
+        common::{actions::MenuItem, table::Table},
         component::{
             Component,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
@@ -117,16 +117,18 @@ impl EventHandler for AuthenticationDisplay {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
         vec![
             emitter
                 .menu(AuthenticationMenuAction::Edit, "Edit Authentication")
-                .shortcut(Some(Action::Edit)),
+                .shortcut(Some(Action::Edit))
+                .into(),
             emitter
                 .menu(AuthenticationMenuAction::Reset, "Reset Authentication")
                 .enable(self.state.is_overridden())
-                .shortcut(Some(Action::Reset)),
+                .shortcut(Some(Action::Reset))
+                .into(),
         ]
     }
 

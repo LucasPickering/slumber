@@ -3,7 +3,7 @@
 //! component state.
 
 use crate::view::{
-    common::actions::MenuAction,
+    common::actions::MenuItem,
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
     event::{Child, Emitter, Event, LocalEvent, ToChild, ToEmitter},
@@ -82,17 +82,14 @@ impl<T> Component<T> {
     /// Collect all available menu actions from all **focused** components. This
     /// takes a mutable reference so we don't have to duplicate the code that
     /// provides children; it will *not* mutate anything.
-    pub fn collect_actions(&mut self) -> Vec<MenuAction>
+    pub fn collect_actions(&mut self) -> Vec<MenuItem>
     where
         T: ToChild,
     {
-        fn inner(
-            actions: &mut Vec<MenuAction>,
-            mut component: Component<Child>,
-        ) {
+        fn inner(actions: &mut Vec<MenuItem>, mut component: Component<Child>) {
             // Only include actions from visible+focused components
             if component.is_visible() && component.has_focus() {
-                actions.extend(component.data().menu_actions());
+                actions.extend(component.data().menu());
                 for child in component.data_mut().children() {
                     inner(actions, child);
                 }
@@ -140,11 +137,11 @@ impl<T> Component<T> {
             }
         }
 
-        // None of our children handled it, we'll take it ourselves. Event is
-        // already traced in the root span, so don't dupe it.
+        // None of our children handled it, we'll take it ourselves. Component
+        // name is already traced in the root span, so don't dupe it.
         trace_span!("component.update").in_scope(|| {
             let update = self_dyn.update(context, event);
-            trace!(?update);
+            trace!(propagated_event = ?update);
             update
         })
     }

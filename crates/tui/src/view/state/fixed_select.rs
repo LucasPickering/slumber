@@ -1,7 +1,7 @@
 use crate::view::{
+    component::{Component, ComponentId, Draw, DrawMetadata},
     context::UpdateContext,
-    draw::{Draw, DrawMetadata},
-    event::{Emitter, Event, EventHandler, ToEmitter},
+    event::{Emitter, Event, ToEmitter},
     state::select::{
         SelectItem, SelectState, SelectStateBuilder, SelectStateData,
         SelectStateEvent, SelectStateEventType,
@@ -30,6 +30,7 @@ where
     Item: FixedSelect,
     State: SelectStateData,
 {
+    id: ComponentId,
     /// Re-use SelectState for state management. The only different is we
     /// guarantee any value of the item type is in the list (because there's
     /// a fixed number of values), so in a few places we'll unwrap options.
@@ -151,12 +152,16 @@ where
     }
 }
 
-/// Handle input events to cycle between items
-impl<Item, State> EventHandler for FixedSelectState<Item, State>
+impl<Item, State> Component for FixedSelectState<Item, State>
 where
     Item: FixedSelect,
     State: Debug + SelectStateData,
 {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    // Handle input events to cycle between items
     fn update(
         &mut self,
         context: &mut UpdateContext,
@@ -170,11 +175,11 @@ where
 impl<Item, State, W> Draw<W> for FixedSelectState<Item, State>
 where
     Item: FixedSelect,
-    State: SelectStateData,
+    State: Debug + SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
-        self.inner.draw(frame, props, metadata);
+    fn draw_impl(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
+        self.inner.draw_impl(frame, props, metadata);
     }
 }
 
@@ -241,6 +246,7 @@ impl<Item, State> FixedSelectStateBuilder<Item, State> {
         State: SelectStateData,
     {
         FixedSelectState {
+            id: ComponentId::default(),
             inner: self.inner.preselect(&Item::default()).build(),
         }
     }

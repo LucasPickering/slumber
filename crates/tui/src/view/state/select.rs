@@ -1,7 +1,7 @@
 use crate::view::{
+    component::{Component, ComponentId, Draw, DrawMetadata},
     context::UpdateContext,
-    draw::{Draw, DrawMetadata},
-    event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+    event::{Emitter, Event, OptionEvent, ToEmitter},
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
@@ -30,6 +30,7 @@ pub struct SelectState<Item, State = ListState>
 where
     State: SelectStateData,
 {
+    id: ComponentId,
     emitter: Emitter<SelectStateEvent>,
     /// Which event types to emit
     subscribed_events: Vec<SelectStateEventType>,
@@ -146,6 +147,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         State: SelectStateData,
     {
         let mut select = SelectState {
+            id: ComponentId::default(),
             emitter: Default::default(),
             subscribed_events: self.subscribed_events,
             state: RefCell::default(),
@@ -377,12 +379,16 @@ where
     }
 }
 
-/// Handle input events to cycle between items
-impl<Item, State> EventHandler for SelectState<Item, State>
+impl<Item, State> Component for SelectState<Item, State>
 where
     Item: Debug,
     State: Debug + SelectStateData,
 {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    // Handle input events to cycle between items
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             // Up/down keys and scrolling. Scrolling will only work if
@@ -411,10 +417,11 @@ where
 /// in another way because of the restricted access to the inner state.
 impl<Item, State, W> Draw<W> for SelectState<Item, State>
 where
-    State: SelectStateData,
+    Item: Debug,
+    State: Debug + SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
         frame.render_stateful_widget(
             props,
             metadata.area(),
@@ -526,8 +533,8 @@ mod tests {
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            test_util::TestComponent,
-            util::persistence::{DatabasePersistedStore, PersistedLazy},
+            test_util::{PersistedComponent, TestComponent},
+            util::persistence::DatabasePersistedStore,
         },
     };
     use persisted::{PersistedKey, PersistedStore};
@@ -606,18 +613,18 @@ mod tests {
             .with_props(props_fn())
             .build();
         component.int_props(&props_fn).drain_draw().assert_empty();
-        assert_eq!(component.data().selected(), Some(&"a"));
+        assert_eq!(component.selected(), Some(&"a"));
         component
             .int_props(&props_fn)
             .send_key(KeyCode::Down)
             .assert_empty();
-        assert_eq!(component.data().selected(), Some(&"b"));
+        assert_eq!(component.selected(), Some(&"b"));
 
         component
             .int_props(&props_fn)
             .send_key(KeyCode::Up)
             .assert_empty();
-        assert_eq!(component.data().selected(), Some(&"a"));
+        assert_eq!(component.selected(), Some(&"a"));
     }
 
     /// Test deleting the selected item
@@ -642,34 +649,34 @@ mod tests {
                 SelectStateEvent::Select(0),
                 SelectStateEvent::Select(1),
             ]);
-        assert_eq!(component.data().selected(), Some(&"b"));
+        assert_eq!(component.selected(), Some(&"b"));
 
         // Delete `b`, `c` should get selected because it's below
-        component.data_mut().delete_selected();
-        assert_eq!(component.data().selected(), Some(&"c"));
+        component.delete_selected();
+        assert_eq!(component.selected(), Some(&"c"));
         component
             .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(1)]);
 
         // Delete `c`; there's nothing left below so select above
-        component.data_mut().delete_selected();
-        assert_eq!(component.data().selected(), Some(&"a"));
+        component.delete_selected();
+        assert_eq!(component.selected(), Some(&"a"));
         component
             .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
         // Delete `a`, nothing left to select
-        component.data_mut().delete_selected();
-        assert_eq!(component.data().selected(), None);
+        component.delete_selected();
+        assert_eq!(component.selected(), None);
         component
             .int_props(&props_fn)
             .drain_draw()
             .assert_emitted([]);
 
         // Delete nothing; nothing should happen
-        component.data_mut().delete_selected();
+        component.delete_selected();
         component
             .int_props(&props_fn)
             .drain_draw()
@@ -689,7 +696,7 @@ mod tests {
             .build();
 
         // Initial selection
-        assert_eq!(component.data().selected(), Some(&"a"));
+        assert_eq!(component.selected(), Some(&"a"));
         component
             .int_props(&props_fn)
             .drain_draw()
@@ -773,7 +780,7 @@ mod tests {
                 .with_props(props_fn())
                 .build();
 
-        assert_eq!(component.data().selected(), Some(&"a"));
+        assert_eq!(component.selected(), Some(&"a"));
         component
             .int_props(&props_fn)
             .drain_draw()
@@ -784,24 +791,24 @@ mod tests {
             .int_props(&props_fn)
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(2)]);
-        assert_eq!(component.data().selected(), Some(&"c"));
+        assert_eq!(component.selected(), Some(&"c"));
 
         // Move down again - skips over the disabled item
         component
             .int_props(&props_fn)
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(4)]);
-        assert_eq!(component.data().selected(), Some(&"e"));
+        assert_eq!(component.selected(), Some(&"e"));
 
         // Move up - skips over the disabled item
         component
             .int_props(&props_fn)
             .send_key(KeyCode::Up)
             .assert_emitted([SelectStateEvent::Select(2)]);
-        assert_eq!(component.data().selected(), Some(&"c"));
+        assert_eq!(component.selected(), Some(&"c"));
 
         // Select by value/index should do nothing if it's disabled
-        let select = component.data_mut();
+        let select = &mut component;
         // Make sure that *nothing* happens, and that it's not skipping to the
         // next/previous enabled value
         select.select(&"b");
@@ -845,13 +852,13 @@ mod tests {
                     .build();
 
             // Drain inital events and check state
-            let first_enabled = component.data().first_enabled_index();
+            let first_enabled = component.first_enabled_index();
             component
                 .int_props(&props_fn)
                 .drain_draw()
                 // Event should be emitted iff there is 1+ enabled items
                 .assert_emitted(first_enabled.map(SelectStateEvent::Select));
-            assert_eq!(component.data().selected_index(), first_enabled);
+            assert_eq!(component.selected_index(), first_enabled);
 
             for input in inputs {
                 let interact = component.int_props(&props_fn).send_key(input);
@@ -985,12 +992,12 @@ mod tests {
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            PersistedLazy::new(Key, select),
+            PersistedComponent::new(Key, select),
         )
         .with_props(list.clone())
         .build();
         assert_eq!(
-            component.data().selected().map(|item| item.0.deref()),
+            component.selected().map(|item| item.0.deref()),
             Some(expected_selected)
         );
         component

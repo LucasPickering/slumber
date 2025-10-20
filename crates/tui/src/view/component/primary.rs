@@ -8,6 +8,7 @@ use crate::{
         Component, ViewContext,
         common::{actions::MenuAction, modal::Modal},
         component::{
+            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
             exchange_pane::{ExchangePane, ExchangePaneEvent},
             help::HelpModal,
@@ -19,8 +20,7 @@ use crate::{
             },
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
         state::{
             StateCell,
             fixed_select::FixedSelectState,
@@ -46,21 +46,20 @@ use strum::{EnumCount, EnumIter};
 /// Primary TUI view, which shows request/response panes
 #[derive(Debug)]
 pub struct PrimaryView {
+    id: ComponentId,
     // Own state
     selected_pane: PersistedLazy<PrimaryPaneKey, FixedSelectState<PrimaryPane>>,
     fullscreen_mode: Persisted<FullscreenModeKey>,
 
     // Children
-    profile_pane: Component<ProfilePane>,
-    recipe_list_pane: Component<RecipeListPane>,
-    recipe_pane: Component<RecipePane>,
+    profile_pane: ProfilePane,
+    recipe_list_pane: RecipeListPane,
+    recipe_pane: RecipePane,
     /// The exchange pane shows a particular request/response. The entire
     /// component is rebuilt whenever the selected request changes. The key is
     /// `None` if the recipe list is empty or a folder is selected
-    exchange_pane: StateCell<
-        Option<(RequestId, RequestStateType)>,
-        Component<ExchangePane>,
-    >,
+    exchange_pane:
+        StateCell<Option<(RequestId, RequestStateType)>, ExchangePane>,
 
     global_actions_emitter: Emitter<PrimaryMenuAction>,
 }
@@ -71,6 +70,7 @@ impl PrimaryView {
         let recipe_list_pane = RecipeListPane::new(&collection.recipes);
 
         Self {
+            id: ComponentId::default(),
             selected_pane: PersistedLazy::new(
                 Default::default(),
                 FixedSelectState::builder()
@@ -79,8 +79,8 @@ impl PrimaryView {
             ),
             fullscreen_mode: Default::default(),
 
-            recipe_list_pane: recipe_list_pane.into(),
-            profile_pane: profile_pane.into(),
+            recipe_list_pane,
+            profile_pane,
             recipe_pane: Default::default(),
             exchange_pane: Default::default(),
 
@@ -102,17 +102,17 @@ impl PrimaryView {
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.profile_pane.data().selected_profile_id()
+        self.profile_pane.selected_profile_id()
     }
 
     fn selected_recipe_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
-        self.recipe_list_pane.data().selected_node()
+        self.recipe_list_pane.selected_node()
     }
 
     /// Get a definition of the request that should be sent from the current
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
-        self.recipe_pane.data().request_config()
+        self.recipe_pane.request_config()
     }
 
     /// Is the given pane selected?
@@ -248,7 +248,11 @@ impl PrimaryView {
     }
 }
 
-impl EventHandler for PrimaryView {
+impl Component for PrimaryView {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -257,11 +261,11 @@ impl EventHandler for PrimaryView {
                 Action::NextPane => self.selected_pane.get_mut().next(),
                 // Send a request from anywhere
                 Action::Submit => self.send_request(),
-                Action::OpenHelp => HelpModal.open(),
+                Action::OpenHelp => HelpModal::default().open(),
 
                 // Pane hotkeys
                 Action::SelectProfileList => {
-                    self.profile_pane.data_mut().open_modal();
+                    self.profile_pane.open_modal();
                 }
                 Action::SelectRecipeList => self
                     .selected_pane
@@ -351,7 +355,7 @@ impl EventHandler for PrimaryView {
         ]
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![
             self.profile_pane.to_child_mut(),
             self.recipe_list_pane.to_child_mut(),
@@ -362,7 +366,7 @@ impl EventHandler for PrimaryView {
 }
 
 impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
-    fn draw(
+    fn draw_impl(
         &self,
         frame: &mut Frame,
         props: PrimaryViewProps<'a>,
@@ -415,7 +419,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     props.selected_request,
                     self.selected_recipe_node().map(|(_, node_type)| node_type),
                 )
-                .into()
             },
         );
         exchange_pane.draw(
@@ -541,12 +544,9 @@ mod tests {
         );
 
         let component = create_component(&mut harness, &terminal);
-        assert_eq!(
-            component.data().selected_pane.selected(),
-            PrimaryPane::Exchange
-        );
+        assert_eq!(component.selected_pane.selected(), PrimaryPane::Exchange);
         assert_matches!(
-            *component.data().fullscreen_mode,
+            *component.fullscreen_mode,
             Some(FullscreenMode::Exchange)
         );
     }
@@ -560,7 +560,7 @@ mod tests {
             profile_id: Some(harness.collection.first_profile_id().clone()),
             options: BuildOptions::default(),
         };
-        assert_eq!(component.data().request_config(), Some(expected_config));
+        assert_eq!(component.request_config(), Some(expected_config));
     }
 
     /// Test "Edit Recipe" action

@@ -7,6 +7,7 @@ use std::fmt::Debug;
 
 /// This struct exists solely to hold an impl of [PersistedStore], which
 /// persists UI state into the database.
+#[derive(Debug)]
 pub struct DatabasePersistedStore;
 
 /// Wrapper for [persisted::PersistedKey] that applies additional bounds

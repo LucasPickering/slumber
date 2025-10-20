@@ -9,14 +9,15 @@ use crate::{
             modal::{Modal, ModalQueue},
         },
         component::{
+            Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
             history::History,
+            internal::ComponentExt,
             misc::ConfirmModal,
             primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{Child, Event, EventHandler, OptionEvent},
+        event::{Event, OptionEvent},
         util::persistence::PersistedLazy,
     },
 };
@@ -35,13 +36,14 @@ use std::ops::Deref;
 #[derive(Debug)]
 pub struct Root {
     // ===== Own State =====
+    id: ComponentId,
     /// Which request are we showing in the request/response panel?
     selected_request_id: PersistedLazy<SelectedRequestKey, SelectedRequestId>,
 
     // ==== Children =====
-    primary_view: Component<PrimaryView>,
-    modal_queue: Component<ModalQueue>,
-    footer: Component<Footer>,
+    primary_view: PrimaryView,
+    modal_queue: ModalQueue,
+    footer: Footer,
 }
 
 impl Root {
@@ -52,25 +54,26 @@ impl Root {
             PersistedLazy::new_default(SelectedRequestKey);
         let primary_view = PrimaryView::new(collection);
         Self {
+            id: ComponentId::default(),
             // State
             selected_request_id,
 
             // Children
-            primary_view: primary_view.into(),
-            modal_queue: Component::default(),
-            footer: Component::default(),
+            primary_view,
+            modal_queue: ModalQueue::default(),
+            footer: Footer::default(),
         }
     }
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.primary_view.data().selected_profile_id()
+        self.primary_view.selected_profile_id()
     }
 
     /// Get a definition of the request that should be sent from the current
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
-        self.primary_view.data().request_config()
+        self.primary_view.request_config()
     }
 
     /// What request should be shown in the request/response pane right now?
@@ -94,7 +97,6 @@ impl Root {
         request_store: &mut RequestStore,
         request_id: Option<RequestId>,
     ) -> anyhow::Result<()> {
-        let primary_view = self.primary_view.data();
         let state = if let Some(request_id) = request_id {
             // TBH I would expect a bug here, if we're loading a persisted
             // request ID that doesn't exist anymore (e.g. we had a failed
@@ -102,7 +104,7 @@ impl Root {
             // to the most recent request for the recipe, as desired. I don't
             // understand it, but I'll take it...
             request_store.load(request_id)?
-        } else if let Some(recipe_id) = primary_view.selected_recipe_id() {
+        } else if let Some(recipe_id) = self.primary_view.selected_recipe_id() {
             // We don't have a valid persisted ID, find the most recent for
             // the current recipe+profile
 
@@ -112,7 +114,7 @@ impl Root {
             // initialization where the recipe list asks for the latest
             // request *after* the selected ID is loaded from persistence
             let selected_request = self.selected_request(request_store);
-            let profile_id = primary_view.selected_profile_id();
+            let profile_id = self.primary_view.selected_profile_id();
             if selected_request.is_some_and(|request| {
                 request.recipe_id() == recipe_id
                     && request.profile_id() == profile_id
@@ -136,11 +138,13 @@ impl Root {
         &mut self,
         request_store: &mut RequestStore,
     ) -> anyhow::Result<()> {
-        let primary_view = self.primary_view.data();
-        if let Some(recipe_id) = primary_view.selected_recipe_id() {
+        if let Some(recipe_id) = self.primary_view.selected_recipe_id() {
             // Make sure all requests for this profile+recipe are loaded
             let requests = request_store
-                .load_summaries(primary_view.selected_profile_id(), recipe_id)?
+                .load_summaries(
+                    self.primary_view.selected_profile_id(),
+                    recipe_id,
+                )?
                 .collect();
 
             History::new(recipe_id, requests, self.selected_request_id())
@@ -150,7 +154,11 @@ impl Root {
     }
 }
 
-impl EventHandler for Root {
+impl Component for Root {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(
         &mut self,
         context: &mut UpdateContext,
@@ -213,7 +221,7 @@ impl EventHandler for Root {
             })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![
             self.modal_queue.to_child_mut(),
             self.primary_view.to_child_mut(),
@@ -223,7 +231,7 @@ impl EventHandler for Root {
 }
 
 impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
-    fn draw(
+    fn draw_impl(
         &self,
         frame: &mut Frame,
         props: RootProps<R>,
@@ -243,7 +251,7 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
             frame,
             PrimaryViewProps { selected_request },
             main_area,
-            !self.modal_queue.data().is_open(),
+            !self.modal_queue.is_open(),
         );
 
         // Footer
@@ -330,10 +338,10 @@ mod tests {
             .assert_empty();
 
         // Make sure profile+recipe were preselected correctly
-        let primary_view = component.data().primary_view.data();
+        let primary_view = &component.primary_view;
         assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
         assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
-        assert_eq!(component.data().selected_request_id(), Some(exchange.id));
+        assert_eq!(component.selected_request_id(), Some(exchange.id));
 
         // It'd be nice to assert on the view but it's just too complicated to
         // be worth mocking the whole thing out
@@ -377,17 +385,14 @@ mod tests {
 
         // Make sure everything was preselected correctly
         assert_eq!(
-            component.data().primary_view.data().selected_profile_id(),
+            component.primary_view.selected_profile_id(),
             Some(profile_id)
         );
         assert_eq!(
-            component.data().primary_view.data().selected_recipe_id(),
+            component.primary_view.selected_recipe_id(),
             Some(recipe_id)
         );
-        assert_eq!(
-            component.data().selected_request_id(),
-            Some(old_exchange.id)
-        );
+        assert_eq!(component.selected_request_id(), Some(old_exchange.id));
     }
 
     /// Test that if the persisted request ID isn't in the DB, we'll fall back
@@ -429,10 +434,7 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(
-            component.data().selected_request_id(),
-            Some(new_exchange.id)
-        );
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
     }
 
     /// Test that when the selected recipe changes, the selected request changes
@@ -471,14 +473,14 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(component.data().selected_request_id(), Some(exchange1.id));
+        assert_eq!(component.selected_request_id(), Some(exchange1.id));
 
         // Select the second recipe
         component
             .int_props(props_factory)
             .send_keys([KeyCode::Char('l'), KeyCode::Down])
             .assert_empty();
-        assert_eq!(component.data().selected_request_id(), Some(exchange2.id));
+        assert_eq!(component.selected_request_id(), Some(exchange2.id));
     }
 
     /// Test that when the selected profile changes, the selected request
@@ -517,14 +519,14 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(component.data().selected_request_id(), Some(exchange1.id));
+        assert_eq!(component.selected_request_id(), Some(exchange1.id));
 
         // Select the second profile
         component
             .int_props(props_factory)
             .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
-        assert_eq!(component.data().selected_request_id(), Some(exchange2.id));
+        assert_eq!(component.selected_request_id(), Some(exchange2.id));
     }
 
     /// Test "Delete Requests" action via both the recipe pane
@@ -560,10 +562,7 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(
-            component.data().selected_request_id(),
-            Some(new_exchange.id)
-        );
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         // Select "Delete Requests" but decline the confirmation
         component
@@ -574,10 +573,7 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(
-            component.data().selected_request_id(),
-            Some(new_exchange.id)
-        );
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         // Select "Delete Requests" and accept. I don't feel like testing Delete
         // for All Profiles
@@ -588,7 +584,7 @@ mod tests {
             .send_keys([KeyCode::Enter])
             .assert_empty();
 
-        assert_eq!(component.data().selected_request_id(), None);
+        assert_eq!(component.selected_request_id(), None);
     }
 
     /// Test "Delete Request" action, which is available via the
@@ -622,10 +618,7 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(
-            component.data().selected_request_id(),
-            Some(new_exchange.id)
-        );
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         // Select "Delete Request" but decline the confirmation
         component
@@ -636,10 +629,7 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(
-            component.data().selected_request_id(),
-            Some(new_exchange.id)
-        );
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         component
             .int_props(props_factory)
@@ -650,10 +640,7 @@ mod tests {
             .assert_empty();
 
         // New exchange is gone
-        assert_eq!(
-            component.data().selected_request_id(),
-            Some(old_exchange.id)
-        );
+        assert_eq!(component.selected_request_id(), Some(old_exchange.id));
         assert_eq!(harness.request_store.borrow().get(new_exchange.id), None);
     }
 }

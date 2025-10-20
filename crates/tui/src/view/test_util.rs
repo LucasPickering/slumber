@@ -10,19 +10,28 @@ use crate::{
             actions::ActionsModal,
             modal::{Modal, ModalQueue},
         },
-        component::Component,
-        context::ViewContext,
-        draw::{Draw, DrawMetadata},
-        event::{
-            Child, Event, EventHandler, LocalEvent, OptionEvent, ToChild,
-            ToEmitter,
+        component::{
+            Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            ToChild,
         },
+        context::ViewContext,
+        event::{Event, LocalEvent, OptionEvent, ToEmitter},
+        util::persistence::{PersistedKey, PersistedLazy},
     },
 };
+use derive_more::derive::{Deref, DerefMut};
 use itertools::Itertools;
+use persisted::PersistedContainer;
 use ratatui::{Frame, layout::Rect};
+use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use std::{cell::RefCell, iter, rc::Rc};
+use std::{
+    cell::RefCell,
+    fmt::Debug,
+    iter,
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 use terminput::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
@@ -35,6 +44,9 @@ use terminput::{
 ///
 /// This takes a a reference to the terminal so it can draw without having
 /// to plumb the terminal around to every draw call.
+///
+/// Use the [Deref] and [DerefMut] implementations to access the component under
+/// test.
 #[derive(Debug)]
 pub struct TestComponent<'term, T> {
     /// Terminal to draw to
@@ -44,7 +56,7 @@ pub struct TestComponent<'term, T> {
     /// terminal but can be modified to test things like resizes, using
     /// [Self::set_area]
     area: Rect,
-    component: Component<TestWrapper<T>>,
+    component: TestWrapper<T>,
     /// Should the component be given focus on the next draw? Defaults to
     /// `true`
     has_focus: bool,
@@ -52,7 +64,7 @@ pub struct TestComponent<'term, T> {
 
 impl<'term, T> TestComponent<'term, T>
 where
-    T: ToChild,
+    T: Component + Debug,
 {
     /// Start building a new component
     pub fn builder<Props>(
@@ -63,13 +75,11 @@ where
     where
         T: Draw<Props>,
     {
-        let component: Component<TestWrapper<T>> =
-            TestWrapper::new(data).into();
         TestComponentBuilder {
             terminal,
             request_store: Rc::clone(&harness.request_store),
             area: terminal.area(),
-            component,
+            component: TestWrapper::new(data),
             props: None,
         }
     }
@@ -90,19 +100,9 @@ where
             .build()
     }
 
-    /// Get a reference to the wrapped component's inner data
-    pub fn data(&self) -> &T {
-        self.component.data().inner()
-    }
-
-    /// Get a mutable  reference to the wrapped component's inner data
-    pub fn data_mut(&mut self) -> &mut T {
-        self.component.data_mut().inner_mut()
-    }
-
     /// Get the current visible modal, if any
     pub fn modal(&self) -> Option<&dyn Modal> {
-        self.component.data().modal_queue.data().get()
+        self.component.modal_queue.get()
     }
 
     /// Modify the area the component will be drawn to
@@ -161,8 +161,8 @@ where
         // Safety check, prevent annoying bugs
         assert!(
             self.component.is_visible(),
-            "Component {} is not visible, it can't handle events",
-            self.component.name()
+            "Component {component:?} is not visible, it can't handle events",
+            component = self.component
         );
 
         let mut propagated = Vec::new();
@@ -180,18 +180,33 @@ where
     }
 }
 
+// Manual impl needed to prevent bound `TestWrapper<T>: Deref>`
+impl<T> Deref for TestComponent<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.component.inner
+    }
+}
+
+impl<T> DerefMut for TestComponent<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.component.inner
+    }
+}
+
 /// Helper for customizing a [TestComponent] before its initial draw
 pub struct TestComponentBuilder<'term, T, Props> {
     terminal: &'term TestTerminal,
     request_store: Rc<RefCell<RequestStore>>,
     area: Rect,
-    component: Component<TestWrapper<T>>,
+    component: TestWrapper<T>,
     props: Option<Props>,
 }
 
 impl<'term, T, Props> TestComponentBuilder<'term, T, Props>
 where
-    T: Draw<Props> + ToChild,
+    T: Component + Draw<Props> + Debug,
 {
     /// Set initial props for this component
     pub fn with_props(mut self, props: Props) -> Self {
@@ -224,11 +239,13 @@ where
             request_store: self.request_store,
             area: self.area,
             component: self.component,
-
             has_focus: true,
         };
         // Do an initial draw to set up state, then handle any triggered events
-        component.draw(self.props.expect("Props not set for test component"));
+        TestComponent::draw(
+            &mut component,
+            self.props.expect("Props not set for test component"),
+        );
         component
     }
 }
@@ -251,7 +268,7 @@ pub struct Interact<'term, 'a, Component, Props> {
 
 impl<Comp, Props> Interact<'_, '_, Comp, Props>
 where
-    Comp: Draw<Props> + ToChild,
+    Comp: Component + Draw<Props> + Debug,
 {
     /// Drain all events in the queue, then draw the component to the terminal.
     ///
@@ -419,7 +436,7 @@ where
         Comp: ToEmitter<E>,
         E: LocalEvent + PartialEq,
     {
-        let emitter = self.component.data().to_emitter();
+        let emitter = self.component.to_emitter();
         let emitted = self
             .propagated
             .into_iter()
@@ -438,12 +455,72 @@ where
 
     /// Get the underlying component value
     pub fn component_data(&self) -> &Comp {
-        self.component.component.data().inner.data()
+        &self.component.component.inner
     }
 
     /// Get propagated events as a slice
     pub fn events(&self) -> &[Event] {
         &self.propagated
+    }
+}
+
+/// A wrapper for testing persistence on components. Wrap the component in this
+/// to test that a component's internal values are persisted and restored
+/// correctly.
+///
+/// This is a wrapper instead of putting blanket impls on `PersistedLazy` to
+/// reduce impl clutter. Since this is test-only code, it's not worth cluttering
+/// the impl space.
+#[derive(Debug, Deref, DerefMut)]
+pub struct PersistedComponent<K, C>(
+    #[deref(forward)]
+    #[deref_mut(forward)]
+    PersistedLazy<K, C>,
+)
+where
+    K: Debug + PersistedKey,
+    K::Value: Debug,
+    C: Debug + persisted::PersistedContainer<Value = K::Value>;
+
+impl<K, C> PersistedComponent<K, C>
+where
+    K: PersistedKey + Debug,
+    K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
+    C: PersistedContainer<Value = K::Value> + Debug,
+{
+    pub fn new(key: K, component: C) -> Self {
+        Self(PersistedLazy::new(key, component))
+    }
+}
+
+impl<K, C> Component for PersistedComponent<K, C>
+where
+    K: PersistedKey + Debug,
+    K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
+    C: Component + PersistedContainer<Value = K::Value> + Debug,
+{
+    fn id(&self) -> ComponentId {
+        self.0.id()
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.0.to_child_mut()]
+    }
+}
+
+impl<K, C, Props> Draw<Props> for PersistedComponent<K, C>
+where
+    K: PersistedKey + Debug,
+    K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
+    C: Draw<Props> + PersistedContainer<Value = K::Value> + Debug,
+{
+    fn draw_impl(
+        &self,
+        frame: &mut Frame,
+        props: Props,
+        metadata: DrawMetadata,
+    ) {
+        self.0.draw(frame, props, metadata.area(), true);
     }
 }
 
@@ -456,28 +533,24 @@ where
 /// make that component generic and get rid of this?
 #[derive(Debug)]
 struct TestWrapper<T> {
-    inner: Component<T>,
-    modal_queue: Component<ModalQueue>,
+    inner: T,
+    modal_queue: ModalQueue,
 }
 
 impl<T> TestWrapper<T> {
     pub fn new(component: T) -> Self {
         Self {
-            inner: component.into(),
-            modal_queue: ModalQueue::default().into(),
+            inner: component,
+            modal_queue: ModalQueue::default(),
         }
-    }
-
-    pub fn inner(&self) -> &T {
-        self.inner.data()
-    }
-
-    pub fn inner_mut(&mut self) -> &mut T {
-        self.inner.data_mut()
     }
 }
 
-impl<T: ToChild> EventHandler for TestWrapper<T> {
+impl<T: Component> Component for TestWrapper<T> {
+    fn id(&self) -> ComponentId {
+        self.inner.id()
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             // Unfortunately we have to duplicate this with Root because the
@@ -492,13 +565,18 @@ impl<T: ToChild> EventHandler for TestWrapper<T> {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.modal_queue.to_child_mut(), self.inner.to_child_mut()]
     }
 }
 
 impl<Props, T: Draw<Props>> Draw<Props> for TestWrapper<T> {
-    fn draw(&self, frame: &mut Frame, props: Props, metadata: DrawMetadata) {
+    fn draw_impl(
+        &self,
+        frame: &mut Frame,
+        props: Props,
+        metadata: DrawMetadata,
+    ) {
         self.inner
             .draw(frame, props, metadata.area(), metadata.has_focus());
         self.modal_queue.draw(frame, (), metadata.area(), true);

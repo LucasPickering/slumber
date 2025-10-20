@@ -4,9 +4,9 @@ use crate::{
     context::TuiContext,
     view::{
         common::scrollbar::Scrollbar,
+        component::{Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
     },
 };
 use persisted::PersistedContainer;
@@ -23,6 +23,7 @@ use terminput::{KeyCode, KeyModifiers};
 /// Single line text submission component
 #[derive(derive_more::Debug, Default)]
 pub struct TextBox {
+    id: ComponentId,
     emitter: Emitter<TextBoxEvent>,
     // Parameters
     sensitive: bool,
@@ -179,7 +180,11 @@ impl TextBox {
     }
 }
 
-impl EventHandler for TextBox {
+impl Component for TextBox {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -205,7 +210,7 @@ impl EventHandler for TextBox {
 }
 
 impl Draw<TextBoxProps> for TextBox {
-    fn draw(
+    fn draw_impl(
         &self,
         frame: &mut Frame,
         props: TextBoxProps,
@@ -504,7 +509,7 @@ mod tests {
             TestComponent::new(&harness, &terminal, TextBox::default());
 
         // Assert initial state/view
-        assert_state(&component.data().state, "", 0);
+        assert_state(&component.state, "", 0);
         terminal.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
 
         // Type some text
@@ -513,7 +518,7 @@ mod tests {
             TextBoxEvent::Change,
             TextBoxEvent::Change,
         ]);
-        assert_state(&component.data().state, "hi!", 3);
+        assert_state(&component.state, "hi!", 3);
         terminal.assert_buffer_lines([vec![
             text("hi!"),
             cursor(" "),
@@ -526,7 +531,7 @@ mod tests {
             .int()
             .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
             .assert_emitted([TextBoxEvent::Change]);
-        assert_state(&component.data().state, "hi!W", 4);
+        assert_state(&component.state, "hi!W", 4);
         assert_matches!(
             component
                 .int()
@@ -538,7 +543,7 @@ mod tests {
                 .events(),
             &[Event::Input { .. }]
         );
-        assert_state(&component.data().state, "hi!W", 4);
+        assert_state(&component.state, "hi!W", 4);
 
         // Test emitted events
 
@@ -578,32 +583,32 @@ mod tests {
             TextBoxEvent::Change,
             TextBoxEvent::Change,
         ]);
-        assert_state(&component.data().state, "hello!", 6);
+        assert_state(&component.state, "hello!", 6);
 
         // Move around, delete some text.
         component.int().send_key(KeyCode::Left).assert_empty();
-        assert_state(&component.data().state, "hello!", 5);
+        assert_state(&component.state, "hello!", 5);
 
         component
             .int()
             .send_key(KeyCode::Backspace)
             .assert_emitted([TextBoxEvent::Change]);
-        assert_state(&component.data().state, "hell!", 4);
+        assert_state(&component.state, "hell!", 4);
 
         component
             .int()
             .send_key(KeyCode::Delete)
             .assert_emitted([TextBoxEvent::Change]);
-        assert_state(&component.data().state, "hell", 4);
+        assert_state(&component.state, "hell", 4);
 
         component.int().send_key(KeyCode::Home).assert_empty();
-        assert_state(&component.data().state, "hell", 0);
+        assert_state(&component.state, "hell", 0);
 
         component.int().send_key(KeyCode::Right).assert_empty();
-        assert_state(&component.data().state, "hell", 1);
+        assert_state(&component.state, "hell", 1);
 
         component.int().send_key(KeyCode::End).assert_empty();
-        assert_state(&component.data().state, "hell", 4);
+        assert_state(&component.state, "hell", 4);
     }
 
     /// Test text navigation and deleting. [TextState] has its own tests so
@@ -700,7 +705,7 @@ mod tests {
             .send_text("hi")
             .assert_emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
 
-        assert_state(&component.data().state, "hi", 2);
+        assert_state(&component.state, "hi", 2);
         terminal.assert_buffer_lines([vec![text("••"), cursor(" ")]]);
     }
 
@@ -715,7 +720,7 @@ mod tests {
             TextBox::default().placeholder("hello"),
         );
 
-        assert_state(&component.data().state, "", 0);
+        assert_state(&component.state, "", 0);
         let styles = &TuiContext::get().styles.text_box;
         terminal.assert_buffer_lines([vec![
             cursor("h"),
@@ -739,7 +744,7 @@ mod tests {
         let styles = &TuiContext::get().styles.text_box;
 
         // Focused
-        assert_state(&component.data().state, "", 0);
+        assert_state(&component.state, "", 0);
         terminal.assert_buffer_lines([vec![
             cursor("f"),
             Span::styled("ocused", styles.text.patch(styles.placeholder)),

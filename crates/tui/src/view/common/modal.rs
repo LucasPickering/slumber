@@ -2,12 +2,9 @@ use crate::{
     context::TuiContext,
     view::{
         Component, ViewContext,
+        component::{Child, ComponentExt, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{
-            Child, Emitter, Event, EventHandler, LocalEvent, OptionEvent,
-            ToEmitter,
-        },
+        event::{Emitter, Event, LocalEvent, OptionEvent, ToEmitter},
         util::centered_rect,
     },
 };
@@ -19,7 +16,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear},
 };
 use slumber_config::Action;
-use std::{collections::VecDeque, fmt::Debug, ops::DerefMut};
+use std::{collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
 /// A modal (AKA popup or dialog) is a high-priority element to be shown to the
@@ -30,7 +27,7 @@ use tracing::trace;
 /// Modals cannot take props because they are rendered by the root component
 /// with dynamic dispatch, and therefore all modals must take the same props
 /// (none).
-pub trait Modal: Debug + Draw<()> + EventHandler {
+pub trait Modal: Debug + Component + Draw<()> {
     /// Should this modal go to the front or back of the queue? Typically this
     /// is static for a particular implementation, but it's defined as a method
     /// for object-safetyability
@@ -64,20 +61,6 @@ pub trait Modal: Debug + Draw<()> + EventHandler {
     fn on_close(self: Box<Self>, _submitted: bool) {}
 }
 
-impl EventHandler for Box<dyn Modal> {
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> Option<Event> {
-        self.deref_mut().update(context, event)
-    }
-
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        self.deref_mut().children()
-    }
-}
-
 /// Define how a type can be converted into a modal. Often times, implementors
 /// of [Modal] will be esoteric types that external consumers who want to open
 /// a modal aren't concerned about. This trait provides an adapter layer
@@ -101,7 +84,8 @@ impl<T: Modal> IntoModal for T {
 /// they render on top.
 #[derive(Debug, Default)]
 pub struct ModalQueue {
-    queue: VecDeque<Component<Box<dyn Modal>>>,
+    id: ComponentId,
+    queue: VecDeque<Box<dyn Modal>>,
 }
 
 /// Priority defines where in the modal queue to add a new modal. Most modals
@@ -127,10 +111,10 @@ impl ModalQueue {
         trace!(?modal, "Opening modal");
         match modal.priority() {
             ModalPriority::Low => {
-                self.queue.push_back(modal.into());
+                self.queue.push_back(modal);
             }
             ModalPriority::High => {
-                self.queue.push_front(modal.into());
+                self.queue.push_front(modal);
             }
         }
     }
@@ -138,7 +122,7 @@ impl ModalQueue {
     /// Close the current modal
     fn close(&mut self, submitted: bool) {
         trace!("Closing modal");
-        if let Some(modal) = self.queue.pop_front().map(Component::into_data) {
+        if let Some(modal) = self.queue.pop_front() {
             modal.on_close(submitted);
         }
     }
@@ -146,11 +130,15 @@ impl ModalQueue {
     /// Get the visible modal
     #[cfg(test)]
     pub fn get(&self) -> Option<&dyn Modal> {
-        self.queue.front().map(|modal| &**modal.data())
+        self.queue.front().map(|modal| &**modal)
     }
 }
 
-impl EventHandler for ModalQueue {
+impl Component for ModalQueue {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -189,20 +177,20 @@ impl EventHandler for ModalQueue {
             })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        self.queue
-            .front_mut()
-            .map(Component::to_child_mut)
-            .into_iter()
-            .collect()
+    fn children(&mut self) -> Vec<Child<'_>> {
+        if let Some(modal) = self.queue.front_mut() {
+            vec![modal.to_child_mut()]
+        } else {
+            vec![]
+        }
     }
 }
 
 impl Draw for ModalQueue {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         if let Some(modal) = self.queue.front() {
             let styles = &TuiContext::get().styles;
-            let (width, height) = modal.data().dimensions();
+            let (width, height) = modal.dimensions();
 
             // The child gave us the content dimensions, we need to add one cell
             // of buffer for the border, plus one cell of padding in X so text
@@ -220,7 +208,7 @@ impl Draw for ModalQueue {
             area = area.clamp(frame.area());
 
             let block = Block::default()
-                .title(modal.data().title())
+                .title(modal.title())
                 .borders(Borders::ALL)
                 .border_style(styles.modal.border)
                 .border_type(styles.modal.border_type);

@@ -11,12 +11,15 @@ use crate::{
     context::TuiContext,
     message::RequestConfig,
     view::{
-        Component,
+        Component, Generate,
         common::{Pane, actions::MenuAction},
-        component::recipe_pane::recipe::RecipeDisplay,
+        component::{
+            ComponentExt, ComponentId, Draw, DrawMetadata,
+            internal::{Child, ToChild},
+            recipe_pane::recipe::RecipeDisplay,
+        },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
         state::StateCell,
     },
 };
@@ -36,13 +39,14 @@ use slumber_util::doc_link;
 /// empty
 #[derive(Debug, Default)]
 pub struct RecipePane {
+    id: ComponentId,
     /// Emitter for events that the parent will consume
     emitter: Emitter<RecipePaneEvent>,
     /// Emitter for menu actions, to be handled by our parent
     actions_emitter: Emitter<RecipeMenuAction>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
-    recipe_state: StateCell<RecipeStateKey, Component<Option<RecipeDisplay>>>,
+    recipe_state: StateCell<RecipeStateKey, Option<RecipeDisplay>>,
 }
 
 #[derive(Debug)]
@@ -60,7 +64,7 @@ impl RecipePane {
         let recipe_id = state_key.recipe_id.clone()?;
         let profile_id = state_key.selected_profile_id.clone();
         let recipe_state = self.recipe_state.borrow();
-        let options = recipe_state.data().as_ref()?.build_options();
+        let options = recipe_state.as_ref()?.build_options();
         Some(RequestConfig {
             profile_id,
             recipe_id,
@@ -69,7 +73,11 @@ impl RecipePane {
     }
 }
 
-impl EventHandler for RecipePane {
+impl Component for RecipePane {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -85,17 +93,21 @@ impl EventHandler for RecipePane {
     fn menu_actions(&self) -> Vec<MenuAction> {
         RecipeMenuAction::menu_actions(
             self.actions_emitter,
-            self.recipe_state.borrow().data().is_some(),
+            self.recipe_state.borrow().is_some(),
         )
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        vec![self.recipe_state.get_mut().to_child_mut()]
+    fn children(&mut self) -> Vec<Child<'_>> {
+        if let Some(recipe_state) = self.recipe_state.get_mut() {
+            vec![recipe_state.to_child_mut()]
+        } else {
+            vec![]
+        }
     }
 }
 
 impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
-    fn draw(
+    fn draw_impl(
         &self,
         frame: &mut Frame,
         props: RecipePaneProps<'a>,
@@ -140,14 +152,11 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     .map(RecipeNode::id)
                     .cloned(),
             },
-            || {
-                match props.selected_recipe_node {
-                    Some(RecipeNode::Recipe(recipe)) => {
-                        Some(RecipeDisplay::new(recipe))
-                    }
-                    Some(RecipeNode::Folder(_)) | None => None,
+            || match props.selected_recipe_node {
+                Some(RecipeNode::Recipe(recipe)) => {
+                    Some(RecipeDisplay::new(recipe))
                 }
-                .into()
+                Some(RecipeNode::Folder(_)) | None => None,
             },
         );
 
@@ -163,7 +172,9 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                 frame.render_widget(folder.generate(), inner_area);
             }
             Some(RecipeNode::Recipe(_)) => {
-                recipe_state.draw_opt(frame, (), inner_area, true);
+                if let Some(recipe_state) = &*recipe_state {
+                    recipe_state.draw(frame, (), inner_area, true);
+                }
             }
         }
     }

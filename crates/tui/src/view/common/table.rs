@@ -1,6 +1,6 @@
 use crate::{
     context::TuiContext,
-    view::{common::Checkbox, draw::Generate},
+    view::{Generate, common::Checkbox},
 };
 use itertools::Itertools;
 use ratatui::{

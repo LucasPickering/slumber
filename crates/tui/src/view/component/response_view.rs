@@ -4,12 +4,14 @@ use crate::{
     context::TuiContext,
     message::Message,
     view::{
-        Component, ViewContext,
+        Component, Generate, ViewContext,
         common::header_table::HeaderTable,
-        component::queryable_body::QueryableBody,
+        component::{
+            ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+            internal::Child, queryable_body::QueryableBody,
+        },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, OptionEvent},
+        event::{Event, OptionEvent},
         util::{persistence::PersistedLazy, view_text},
     },
 };
@@ -24,11 +26,12 @@ use std::sync::Arc;
 /// Display response body
 #[derive(Debug)]
 pub struct ResponseBodyView {
+    id: ComponentId,
     response: Arc<ResponseRecord>,
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
-    body: Component<PersistedLazy<ResponseQueryKey, QueryableBody>>,
+    body: PersistedLazy<ResponseQueryKey, QueryableBody>,
 }
 
 impl ResponseBodyView {
@@ -42,13 +45,16 @@ impl ResponseBodyView {
         let body = PersistedLazy::new(
             ResponseQueryKey { recipe_id, mime },
             QueryableBody::new(Arc::clone(&response), default_query),
-        )
-        .into();
-        Self { response, body }
+        );
+        Self {
+            id: ComponentId::default(),
+            response,
+            body,
+        }
     }
 
     pub fn view_body(&self) {
-        view_text(self.body.data().visible_text(), self.response.mime());
+        view_text(self.body.visible_text(), self.response.mime());
     }
 
     pub fn copy_body(&self) {
@@ -56,7 +62,7 @@ impl ResponseBodyView {
         // the body, because we can't copy binary content, so if the file is
         // binary we'll copy the hexcode text
         ViewContext::send_message(Message::CopyText(
-            self.body.data().visible_text().to_string(),
+            self.body.visible_text().to_string(),
         ));
     }
 
@@ -64,12 +70,16 @@ impl ResponseBodyView {
         // This will trigger a modal to ask the user for a path
         ViewContext::send_message(Message::SaveResponseBody {
             request_id: self.response.id,
-            data: self.body.data().modified_text(),
+            data: self.body.modified_text(),
         });
     }
 }
 
-impl EventHandler for ResponseBodyView {
+impl Component for ResponseBodyView {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             Action::View => self.view_body(),
@@ -77,13 +87,13 @@ impl EventHandler for ResponseBodyView {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.body.to_child_mut()]
     }
 }
 
 impl Draw for ResponseBodyView {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.body.draw(frame, (), metadata.area(), true);
     }
 }
@@ -115,19 +125,27 @@ where
 
 #[derive(Debug)]
 pub struct ResponseHeadersView {
+    id: ComponentId,
     response: Arc<ResponseRecord>,
 }
 
 impl ResponseHeadersView {
     pub fn new(response: Arc<ResponseRecord>) -> Self {
-        Self { response }
+        Self {
+            id: ComponentId::default(),
+            response,
+        }
     }
 }
 
-impl EventHandler for ResponseHeadersView {}
+impl Component for ResponseHeadersView {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+}
 
 impl Draw for ResponseHeadersView {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         frame.render_widget(
             HeaderTable {
                 headers: &self.response.headers,
@@ -195,7 +213,7 @@ mod tests {
             ),
         );
 
-        component.data().copy_body();
+        component.copy_body();
         let body = assert_matches!(
             harness.pop_message_now(),
             Message::CopyText(body) => body,
@@ -282,7 +300,7 @@ mod tests {
             component.int().drain_draw().assert_empty();
         }
 
-        component.data().save_response_body();
+        component.save_response_body();
         let (request_id, data) = assert_matches!(
             harness.pop_message_now(),
             Message::SaveResponseBody { request_id, data } => (request_id, data),

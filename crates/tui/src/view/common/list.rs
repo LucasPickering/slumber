@@ -1,8 +1,8 @@
 use crate::{
     context::TuiContext,
     view::{
+        Generate,
         common::scrollbar::Scrollbar,
-        draw::Generate,
         state::{
             fixed_select::{FixedSelect, FixedSelectState},
             select::{SelectItem, SelectState},

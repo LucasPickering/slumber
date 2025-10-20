@@ -1,9 +1,9 @@
 use crate::{
     context::TuiContext,
     view::{
+        component::{Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, OptionEvent},
+        event::{Event, OptionEvent},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
@@ -15,12 +15,16 @@ use std::fmt::Debug;
 /// Multi-tab display. Generic parameter defines the available tabs.
 #[derive(Debug, Default)]
 pub struct Tabs<T: FixedSelect> {
+    id: ComponentId,
     tabs: FixedSelectState<T, usize>,
 }
 
 impl<T: FixedSelect> Tabs<T> {
     pub fn new(tabs: FixedSelectState<T, usize>) -> Self {
-        Self { tabs }
+        Self {
+            id: ComponentId::default(),
+            tabs,
+        }
     }
 
     pub fn selected(&self) -> T {
@@ -28,7 +32,11 @@ impl<T: FixedSelect> Tabs<T> {
     }
 }
 
-impl<T: FixedSelect> EventHandler for Tabs<T> {
+impl<T: FixedSelect> Component for Tabs<T> {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             Action::Left => self.tabs.previous(),
@@ -39,7 +47,7 @@ impl<T: FixedSelect> EventHandler for Tabs<T> {
 }
 
 impl<T: FixedSelect> Draw for Tabs<T> {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles.tab;
         let titles = self.tabs.items_with_metadata().map(|item| {
             let style = if item.enabled() {

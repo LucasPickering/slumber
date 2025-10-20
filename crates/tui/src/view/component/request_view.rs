@@ -2,14 +2,17 @@ use crate::{
     context::TuiContext,
     message::Message,
     view::{
-        Component, ViewContext,
+        Component, Generate, ViewContext,
         common::{
             header_table::HeaderTable,
             text_window::{TextWindow, TextWindowProps},
         },
+        component::{
+            ComponentExt, ComponentId, Draw, DrawMetadata,
+            internal::{Child, ToChild},
+        },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, OptionEvent},
+        event::{Event, OptionEvent},
         state::Identified,
         util::{format_byte_size, highlight, view_text},
     },
@@ -26,18 +29,20 @@ use std::sync::Arc;
 /// it just needs to have been built successfully.
 #[derive(Debug)]
 pub struct RequestView {
+    id: ComponentId,
     /// Store pointer to the request, so we can access it in the update step
     request: Arc<RequestRecord>,
     /// Persist the visible body, because it may vary from the actual body.
     /// `None` iff the request has no body
     body: Option<Identified<Text<'static>>>,
-    body_text_window: Component<TextWindow>,
+    body_text_window: TextWindow,
 }
 
 impl RequestView {
     pub fn new(request: Arc<RequestRecord>) -> Self {
         let body = init_body(&request);
         Self {
+            id: ComponentId::default(),
             request,
             body,
             body_text_window: Default::default(),
@@ -73,7 +78,11 @@ impl RequestView {
     }
 }
 
-impl EventHandler for RequestView {
+impl Component for RequestView {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             Action::View => self.view_body(),
@@ -81,13 +90,13 @@ impl EventHandler for RequestView {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.body_text_window.to_child_mut()]
     }
 }
 
 impl Draw for RequestView {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let request = &self.request;
         let [version_area, url_area, headers_area, body_area] =
             Layout::vertical([

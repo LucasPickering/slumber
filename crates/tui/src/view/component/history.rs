@@ -3,11 +3,14 @@ use crate::{
     http::{RequestStateSummary, RequestStore},
     util::ResultReported,
     view::{
-        UpdateContext, ViewContext,
+        Generate, UpdateContext, ViewContext,
         common::{button::ButtonGroup, list::List, modal::Modal},
-        component::{Component, misc::ConfirmButton},
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
+        component::{
+            Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            internal::{Child, ToChild},
+            misc::ConfirmButton,
+        },
+        event::{Event, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
@@ -22,15 +25,16 @@ use slumber_core::{collection::RecipeId, http::RequestId};
 /// Browse request/response history for a recipe
 #[derive(Debug)]
 pub struct History {
+    id: ComponentId,
     recipe_name: String,
-    select: Component<SelectState<RequestStateSummary>>,
+    select: SelectState<RequestStateSummary>,
     /// Are we in the process of deleting the selected request? If so, we'll
     /// show a delete confirmation instead of the normal list.
     deleting: bool,
     /// Confirmation buttons for a deletion. This can't be part of the above
     /// option because it makes the emitter handling logic in `update()`
     /// annoying. This needs to be reset between deletes.
-    delete_confirm_buttons: Component<ButtonGroup<ConfirmButton>>,
+    delete_confirm_buttons: ButtonGroup<ConfirmButton>,
 }
 
 impl History {
@@ -53,8 +57,9 @@ impl History {
             .build();
 
         Self {
+            id: ComponentId::default(),
             recipe_name,
-            select: select.into(),
+            select,
             deleting: false,
             delete_confirm_buttons: Default::default(),
         }
@@ -64,13 +69,13 @@ impl History {
     fn delete_selected(&mut self, request_store: &mut RequestStore) {
         // It doesn't make sense to get to this point in the workflow without
         // a selected request ID, but we don't want to panic if we do
-        if let Some(request) = self.select.data().selected() {
+        if let Some(request) = self.select.selected() {
             request_store
                 .delete_request(request.id())
                 .reported(&ViewContext::messages_tx());
         }
-        self.select.data_mut().delete_selected();
-        if self.select.data().is_empty() {
+        self.select.delete_selected();
+        if self.select.is_empty() {
             // Let the root know there's nothing left. This is necessary because
             // the select doesn't emit an event when the final item is deleted
             ViewContext::push_event(Event::HttpSelectRequest(None));
@@ -98,13 +103,17 @@ impl Modal for History {
         let height = if self.deleting {
             1
         } else {
-            self.select.data().len().min(20) as u16
+            self.select.len().min(20) as u16
         };
         (Constraint::Length(40), Constraint::Length(height))
     }
 }
 
-impl EventHandler for History {
+impl Component for History {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(
         &mut self,
         context: &mut UpdateContext,
@@ -114,7 +123,7 @@ impl EventHandler for History {
             .opt()
             .action(|action, propagate| match action {
                 Action::Delete => {
-                    if self.select.data().selected().is_some() {
+                    if self.select.selected().is_some() {
                         // Morph into a confirmation modal
                         self.deleting = true;
                     }
@@ -132,13 +141,13 @@ impl EventHandler for History {
             .emitted(self.select.to_emitter(), |event| {
                 if let SelectStateEvent::Select(index) = event {
                     ViewContext::push_event(Event::HttpSelectRequest(Some(
-                        self.select.data()[index].id(),
+                        self.select[index].id(),
                     )));
                 }
             })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         if self.deleting {
             vec![self.delete_confirm_buttons.to_child_mut()]
         } else {
@@ -148,14 +157,14 @@ impl EventHandler for History {
 }
 
 impl Draw for History {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         if self.deleting {
             self.delete_confirm_buttons
                 .draw(frame, (), metadata.area(), true);
         } else {
             self.select.draw(
                 frame,
-                List::from(self.select.data()),
+                List::from(&self.select),
                 metadata.area(),
                 true,
             );

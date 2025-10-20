@@ -3,17 +3,17 @@
 //! component state.
 
 use crate::view::{
-    common::actions::MenuAction,
-    context::UpdateContext,
-    draw::{Draw, DrawMetadata},
-    event::{Child, Emitter, Event, LocalEvent, ToChild, ToEmitter},
+    common::actions::MenuAction, context::UpdateContext, event::Event,
 };
 use derive_more::Display;
+use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
 use ratatui::{Frame, layout::Rect};
 use std::{
     any,
-    cell::{Cell, RefCell},
-    collections::HashSet,
+    cell::RefCell,
+    collections::HashMap,
+    fmt::Debug,
+    ops::{Deref, DerefMut},
 };
 use terminput::{
     Event::{Key, Mouse, Paste},
@@ -31,7 +31,12 @@ thread_local! {
     ///
     /// This is cleared at the start of each draw, then retained through the
     /// next draw.
-    static VISIBLE_COMPONENTS: RefCell<HashSet<ComponentId>> =
+    ///
+    /// For each drawn component, this stores metadata related to its last draw.
+    /// We store this data out-of-band because it simplifies what each
+    /// individual component has to store, and centralizes the interior
+    /// mutability.
+    static VISIBLE_COMPONENTS: RefCell<HashMap<ComponentId, DrawMetadata>> =
         Default::default();
 
     /// Track whichever components are *currently* being drawn. Whenever we
@@ -40,282 +45,443 @@ thread_local! {
     static STACK: RefCell<Vec<ComponentId>> = Default::default();
 }
 
-/// A wrapper around the various component types. The main job of this is to
-/// automatically track the area that a component is drawn to, so that it can
-/// be used during event handling to filter cursor events. This makes it easy
-/// to have components automatically receive *only the cursor events* that
-/// occurred within the bounds of that component. Generally every layer in the
-/// component tree should be wrapped in one of these.
+/// A UI element that can handle user/async input.
 ///
-/// This intentionally does *not* implement `Deref` because that has led to bugs
-/// in the past where the inner component is drawn without this pass through
-/// layer, which means the component area isn't tracked. That means cursor
-/// events aren't handled.
-#[derive(Debug)]
-pub struct Component<T> {
-    /// Unique random identifier for this component, to reference it in global
-    /// state
-    id: ComponentId,
-    /// Name of the component type, which is used just for tracing
-    name: &'static str,
-    inner: T,
-    /// Draw metadata that affects event handling. This is updated on each draw
-    /// call, hence the need for interior mutability.
-    metadata: Cell<DrawMetadata>,
+/// This trait facilitates an on-demand tree structure, where each node in the
+/// tree can furnish its list of children. Events will be propagated bottom-up
+/// (i.e. leaf-to-root), and each element has the opportunity to consume the
+/// event so it stops bubbling. Each instance of each component gets a unique ID
+/// that identifies it in the component tree during both event handling and
+/// drawing. See [Component::id].
+///
+/// While components *typically* can be drawn to the screen, draw functionality
+/// is not provided by this trait. Instead, it's a separate trait called [Draw].
+/// See that trait for an explanation why.
+pub trait Component: ToChild {
+    /// Get a unique ID for this component
+    ///
+    /// **The returned ID must be consistent between draws.** The implementing
+    /// component is responsible for generating an ID for itself and returning
+    /// the same ID on each call. See [ComponentId] for more.
+    fn id(&self) -> ComponentId;
+
+    /// Update the state of *just* this component according to the event.
+    /// Returned outcome indicates whether the event was consumed (`None`), or
+    /// it should be propagated to our parent (`Some`). Use
+    /// [EventQueue](crate::view::event::EventQueue) to queue subsequent
+    /// events, and the given message sender to queue async messages.
+    ///
+    /// Generally event matching should be done with [Event::opt] and the
+    /// matching methods defined by
+    /// [OptionEvent](crate::view::event::OptionEvent).
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        Some(event)
+    }
+
+    /// Provide a list of actions that are accessible from the actions menu.
+    /// This list may be static (e.g. determined from an enum) or dynamic. When
+    /// the user opens the actions menu, all available actions for all
+    /// **focused** components will be collected and show in the menu. If an
+    /// action is selected, an event will be emitted with that action value.
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        Vec::new()
+    }
+
+    /// Get **all** children of this component. This includes children that are
+    /// not currently visible, and ones that are out of focus, meaning they
+    /// shouldn't receive keyboard events. The event handling infrastructure is
+    /// responsible for filtering out children that shouldn't receive events.
+    ///
+    /// The event handling sequence goes something like:
+    /// - Get list of children
+    /// - Filter out children that aren't visible
+    /// - For keyboard events, filter out children that aren't in focus (mouse
+    ///   events can still be handled by unfocused components)
+    /// - Pass the event to the first child in the list
+    ///     - If it consumes the event, stop
+    ///     - If it propagates, move on to the next child, and so on
+    /// - If none of the children consume the event, go up the tree to the
+    ///   parent and try again.
+    fn children(&mut self) -> Vec<Child<'_>> {
+        Vec::new()
+    }
 }
 
-impl<T> Component<T> {
-    pub fn new(inner: T) -> Self {
-        Self {
-            id: ComponentId::new(),
-            name: any::type_name::<T>(),
-            inner,
-            metadata: Cell::default(),
-        }
+// This can't be a blanket impl on DerefMut because that causes a collision in
+// the blanket impls of ToChild
+impl<S, K, C> Component for PersistedLazyRefMut<'_, S, K, C>
+where
+    S: PersistedStore<K>,
+    K: persisted::PersistedKey,
+    K::Value: Debug + PartialEq,
+    C: Component + PersistedContainer<Value = K::Value>,
+{
+    fn id(&self) -> ComponentId {
+        self.deref().id()
     }
 
-    /// Name of the component type, which is used just for debugging/tracing
-    pub fn name(&self) -> &'static str {
-        self.name
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
+        self.deref_mut().update(context, event)
     }
 
-    /// Collect all available menu actions from all **focused** components. This
-    /// takes a mutable reference so we don't have to duplicate the code that
-    /// provides children; it will *not* mutate anything.
-    pub fn collect_actions(&mut self) -> Vec<MenuAction>
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        self.deref().menu_actions()
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        self.deref_mut().children()
+    }
+}
+
+/// An extension trait for [Component]
+///
+/// This provides all the functionality of [Component] that does *not* need to
+/// be implemented by each individual component type. Any method on a component
+/// that does not need to be (or cannot be) overridden by implementors of
+/// [Component] should be defined here instead.
+pub trait ComponentExt: Component {
+    /// Was this component drawn to the screen during the previous draw phase?
+    fn is_visible(&self) -> bool;
+
+    /// Collect all available menu actions from all **focused** descendents of
+    /// this component (including this component). This takes a mutable
+    /// reference so we don't have to duplicate the code that provides children;
+    /// it will *not* mutate anything.
+    fn collect_actions(&mut self) -> Vec<MenuAction>
     where
-        T: ToChild,
+        Self: Sized;
+
+    /// Handle an event for this component *or* its children, starting at the
+    /// lowest descendant. Recursively walk up the tree until a component
+    /// consumes the event.
+    fn update_all(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event>
+    where
+        Self: Sized;
+
+    /// Draw the component into the frame
+    ///
+    /// This is what you should call when you want to draw a child component.
+    /// **This should not be reimplemented by implementors of this trait.** Just
+    /// implement [Draw::draw_impl] instead.
+    fn draw<Props>(
+        &self,
+        frame: &mut Frame,
+        props: Props,
+        area: Rect,
+        has_focus: bool,
+    ) where
+        Self: Draw<Props>;
+}
+
+impl<T: Component + ?Sized> ComponentExt for T {
+    fn is_visible(&self) -> bool {
+        VISIBLE_COMPONENTS.with_borrow(|map| map.contains_key(&self.id()))
+    }
+
+    fn collect_actions(&mut self) -> Vec<MenuAction>
+    where
+        Self: Sized,
     {
-        fn inner(
-            actions: &mut Vec<MenuAction>,
-            mut component: Component<Child>,
-        ) {
+        fn inner(actions: &mut Vec<MenuAction>, component: &mut dyn Component) {
             // Only include actions from visible+focused components
-            if component.is_visible() && component.has_focus() {
-                actions.extend(component.data().menu_actions());
-                for child in component.data_mut().children() {
-                    inner(actions, child);
+            if component.is_visible() && has_focus(component) {
+                actions.extend(component.menu_actions());
+                for mut child in component.children() {
+                    inner(actions, child.component());
                 }
             }
         }
 
         let mut actions = Vec::new();
-        inner(&mut actions, self.to_child_mut());
+        inner(&mut actions, self);
         actions
     }
 
-    /// Handle an event for this component *or* its children, starting at the
-    /// lowest descendant. Recursively walk up the tree until a component
-    /// consumes the event.
-    #[instrument(level = "trace", skip_all, fields(component = self.name()))]
-    pub fn update_all(
+    fn update_all(
         &mut self,
         context: &mut UpdateContext,
-        mut event: Event,
+        event: Event,
     ) -> Option<Event>
     where
-        T: ToChild,
+        Self: Sized,
     {
-        // If we can't handle the event, our children can't either
-        if !self.should_handle(&event) {
-            return Some(event);
+        update_all(any::type_name::<Self>(), self, context, event)
+    }
+
+    fn draw<Props>(
+        &self,
+        frame: &mut Frame,
+        props: Props,
+        area: Rect,
+        has_focus: bool,
+    ) where
+        Self: Draw<Props>,
+    {
+        // Update internal state for event handling
+        let metadata = DrawMetadata { area, has_focus };
+        let guard = DrawGuard::new(self.id(), metadata);
+
+        self.draw_impl(frame, props, metadata);
+        drop(guard); // Make sure guard stays alive until here
+    }
+}
+
+/// Something that can be drawn onto screen as one or more TUI widgets.
+///
+/// Conceptually this is basically part of `Component`, but having it separate
+/// allows the `Props` type parameter. Otherwise, there's no way to make a
+/// trait object from `Component` across components with different props.
+///
+/// Props are additional temporary values that a struct may need in order
+/// to render. Useful for passing down state values that are managed by
+/// the parent to avoid duplicating that state in the child. In most
+/// cases, `Props` would make more sense as an associated type, but there are
+/// some component types (e.g. `SelectState`) that have multiple `Draw` impls.
+/// Using an associated type also makes prop types with lifetimes much less
+/// ergonomic.
+pub trait Draw<Props = ()>: Component {
+    /// Draw the component into the frame.
+    ///
+    /// This is what each component will implement itself, but this **should not
+    /// be called directly.** Instead, call [ComponentExt::draw] on child
+    /// components to ensure the wrapping draw logic is called correctly.
+    /// This is called `draw_impl` instead of `draw` to make it distinct
+    /// from [ComponentExt::draw].
+    fn draw_impl(
+        &self,
+        frame: &mut Frame,
+        props: Props,
+        metadata: DrawMetadata,
+    );
+}
+
+/// Metadata associated with each draw action, which may instruct how the draw
+/// should occur.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct DrawMetadata {
+    /// Which area on the screen should we draw to?
+    area: Rect,
+    /// Does the drawn component have focus? Focus indicates the component
+    /// receives keyboard events. Most of the time, the focused element should
+    /// get some visual indicator that it's in focus.
+    has_focus: bool,
+}
+
+impl DrawMetadata {
+    /// Which area on the screen should we draw to?
+    pub fn area(self) -> Rect {
+        self.area
+    }
+
+    /// Does the component have focus, i.e. is it the component that should
+    /// receive keyboard events?
+    pub fn has_focus(self) -> bool {
+        self.has_focus
+    }
+}
+
+/// A wrapper for a dynamically dispatched [Component]. This is used to
+/// return a collection of event handlers from [Component::children]. Almost
+/// all cases will use the [Borrowed](Self::Borrowed) variant, but
+/// [Owned](Self::Owned) is useful for types that need to wrap the mutable
+/// reference in some type of guard. See [ToChild].
+pub enum Child<'a> {
+    Borrowed {
+        name: &'static str,
+        component: &'a mut dyn Component,
+    },
+    Owned {
+        name: &'static str,
+        component: Box<dyn 'a + Component>,
+    },
+}
+
+impl<'a> Child<'a> {
+    /// Get a descriptive name for this component type
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Borrowed { name, .. } => name,
+            Self::Owned { name, .. } => name,
         }
+    }
 
-        let mut self_dyn = self.data_mut().to_child_mut();
+    /// Get the contained component trait object
+    pub fn component<'b>(&'b mut self) -> &'b mut dyn Component
+    where
+        // 'b is the given &self, 'a is the contained &dyn Component
+        'a: 'b,
+    {
+        match self {
+            Self::Borrowed { component, .. } => *component,
+            Self::Owned { component, .. } => &mut **component,
+        }
+    }
+}
 
-        // If we have a child, send them the event. If not, eat it ourselves
-        for mut child in self_dyn.children() {
-            // RECURSION
-            let update = child.update_all(context, event);
-            match update {
-                Some(returned) => {
-                    // Keep going to the next child. The propagated event
-                    // *should* just be whatever we passed in, but we have
-                    // no way of verifying that
-                    event = returned;
-                }
-                None => {
-                    return update;
-                }
+/// Abstraction to convert a component type into [Child], which is a wrapper for
+/// a trait object. For 99% of components the blanket implementation will cover
+/// this. This only needs to be implemented manually for types that need an
+/// extra step to extract mutable data.
+pub trait ToChild {
+    fn to_child_mut(&mut self) -> Child<'_>;
+}
+
+impl<T: Component + Sized> ToChild for T {
+    fn to_child_mut(&mut self) -> Child<'_> {
+        Child::Borrowed {
+            name: any::type_name::<Self>(),
+            component: self,
+        }
+    }
+}
+
+/// A mutable reference to the contents of [persisted::PersistedLazy] must be
+/// wrapped in [PersistedLazyRefMut], which requires us to return an owned child
+/// rather than a borrowed one.
+impl<S, K, C> ToChild for persisted::PersistedLazy<S, K, C>
+where
+    S: PersistedStore<K>,
+    K: persisted::PersistedKey,
+    K::Value: Debug + PartialEq,
+    C: Component + PersistedContainer<Value = K::Value>,
+{
+    fn to_child_mut(&mut self) -> Child<'_> {
+        Child::Owned {
+            name: any::type_name::<Self>(),
+            component: Box::new(self.get_mut()),
+        }
+    }
+}
+
+/// Handle an event for an entire component tree. This is the internal
+/// implementation for [ComponentExt::update_all].
+#[instrument(
+    level = "trace",
+    skip_all,
+    fields(component = format_type_name(name)),
+)]
+fn update_all(
+    name: &str,
+    component: &mut dyn Component,
+    context: &mut UpdateContext,
+    mut event: Event,
+) -> Option<Event> {
+    // If we can't handle the event, our children can't either
+    if !should_handle(component, &event) {
+        return Some(event);
+    }
+
+    // If we have a child, send them the event. If not, eat it ourselves
+    for mut child in component.children() {
+        // RECURSION
+        let propagated =
+            update_all(child.name(), child.component(), context, event);
+        match propagated {
+            Some(returned) => {
+                // Keep going to the next child. The propagated event
+                // *should* just be whatever we passed in, but we have
+                // no way of verifying that
+                event = returned;
+            }
+            None => {
+                return None;
             }
         }
-
-        // None of our children handled it, we'll take it ourselves. Event is
-        // already traced in the root span, so don't dupe it.
-        trace_span!("component.update").in_scope(|| {
-            let update = self_dyn.update(context, event);
-            trace!(?update);
-            update
-        })
     }
 
-    /// Should this component handle the given event? This is based on a few
-    /// criteria:
-    /// - Am I currently visible? I.e. was I drawn on the last draw phase?
-    /// - If it's a non-mouse event, do I have focus?
-    /// - If it's a mouse event, was it over me? Mouse events should always go
-    ///   to the clicked element, even when unfocused, because that's intuitive.
-    fn should_handle(&self, event: &Event) -> bool {
-        // If this component isn't currently in the visible tree, it shouldn't
-        // handle any events
-        if !self.is_visible() {
-            trace!("Skipping component, not visible");
-            return false;
-        }
+    // None of our children handled it, we'll take it ourselves. Event is
+    // already traced in the root span, so don't dupe it.
+    trace_span!("component.update").in_scope(|| {
+        let update = component.update(context, event);
+        trace!(propagated = ?update);
+        update
+    })
+}
 
-        if let Event::Input { event, .. } = event {
-            match event {
-                Key(_) | Paste(_) => self.has_focus(),
+/// Get a minified name for a type. Common prefixes are stripped from the type
+/// to reduce clutter
+fn format_type_name(type_name: &str) -> String {
+    type_name
+        .replace("slumber_tui::view::common::", "")
+        .replace("slumber_tui::view::component::", "")
+        .replace("slumber_tui::view::test_util::", "")
+        .replace("slumber_tui::view::util::", "")
+}
 
-                Mouse(mouse_event) => {
-                    // Check if the mouse is over the component
-                    self.intersects(*mouse_event)
-                }
+/// Should this component handle the given event? This is based on a few
+/// criteria:
+/// - Am I currently visible? I.e. was I drawn on the last draw phase?
+/// - If it's a non-mouse event, do I have focus?
+/// - If it's a mouse event, was it over me? Mouse events should always go to
+///   the clicked element, even when unfocused, because that's intuitive.
+fn should_handle(component: &dyn Component, event: &Event) -> bool {
+    // If this component isn't currently in the visible tree, it shouldn't
+    // handle any events
+    if !component.is_visible() {
+        trace!("Skipping component, not visible");
+        return false;
+    }
 
-                // We expect everything else to have already been killed
-                _ => {
-                    warn!(?event, "Unexpected event kind");
-                    false
-                }
+    if let Event::Input { event, .. } = event {
+        match event {
+            Key(_) | Paste(_) => has_focus(component),
+
+            Mouse(mouse_event) => {
+                // Check if the mouse is over the component
+                intersects(component, *mouse_event)
             }
-        } else {
-            true
+
+            // We expect everything else to have already been killed
+            _ => {
+                warn!(?event, "Unexpected event kind");
+                false
+            }
         }
+    } else {
+        true
     }
+}
 
-    /// Was this component drawn to the screen during the previous draw phase?
-    pub fn is_visible(&self) -> bool {
-        VISIBLE_COMPONENTS.with_borrow(|tree| tree.contains(&self.id))
-    }
-
-    /// Was this component in focus during the previous draw phase?
-    fn has_focus(&self) -> bool {
-        self.metadata.get().has_focus()
-    }
-
-    /// Did the given mouse event occur over/on this component?
-    fn intersects(&self, mouse_event: MouseEvent) -> bool {
-        self.is_visible()
-            && self.metadata.get().area().intersects(Rect {
+/// Did the given mouse event occur over/on this component?
+fn intersects(component: &dyn Component, mouse_event: MouseEvent) -> bool {
+    // If the component isn't in the map, that means it's not visible
+    VISIBLE_COMPONENTS.with_borrow(|map| {
+        let metadata = map.get(&component.id());
+        metadata.is_some_and(|metadata| {
+            metadata.area().intersects(Rect {
                 x: mouse_event.column,
                 y: mouse_event.row,
                 width: 1,
                 height: 1,
             })
-    }
-
-    /// Get a `Component` wrapping a [Child], which holds an `EventHandler`
-    /// trait object. Useful for returning from `EventHandler::children`.
-    pub fn to_child_mut(&mut self) -> Component<Child<'_>>
-    where
-        T: ToChild,
-    {
-        Component {
-            id: self.id,
-            name: self.name,
-            inner: self.inner.to_child_mut(),
-            metadata: self.metadata.clone(),
-        }
-    }
-
-    /// Get a reference to the inner component. This should only be used to
-    /// access the contained *data*. Drawing should be routed through the
-    /// wrapping component.
-    pub fn data(&self) -> &T {
-        &self.inner
-    }
-
-    /// Get a mutable reference to the inner component. This should only be used
-    /// to access the contained *data*. Drawing should be routed through the
-    /// wrapping component.
-    pub fn data_mut(&mut self) -> &mut T {
-        &mut self.inner
-    }
-
-    /// Move the inner component out
-    pub fn into_data(self) -> T {
-        self.inner
-    }
-
-    /// Draw the component to the frame. This will update global state, then
-    /// defer to the component's [Draw] implementation for the actual draw.
-    pub fn draw<Props>(
-        &self,
-        frame: &mut Frame,
-        props: Props,
-        area: Rect,
-        has_focus: bool,
-    ) where
-        T: Draw<Props>,
-    {
-        self.draw_inner(frame, props, area, has_focus, &self.inner);
-    }
-
-    fn draw_inner<D: Draw<Props>, Props>(
-        &self,
-        frame: &mut Frame,
-        props: Props,
-        area: Rect,
-        has_focus: bool,
-        inner: &D,
-    ) {
-        let guard = DrawGuard::new(self.id);
-
-        // Update internal state for event handling
-        let metadata = DrawMetadata::new_dangerous(area, has_focus);
-        self.metadata.set(metadata);
-
-        inner.draw(frame, props, metadata);
-        drop(guard); // Make sure guard stays alive until here
-    }
+        })
+    })
 }
 
-impl<T> Component<Option<T>> {
-    /// For components with optional data, draw the contents if present
-    pub fn draw_opt<Props>(
-        &self,
-        frame: &mut Frame,
-        props: Props,
-        area: Rect,
-        has_focus: bool,
-    ) where
-        T: Draw<Props>,
-    {
-        if let Some(inner) = &self.inner {
-            self.draw_inner(frame, props, area, has_focus, inner);
-        }
-    }
+/// Was this component in focus during the previous draw phase?
+fn has_focus(component: &dyn Component) -> bool {
+    // If the component isn't in the map, that means it's not visible
+    VISIBLE_COMPONENTS.with_borrow(|map| {
+        let metadata = map.get(&component.id());
+        metadata.is_some_and(|metadata| metadata.has_focus())
+    })
 }
 
-// Derive impl doesn't work because the constructor gets the correct name
-impl<T: Default> Default for Component<T> {
-    fn default() -> Self {
-        Self::new(T::default())
-    }
-}
-
-impl<T> From<T> for Component<T> {
-    fn from(inner: T) -> Self {
-        Self::new(inner)
-    }
-}
-
-impl<E, T> ToEmitter<E> for Component<T>
-where
-    E: LocalEvent,
-    T: ToEmitter<E>,
-{
-    fn to_emitter(&self) -> Emitter<E> {
-        self.data().to_emitter()
-    }
-}
-
-/// Unique ID to refer to a single component. Generally components are persisent
-/// throughout the lifespan of the view so this will be too, but it's only
-/// *necessary* for it to be consistent from one draw phase to the next event
-/// phase, because that's how we track if each component is visible or not.
+/// Unique ID to refer to a single component
+///
+/// A component should generate a unique ID for itself upon construction (via
+/// [ComponentId::new] or [ComponentId::default]) and use the same ID for its
+/// entire lifespan. This ID should be returned from [Component::id].
 #[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
-struct ComponentId(Uuid);
+pub struct ComponentId(Uuid);
 
 impl ComponentId {
     fn new() -> Self {
@@ -339,7 +505,7 @@ struct DrawGuard {
 }
 
 impl DrawGuard {
-    fn new(id: ComponentId) -> Self {
+    fn new(id: ComponentId, metadata: DrawMetadata) -> Self {
         // Push onto the render stack, so children know about their parent
         let is_root = STACK.with_borrow_mut(|stack| {
             stack.push(id);
@@ -352,7 +518,7 @@ impl DrawGuard {
             if is_root {
                 visible_components.clear();
             }
-            visible_components.insert(id);
+            visible_components.insert(id, metadata);
         });
         Self { id, is_root }
     }
@@ -388,10 +554,7 @@ impl Drop for DrawGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::event::EventHandler,
-    };
+    use crate::test_util::{TestHarness, TestTerminal, harness, terminal};
     use ratatui::layout::Layout;
     use rstest::{fixture, rstest};
     use slumber_config::Action;
@@ -403,11 +566,12 @@ mod tests {
 
     #[derive(Debug, Default)]
     struct Branch {
+        id: ComponentId,
         /// How many events have we consumed *ourselves*?
         count: u32,
-        a: Component<Leaf>,
-        b: Component<Leaf>,
-        c: Component<Leaf>,
+        a: Leaf,
+        b: Leaf,
+        c: Leaf,
     }
 
     struct Props {
@@ -425,19 +589,23 @@ mod tests {
     impl Branch {
         fn reset(&mut self) {
             self.count = 0;
-            self.a.data_mut().reset();
-            self.b.data_mut().reset();
-            self.c.data_mut().reset();
+            self.a.reset();
+            self.b.reset();
+            self.c.reset();
         }
     }
 
-    impl EventHandler for Branch {
+    impl Component for Branch {
+        fn id(&self) -> ComponentId {
+            self.id
+        }
+
         fn update(&mut self, _: &mut UpdateContext, _: Event) -> Option<Event> {
             self.count += 1;
             None
         }
 
-        fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        fn children(&mut self) -> Vec<Child<'_>> {
             vec![
                 self.a.to_child_mut(),
                 self.b.to_child_mut(),
@@ -447,7 +615,7 @@ mod tests {
     }
 
     impl Draw<Props> for Branch {
-        fn draw(
+        fn draw_impl(
             &self,
             frame: &mut Frame,
             props: Props,
@@ -475,6 +643,7 @@ mod tests {
 
     #[derive(Debug, Default)]
     struct Leaf {
+        id: ComponentId,
         /// How many events have we consumed?
         count: u32,
     }
@@ -485,7 +654,11 @@ mod tests {
         }
     }
 
-    impl EventHandler for Leaf {
+    impl Component for Leaf {
+        fn id(&self) -> ComponentId {
+            self.id
+        }
+
         fn update(&mut self, _: &mut UpdateContext, _: Event) -> Option<Event> {
             self.count += 1;
             None
@@ -493,7 +666,7 @@ mod tests {
     }
 
     impl Draw for Leaf {
-        fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+        fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
             frame.render_widget("hello!", metadata.area());
         }
     }
@@ -527,8 +700,8 @@ mod tests {
     /// wonky things unique to these tests that require calling the component
     /// methods directly.
     #[fixture]
-    fn component() -> Component<Branch> {
-        Component::default()
+    fn component() -> Branch {
+        Branch::default()
     }
 
     /// Render a simple component tree and test that events are propagated as
@@ -538,7 +711,7 @@ mod tests {
     fn test_render_component_tree(
         harness: TestHarness,
         terminal: TestTerminal,
-        mut component: Component<Branch>,
+        mut component: Branch,
     ) {
         // One level of nesting
         let area = Rect {
@@ -552,7 +725,7 @@ mod tests {
         let c_coords = (0, 2);
 
         let assert_events =
-            |component: &mut Component<Branch>, expected_counts: [u32; 4]| {
+            |component: &mut Branch, expected_counts: [u32; 4]| {
                 let events = [
                     keyboard_event(),
                     mouse_event(a_coords),
@@ -569,28 +742,24 @@ mod tests {
                 let [expected_root, expected_a, expected_b, expected_c] =
                     expected_counts;
                 assert_eq!(
-                    component.data().count,
-                    expected_root,
+                    component.count, expected_root,
                     "count mismatch on root component"
                 );
                 assert_eq!(
-                    component.data().a.data().count,
-                    expected_a,
+                    component.a.count, expected_a,
                     "count mismatch on component a"
                 );
                 assert_eq!(
-                    component.data().b.data().count,
-                    expected_b,
+                    component.b.count, expected_b,
                     "count mismatch on component b"
                 );
                 assert_eq!(
-                    component.data().c.data().count,
-                    expected_c,
+                    component.c.count, expected_c,
                     "count mismatch on component c"
                 );
 
                 // Reset state for the next assertion
-                component.data_mut().reset();
+                component.reset();
             };
 
         // Initial event handling - nothing is visible so nothing should consume
@@ -657,13 +826,13 @@ mod tests {
     fn test_parent_hidden(
         harness: TestHarness,
         terminal: TestTerminal,
-        mut component: Component<Branch>,
+        mut component: Branch,
     ) {
         terminal.draw(|frame| {
             let area = frame.area();
-            component.data().a.draw(frame, (), area, true);
-            component.data().b.draw(frame, (), area, true);
-            component.data().c.draw(frame, (), area, true);
+            component.a.draw(frame, (), area, true);
+            component.b.draw(frame, (), area, true);
+            component.c.draw(frame, (), area, true);
         });
         // Event should *not* be handled because the parent is hidden
         assert_matches!(
@@ -683,7 +852,7 @@ mod tests {
     fn test_parent_unfocused(
         harness: TestHarness,
         terminal: TestTerminal,
-        mut component: Component<Branch>,
+        mut component: Branch,
     ) {
         // We are visible but *not* in focus
         terminal.draw(|frame| {

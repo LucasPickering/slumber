@@ -4,15 +4,17 @@ use crate::{
     context::TuiContext,
     util,
     view::{
-        Component, IntoModal, ViewContext,
+        Component, Generate, IntoModal, ViewContext,
         common::{
             modal::Modal,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
+        component::{
+            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+        },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
         state::Identified,
         util::{highlight, str_to_text},
     },
@@ -37,6 +39,7 @@ use tokio::task::AbortHandle;
 /// The query state can be persisted by persisting this entire container.
 #[derive(Debug)]
 pub struct QueryableBody {
+    id: ComponentId,
     emitter: Emitter<QueryComplete>,
     response: Arc<ResponseRecord>,
 
@@ -49,16 +52,16 @@ pub struct QueryableBody {
     /// Track status of the current query command
     query_state: QueryState,
     /// Where the user enters their body query
-    query_text_box: Component<TextBox>,
+    query_text_box: TextBox,
     /// Query command to reset back to when the user hits cancel
     last_executed_query: Option<String>,
 
     /// Export command, for side effects. This isn't persistent, so the state
     /// is a lot simpler. We'll clear this out whenever the user exits.
-    export_text_box: Component<TextBox>,
+    export_text_box: TextBox,
 
     /// Filtered text display
-    text_window: Component<TextWindow>,
+    text_window: TextWindow,
 
     /// Data that can update as the query changes
     text_state: TextState,
@@ -90,14 +93,15 @@ impl QueryableBody {
             TextState::new(response.content_type(), &response.body, true);
 
         let mut slf = Self {
+            id: ComponentId::default(),
             emitter: Default::default(),
             response,
             command_focus: CommandFocus::None,
             default_query,
             query_state: QueryState::None,
-            query_text_box: query_text_box.into(),
+            query_text_box,
             last_executed_query: None,
-            export_text_box: export_text_box.into(),
+            export_text_box,
             text_window: Default::default(),
             text_state,
         };
@@ -132,7 +136,7 @@ impl QueryableBody {
     /// Update query command based on the current text in the box, and start
     /// a task to run the command
     fn update_query(&mut self) {
-        let command = self.query_text_box.data().text().trim();
+        let command = self.query_text_box.text().trim();
 
         // If the command hasn't changed, do nothing
         if self.last_executed_query.as_deref() == Some(command) {
@@ -174,7 +178,7 @@ impl QueryableBody {
     /// will *not* be reflected in the UI. Used for things like saving a
     /// response to a file.
     fn export(&mut self) {
-        let command = self.export_text_box.data_mut().clear();
+        let command = self.export_text_box.clear();
 
         if command.is_empty() {
             return;
@@ -215,7 +219,11 @@ impl QueryableBody {
     }
 }
 
-impl EventHandler for QueryableBody {
+impl Component for QueryableBody {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -244,7 +252,7 @@ impl EventHandler for QueryableBody {
                 TextBoxEvent::Change => {}
                 TextBoxEvent::Cancel => {
                     // Reset text to whatever was submitted last
-                    self.query_text_box.data_mut().set_text(
+                    self.query_text_box.set_text(
                         self.last_executed_query.clone().unwrap_or_default(),
                     );
                     self.focus(CommandFocus::None);
@@ -258,7 +266,7 @@ impl EventHandler for QueryableBody {
                 TextBoxEvent::Focus => self.focus(CommandFocus::Export),
                 TextBoxEvent::Change => {}
                 TextBoxEvent::Cancel => {
-                    self.export_text_box.data_mut().clear();
+                    self.export_text_box.clear();
                     self.focus(CommandFocus::None);
                 }
                 TextBoxEvent::Submit => {
@@ -268,7 +276,7 @@ impl EventHandler for QueryableBody {
             })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![
             self.query_text_box.to_child_mut(),
             self.export_text_box.to_child_mut(),
@@ -278,7 +286,7 @@ impl EventHandler for QueryableBody {
 }
 
 impl Draw for QueryableBody {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let [body_area, query_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
@@ -326,11 +334,11 @@ impl PersistedContainer for QueryableBody {
     type Value = String;
 
     fn get_to_persist(&self) -> Self::Value {
-        self.query_text_box.data().get_to_persist()
+        self.query_text_box.get_to_persist()
     }
 
     fn restore_persisted(&mut self, value: Self::Value) {
-        let text_box = self.query_text_box.data_mut();
+        let text_box = &mut self.query_text_box;
         text_box.restore_persisted(value);
 
         // It's pretty common to clear the whole text box without thinking about
@@ -340,7 +348,7 @@ impl PersistedContainer for QueryableBody {
         // and this is annoying, but I think it'll be more good than bad.
         if text_box.text().is_empty() {
             if let Some(query) = self.default_query.clone() {
-                self.query_text_box.data_mut().set_text(query);
+                self.query_text_box.set_text(query);
             }
         }
 
@@ -477,8 +485,8 @@ mod tests {
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, run_local, terminal},
         view::{
-            test_util::TestComponent,
-            util::persistence::{DatabasePersistedStore, PersistedLazy},
+            test_util::{PersistedComponent, TestComponent},
+            util::persistence::DatabasePersistedStore,
         },
     };
     use persisted::{PersistedKey, PersistedStore};
@@ -531,9 +539,8 @@ mod tests {
         );
 
         // Assert initial state/view
-        let data = component.data();
-        assert_eq!(data.last_executed_query, None);
-        assert_eq!(data.modified_text().as_deref(), None);
+        assert_eq!(component.last_executed_query, None);
+        assert_eq!(component.modified_text().as_deref(), None);
         let styles = &TuiContext::get().styles.text_box;
         terminal.assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}".into()],
@@ -563,10 +570,9 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         // Make sure state updated correctly
-        let data = component.data();
-        assert_eq!(data.last_executed_query.as_deref(), Some("head -c 1"));
-        assert_eq!(data.modified_text().as_deref(), Some("{"));
-        assert_eq!(data.command_focus, CommandFocus::None);
+        assert_eq!(component.last_executed_query.as_deref(), Some("head -c 1"));
+        assert_eq!(component.modified_text().as_deref(), Some("{"));
+        assert_eq!(component.command_focus, CommandFocus::None);
 
         // Cancelling out of the text box should reset the query value
         component.int().send_key(KeyCode::Char('/')).assert_empty();
@@ -575,10 +581,9 @@ mod tests {
             .send_text("more text")
             .send_key(KeyCode::Esc)
             .assert_empty();
-        let data = component.data();
-        assert_eq!(data.last_executed_query.as_deref(), Some("head -c 1"));
-        assert_eq!(data.query_text_box.data().text(), "head -c 1");
-        assert_eq!(data.command_focus, CommandFocus::None);
+        assert_eq!(component.last_executed_query.as_deref(), Some("head -c 1"));
+        assert_eq!(component.query_text_box.text(), "head -c 1");
+        assert_eq!(component.command_focus, CommandFocus::None);
 
         // Check the view again
         terminal.assert_buffer_lines([
@@ -606,9 +611,9 @@ mod tests {
             TestComponent::new(
                 &harness,
                 &terminal,
-                PersistedLazy::new(
+                // Default value should get tossed out
+                PersistedComponent::new(
                     Key,
-                    // Default value should get tossed out
                     QueryableBody::new(response, Some("initial".into())),
                 ),
             )
@@ -618,11 +623,8 @@ mod tests {
         // After the command is done, there's a subsequent event with the result
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(
-            component.data().last_executed_query.as_deref(),
-            Some("head -c 1")
-        );
-        assert_eq!(&component.data().visible_text().to_string(), "{");
+        assert_eq!(component.last_executed_query.as_deref(), Some("head -c 1"));
+        assert_eq!(&component.visible_text().to_string(), "{");
     }
 
     /// Test that the user's configured query default is applied on a fresh load
@@ -643,10 +645,7 @@ mod tests {
         })
         .await;
 
-        assert_eq!(
-            component.data().last_executed_query.as_deref(),
-            Some("head -n 1")
-        );
+        assert_eq!(component.last_executed_query.as_deref(), Some("head -n 1"));
     }
 
     /// Test that the user's configured query default is applied when there's a
@@ -665,7 +664,7 @@ mod tests {
             TestComponent::new(
                 &harness,
                 &terminal,
-                PersistedLazy::new(
+                PersistedComponent::new(
                     Key,
                     // Default should override the persisted value
                     QueryableBody::new(response, Some("head -n 1".into())),
@@ -674,10 +673,7 @@ mod tests {
         })
         .await;
 
-        assert_eq!(
-            component.data().last_executed_query.as_deref(),
-            Some("head -n 1")
-        );
+        assert_eq!(component.last_executed_query.as_deref(), Some("head -n 1"));
     }
 
     /// Test an export command

@@ -2,7 +2,6 @@ mod common;
 mod component;
 mod context;
 mod debug;
-mod draw;
 mod event;
 mod state;
 mod styles;
@@ -22,9 +21,8 @@ use crate::{
     util::ResultReported,
     view::{
         common::modal::Modal,
-        component::{Component, Root, RootProps},
+        component::{Component, ComponentExt, Root, RootProps},
         debug::DebugMonitor,
-        draw::Generate,
         event::Event,
     },
 };
@@ -33,7 +31,7 @@ use ratatui::{
     Frame,
     crossterm::execute,
     layout::{Constraint, Layout},
-    text::Text,
+    text::{Span, Text},
 };
 use slumber_config::Action;
 use slumber_core::{
@@ -41,7 +39,11 @@ use slumber_core::{
     database::CollectionDatabase,
     http::RequestId,
 };
-use std::{fmt::Debug, io, sync::Arc};
+use std::{
+    fmt::{Debug, Display},
+    io,
+    sync::Arc,
+};
 use tracing::{trace, trace_span, warn};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
@@ -57,7 +59,7 @@ use tracing::{trace, trace_span, warn};
 /// events), so we need to make sure the queue is constantly being drained.
 #[derive(Debug)]
 pub struct View {
-    root: Component<Root>,
+    root: Root,
     /// Populated iff the `debug` config field is enabled. This tracks view
     /// metrics and displays them to the user.
     debug_monitor: Option<DebugMonitor>,
@@ -78,7 +80,7 @@ impl View {
         };
 
         Self {
-            root: Root::new(collection).into(),
+            root: Root::new(collection),
             debug_monitor,
         }
     }
@@ -91,7 +93,7 @@ impl View {
         request_store: &RequestStore,
     ) {
         fn draw_impl(
-            root: &Component<Root>,
+            root: &Root,
             frame: &mut Frame,
             request_store: &RequestStore,
         ) {
@@ -147,13 +149,13 @@ impl View {
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.root.data().selected_profile_id()
+        self.root.selected_profile_id()
     }
 
     /// Get a definition of the request that should be sent from the current
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
-        self.root.data().request_config()
+        self.root.request_config()
     }
 
     /// Select a particular request
@@ -163,7 +165,6 @@ impl View {
         request_id: RequestId,
     ) {
         self.root
-            .data_mut()
             .select_request(request_store, Some(request_id))
             .reported(&ViewContext::messages_tx());
     }
@@ -230,6 +231,40 @@ impl View {
                 });
             }
         }
+    }
+}
+
+/// A helper for building a UI. It can be converted into some UI element to be
+/// drawn.
+pub trait Generate {
+    type Output<'this>
+    where
+        Self: 'this;
+
+    /// Build a UI element
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this;
+}
+
+/// Marker trait to pull in a blanket impl of [Generate], which simply calls
+/// [ToString::to_string] on the value to create a [ratatui::text::Span].
+pub trait ToStringGenerate: Display {}
+
+impl<T> Generate for &T
+where
+    T: ToStringGenerate,
+{
+    type Output<'this>
+        = Span<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        self.to_string().into()
     }
 }
 

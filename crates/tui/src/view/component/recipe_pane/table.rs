@@ -1,15 +1,16 @@
 use crate::view::{
+    Generate,
     common::{
         actions::MenuAction,
         table::{Table, ToggleRow},
     },
     component::{
-        Component,
+        Component, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+        internal::Child,
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     },
     context::UpdateContext,
-    draw::{Draw, DrawMetadata, Generate},
-    event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+    event::{Emitter, Event, OptionEvent, ToEmitter},
     state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     util::persistence::{Persisted, PersistedKey, PersistedLazy},
 };
@@ -40,17 +41,16 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: PersistedKey<Value = bool>,
 {
+    id: ComponentId,
     /// What kind of data we we storing? e.g. "Header"
     noun: &'static str,
     /// Emitter for the callback from editing a row
     override_emitter: Emitter<SaveRecipeTableOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeTableMenuAction>,
-    select: Component<
-        PersistedLazy<
-            RowSelectKey,
-            SelectState<RowState<RowToggleKey>, TableState>,
-        >,
+    select: PersistedLazy<
+        RowSelectKey,
+        SelectState<RowState<RowToggleKey>, TableState>,
     >,
 }
 
@@ -86,17 +86,17 @@ where
             .subscribe([SelectStateEventType::Toggle])
             .build();
         Self {
+            id: Default::default(),
             noun,
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
-            select: PersistedLazy::new(select_key, select).into(),
+            select: PersistedLazy::new(select_key, select),
         }
     }
 
     /// Get the set of disabled/overridden rows for this table
     pub fn to_build_overrides(&self) -> BuildFieldOverrides {
         self.select
-            .data()
             .items()
             .filter_map(|row| {
                 row.to_build_override().map(|ovr| (row.index, ovr))
@@ -105,26 +105,28 @@ where
     }
 
     fn edit_selected_row(&self) {
-        if let Some(selected_row) = self.select.data().selected() {
+        if let Some(selected_row) = self.select.selected() {
             selected_row.open_edit_modal(self.override_emitter);
         }
     }
 
     fn reset_selected_row(&mut self) {
-        if let Some(selected_row) =
-            self.select.data_mut().get_mut().selected_mut()
-        {
+        if let Some(selected_row) = self.select.get_mut().selected_mut() {
             selected_row.value.reset_override();
         }
     }
 }
 
-impl<RowSelectKey, RowToggleKey> EventHandler
+impl<RowSelectKey, RowToggleKey> Component
     for RecipeFieldTable<RowSelectKey, RowToggleKey>
 where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: 'static + PersistedKey<Value = bool>,
 {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -136,7 +138,7 @@ where
             })
             .emitted(self.select.to_emitter(), |event| {
                 if let SelectStateEvent::Toggle(index) = event {
-                    self.select.data_mut().get_mut()[index].toggle();
+                    self.select.get_mut()[index].toggle();
                 }
             })
             .emitted(
@@ -150,7 +152,7 @@ where
                     // selection while the edit modal is open. It's safer to
                     // re-grab the modal by index though, just to be sure we've
                     // got the right one.
-                    self.select.data_mut().get_mut().items_mut()[row_index]
+                    self.select.get_mut().items_mut()[row_index]
                         .value
                         .value
                         .set_override(template);
@@ -169,7 +171,7 @@ where
     fn menu_actions(&self) -> Vec<MenuAction> {
         let emitter = self.actions_emitter;
         let noun = self.noun;
-        let selected = self.select.data().selected();
+        let selected = self.select.selected();
         vec![
             emitter
                 .menu(RecipeTableMenuAction::Edit, format!("Edit {noun}"))
@@ -182,7 +184,7 @@ where
         ]
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.select.to_child_mut()]
     }
 }
@@ -191,21 +193,16 @@ impl<'a, RowSelectKey, RowToggleKey> Draw<RecipeFieldTableProps<'a>>
     for RecipeFieldTable<RowSelectKey, RowToggleKey>
 where
     RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: PersistedKey<Value = bool>,
+    RowToggleKey: 'static + PersistedKey<Value = bool>,
 {
-    fn draw(
+    fn draw_impl(
         &self,
         frame: &mut Frame,
         props: RecipeFieldTableProps<'a>,
         metadata: DrawMetadata,
     ) {
         let table = Table {
-            rows: self
-                .select
-                .data()
-                .items()
-                .map(Generate::generate)
-                .collect_vec(),
+            rows: self.select.items().map(Generate::generate).collect_vec(),
             header: Some(["", props.key_header, props.value_header]),
             column_widths: &[
                 Constraint::Min(3),
@@ -409,7 +406,7 @@ mod tests {
 
         // Check initial state
         assert_eq!(
-            component.data().to_build_overrides(),
+            component.to_build_overrides(),
             BuildFieldOverrides::default()
         );
 
@@ -418,11 +415,11 @@ mod tests {
             .int_props(props_factory)
             .send_keys([KeyCode::Down, KeyCode::Char(' ')])
             .assert_empty();
-        let selected_row = component.data().select.data().selected().unwrap();
+        let selected_row = component.select.selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
         assert!(!*selected_row.enabled);
         assert_eq!(
-            component.data().to_build_overrides(),
+            component.to_build_overrides(),
             [(1, BuildFieldOverride::Omit)].into_iter().collect(),
         );
 
@@ -431,10 +428,10 @@ mod tests {
             .int_props(props_factory)
             .send_key(KeyCode::Char(' '))
             .assert_empty();
-        let selected_row = component.data().select.data().selected().unwrap();
+        let selected_row = component.select.selected().unwrap();
         assert!(*selected_row.enabled);
         assert_eq!(
-            component.data().to_build_overrides(),
+            component.to_build_overrides(),
             BuildFieldOverrides::default(),
         );
     }
@@ -479,7 +476,7 @@ mod tests {
 
         // Check initial state
         assert_eq!(
-            component.data().to_build_overrides(),
+            component.to_build_overrides(),
             BuildFieldOverrides::default()
         );
 
@@ -492,12 +489,12 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
 
-        let selected_row = component.data().select.data().selected().unwrap();
+        let selected_row = component.select.selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
         assert!(selected_row.value.is_overridden());
         assert_eq!(selected_row.value.template().display(), "value1!!!");
         assert_eq!(
-            component.data().to_build_overrides(),
+            component.to_build_overrides(),
             [(1, BuildFieldOverride::Override("value1!!!".into()))]
                 .into_iter()
                 .collect(),
@@ -508,7 +505,7 @@ mod tests {
             .int_props(props_factory)
             .send_key(KeyCode::Char('z'))
             .assert_empty();
-        let selected_row = component.data().select.data().selected().unwrap();
+        let selected_row = component.select.selected().unwrap();
         assert!(!selected_row.value.is_overridden());
     }
 
@@ -545,7 +542,7 @@ mod tests {
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
 
-        let selected_row = component.data().select.data().selected().unwrap();
+        let selected_row = component.select.selected().unwrap();
         assert_eq!(selected_row.value.template().display(), "value0!");
     }
 
@@ -595,7 +592,7 @@ mod tests {
         .build();
 
         assert_eq!(
-            component.data().to_build_overrides(),
+            component.to_build_overrides(),
             [
                 (0, BuildFieldOverride::Override("p0".into())),
                 (1, BuildFieldOverride::Override("p1".into()))

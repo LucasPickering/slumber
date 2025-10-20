@@ -1,14 +1,14 @@
 use crate::{
     context::TuiContext,
     view::{
+        Generate,
         common::{list::List, modal::Modal},
-        component::Component,
-        context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{
-            Child, Emitter, Event, EventHandler, LocalEvent, OptionEvent,
-            ToEmitter,
+        component::{
+            Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            ToChild,
         },
+        context::UpdateContext,
+        event::{Emitter, Event, LocalEvent, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
@@ -22,7 +22,7 @@ use slumber_config::Action;
 
 /// Modal to list and trigger arbitrary actions. The user opens the action menu
 /// with a keybinding, at which point the list of available actions is built
-/// dynamically via [EventHandler::menu_actions]. When an action is selected,
+/// dynamically via [Component::menu_actions]. When an action is selected,
 /// the modal is closed and that action will be emitted as a dynamic event, to
 /// be handled by the component that originally supplied it. Each component that
 /// provides actions should store an [Emitter] specifically for its actions,
@@ -30,8 +30,9 @@ use slumber_config::Action;
 /// consume the action events.
 #[derive(Debug)]
 pub struct ActionsModal {
+    id: ComponentId,
     /// Join the list of global actions into the given one
-    actions: Component<SelectState<MenuAction>>,
+    actions: SelectState<MenuAction>,
 }
 
 impl ActionsModal {
@@ -45,11 +46,11 @@ impl ActionsModal {
             .map(|(i, _)| i)
             .collect_vec();
         Self {
+            id: ComponentId::default(),
             actions: SelectState::builder(actions)
                 .disabled_indexes(disabled_indexes)
                 .subscribe([SelectStateEventType::Submit])
-                .build()
-                .into(),
+                .build(),
         }
     }
 }
@@ -62,13 +63,13 @@ impl Modal for ActionsModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (
             Constraint::Length(30),
-            Constraint::Length(self.actions.data().len() as u16),
+            Constraint::Length(self.actions.len() as u16),
         )
     }
 
     fn on_close(self: Box<Self>, submitted: bool) {
         if submitted {
-            let Some(action) = self.actions.into_data().into_selected() else {
+            let Some(action) = self.actions.into_selected() else {
                 // Possible if the action list is empty
                 return;
             };
@@ -80,7 +81,11 @@ impl Modal for ActionsModal {
     }
 }
 
-impl EventHandler for ActionsModal {
+impl Component for ActionsModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -89,14 +94,14 @@ impl EventHandler for ActionsModal {
                 // as a shortcut. If there are multiple menu actions bound to
                 // the same shortcut, we'll just take the first.
                 let bound_index =
-                    self.actions.data().items().position(|menu_action| {
+                    self.actions.items().position(|menu_action| {
                         menu_action.shortcut == Some(action)
                     });
                 if let Some(index) = bound_index {
                     // We need ownership of the menu action to emit it, so defer
                     // into the on_close handler. Selecting the item is how we
                     // know which one to submit
-                    self.actions.data_mut().select_index(index);
+                    self.actions.select_index(index);
                     self.close(true);
                 } else {
                     propagate.set();
@@ -109,16 +114,16 @@ impl EventHandler for ActionsModal {
             })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.actions.to_child_mut()]
     }
 }
 
 impl Draw for ActionsModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.actions.draw(
             frame,
-            List::from(self.actions.data()),
+            List::from(&self.actions),
             metadata.area(),
             true,
         );
@@ -211,12 +216,17 @@ mod tests {
     use terminput::KeyCode;
 
     /// A component that provides some actions
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     struct Actionable {
+        id: ComponentId,
         emitter: Emitter<TestMenuAction>,
     }
 
-    impl EventHandler for Actionable {
+    impl Component for Actionable {
+        fn id(&self) -> ComponentId {
+            self.id
+        }
+
         fn menu_actions(&self) -> Vec<MenuAction> {
             let emitter = self.emitter;
             vec![
@@ -233,7 +243,7 @@ mod tests {
     }
 
     impl Draw for Actionable {
-        fn draw(&self, _: &mut Frame, (): (), _: DrawMetadata) {}
+        fn draw_impl(&self, _: &mut Frame, (): (), _: DrawMetadata) {}
     }
 
     impl ToEmitter<TestMenuAction> for Actionable {

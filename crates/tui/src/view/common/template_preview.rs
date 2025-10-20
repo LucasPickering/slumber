@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    view::{ViewContext, draw::Generate, state::Identified, util::highlight},
+    view::{Generate, ViewContext, state::Identified, util::highlight},
 };
 use ratatui::{
     buffer::Buffer,

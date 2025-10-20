@@ -1,17 +1,19 @@
 use crate::{
     context::TuiContext,
     view::{
-        Component, ViewContext,
+        Component, Generate, ViewContext,
         common::{
             Pane,
             actions::MenuAction,
             list::List,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
-        component::recipe_pane::RecipeMenuAction,
+        component::{
+            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+            recipe_pane::RecipeMenuAction,
+        },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedLazy},
     },
@@ -42,6 +44,7 @@ use std::collections::HashSet;
 /// implementation.
 #[derive(Debug)]
 pub struct RecipeListPane {
+    id: ComponentId,
     /// Emitter for events that the parent will consume
     emitter: Emitter<RecipeListPaneEvent>,
     /// Emitter for menu actions, to be handled by our parent
@@ -49,9 +52,7 @@ pub struct RecipeListPane {
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
-    select: Component<
-        PersistedLazy<SelectedRecipeKey, SelectState<RecipeListItem>>,
-    >,
+    select: PersistedLazy<SelectedRecipeKey, SelectState<RecipeListItem>>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     ///
@@ -61,7 +62,7 @@ pub struct RecipeListPane {
     /// adds the folder back. Not worth working around.
     collapsed: Persisted<CollapsedKey>,
 
-    filter: Component<TextBox>,
+    filter: TextBox,
     filter_focused: bool,
 }
 
@@ -80,11 +81,12 @@ impl RecipeListPane {
         let filter =
             TextBox::default().placeholder(format!("{binding} to filter"));
         Self {
+            id: ComponentId::default(),
             emitter: Default::default(),
             actions_emitter: Default::default(),
-            select: select.into(),
+            select,
             collapsed,
-            filter: filter.into(),
+            filter,
             filter_focused: false,
         }
     }
@@ -92,17 +94,13 @@ impl RecipeListPane {
     /// ID and kind of whatever recipe/folder in the list is selected. `None`
     /// iff the list is empty
     pub fn selected_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
-        self.select
-            .data()
-            .selected()
-            .map(|node| (&node.id, node.kind))
+        self.select.selected().map(|node| (&node.id, node.kind))
     }
 
     /// Get the ID of the selected recipe, if a node is selected and it's a
     /// recipe
     fn selected_recipe_id(&self) -> Option<&RecipeId> {
         self.select
-            .data()
             .selected()
             .filter(|node| node.is_recipe())
             .map(|node| &node.id)
@@ -112,11 +110,7 @@ impl RecipeListPane {
     /// If a folder is not selected, do nothing. Returns whether a change was
     /// made.
     fn set_selected_collapsed(&mut self, state: CollapseState) -> bool {
-        let folder = self
-            .select
-            .data()
-            .selected()
-            .filter(|node| node.is_folder());
+        let folder = self.select.selected().filter(|node| node.is_folder());
         let changed = if let Some(folder) = folder {
             let collapsed = &mut self.collapsed;
             match state {
@@ -149,19 +143,22 @@ impl RecipeListPane {
     fn rebuild_select_state(&mut self) {
         let mut new_select_state = self.collapsed.build_select_state(
             &ViewContext::collection().recipes,
-            &self.filter.data().text().trim().to_lowercase(),
+            &self.filter.text().trim().to_lowercase(),
         );
 
         // Carry over the selection
-        let select = self.select.data_mut();
-        if let Some(selected) = select.selected() {
+        if let Some(selected) = self.select.selected() {
             new_select_state.select(selected.id());
         }
-        *select.get_mut() = new_select_state;
+        *self.select.get_mut() = new_select_state;
     }
 }
 
-impl EventHandler for RecipeListPane {
+impl Component for RecipeListPane {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -212,7 +209,7 @@ impl EventHandler for RecipeListPane {
         )
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         // Filter gets priority if enabled, but users should still be able to
         // navigate the list while filtering
         vec![self.filter.to_child_mut(), self.select.to_child_mut()]
@@ -220,7 +217,7 @@ impl EventHandler for RecipeListPane {
 }
 
 impl Draw for RecipeListPane {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let context = TuiContext::get();
 
         let title = context
@@ -238,12 +235,8 @@ impl Draw for RecipeListPane {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(area);
 
-        self.select.draw(
-            frame,
-            List::from(&**self.select.data()),
-            select_area,
-            true,
-        );
+        self.select
+            .draw(frame, List::from(&*self.select), select_area, true);
 
         self.filter.draw(
             frame,
@@ -471,7 +464,7 @@ mod tests {
 
         // Enter filter
         component.int().send_key(KeyCode::Char('/')).assert_empty();
-        assert!(component.data().filter_focused);
+        assert!(component.filter_focused);
 
         // Find something. Match should be caseless. Should trigger an event to
         // load the latest request
@@ -479,7 +472,7 @@ mod tests {
             component.int().send_text("2").events(),
             &[Event::HttpSelectRequest(None)]
         );
-        let select = component.data().select.data();
+        let select = &component.select;
         assert_eq!(
             select
                 .items()
@@ -495,7 +488,7 @@ mod tests {
 
         // Exit filter
         component.int().send_key(KeyCode::Esc).assert_empty();
-        assert!(!component.data().filter_focused);
+        assert!(!component.filter_focused);
     }
 
     #[fixture]

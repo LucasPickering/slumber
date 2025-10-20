@@ -2,10 +2,11 @@ use crate::{
     context::TuiContext,
     util,
     view::{
-        UpdateContext, ViewContext,
-        component::help::HelpFooter,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, OptionEvent},
+        Generate, UpdateContext, ViewContext,
+        component::{
+            Component, ComponentId, Draw, DrawMetadata, help::HelpFooter,
+        },
+        event::{Event, OptionEvent},
         state::Notification,
     },
 };
@@ -22,10 +23,15 @@ use tokio::time;
 /// Component at the bottom
 #[derive(Debug, Default)]
 pub struct Footer {
+    id: ComponentId,
     notification: Option<Notification>,
 }
 
-impl EventHandler for Footer {
+impl Component for Footer {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().any(|event| match event {
             Event::Notify(notification) => {
@@ -56,7 +62,7 @@ impl EventHandler for Footer {
 }
 
 impl Draw for Footer {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // If a notification is present, it gets the entire footer.
         // Notifications are auto-cleared so it's ok to hide other stuff
         // temporarily

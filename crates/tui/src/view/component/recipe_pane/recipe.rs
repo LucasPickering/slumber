@@ -1,15 +1,17 @@
 use crate::view::{
     Component,
     common::tabs::Tabs,
-    component::recipe_pane::{
-        authentication::AuthenticationDisplay,
-        body::RecipeBodyDisplay,
-        persistence::RecipeOverrideKey,
-        table::{RecipeFieldTable, RecipeFieldTableProps},
-        url::UrlDisplay,
+    component::{
+        ComponentExt, ComponentId, Draw, DrawMetadata,
+        internal::{Child, ToChild},
+        recipe_pane::{
+            authentication::AuthenticationDisplay,
+            body::RecipeBodyDisplay,
+            persistence::RecipeOverrideKey,
+            table::{RecipeFieldTable, RecipeFieldTableProps},
+            url::UrlDisplay,
+        },
     },
-    draw::{Draw, DrawMetadata},
-    event::{Child, EventHandler},
     state::fixed_select::FixedSelectState,
     util::persistence::PersistedLazy,
 };
@@ -28,13 +30,14 @@ use strum::{EnumCount, EnumIter};
 /// recreated every time the recipe/profile changes.
 #[derive(Debug)]
 pub struct RecipeDisplay {
-    tabs: Component<PersistedLazy<RecipeTabKey, Tabs<Tab>>>,
+    id: ComponentId,
+    tabs: PersistedLazy<RecipeTabKey, Tabs<Tab>>,
     method: HttpMethod,
-    url: Component<UrlDisplay>,
-    query: Component<RecipeFieldTable<QueryRowKey, QueryRowToggleKey>>,
-    headers: Component<RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>>,
-    body: Component<Option<RecipeBodyDisplay>>,
-    authentication: Component<Option<AuthenticationDisplay>>,
+    url: UrlDisplay,
+    query: RecipeFieldTable<QueryRowKey, QueryRowToggleKey>,
+    headers: RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>,
+    body: Option<RecipeBodyDisplay>,
+    authentication: Option<AuthenticationDisplay>,
 }
 
 impl RecipeDisplay {
@@ -58,9 +61,10 @@ impl RecipeDisplay {
         );
 
         Self {
-            tabs: tabs.into(),
+            id: ComponentId::default(),
+            tabs,
             method: recipe.method,
-            url: UrlDisplay::new(recipe.id.clone(), recipe.url.clone()).into(),
+            url: UrlDisplay::new(recipe.id.clone(), recipe.url.clone()),
             query: RecipeFieldTable::new(
                 "Parameter",
                 QueryRowKey(recipe.id.clone()),
@@ -81,8 +85,7 @@ impl RecipeDisplay {
                     },
                 ),
                 false,
-            )
-            .into(),
+            ),
             headers: RecipeFieldTable::new(
                 "Header",
                 HeaderRowKey(recipe.id.clone()),
@@ -100,76 +103,77 @@ impl RecipeDisplay {
                     },
                 ),
                 false,
-            )
-            .into(),
+            ),
             body: recipe
                 .body
                 .as_ref()
-                .map(|body| RecipeBodyDisplay::new(body, recipe))
-                .into(),
+                .map(|body| RecipeBodyDisplay::new(body, recipe)),
             // Map authentication type
-            authentication: recipe
-                .authentication
-                .as_ref()
-                .map(|authentication| {
+            authentication: recipe.authentication.as_ref().map(
+                |authentication| {
                     AuthenticationDisplay::new(
                         recipe.id.clone(),
                         authentication.clone(),
                     )
-                })
-                .into(),
+                },
+            ),
         }
     }
 
     /// Generate a [BuildOptions] instance based on current UI state
     pub fn build_options(&self) -> BuildOptions {
-        let url = self.url.data().override_value();
-        let authentication = self.authentication.data().as_ref().and_then(
+        let url = self.url.override_value();
+        let authentication = self.authentication.as_ref().and_then(
             super::authentication::AuthenticationDisplay::override_value,
         );
         let form_fields = self
             .body
-            .data()
             .as_ref()
             .and_then(|body| match body {
                 RecipeBodyDisplay::Raw(_) | RecipeBodyDisplay::Json(_) => None,
                 RecipeBodyDisplay::Form(form) => {
-                    Some(form.data().to_build_overrides())
+                    Some(form.to_build_overrides())
                 }
             })
             .unwrap_or_default();
         let body = self
             .body
-            .data()
             .as_ref()
             .and_then(super::body::RecipeBodyDisplay::override_value);
 
         BuildOptions {
             url,
             authentication,
-            headers: self.headers.data().to_build_overrides(),
-            query_parameters: self.query.data().to_build_overrides(),
+            headers: self.headers.to_build_overrides(),
+            query_parameters: self.query.to_build_overrides(),
             form_fields,
             body,
         }
     }
 }
 
-impl EventHandler for RecipeDisplay {
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        vec![
-            self.tabs.to_child_mut(),
-            self.url.to_child_mut(),
-            self.body.to_child_mut(),
-            self.query.to_child_mut(),
-            self.headers.to_child_mut(),
-            self.authentication.to_child_mut(),
+impl Component for RecipeDisplay {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        [
+            Some(self.tabs.to_child_mut()),
+            Some(self.url.to_child_mut()),
+            self.body.as_mut().map(ToChild::to_child_mut),
+            Some(self.query.to_child_mut()),
+            Some(self.headers.to_child_mut()),
+            self.authentication.as_mut().map(ToChild::to_child_mut),
         ]
+        .into_iter()
+        .flatten() // Remove None
+        .collect()
     }
 }
 
 impl Draw for RecipeDisplay {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Render request contents
         let method = self.method.to_string();
 
@@ -188,15 +192,19 @@ impl Draw for RecipeDisplay {
 
         // First line: Method + URL
         frame.render_widget(Paragraph::new(method), method_area);
-        frame.render_widget(self.url.data().preview(), url_area);
+        frame.render_widget(self.url.preview(), url_area);
 
         // Navigation tabs
         self.tabs.draw(frame, (), tabs_area, true);
 
         // Recipe content
-        match self.tabs.data().selected() {
+        match self.tabs.selected() {
             Tab::Url => self.url.draw(frame, (), content_area, true),
-            Tab::Body => self.body.draw_opt(frame, (), content_area, true),
+            Tab::Body => {
+                if let Some(body) = &self.body {
+                    body.draw(frame, (), content_area, true);
+                }
+            }
             Tab::Query => self.query.draw(
                 frame,
                 RecipeFieldTableProps {
@@ -216,7 +224,9 @@ impl Draw for RecipeDisplay {
                 true,
             ),
             Tab::Authentication => {
-                self.authentication.draw_opt(frame, (), content_area, true);
+                if let Some(authentication) = &self.authentication {
+                    authentication.draw(frame, (), content_area, true);
+                }
             }
         }
     }

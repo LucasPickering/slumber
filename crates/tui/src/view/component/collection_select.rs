@@ -1,16 +1,18 @@
-use super::Component;
 use crate::{
     message::Message,
     util::ResultReported,
     view::{
-        UpdateContext, ViewContext,
+        ToStringGenerate, UpdateContext, ViewContext,
         common::{
             list::List,
             modal::Modal,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
-        draw::{Draw, DrawMetadata, ToStringGenerate},
-        event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
+        component::{
+            Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            ToChild,
+        },
+        event::{Event, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
@@ -27,16 +29,18 @@ use std::path::PathBuf;
 /// different one
 #[derive(Debug)]
 pub struct CollectionSelect {
-    select: Component<SelectState<CollectionSelectItem>>,
+    id: ComponentId,
+    select: SelectState<CollectionSelectItem>,
     /// Text box to filter contents. Always in focus
-    filter: Component<TextBox>,
+    filter: TextBox,
 }
 
 impl CollectionSelect {
     pub fn new() -> Self {
         Self {
-            select: build_select_state("").into(),
-            filter: TextBox::default().into(),
+            id: ComponentId::default(),
+            select: build_select_state(""),
+            filter: TextBox::default(),
         }
     }
 }
@@ -48,20 +52,23 @@ impl Modal for CollectionSelect {
 
     fn dimensions(&self) -> (Constraint, Constraint) {
         let footer_height = 1;
-        let height =
-            u16::min(self.select.data().len() as u16 + footer_height, 10);
+        let height = u16::min(self.select.len() as u16 + footer_height, 10);
         (Constraint::Percentage(60), Constraint::Length(height))
     }
 }
 
-impl EventHandler for CollectionSelect {
+impl Component for CollectionSelect {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
             .emitted(self.select.to_emitter(), |event| {
                 // The ol' Tennessee Switcharoo
                 if let SelectStateEvent::Submit(index) = event {
-                    let item = &self.select.data()[index];
+                    let item = &self.select[index];
                     self.close(true);
                     ViewContext::send_message(Message::CollectionSelect(
                         item.path.clone(),
@@ -71,31 +78,26 @@ impl EventHandler for CollectionSelect {
             .emitted(self.filter.to_emitter(), |event| match event {
                 TextBoxEvent::Change => {
                     // Rebuild the list with the filter applied
-                    *self.select.data_mut() =
-                        build_select_state(self.filter.data().text());
+                    self.select = build_select_state(self.filter.text());
                 }
                 TextBoxEvent::Cancel => self.close(false),
                 TextBoxEvent::Focus | TextBoxEvent::Submit => {}
             })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         // Select gets priority because it handles submission
         vec![self.select.to_child_mut(), self.filter.to_child_mut()]
     }
 }
 
 impl Draw for CollectionSelect {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
-        self.select.draw(
-            frame,
-            List::from(self.select.data()),
-            select_area,
-            true,
-        );
+        self.select
+            .draw(frame, List::from(&self.select), select_area, true);
         self.filter
             .draw(frame, TextBoxProps::default(), filter_area, true);
     }

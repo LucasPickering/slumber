@@ -14,7 +14,9 @@ mod request_view;
 mod response_view;
 mod root;
 
-pub use internal::Component;
+pub use internal::{
+    Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+};
 pub use root::{Root, RootProps};
 // Exported for the view context
 pub use recipe_pane::RecipeOverrideStore;

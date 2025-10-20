@@ -4,17 +4,19 @@
 use crate::{
     util::ResultReported,
     view::{
-        Confirm, ModalPriority, ViewContext,
+        Confirm, Generate, ModalPriority, ViewContext,
         common::{
             button::ButtonGroup,
             list::List,
             modal::{IntoModal, Modal},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
-        component::Component,
+        component::{
+            Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            internal::{Child, ToChild},
+        },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Event, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
@@ -37,7 +39,10 @@ use strum::{EnumCount, EnumIter};
 /// Modal to display an error. Typically the error is [anyhow::Error], but it
 /// could also be wrapped in a smart pointer.
 #[derive(Debug)]
-pub struct ErrorModal(anyhow::Error);
+pub struct ErrorModal {
+    id: ComponentId,
+    error: anyhow::Error,
+}
 
 impl Modal for ErrorModal {
     fn priority(&self) -> ModalPriority {
@@ -53,11 +58,15 @@ impl Modal for ErrorModal {
     }
 }
 
-impl EventHandler for ErrorModal {}
+impl Component for ErrorModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+}
 
 impl Draw for ErrorModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        frame.render_widget(self.0.generate(), metadata.area());
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+        frame.render_widget(self.error.generate(), metadata.area());
     }
 }
 
@@ -65,7 +74,10 @@ impl IntoModal for anyhow::Error {
     type Target = ErrorModal;
 
     fn into_modal(self) -> Self::Target {
-        ErrorModal(self)
+        ErrorModal {
+            id: ComponentId::default(),
+            error: self,
+        }
     }
 }
 
@@ -73,10 +85,11 @@ impl IntoModal for anyhow::Error {
 /// submit it, or cancel.
 #[derive(derive_more::Debug)]
 pub struct TextBoxModal {
+    id: ComponentId,
     /// Modal title, from the prompt message
     title: String,
     /// Little editor fucker
-    text_box: Component<TextBox>,
+    text_box: TextBox,
     #[debug(skip)]
     on_submit: Box<dyn 'static + FnOnce(String)>,
 }
@@ -92,8 +105,9 @@ impl TextBoxModal {
         on_submit: impl 'static + FnOnce(String),
     ) -> Self {
         Self {
+            id: ComponentId::default(),
             title,
-            text_box: text_box.into(),
+            text_box,
             on_submit: Box::new(on_submit),
         }
     }
@@ -111,12 +125,16 @@ impl Modal for TextBoxModal {
     fn on_close(self: Box<Self>, submitted: bool) {
         if submitted {
             // Return the user's value and close the prompt
-            (self.on_submit)(self.text_box.into_data().into_text());
+            (self.on_submit)(self.text_box.into_text());
         }
     }
 }
 
-impl EventHandler for TextBoxModal {
+impl Component for TextBoxModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -134,13 +152,13 @@ impl EventHandler for TextBoxModal {
             })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.text_box.to_child_mut()]
     }
 }
 
 impl Draw for TextBoxModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.text_box.draw(
             frame,
             TextBoxProps::default(),
@@ -169,10 +187,11 @@ impl IntoModal for Prompt {
 /// The user will select one of the options and submit it, or cancel.
 #[derive(derive_more::Debug)]
 pub struct SelectListModal {
+    id: ComponentId,
     /// Modal title, from the select message
     title: String,
     /// List of options to present to the user
-    options: Component<SelectState<SelectOption>>,
+    options: SelectState<SelectOption>,
     #[debug(skip)]
     on_submit: Box<dyn 'static + FnOnce(Value)>,
 }
@@ -185,11 +204,11 @@ impl SelectListModal {
         on_submit: impl 'static + FnOnce(Value),
     ) -> Self {
         Self {
+            id: ComponentId::default(),
             title,
             options: SelectState::builder(options)
                 .subscribe([SelectStateEventType::Submit])
-                .build()
-                .into(),
+                .build(),
             on_submit: Box::new(on_submit),
         }
     }
@@ -203,8 +222,8 @@ impl Modal for SelectListModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         // Do some simple math to size the select modal correctly to our
         // underlying data
-        let options = self.options.data();
-        let longest_option = options
+        let longest_option = self
+            .options
             .items()
             .map(|option| option.label.len())
             .max()
@@ -213,7 +232,7 @@ impl Modal for SelectListModal {
         let width = std::cmp::max(self.title.len(), longest_option);
         (
             Constraint::Length(width as u16),
-            Constraint::Length(options.len().min(20) as u16),
+            Constraint::Length(self.options.len().min(20) as u16),
         )
     }
 
@@ -225,7 +244,6 @@ impl Modal for SelectListModal {
             // if the select list is empty
             let selected = self
                 .options
-                .into_data()
                 .into_selected()
                 .map(|option| option.value)
                 .unwrap_or_default();
@@ -234,7 +252,11 @@ impl Modal for SelectListModal {
     }
 }
 
-impl EventHandler for SelectListModal {
+impl Component for SelectListModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().emitted(self.options.to_emitter(), |event| {
             if let SelectStateEvent::Submit(_) = event {
@@ -243,15 +265,15 @@ impl EventHandler for SelectListModal {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.options.to_child_mut()]
     }
 }
 
 impl Draw for SelectListModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Empty state
-        let options = self.options.data();
+        let options = &self.options;
         if options.is_empty() {
             frame.render_widget(
                 Text::from(vec!["No options defined!".into()]),
@@ -304,9 +326,10 @@ pub enum ConfirmButton {
 /// Inner state for the prompt modal
 #[derive(derive_more::Debug)]
 pub struct ConfirmModal {
+    id: ComponentId,
     /// Modal title, from the prompt message
     title: String,
-    buttons: Component<ButtonGroup<ConfirmButton>>,
+    buttons: ButtonGroup<ConfirmButton>,
     /// Store which answer was selected during submission. Answering no is
     /// semantically different from not answering, so we can't just check the
     /// `submitted` flag in `on_close`
@@ -320,6 +343,7 @@ impl ConfirmModal {
 
     pub fn new(title: String, on_submit: impl 'static + FnOnce(bool)) -> Self {
         Self {
+            id: ComponentId::default(),
             title,
             buttons: Default::default(),
             on_submit: Box::new(on_submit),
@@ -350,7 +374,11 @@ impl Modal for ConfirmModal {
     }
 }
 
-impl EventHandler for ConfirmModal {
+impl Component for ConfirmModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().emitted(self.buttons.to_emitter(), |button| {
             // When user selects a button, send the response and close
@@ -361,13 +389,13 @@ impl EventHandler for ConfirmModal {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.buttons.to_child_mut()]
     }
 }
 
 impl Draw for ConfirmModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.buttons.draw(frame, (), metadata.area(), true);
     }
 }
@@ -385,20 +413,39 @@ impl IntoModal for Confirm {
 /// Confirmation modal to delete a single request
 #[derive(Debug)]
 pub struct DeleteRequestModal {
+    id: ComponentId,
     request_id: RequestId,
-    buttons: Component<ButtonGroup<ConfirmButton>>,
+    buttons: ButtonGroup<ConfirmButton>,
 }
 
 impl DeleteRequestModal {
     pub fn new(request_id: RequestId) -> Self {
         Self {
+            id: ComponentId::default(),
             request_id,
             buttons: Default::default(),
         }
     }
 }
 
-impl EventHandler for DeleteRequestModal {
+impl Modal for DeleteRequestModal {
+    fn title(&self) -> Line<'_> {
+        "Delete Request?".into()
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (
+            Constraint::Length(ConfirmModal::MIN_WIDTH),
+            Constraint::Length(1),
+        )
+    }
+}
+
+impl Component for DeleteRequestModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(
         &mut self,
         context: &mut UpdateContext,
@@ -417,26 +464,13 @@ impl EventHandler for DeleteRequestModal {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.buttons.to_child_mut()]
     }
 }
 
-impl Modal for DeleteRequestModal {
-    fn title(&self) -> Line<'_> {
-        "Delete Request?".into()
-    }
-
-    fn dimensions(&self) -> (Constraint, Constraint) {
-        (
-            Constraint::Length(ConfirmModal::MIN_WIDTH),
-            Constraint::Length(1),
-        )
-    }
-}
-
 impl Draw for DeleteRequestModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.buttons.draw(frame, (), metadata.area(), true);
     }
 }
@@ -444,16 +478,18 @@ impl Draw for DeleteRequestModal {
 /// Confirmation modal to delete all requests for a recipe
 #[derive(Debug)]
 pub struct DeleteRecipeRequestsModal {
+    id: ComponentId,
     /// Currently selected profile. May be used for the profile filter,
     /// depending on what the user selects
     profile_id: Option<ProfileId>,
     recipe_id: RecipeId,
-    buttons: Component<ButtonGroup<DeleteRecipeRequestsButton>>,
+    buttons: ButtonGroup<DeleteRecipeRequestsButton>,
 }
 
 impl DeleteRecipeRequestsModal {
     pub fn new(profile_id: Option<ProfileId>, recipe_id: RecipeId) -> Self {
         Self {
+            id: ComponentId::default(),
             profile_id,
             recipe_id,
             buttons: Default::default(),
@@ -461,7 +497,11 @@ impl DeleteRecipeRequestsModal {
     }
 }
 
-impl EventHandler for DeleteRecipeRequestsModal {
+impl Component for DeleteRecipeRequestsModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(
         &mut self,
         context: &mut UpdateContext,
@@ -487,7 +527,7 @@ impl EventHandler for DeleteRecipeRequestsModal {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.buttons.to_child_mut()]
     }
 }
@@ -509,7 +549,7 @@ impl Modal for DeleteRecipeRequestsModal {
 }
 
 impl Draw for DeleteRecipeRequestsModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.buttons.draw(frame, (), metadata.area(), true);
     }
 }

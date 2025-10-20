@@ -16,7 +16,7 @@ pub mod text_window;
 use crate::{
     context::TuiContext,
     view::{
-        draw::Generate,
+        Generate,
         util::{format_duration, format_time},
     },
 };

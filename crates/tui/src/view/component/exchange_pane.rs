@@ -2,17 +2,17 @@ use crate::{
     context::TuiContext,
     http::{RequestMetadata, ResponseMetadata},
     view::{
-        RequestState,
+        Generate, RequestState,
         common::{Pane, actions::MenuAction, modal::Modal, tabs::Tabs},
         component::{
-            Component,
+            Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            internal::{Child, ToChild},
             misc::DeleteRequestModal,
             request_view::RequestView,
             response_view::{ResponseBodyView, ResponseHeadersView},
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
         util::{format_byte_size, persistence::PersistedLazy},
     },
 };
@@ -36,6 +36,7 @@ use strum::{EnumCount, EnumIter};
 /// new request is selected.
 #[derive(Debug, Default)]
 pub struct ExchangePane {
+    id: ComponentId,
     emitter: Emitter<ExchangePaneEvent>,
     state: State,
 }
@@ -46,13 +47,18 @@ impl ExchangePane {
         selected_recipe_kind: Option<RecipeNodeType>,
     ) -> Self {
         Self {
+            id: Default::default(),
             emitter: Default::default(),
             state: State::new(selected_request, selected_recipe_kind),
         }
     }
 }
 
-impl EventHandler for ExchangePane {
+impl Component for ExchangePane {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             Action::LeftClick => self.emitter.emit(ExchangePaneEvent::Click),
@@ -60,7 +66,7 @@ impl EventHandler for ExchangePane {
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         match &mut self.state {
             State::None | State::Folder | State::NoHistory => {
                 vec![]
@@ -73,7 +79,7 @@ impl EventHandler for ExchangePane {
 }
 
 impl Draw for ExchangePane {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let input_engine = &TuiContext::get().input_engine;
         let title =
             input_engine.add_hint("Request / Response", Action::SelectResponse);
@@ -144,8 +150,8 @@ enum State {
     NoHistory,
     /// We have a real bonafide request state available
     Content {
-        metadata: Component<ExchangePaneMetadata>,
-        content: Component<ExchangePaneContent>,
+        metadata: ExchangePaneMetadata,
+        content: ExchangePaneContent,
     },
 }
 
@@ -161,11 +167,11 @@ impl State {
             (Some(request_state), Some(RecipeNodeType::Recipe)) => {
                 Self::Content {
                     metadata: ExchangePaneMetadata {
+                        id: ComponentId::default(),
                         request: request_state.request_metadata(),
                         response: request_state.response_metadata(),
-                    }
-                    .into(),
-                    content: ExchangePaneContent::new(request_state).into(),
+                    },
+                    content: ExchangePaneContent::new(request_state),
                 }
             }
         }
@@ -175,12 +181,19 @@ impl State {
 /// Top bar of the exchange pane, above the tabs
 #[derive(Debug)]
 struct ExchangePaneMetadata {
+    id: ComponentId,
     request: RequestMetadata,
     response: Option<ResponseMetadata>,
 }
 
+impl Component for ExchangePaneMetadata {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+}
+
 impl Draw for ExchangePaneMetadata {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let tui_context = TuiContext::get();
         let config = &tui_context.config;
         let styles = &tui_context.styles;
@@ -247,8 +260,9 @@ enum Tab {
 /// Content under the tab bar. Only rendered when a request state is present
 #[derive(Debug)]
 struct ExchangePaneContent {
+    id: ComponentId,
     actions_emitter: Emitter<ExchangePaneMenuAction>,
-    tabs: Component<PersistedLazy<ExchangeTabKey, Tabs<Tab>>>,
+    tabs: PersistedLazy<ExchangeTabKey, Tabs<Tab>>,
     state: ExchangePaneContentState,
 }
 
@@ -263,7 +277,7 @@ impl ExchangePaneContent {
             }
             RequestState::Loading { request, .. } => {
                 ExchangePaneContentState::Loading {
-                    request: RequestView::new(Arc::clone(request)).into(),
+                    request: RequestView::new(Arc::clone(request)),
                 }
             }
             RequestState::Cancelled { .. } => {
@@ -271,28 +285,25 @@ impl ExchangePaneContent {
             }
             RequestState::Response { exchange } => {
                 ExchangePaneContentState::Response {
-                    request: RequestView::new(Arc::clone(&exchange.request))
-                        .into(),
+                    request: RequestView::new(Arc::clone(&exchange.request)),
                     response_headers: ResponseHeadersView::new(Arc::clone(
                         &exchange.response,
-                    ))
-                    .into(),
+                    )),
                     response_body: ResponseBodyView::new(
                         exchange.request.recipe_id.clone(),
                         Arc::clone(&exchange.response),
-                    )
-                    .into(),
+                    ),
                 }
             }
             RequestState::RequestError { error } => {
                 ExchangePaneContentState::RequestError {
-                    request: RequestView::new(Arc::clone(&error.request))
-                        .into(),
+                    request: RequestView::new(Arc::clone(&error.request)),
                     error: (error as &dyn Error).generate(),
                 }
             }
         };
         Self {
+            id: ComponentId::default(),
             actions_emitter: Default::default(),
             tabs: Default::default(),
             state,
@@ -300,7 +311,11 @@ impl ExchangePaneContent {
     }
 }
 
-impl EventHandler for ExchangePaneContent {
+impl Component for ExchangePaneContent {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -372,7 +387,7 @@ impl EventHandler for ExchangePaneContent {
             | ExchangePaneContentState::RequestError { .. } => false,
             ExchangePaneContentState::Response { .. } => true,
         };
-        let selected_tab = self.tabs.data().selected();
+        let selected_tab = self.tabs.selected();
 
         vec![
             emitter
@@ -419,7 +434,7 @@ impl EventHandler for ExchangePaneContent {
         ]
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         match &mut self.state {
             // Tabs last so the children get priority
             ExchangePaneContentState::Building
@@ -448,7 +463,7 @@ impl EventHandler for ExchangePaneContent {
 }
 
 impl Draw for ExchangePaneContent {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let [tabs_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
@@ -461,7 +476,7 @@ impl Draw for ExchangePaneContent {
                 frame.render_widget(error, content_area);
             }
             ExchangePaneContentState::Loading { request } => {
-                match self.tabs.data().selected() {
+                match self.tabs.selected() {
                     Tab::Request => request.draw(frame, (), content_area, true),
                     Tab::Body | Tab::Headers => {
                         frame.render_widget("Loading...", content_area);
@@ -477,7 +492,7 @@ impl Draw for ExchangePaneContent {
                 request,
                 response_body,
                 response_headers,
-            } => match self.tabs.data().selected() {
+            } => match self.tabs.selected() {
                 Tab::Request => request.draw(frame, (), content_area, true),
                 Tab::Body => response_body.draw(frame, (), content_area, true),
                 Tab::Headers => {
@@ -485,7 +500,7 @@ impl Draw for ExchangePaneContent {
                 }
             },
             ExchangePaneContentState::RequestError { request, error } => {
-                match self.tabs.data().selected() {
+                match self.tabs.selected() {
                     Tab::Request => request.draw(frame, (), content_area, true),
                     Tab::Body | Tab::Headers => {
                         frame.render_widget(error, content_area);
@@ -505,16 +520,16 @@ enum ExchangePaneContentState {
         error: Paragraph<'static>,
     },
     Loading {
-        request: Component<RequestView>,
+        request: RequestView,
     },
     Cancelled,
     Response {
-        request: Component<RequestView>,
-        response_headers: Component<ResponseHeadersView>,
-        response_body: Component<ResponseBodyView>,
+        request: RequestView,
+        response_headers: ResponseHeadersView,
+        response_body: ResponseBodyView,
     },
     RequestError {
-        request: Component<RequestView>,
+        request: RequestView,
         error: Paragraph<'static>,
     },
 }
@@ -525,7 +540,7 @@ impl ExchangePaneContentState {
             Self::Building | Self::BuildError { .. } | Self::Cancelled => None,
             Self::Loading { request }
             | Self::Response { request, .. }
-            | Self::RequestError { request, .. } => Some(request.data()),
+            | Self::RequestError { request, .. } => Some(request),
         }
     }
 
@@ -536,7 +551,7 @@ impl ExchangePaneContentState {
             | Self::Cancelled
             | Self::Loading { .. }
             | Self::RequestError { .. } => None,
-            Self::Response { response_body, .. } => Some(response_body.data()),
+            Self::Response { response_body, .. } => Some(response_body),
         }
     }
 }

@@ -4,13 +4,11 @@
 use crate::{
     util::Flag,
     view::{
-        Component, ViewContext,
+        ViewContext,
         common::{actions::MenuAction, modal::Modal},
-        context::UpdateContext,
         state::Notification,
     },
 };
-use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
 use slumber_config::Action;
 use slumber_core::http::RequestId;
 use std::{
@@ -18,184 +16,10 @@ use std::{
     collections::VecDeque,
     fmt::Debug,
     marker::PhantomData,
-    ops::{Deref, DerefMut},
+    ops::Deref,
 };
 use tracing::{error, trace};
 use uuid::Uuid;
-
-/// A UI element that can handle user/async input. This trait facilitates an
-/// on-demand tree structure, where each element can furnish its list of
-/// children. Events will be propagated bottom-up (i.e. leff-to-root), and each
-/// element has the opportunity to consume the event so it stops bubbling.
-pub trait EventHandler {
-    /// Update the state of *just* this component according to the event.
-    /// Returned outcome indicates whether the event was consumed (`None`), or
-    /// it should be propagated to our parent (`Some`). Use [EventQueue] to
-    /// queue subsequent events, and the given message sender to queue async
-    /// messages.
-    ///
-    /// Generally event matching should be done with [Event::opt] and the
-    /// matching methods defined by [OptionEvent].
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        Some(event)
-    }
-
-    /// Provide a list of actions that are accessible from the actions menu.
-    /// This list may be static (e.g. determined from an enum) or dynamic. When
-    /// the user opens the actions menu, all available actions for all
-    /// **focused** components will be collected and show in the menu. If an
-    /// action is selected, an event will be emitted with that action value.
-    fn menu_actions(&self) -> Vec<MenuAction> {
-        Vec::new()
-    }
-
-    /// Get **all** children of this component. This includes children that are
-    /// not currently visible, and ones that are out of focus, meaning they
-    /// shouldn't receive keyboard events. The event handling infrastructure is
-    /// responsible for filtering out children that shouldn't receive events.
-    ///
-    /// The event handling sequence goes something like:
-    /// - Get list of children
-    /// - Filter out children that aren't visible
-    /// - For keyboard events, filter out children that aren't in focus (mouse
-    ///   events can still be handled by unfocused components)
-    /// - Pass the event to the first child in the list
-    ///     - If it consumes the event, stop
-    ///     - If it propagates, move on to the next child, and so on
-    /// - If none of the children consume the event, go up the tree to the
-    ///   parent and try again.
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        Vec::new()
-    }
-}
-
-/// Enable `Component<Option<T>>` with an empty event handler
-impl<T: EventHandler> EventHandler for Option<T> {
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> Option<Event> {
-        if let Some(inner) = self.as_mut() {
-            inner.update(context, event)
-        } else {
-            Some(event)
-        }
-    }
-
-    fn menu_actions(&self) -> Vec<MenuAction> {
-        if let Some(inner) = &self {
-            inner.menu_actions()
-        } else {
-            Vec::new()
-        }
-    }
-
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        if let Some(inner) = self.as_mut() {
-            inner.children()
-        } else {
-            Vec::new()
-        }
-    }
-}
-
-// We can't do a blanket impl of EventHandler based on DerefMut because of the
-// PersistedLazy's custom ToChild impl, which interferes with the blanket
-// ToChild impl
-
-impl EventHandler for Child<'_> {
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> Option<Event> {
-        self.deref_mut().update(context, event)
-    }
-
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        self.deref_mut().children()
-    }
-}
-
-impl<S, K, C> EventHandler for PersistedLazyRefMut<'_, S, K, C>
-where
-    S: PersistedStore<K>,
-    K: persisted::PersistedKey,
-    K::Value: Debug + PartialEq,
-    C: EventHandler + PersistedContainer<Value = K::Value>,
-{
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> Option<Event> {
-        self.deref_mut().update(context, event)
-    }
-
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        self.deref_mut().children()
-    }
-}
-
-/// A wrapper for a dynamically dispatched [EventHandler]. This is used to
-/// return a collection of event handlers from [EventHandler::children]. Almost
-/// all cases will use the [Borrowed](Self::Borrowed) variant, but
-/// [Owned](Self::Owned) is useful for types that need to wrap the mutable
-/// reference in some type of guard. See [ToChild].
-pub enum Child<'a> {
-    Borrowed(&'a mut dyn EventHandler),
-    Owned(Box<dyn 'a + EventHandler>),
-}
-
-impl<'a> Deref for Child<'a> {
-    type Target = dyn 'a + EventHandler;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Child::Borrowed(inner) => *inner,
-            Child::Owned(inner) => inner.deref(),
-        }
-    }
-}
-
-impl DerefMut for Child<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Child::Borrowed(inner) => *inner,
-            Child::Owned(inner) => inner.deref_mut(),
-        }
-    }
-}
-
-/// Abstraction to convert a component type into [Child], which is a wrapper for
-/// a trait object. For 99% of components the blanket implementation will cover
-/// this. This only needs to be implemented manually for types that need an
-/// extra step to extract mutable data.
-pub trait ToChild {
-    fn to_child_mut(&mut self) -> Child<'_>;
-}
-
-impl<T: EventHandler> ToChild for T {
-    fn to_child_mut(&mut self) -> Child<'_> {
-        Child::Borrowed(self)
-    }
-}
-
-/// A mutable reference to the contents of [persisted::PersistedLazy] must be
-/// wrapped in [PersistedLazyRefMut], which requires us to return an owned child
-/// rather than a borrowed one.
-impl<S, K, C> ToChild for persisted::PersistedLazy<S, K, C>
-where
-    S: PersistedStore<K>,
-    K: persisted::PersistedKey,
-    K::Value: Debug + PartialEq,
-    C: EventHandler + PersistedContainer<Value = K::Value>,
-{
-    fn to_child_mut(&mut self) -> Child<'_> {
-        Child::Owned(Box::new(self.get_mut()))
-    }
-}
 
 /// A queue of view events. Any component within the view can add to this, and
 /// outside the view (e.g. from the main loop) it can be added to via the view.
@@ -225,10 +49,10 @@ impl EventQueue {
 }
 
 /// A trigger for state change in the view. Events are handled by
-/// [EventHandler::update], and each component is responsible for modifying its
-/// own state accordingly. Events can also trigger other events to propagate
-/// state changes, as well as side-effect messages to trigger app-wide changes
-/// (e.g. launch a request).
+/// [Component::update](crate::view::component::Component::update), and
+/// each component is responsible for modifying its own state accordingly.
+/// Events can also trigger other events to propagate state changes, as well as
+/// side-effect messages to trigger app-wide changes (e.g. launch a request).
 ///
 /// This is conceptually different from [crate::Message] in that events are
 /// restricted to the queue and handled in the main thread. Messages can be

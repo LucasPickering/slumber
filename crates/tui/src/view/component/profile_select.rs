@@ -4,7 +4,7 @@ use crate::{
     context::TuiContext,
     util::ResultReported,
     view::{
-        Component, ViewContext,
+        Component, Generate, ViewContext,
         common::{
             Pane,
             list::List,
@@ -12,9 +12,11 @@ use crate::{
             table::Table,
             template_preview::TemplatePreview,
         },
+        component::{
+            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+        },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
         state::{
             StateCell,
             select::{SelectState, SelectStateEvent, SelectStateEventType},
@@ -39,6 +41,7 @@ use slumber_util::doc_link;
 /// profile list modal
 #[derive(Debug)]
 pub struct ProfilePane {
+    id: ComponentId,
     /// Store just the ID of the selected profile. We'll load the full list
     /// from the view context when opening the modal. It's not possible to
     /// share selection state with the modal, because the two values aren't
@@ -78,6 +81,7 @@ impl ProfilePane {
         }
 
         Self {
+            id: Default::default(),
             selected_profile_id,
             modal_handle: ModalHandle::new(),
         }
@@ -94,7 +98,11 @@ impl ProfilePane {
     }
 }
 
-impl EventHandler for ProfilePane {
+impl Component for ProfilePane {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -116,7 +124,7 @@ impl EventHandler for ProfilePane {
 }
 
 impl Draw for ProfilePane {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let title = TuiContext::get()
             .input_engine
             .add_hint("Profile", Action::SelectProfileList);
@@ -148,9 +156,10 @@ impl Draw for ProfilePane {
 /// fields
 #[derive(Debug)]
 struct ProfileListModal {
+    id: ComponentId,
     emitter: Emitter<SelectProfile>,
-    select: Component<SelectState<ProfileListItem>>,
-    detail: Component<ProfileDetail>,
+    select: SelectState<ProfileListItem>,
+    detail: ProfileDetail,
 }
 
 impl ProfileListModal {
@@ -166,8 +175,9 @@ impl ProfileListModal {
             .subscribe([SelectStateEventType::Submit])
             .build();
         Self {
+            id: Default::default(),
             emitter: Default::default(),
-            select: select.into(),
+            select,
             detail: Default::default(),
         }
     }
@@ -183,29 +193,32 @@ impl Modal for ProfileListModal {
     }
 }
 
-impl EventHandler for ProfileListModal {
+impl Component for ProfileListModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().emitted(self.select.to_emitter(), |event| {
             // Loaded request depends on the profile, so refresh on change
             if let SelectStateEvent::Submit(index) = event {
                 // Close modal first so the parent can consume the emitted event
                 self.close(true);
-                let profile_id = self.select.data()[index].id.clone();
+                let profile_id = self.select[index].id.clone();
                 self.emitter.emit(SelectProfile(profile_id));
             }
         })
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.select.to_child_mut()]
     }
 }
 
 impl Draw for ProfileListModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Empty state
-        let select = self.select.data();
-        if select.is_empty() {
+        if self.select.is_empty() {
             frame.render_widget(
                 Text::from(vec![
                     "No profiles defined; add one to your collection.".into(),
@@ -217,14 +230,15 @@ impl Draw for ProfileListModal {
         }
 
         let [list_area, _, detail_area] = Layout::vertical([
-            Constraint::Length(select.len().min(5) as u16),
+            Constraint::Length(self.select.len().min(5) as u16),
             Constraint::Length(1), // Padding
             Constraint::Min(0),
         ])
         .areas(metadata.area());
 
-        self.select.draw(frame, List::from(select), list_area, true);
-        if let Some(profile) = select.selected() {
+        self.select
+            .draw(frame, List::from(&self.select), list_area, true);
+        if let Some(profile) = self.select.selected() {
             self.detail.draw(
                 frame,
                 ProfileDetailProps {
@@ -299,6 +313,7 @@ impl Generate for &ProfileListItem {
 /// Display the contents of a profile
 #[derive(Debug, Default)]
 struct ProfileDetail {
+    id: ComponentId,
     fields: StateCell<ProfileId, Vec<(String, TemplatePreview)>>,
 }
 
@@ -306,8 +321,14 @@ struct ProfileDetailProps<'a> {
     profile_id: &'a ProfileId,
 }
 
+impl Component for ProfileDetail {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+}
+
 impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
-    fn draw(
+    fn draw_impl(
         &self,
         frame: &mut Frame,
         props: ProfileDetailProps<'a>,

@@ -1,14 +1,15 @@
 use crate::{
     context::TuiContext,
     view::{
+        Generate,
         common::{actions::MenuAction, table::Table},
         component::{
-            Component,
+            Component, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+            internal::Child,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent},
+        event::{Emitter, Event, OptionEvent},
         state::fixed_select::FixedSelectState,
     },
 };
@@ -24,6 +25,7 @@ use strum::{EnumCount, EnumIter};
 /// Display authentication settings for a recipe
 #[derive(Debug)]
 pub struct AuthenticationDisplay {
+    id: ComponentId,
     /// Emitter for the callback from editing the authentication field(s)
     override_emitter: Emitter<SaveAuthenticationOverride>,
     /// Emitter for menu actions
@@ -64,6 +66,7 @@ impl AuthenticationDisplay {
             },
         };
         Self {
+            id: ComponentId::default(),
             override_emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             state,
@@ -92,7 +95,11 @@ impl AuthenticationDisplay {
     }
 }
 
-impl EventHandler for AuthenticationDisplay {
+impl Component for AuthenticationDisplay {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -130,7 +137,7 @@ impl EventHandler for AuthenticationDisplay {
         ]
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         match &mut self.state {
             State::Basic { selected_field, .. } => {
                 vec![selected_field.to_child_mut()]
@@ -141,7 +148,7 @@ impl EventHandler for AuthenticationDisplay {
 }
 
 impl Draw for AuthenticationDisplay {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
         let [label_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
@@ -209,7 +216,7 @@ enum State {
         /// equivalent when building the request.
         password: RecipeTemplate,
         /// Track which field is selected, for editability
-        selected_field: Component<FixedSelectState<BasicFields, TableState>>,
+        selected_field: FixedSelectState<BasicFields, TableState>,
     },
     Bearer {
         token: RecipeTemplate,
@@ -235,7 +242,7 @@ impl State {
                 password,
                 selected_field,
                 ..
-            } => match selected_field.data().selected() {
+            } => match selected_field.selected() {
                 BasicFields::Username => ("username", username),
                 BasicFields::Password => ("password", password),
             },
@@ -255,7 +262,7 @@ impl State {
                 username,
                 password,
                 selected_field,
-            } => match selected_field.data().selected() {
+            } => match selected_field.selected() {
                 BasicFields::Username => {
                     username.set_override(template);
                 }
@@ -277,7 +284,7 @@ impl State {
                 username,
                 password,
                 selected_field,
-            } => match selected_field.data().selected() {
+            } => match selected_field.selected() {
                 BasicFields::Username => {
                     username.reset_override();
                 }
@@ -334,7 +341,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
 
         // Edit username
         component
@@ -344,7 +351,7 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(Authentication::Basic {
                 username: "user1!!!".into(),
                 password: Some("hunter2".into())
@@ -353,7 +360,7 @@ mod tests {
 
         // Reset username
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
 
         // Edit password
         component
@@ -363,7 +370,7 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(Authentication::Basic {
                 username: "user1".into(),
                 password: Some("hunter2???".into())
@@ -372,7 +379,7 @@ mod tests {
 
         // Reset password
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
     }
 
     /// Test edit basic username via keybinds
@@ -397,7 +404,7 @@ mod tests {
             .send_keys([KeyCode::Down, KeyCode::Char('e'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(Authentication::Basic {
                 username: "user1".into(),
                 // None gets replaced by empty string. They're functionally
@@ -420,7 +427,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
 
         // Edit token
         component
@@ -430,7 +437,7 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(Authentication::Bearer {
                 token: "i am a token!!!".into()
             })
@@ -438,7 +445,7 @@ mod tests {
 
         // Reset token
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
     }
 
     /// Test edit/reset via menu action
@@ -459,7 +466,7 @@ mod tests {
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(Authentication::Bearer {
                 token: "i am a token!".into()
             })
@@ -469,7 +476,7 @@ mod tests {
             .int()
             .action("Reset Authentication")
             .assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
     }
 
     /// Basic auth fields should load persisted overrides
@@ -495,7 +502,7 @@ mod tests {
         );
 
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(Authentication::Basic {
                 username: "user".into(),
                 password: Some("hunter2".into()),
@@ -522,7 +529,7 @@ mod tests {
         );
 
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(Authentication::Bearer {
                 token: "token".into()
             })

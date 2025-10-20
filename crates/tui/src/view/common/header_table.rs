@@ -1,4 +1,4 @@
-use crate::view::{common::table::Table, draw::Generate};
+use crate::view::{Generate, common::table::Table};
 use itertools::Itertools;
 use ratatui::text::Text;
 use reqwest::header::HeaderMap;

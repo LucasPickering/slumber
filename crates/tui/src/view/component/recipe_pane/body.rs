@@ -7,13 +7,16 @@ use crate::{
             actions::MenuAction,
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
-        component::recipe_pane::{
-            persistence::{RecipeOverrideKey, RecipeTemplate},
-            table::{RecipeFieldTable, RecipeFieldTableProps},
+        component::{
+            ComponentExt, ComponentId, Draw, DrawMetadata,
+            internal::{Child, ToChild},
+            recipe_pane::{
+                persistence::{RecipeOverrideKey, RecipeTemplate},
+                table::{RecipeFieldTable, RecipeFieldTableProps},
+            },
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent},
+        event::{Emitter, Event, OptionEvent},
         util::view_text,
     },
 };
@@ -36,12 +39,12 @@ use tracing::debug;
 #[derive(Debug)]
 pub enum RecipeBodyDisplay {
     /// A raw text body with no known content type
-    Raw(Component<TextBody>),
+    Raw(TextBody),
     /// A body declared with the `json` type. This is presented as text so it
     /// uses the same internal type as `Raw`, but the distinction allows us to
     /// parse and generate an override body correctly
-    Json(Component<TextBody>),
-    Form(Component<RecipeFieldTable<FormRowKey, FormRowToggleKey>>),
+    Json(TextBody),
+    Form(RecipeFieldTable<FormRowKey, FormRowToggleKey>),
 }
 
 impl RecipeBodyDisplay {
@@ -51,7 +54,7 @@ impl RecipeBodyDisplay {
     pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
         match body {
             RecipeBody::Raw(body) | RecipeBody::Stream(body) => {
-                Self::Raw(TextBody::new(body.clone(), recipe).into())
+                Self::Raw(TextBody::new(body.clone(), recipe))
             }
             RecipeBody::Json(json) => {
                 // Stringify all the individual templates in the JSON, pretty
@@ -66,13 +69,13 @@ impl RecipeBodyDisplay {
                 // template string anywhere because the braces all get
                 // whitespace between them.
                 let template = json_string.parse().unwrap();
-                Self::Json(TextBody::new(template, recipe).into())
+                Self::Json(TextBody::new(template, recipe))
             }
             RecipeBody::FormUrlencoded(fields) => {
-                Self::Form(Self::form_table(&recipe.id, fields, false).into())
+                Self::Form(Self::form_table(&recipe.id, fields, false))
             }
             RecipeBody::FormMultipart(fields) => {
-                Self::Form(Self::form_table(&recipe.id, fields, true).into())
+                Self::Form(Self::form_table(&recipe.id, fields, true))
             }
         }
     }
@@ -104,18 +107,12 @@ impl RecipeBodyDisplay {
     /// value. Return `None` to use the recipe's stock body.
     pub fn override_value(&self) -> Option<RecipeBody> {
         match self {
-            RecipeBodyDisplay::Raw(inner)
-                if inner.data().body.is_overridden() =>
-            {
-                let inner = inner.data();
+            RecipeBodyDisplay::Raw(inner) if inner.body.is_overridden() => {
                 Some(RecipeBody::Raw(inner.body.template().clone()))
             }
-            RecipeBodyDisplay::Json(inner)
-                if inner.data().body.is_overridden() =>
-            {
+            RecipeBodyDisplay::Json(inner) if inner.body.is_overridden() => {
                 // Parse the template as JSON. The inner templates within the
                 // JSON strings will be parsed into individual templates
-                let inner = inner.data();
                 let json: JsonTemplate = inner
                     .body
                     .template()
@@ -130,8 +127,16 @@ impl RecipeBodyDisplay {
     }
 }
 
-impl EventHandler for RecipeBodyDisplay {
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+impl Component for RecipeBodyDisplay {
+    fn id(&self) -> ComponentId {
+        match self {
+            RecipeBodyDisplay::Raw(text_body)
+            | RecipeBodyDisplay::Json(text_body) => text_body.id(),
+            RecipeBodyDisplay::Form(table) => table.id(),
+        }
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
         match self {
             Self::Raw(inner) => vec![inner.to_child_mut()],
             Self::Json(inner) => vec![inner.to_child_mut()],
@@ -141,7 +146,7 @@ impl EventHandler for RecipeBodyDisplay {
 }
 
 impl Draw for RecipeBodyDisplay {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         match self {
             RecipeBodyDisplay::Raw(inner) => {
                 inner.draw(frame, (), metadata.area(), true);
@@ -165,6 +170,7 @@ impl Draw for RecipeBodyDisplay {
 /// A body represented and editable as a single block of text
 #[derive(Debug)]
 pub struct TextBody {
+    id: ComponentId,
     /// Emitter for the callback from editing the body
     override_emitter: Emitter<SaveBodyOverride>,
     /// Emitter for menu actions
@@ -173,7 +179,7 @@ pub struct TextBody {
     /// Body MIME type, used for syntax highlighting and pager selection. This
     /// has no impact on content of the rendered body
     mime: Option<Mime>,
-    text_window: Component<TextWindow>,
+    text_window: TextWindow,
 }
 
 impl TextBody {
@@ -181,6 +187,7 @@ impl TextBody {
         let mime = recipe.mime();
         let content_type = mime.as_ref().and_then(ContentType::from_mime);
         Self {
+            id: ComponentId::default(),
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
             body: RecipeTemplate::new(
@@ -190,7 +197,7 @@ impl TextBody {
                 true,
             ),
             mime,
-            text_window: Component::default(),
+            text_window: TextWindow::default(),
         }
     }
 
@@ -254,7 +261,11 @@ impl TextBody {
     }
 }
 
-impl EventHandler for TextBody {
+impl Component for TextBody {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -294,13 +305,13 @@ impl EventHandler for TextBody {
         ]
     }
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+    fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.text_window.to_child_mut()]
     }
 }
 
 impl Draw for TextBody {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
         self.text_window.draw(
             frame,
@@ -387,7 +398,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
         terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Open the editor
@@ -408,7 +419,7 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(RecipeBody::Raw("goodbye!".into()))
         );
         terminal.assert_buffer_lines([vec![
@@ -428,7 +439,7 @@ mod tests {
 
         // Reset edited state
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
     }
 
     /// Test editing a JSON body, which should open a file for the user to edit,
@@ -452,7 +463,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
         terminal.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
@@ -479,7 +490,7 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(RecipeBody::json(json!("goodbye!")).unwrap())
         );
         terminal.assert_buffer_lines([vec![
@@ -500,7 +511,7 @@ mod tests {
 
         // Reset edited state
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
     }
 
     /// Override template should be loaded from the persistence store on init
@@ -525,7 +536,7 @@ mod tests {
         );
 
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some(RecipeBody::Raw("hello!".into()))
         );
         terminal.assert_buffer_lines([vec![

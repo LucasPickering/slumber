@@ -26,6 +26,7 @@ serde_path_to_error = "0.1.16"
 serde_yaml = {workspace = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}
+tracing-subscriber = {workspace = true, optional = true}
 uuid = {workspace = true, features = ["v4"], optional = true}
 winnow = {workspace = true}
 
@@ -34,10 +35,11 @@ env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde = {workspace = true, features = ["derive"]}
+tracing-subscriber = {workspace = true}
 uuid = {workspace = true, features = ["v4"]}
 
 [features]
-test = ["dep:rstest", "dep:uuid"]
+test = ["dep:rstest", "dep:uuid", "dep:tracing-subscriber"]
 
 [lints]
 workspace = true

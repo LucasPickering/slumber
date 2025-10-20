@@ -1,9 +1,11 @@
 use crate::view::{
     UpdateContext,
     common::{actions::MenuAction, template_preview::TemplatePreview},
-    component::recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
-    draw::{Draw, DrawMetadata},
-    event::{Emitter, Event, EventHandler, OptionEvent},
+    component::{
+        Component, ComponentId, Draw, DrawMetadata,
+        recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+    },
+    event::{Emitter, Event, OptionEvent},
 };
 use ratatui::Frame;
 use slumber_config::Action;
@@ -13,6 +15,7 @@ use slumber_template::Template;
 /// URL display with override capabilities
 #[derive(Debug)]
 pub struct UrlDisplay {
+    id: ComponentId,
     /// Emitter for the callback from editing the URL
     override_emitter: Emitter<SaveUrlOverride>,
     /// Emitter for menu actions
@@ -30,6 +33,7 @@ impl UrlDisplay {
             false,
         );
         Self {
+            id: ComponentId::default(),
             override_emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             url,
@@ -59,7 +63,11 @@ impl UrlDisplay {
     }
 }
 
-impl EventHandler for UrlDisplay {
+impl Component for UrlDisplay {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
@@ -92,7 +100,7 @@ impl EventHandler for UrlDisplay {
 }
 
 impl Draw for UrlDisplay {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         frame.render_widget(self.url.preview(), metadata.area());
     }
 }
@@ -139,7 +147,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
 
         // Edit URL
         component
@@ -149,13 +157,13 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some("/users/{{ username }}!!!".into())
         );
 
         // Reset token
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
     }
 
     /// Test edit/reset via menu action
@@ -171,7 +179,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
 
         // Edit URL
         component
@@ -180,13 +188,13 @@ mod tests {
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
+            component.override_value(),
             Some("/users/{{ username }}!".into())
         );
 
         // Edit URL
         component.int().action("Reset URL").assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.override_value(), None);
     }
 
     /// Basic auth fields should load persisted overrides
@@ -203,9 +211,6 @@ mod tests {
             UrlDisplay::new(recipe_id, "default/url".into()),
         );
 
-        assert_eq!(
-            component.data().override_value(),
-            Some("persisted/url".into())
-        );
+        assert_eq!(component.override_value(), Some("persisted/url".into()));
     }
 }

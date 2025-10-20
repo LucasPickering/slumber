@@ -1,10 +1,10 @@
 use crate::{
     context::TuiContext,
     view::{
+        Generate,
         common::{modal::Modal, table::Table},
+        component::{Component, ComponentId, Draw, DrawMetadata},
         context::ViewContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::EventHandler,
     },
 };
 use itertools::Itertools;
@@ -51,7 +51,9 @@ impl Generate for HelpFooter {
 
 /// A whole ass modal for showing key binding help
 #[derive(Debug, Default)]
-pub struct HelpModal;
+pub struct HelpModal {
+    id: ComponentId,
+}
 
 impl HelpModal {
     /// Number of lines in the general section (not including header)
@@ -82,10 +84,14 @@ impl Modal for HelpModal {
     }
 }
 
-impl EventHandler for HelpModal {}
+impl Component for HelpModal {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+}
 
 impl Draw for HelpModal {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Create layout
         let [collection_area, _, keybindings_area] = Layout::vertical([
             Constraint::Length(Self::GENERAL_LENGTH + 1),

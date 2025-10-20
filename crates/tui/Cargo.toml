@@ -23,7 +23,7 @@ itertools = {workspace = true}
 mime = {workspace = true}
 notify = {version = "8.0.0", default-features = false, features = ["macos_kqueue"]}
 notify-debouncer-full = {version = "0.5.0", default-features = false}
-persisted = "1.0.0"
+persisted = "1.0.1"
 ratatui = {version = "0.30.0-alpha.5", default-features = false, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
 reqwest = {workspace = true}
 serde = {workspace = true}

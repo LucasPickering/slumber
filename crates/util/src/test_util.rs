@@ -4,11 +4,15 @@ use std::{
     env,
     error::Error,
     fmt::Debug,
-    fs,
+    fs, io,
     ops::Deref,
     path::{Path, PathBuf},
 };
-use tracing::error;
+use tracing::{error, level_filters::LevelFilter};
+use tracing_subscriber::{
+    Layer, filter::Targets, fmt::format::FmtSpan, layer::SubscriberExt,
+    util::SubscriberInitExt,
+};
 use uuid::Uuid;
 
 /// Test-only trait to build a placeholder instance of a struct. This is similar
@@ -133,6 +137,21 @@ pub fn assert_result<TA, TE, E>(
         }
         Err(expected) => assert_err(result, expected),
     }
+}
+
+/// Enable tracing output. Call this in a test to enable logging
+pub fn initialize_tracing() {
+    let subscriber = tracing_subscriber::fmt::layer()
+        .with_writer(io::stderr)
+        .with_target(false)
+        .with_span_events(FmtSpan::NONE)
+        .without_time()
+        .with_filter(
+            Targets::new()
+                .with_target("slumber", LevelFilter::TRACE)
+                .with_default(LevelFilter::WARN),
+        );
+    tracing_subscriber::registry().with(subscriber).init();
 }
 
 /// Stringify an error with all its causes

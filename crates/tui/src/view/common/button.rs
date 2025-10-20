@@ -3,9 +3,10 @@
 use crate::{
     context::TuiContext,
     view::{
+        Generate,
+        component::{Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent, ToEmitter},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
@@ -51,13 +52,18 @@ impl Generate for Button<'_> {
 /// type `T`.
 #[derive(Debug, Default)]
 pub struct ButtonGroup<T: FixedSelect> {
+    id: ComponentId,
     /// The only type of event we can emit is a button being selected, so just
     /// emit the button type
     emitter: Emitter<T>,
     select: FixedSelectState<T>,
 }
 
-impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
+impl<T: FixedSelect> Component for ButtonGroup<T> {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             Action::Left => self.select.previous(),
@@ -75,7 +81,7 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
 }
 
 impl<T: FixedSelect> Draw for ButtonGroup<T> {
-    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let (areas, _) =
             Layout::horizontal(self.select.items().map(|button| {
                 Constraint::Length(button.to_string().len() as u16)

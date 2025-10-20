@@ -2,9 +2,9 @@ use crate::{
     context::TuiContext,
     view::{
         common::scrollbar::Scrollbar,
+        component::{Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, OptionEvent},
+        event::{Event, OptionEvent},
         state::{Identified, StateCell},
     },
 };
@@ -28,6 +28,7 @@ use uuid::Uuid;
 /// (especially if it includes syntax highlighting).
 #[derive(derive_more::Debug, Default)]
 pub struct TextWindow {
+    id: ComponentId,
     /// Cache the size of the text window, because it's expensive to calculate.
     /// Checking the width of a text requires counting all its graphemes.
     text_size: StateCell<Uuid, TextSize>,
@@ -164,7 +165,11 @@ impl TextWindow {
     }
 }
 
-impl EventHandler for TextWindow {
+impl Component for TextWindow {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
             Action::Up | Action::ScrollUp => self.scroll_up(1),
@@ -182,7 +187,7 @@ impl EventHandler for TextWindow {
 
 /// `T` has to be convertible to text to be drawn
 impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
-    fn draw(
+    fn draw_impl(
         &self,
         frame: &mut Frame,
         props: TextWindowProps<'a>,
@@ -441,10 +446,10 @@ mod tests {
                 .build();
 
         // Scroll out a bit
-        component.data_mut().scroll_down(2);
-        component.data_mut().scroll_right(10);
-        assert_eq!(component.data().offset_x.get(), 10);
-        assert_eq!(component.data().offset_y.get(), 2);
+        component.scroll_down(2);
+        component.scroll_right(10);
+        assert_eq!(component.offset_x.get(), 10);
+        assert_eq!(component.offset_y.get(), 2);
 
         let text = Text::from_iter(["1 less long line", "2", "3", "4"]).into();
         component
@@ -458,8 +463,8 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(component.data().offset_x.get(), 8);
-        assert_eq!(component.data().offset_y.get(), 1);
+        assert_eq!(component.offset_x.get(), 8);
+        assert_eq!(component.offset_y.get(), 1);
     }
 
     /// Growing the window reduces the maximum scroll. Scroll state should
@@ -489,10 +494,10 @@ mod tests {
             .assert_empty();
 
         // Scroll out a bit
-        component.data_mut().scroll_down(2);
-        component.data_mut().scroll_right(10);
-        assert_eq!(component.data().offset_x.get(), 10);
-        assert_eq!(component.data().offset_y.get(), 2);
+        component.scroll_down(2);
+        component.scroll_right(10);
+        assert_eq!(component.offset_x.get(), 10);
+        assert_eq!(component.offset_y.get(), 2);
 
         component.set_area(Rect::new(0, 0, 15, 4));
         component
@@ -500,8 +505,8 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(component.data().offset_x.get(), 8);
-        assert_eq!(component.data().offset_y.get(), 1);
+        assert_eq!(component.offset_x.get(), 8);
+        assert_eq!(component.offset_y.get(), 1);
     }
 
     /// Style some text as gutter line numbers

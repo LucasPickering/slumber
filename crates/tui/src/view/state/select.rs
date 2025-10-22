@@ -381,8 +381,7 @@ where
 
 impl<Item, State> Component for SelectState<Item, State>
 where
-    Item: Debug,
-    State: Debug + SelectStateData,
+    State: SelectStateData,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -417,8 +416,7 @@ where
 /// in another way because of the restricted access to the inner state.
 impl<Item, State, W> Draw<W> for SelectState<Item, State>
 where
-    Item: Debug,
-    State: Debug + SelectStateData,
+    State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
     fn draw_impl(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {

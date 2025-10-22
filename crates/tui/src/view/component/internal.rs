@@ -12,7 +12,6 @@ use std::{
     any,
     cell::RefCell,
     collections::HashMap,
-    fmt::Debug,
     ops::{Deref, DerefMut},
 };
 use terminput::{
@@ -113,7 +112,7 @@ impl<S, K, C> Component for PersistedLazyRefMut<'_, S, K, C>
 where
     S: PersistedStore<K>,
     K: persisted::PersistedKey,
-    K::Value: Debug + PartialEq,
+    K::Value: PartialEq,
     C: Component + PersistedContainer<Value = K::Value>,
 {
     fn id(&self) -> ComponentId {
@@ -350,7 +349,7 @@ impl<S, K, C> ToChild for persisted::PersistedLazy<S, K, C>
 where
     S: PersistedStore<K>,
     K: persisted::PersistedKey,
-    K::Value: Debug + PartialEq,
+    K::Value: PartialEq,
     C: Component + PersistedContainer<Value = K::Value>,
 {
     fn to_child_mut(&mut self) -> Child<'_> {

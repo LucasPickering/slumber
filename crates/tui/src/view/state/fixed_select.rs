@@ -155,7 +155,7 @@ where
 impl<Item, State> Component for FixedSelectState<Item, State>
 where
     Item: FixedSelect,
-    State: Debug + SelectStateData,
+    State: SelectStateData,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -175,7 +175,7 @@ where
 impl<Item, State, W> Draw<W> for FixedSelectState<Item, State>
 where
     Item: FixedSelect,
-    State: Debug + SelectStateData,
+    State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
     fn draw_impl(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {

@@ -9,7 +9,7 @@ use crate::{
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
-            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+            Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             recipe_pane::RecipeMenuAction,
         },
         context::UpdateContext,
@@ -21,7 +21,6 @@ use crate::{
 use derive_more::{Deref, DerefMut};
 use persisted::PersistedKey;
 use ratatui::{
-    Frame,
     layout::{Constraint, Layout},
     text::Text,
 };
@@ -223,7 +222,7 @@ impl Component for RecipeListPane {
 }
 
 impl Draw for RecipeListPane {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let context = TuiContext::get();
 
         let title = context
@@ -235,17 +234,20 @@ impl Draw for RecipeListPane {
         }
         .generate();
         let area = block.inner(metadata.area());
-        frame.render_widget(block, metadata.area());
+        canvas.render_widget(block, metadata.area());
 
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(area);
+        canvas.draw(
+            &*self.select,
+            List::from(&*self.select),
+            select_area,
+            true,
+        );
 
-        self.select
-            .draw(frame, List::from(&*self.select), select_area, true);
-
-        self.filter.draw(
-            frame,
+        canvas.draw(
+            &self.filter,
             TextBoxProps::default(),
             filter_area,
             self.filter_focused,

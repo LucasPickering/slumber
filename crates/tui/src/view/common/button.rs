@@ -4,14 +4,13 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
-        component::{Component, ComponentId, Draw, DrawMetadata},
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Emitter, Event, OptionEvent, ToEmitter},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
 use ratatui::{
-    Frame,
     layout::{Constraint, Flex, Layout},
     text::Span,
 };
@@ -81,7 +80,7 @@ impl<T: FixedSelect> Component for ButtonGroup<T> {
 }
 
 impl<T: FixedSelect> Draw for ButtonGroup<T> {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let (areas, _) =
             Layout::horizontal(self.select.items().map(|button| {
                 Constraint::Length(button.to_string().len() as u16)
@@ -90,7 +89,7 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
             .split_with_spacers(metadata.area());
 
         for (button, area) in self.select.items().zip(areas.iter()) {
-            frame.render_widget(
+            canvas.render_widget(
                 Button {
                     text: &button.to_string(),
                     has_focus: self.select.is_selected(button),

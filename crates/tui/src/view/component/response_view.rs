@@ -7,8 +7,8 @@ use crate::{
         Component, Generate, ViewContext,
         common::header_table::HeaderTable,
         component::{
-            ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
-            internal::Child, queryable_body::QueryableBody,
+            Canvas, ComponentId, Draw, DrawMetadata, ToChild, internal::Child,
+            queryable_body::QueryableBody,
         },
         context::UpdateContext,
         event::{Event, OptionEvent},
@@ -17,7 +17,6 @@ use crate::{
 };
 use mime::Mime;
 use persisted::PersistedKey;
-use ratatui::Frame;
 use serde::{Serialize, Serializer};
 use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::ResponseRecord};
@@ -93,8 +92,8 @@ impl Component for ResponseBodyView {
 }
 
 impl Draw for ResponseBodyView {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        self.body.draw(frame, (), metadata.area(), true);
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.draw(&*self.body, (), metadata.area(), true);
     }
 }
 
@@ -145,8 +144,8 @@ impl Component for ResponseHeadersView {
 }
 
 impl Draw for ResponseHeadersView {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        frame.render_widget(
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.render_widget(
             HeaderTable {
                 headers: &self.response.headers,
             }

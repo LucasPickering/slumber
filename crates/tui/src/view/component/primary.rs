@@ -8,7 +8,7 @@ use crate::{
         Component, ViewContext,
         common::{actions::MenuAction, modal::Modal},
         component::{
-            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+            Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
             exchange_pane::{ExchangePane, ExchangePaneEvent},
             help::HelpModal,
@@ -31,7 +31,6 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{
-    Frame,
     layout::Layout,
     prelude::{Constraint, Rect},
 };
@@ -368,7 +367,7 @@ impl Component for PrimaryView {
 impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: PrimaryViewProps<'a>,
         metadata: DrawMetadata,
     ) {
@@ -377,14 +376,14 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         // rect to draw into so they don't appear at all
         let panes = self.panes(metadata.area());
 
-        self.profile_pane.draw(
-            frame,
+        canvas.draw(
+            &self.profile_pane,
             (),
             panes.profile.area,
             panes.profile.focus,
         );
-        self.recipe_list_pane.draw(
-            frame,
+        canvas.draw(
+            &self.recipe_list_pane,
             (),
             panes.recipe_list.area,
             panes.recipe_list.focus,
@@ -398,8 +397,8 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     .try_get(id)
                     .reported(&ViewContext::messages_tx())
             });
-        self.recipe_pane.draw(
-            frame,
+        canvas.draw(
+            &self.recipe_pane,
             RecipePaneProps {
                 selected_recipe_node,
                 selected_profile_id: self.selected_profile_id(),
@@ -421,8 +420,8 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 )
             },
         );
-        exchange_pane.draw(
-            frame,
+        canvas.draw(
+            &*exchange_pane,
             (),
             panes.exchange.area,
             panes.exchange.focus,

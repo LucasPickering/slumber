@@ -3,13 +3,12 @@ use crate::{
     view::{
         Generate,
         common::{modal::Modal, table::Table},
-        component::{Component, ComponentId, Draw, DrawMetadata},
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::ViewContext,
     },
 };
 use itertools::Itertools;
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Layout},
     text::{Line, Span},
 };
@@ -91,7 +90,7 @@ impl Component for HelpModal {
 }
 
 impl Draw for HelpModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Create layout
         let [collection_area, _, keybindings_area] = Layout::vertical([
             Constraint::Length(Self::GENERAL_LENGTH + 1),
@@ -124,7 +123,7 @@ impl Draw for HelpModal {
             column_widths: &[Constraint::Length(13), Constraint::Max(1000)],
             ..Default::default()
         };
-        frame.render_widget(collection_metadata.generate(), collection_area);
+        canvas.render_widget(collection_metadata.generate(), collection_area);
 
         // Keybindings
         let keybindings = Table {
@@ -138,6 +137,6 @@ impl Draw for HelpModal {
                 .collect_vec(),
             ..Default::default()
         };
-        frame.render_widget(keybindings.generate(), keybindings_area);
+        canvas.render_widget(keybindings.generate(), keybindings_area);
     }
 }

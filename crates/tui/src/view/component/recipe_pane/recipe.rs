@@ -2,7 +2,7 @@ use crate::view::{
     Component,
     common::tabs::Tabs,
     component::{
-        ComponentExt, ComponentId, Draw, DrawMetadata,
+        Canvas, ComponentId, Draw, DrawMetadata,
         internal::{Child, ToChild},
         recipe_pane::{
             authentication::AuthenticationDisplay,
@@ -16,7 +16,7 @@ use crate::view::{
     util::persistence::PersistedLazy,
 };
 use derive_more::Display;
-use ratatui::{Frame, layout::Layout, prelude::Constraint, widgets::Paragraph};
+use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{Recipe, RecipeId},
@@ -173,7 +173,7 @@ impl Component for RecipeDisplay {
 }
 
 impl Draw for RecipeDisplay {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Render request contents
         let method = self.method.to_string();
 
@@ -191,22 +191,22 @@ impl Draw for RecipeDisplay {
         .areas(metadata_area);
 
         // First line: Method + URL
-        frame.render_widget(Paragraph::new(method), method_area);
-        frame.render_widget(self.url.preview(), url_area);
+        canvas.render_widget(Paragraph::new(method), method_area);
+        canvas.render_widget(self.url.preview(), url_area);
 
         // Navigation tabs
-        self.tabs.draw(frame, (), tabs_area, true);
+        canvas.draw(&*self.tabs, (), tabs_area, true);
 
         // Recipe content
         match self.tabs.selected() {
-            Tab::Url => self.url.draw(frame, (), content_area, true),
+            Tab::Url => canvas.draw(&self.url, (), content_area, true),
             Tab::Body => {
                 if let Some(body) = &self.body {
-                    body.draw(frame, (), content_area, true);
+                    canvas.draw(body, (), content_area, true);
                 }
             }
-            Tab::Query => self.query.draw(
-                frame,
+            Tab::Query => canvas.draw(
+                &self.query,
                 RecipeFieldTableProps {
                     key_header: "Parameter",
                     value_header: "Value",
@@ -214,8 +214,8 @@ impl Draw for RecipeDisplay {
                 content_area,
                 true,
             ),
-            Tab::Headers => self.headers.draw(
-                frame,
+            Tab::Headers => canvas.draw(
+                &self.headers,
                 RecipeFieldTableProps {
                     key_header: "Header",
                     value_header: "Value",
@@ -225,7 +225,7 @@ impl Draw for RecipeDisplay {
             ),
             Tab::Authentication => {
                 if let Some(authentication) = &self.authentication {
-                    authentication.draw(frame, (), content_area, true);
+                    canvas.draw(authentication, (), content_area, true);
                 }
             }
         }

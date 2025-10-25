@@ -5,7 +5,7 @@ use crate::view::{
         table::{Table, ToggleRow},
     },
     component::{
-        Component, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+        Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
         internal::Child,
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     },
@@ -16,7 +16,6 @@ use crate::view::{
 };
 use itertools::Itertools;
 use ratatui::{
-    Frame,
     layout::Constraint,
     widgets::{Row, TableState},
 };
@@ -197,7 +196,7 @@ where
 {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: RecipeFieldTableProps<'a>,
         metadata: DrawMetadata,
     ) {
@@ -211,8 +210,7 @@ where
             ],
             ..Default::default()
         };
-        self.select
-            .draw(frame, table.generate(), metadata.area(), true);
+        canvas.draw(&*self.select, table.generate(), metadata.area(), true);
     }
 }
 

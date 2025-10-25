@@ -6,7 +6,7 @@ use crate::{
         Generate, UpdateContext, ViewContext,
         common::{button::ButtonGroup, list::List, modal::Modal},
         component::{
-            Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             misc::ConfirmButton,
         },
@@ -15,7 +15,6 @@ use crate::{
     },
 };
 use ratatui::{
-    Frame,
     layout::Constraint,
     text::{Line, Span},
 };
@@ -157,13 +156,17 @@ impl Component for History {
 }
 
 impl Draw for History {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if self.deleting {
-            self.delete_confirm_buttons
-                .draw(frame, (), metadata.area(), true);
+            canvas.draw(
+                &self.delete_confirm_buttons,
+                (),
+                metadata.area(),
+                true,
+            );
         } else {
-            self.select.draw(
-                frame,
+            canvas.draw(
+                &self.select,
                 List::from(&self.select),
                 metadata.area(),
                 true,

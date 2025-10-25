@@ -4,14 +4,14 @@ use crate::{
     view::{
         Generate, UpdateContext, ViewContext,
         component::{
-            Component, ComponentId, Draw, DrawMetadata, help::HelpFooter,
+            Canvas, Component, ComponentId, Draw, DrawMetadata,
+            help::HelpFooter,
         },
         event::{Event, OptionEvent},
         state::Notification,
     },
 };
 use ratatui::{
-    Frame,
     layout::{Constraint, Layout},
     text::Span,
 };
@@ -62,12 +62,13 @@ impl Component for Footer {
 }
 
 impl Draw for Footer {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // If a notification is present, it gets the entire footer.
         // Notifications are auto-cleared so it's ok to hide other stuff
         // temporarily
         if let Some(notification) = &self.notification {
-            frame.render_widget(notification.message.as_str(), metadata.area());
+            canvas
+                .render_widget(notification.message.as_str(), metadata.area());
             return;
         }
 
@@ -92,7 +93,7 @@ impl Draw for Footer {
         ])
         .areas(metadata.area());
 
-        frame.render_widget(collection_name_text, collection_area);
-        frame.render_widget(help.into_right_aligned_line(), help_area);
+        canvas.render_widget(collection_name_text, collection_area);
+        canvas.render_widget(help.into_right_aligned_line(), help_area);
     }
 }

@@ -10,9 +10,7 @@ use crate::{
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
-        component::{
-            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
-        },
+        component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
         context::UpdateContext,
         event::{Emitter, Event, OptionEvent, ToEmitter},
         state::Identified,
@@ -23,7 +21,6 @@ use anyhow::Context;
 use bytes::Bytes;
 use persisted::PersistedContainer;
 use ratatui::{
-    Frame,
     layout::{Constraint, Layout},
     text::Text,
 };
@@ -297,16 +294,16 @@ impl Component for QueryableBody {
 }
 
 impl Draw for QueryableBody {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [body_area, query_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
 
         if let QueryState::Error(error) = &self.query_state {
-            frame.render_widget(error.generate(), body_area);
+            canvas.render_widget(error.generate(), body_area);
         } else {
-            self.text_window.draw(
-                frame,
+            canvas.draw(
+                &self.text_window,
                 TextWindowProps {
                     text: &self.text_state.text,
                     margins: ScrollbarMargins {
@@ -321,15 +318,15 @@ impl Draw for QueryableBody {
 
         // Only show the export box when focused, otherwise show query
         if self.command_focus == CommandFocus::Export {
-            self.export_text_box.draw(
-                frame,
+            canvas.draw(
+                &self.export_text_box,
                 TextBoxProps::default(),
                 query_area,
                 true,
             );
         } else {
-            self.query_text_box.draw(
-                frame,
+            canvas.draw(
+                &self.query_text_box,
                 TextBoxProps {
                     has_error: matches!(self.query_state, QueryState::Error(_)),
                 },

@@ -7,11 +7,17 @@ use crate::view::{
 };
 use derive_more::Display;
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
-use ratatui::{Frame, layout::Rect};
+use ratatui::{
+    Frame,
+    buffer::{self, Buffer},
+    layout::Rect,
+    widgets::{StatefulWidget, Widget},
+};
 use std::{
     any,
     cell::RefCell,
     collections::HashMap,
+    mem,
     ops::{Deref, DerefMut},
 };
 use terminput::{
@@ -164,20 +170,6 @@ pub trait ComponentExt: Component {
     ) -> Option<Event>
     where
         Self: Sized;
-
-    /// Draw the component into the frame
-    ///
-    /// This is what you should call when you want to draw a child component.
-    /// **This should not be reimplemented by implementors of this trait.** Just
-    /// implement [Draw::draw_impl] instead.
-    fn draw<Props>(
-        &self,
-        frame: &mut Frame,
-        props: Props,
-        area: Rect,
-        has_focus: bool,
-    ) where
-        Self: Draw<Props>;
 }
 
 impl<T: Component + ?Sized> ComponentExt for T {
@@ -214,23 +206,6 @@ impl<T: Component + ?Sized> ComponentExt for T {
     {
         update_all(any::type_name::<Self>(), self, context, event)
     }
-
-    fn draw<Props>(
-        &self,
-        frame: &mut Frame,
-        props: Props,
-        area: Rect,
-        has_focus: bool,
-    ) where
-        Self: Draw<Props>,
-    {
-        // Update internal state for event handling
-        let metadata = DrawMetadata { area, has_focus };
-        let guard = DrawGuard::new(self.id(), metadata);
-
-        self.draw_impl(frame, props, metadata);
-        drop(guard); // Make sure guard stays alive until here
-    }
 }
 
 /// Something that can be drawn onto screen as one or more TUI widgets.
@@ -256,10 +231,111 @@ pub trait Draw<Props = ()>: Component {
     /// from [ComponentExt::draw].
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: Props,
         metadata: DrawMetadata,
     );
+}
+
+/// TODO
+#[derive(derive_more::Debug)]
+pub struct Canvas<'buf, 'fr> {
+    frame: &'fr mut Frame<'buf>,
+    /// TODO
+    deferred: Vec<Buffer>,
+}
+
+impl<'buf, 'fr> Canvas<'buf, 'fr> {
+    /// TODO
+    pub fn new(frame: &'fr mut Frame<'buf>) -> Self {
+        Self {
+            frame,
+            deferred: vec![],
+        }
+    }
+
+    /// TODO
+    pub fn draw<T, Props>(
+        &mut self,
+        component: &T,
+        props: Props,
+        area: Rect,
+        has_focus: bool,
+    ) where
+        T: Draw<Props> + ?Sized,
+    {
+        // Update internal state for event handling
+        let metadata = DrawMetadata { area, has_focus };
+        let guard = DrawGuard::new(component.id(), metadata);
+
+        component.draw_impl(self, props, metadata);
+        drop(guard); // Make sure guard stays alive until here
+    }
+
+    /// TODO
+    pub fn draw_on_top<T, Props>(
+        &mut self,
+        component: &T,
+        props: Props,
+        area: Rect,
+        has_focus: bool,
+    ) where
+        T: Draw<Props> + ?Sized,
+    {
+        // TODO dedupe this
+        let metadata = DrawMetadata { area, has_focus };
+        let guard = DrawGuard::new(component.id(), metadata);
+
+        // TODO explain
+        let main_buffer = mem::take(self.frame.buffer_mut());
+        component.draw_impl(self, props, metadata);
+        let deferred = mem::replace(self.frame.buffer_mut(), main_buffer);
+        self.deferred.push(deferred);
+
+        drop(guard); // Make sure guard stays alive until here
+    }
+
+    /// TODO
+    pub fn draw_deferred(&mut self) {
+        let main_buffer = self.frame.buffer_mut();
+        for buffer in self.deferred.drain(..) {
+            assert_eq!(main_buffer.area(), buffer.area(), "TODO");
+            // TODO possible without clone?
+            for position in main_buffer.area().positions() {
+                let deferred_cell = &buffer[position];
+                if deferred_cell != &buffer::Cell::EMPTY {
+                    main_buffer[position] = deferred_cell.clone();
+                }
+            }
+        }
+    }
+
+    /// TODO
+    pub fn area(&self) -> Rect {
+        self.frame.area()
+    }
+
+    /// TODO
+    pub fn buffer_mut(&mut self) -> &mut Buffer {
+        self.frame.buffer_mut()
+    }
+
+    /// TODO
+    pub fn render_widget<W: Widget>(&mut self, widget: W, area: Rect) {
+        self.frame.render_widget(widget, area);
+    }
+
+    /// TODO
+    pub fn render_stateful_widget<W>(
+        &mut self,
+        widget: W,
+        area: Rect,
+        state: &mut W::State,
+    ) where
+        W: StatefulWidget,
+    {
+        self.frame.render_stateful_widget(widget, area, state);
+    }
 }
 
 /// Metadata associated with each draw action, which may instruct how the draw
@@ -616,7 +692,7 @@ mod tests {
     impl Draw<Props> for Branch {
         fn draw_impl(
             &self,
-            frame: &mut Frame,
+            canvas: &mut Canvas,
             props: Props,
             metadata: DrawMetadata,
         ) {
@@ -629,8 +705,8 @@ mod tests {
                 (&self.c, c_area, props.c),
             ] {
                 if !matches!(mode, Mode::Hidden) {
-                    component.draw(
-                        frame,
+                    canvas.draw(
+                        component,
                         (),
                         area,
                         matches!(mode, Mode::Focused),
@@ -665,8 +741,13 @@ mod tests {
     }
 
     impl Draw for Leaf {
-        fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-            frame.render_widget("hello!", metadata.area());
+        fn draw_impl(
+            &self,
+            canvas: &mut Canvas,
+            (): (),
+            metadata: DrawMetadata,
+        ) {
+            canvas.render_widget("hello!", metadata.area());
         }
     }
 
@@ -766,8 +847,9 @@ mod tests {
 
         // Visible components get events
         terminal.draw(|frame| {
-            component.draw(
-                frame,
+            let mut canvas = Canvas::new(frame);
+            canvas.draw(
+                &component,
                 Props {
                     a: Mode::Focused,
                     b: Mode::Visible,
@@ -785,8 +867,9 @@ mod tests {
 
         // Switch things up, make sure new state is reflected
         terminal.draw(|frame| {
-            component.draw(
-                frame,
+            let mut canvas = Canvas::new(frame);
+            canvas.draw(
+                &component,
                 Props {
                     a: Mode::Visible,
                     b: Mode::Hidden,
@@ -804,8 +887,9 @@ mod tests {
 
         // Hide all children, root should eat everything
         terminal.draw(|frame| {
-            component.draw(
-                frame,
+            let mut canvas = Canvas::new(frame);
+            canvas.draw(
+                &component,
                 Props {
                     a: Mode::Hidden,
                     b: Mode::Hidden,
@@ -829,9 +913,10 @@ mod tests {
     ) {
         terminal.draw(|frame| {
             let area = frame.area();
-            component.a.draw(frame, (), area, true);
-            component.b.draw(frame, (), area, true);
-            component.c.draw(frame, (), area, true);
+            let mut canvas = Canvas::new(frame);
+            canvas.draw(&component.a, (), area, true);
+            canvas.draw(&component.b, (), area, true);
+            canvas.draw(&component.c, (), area, true);
         });
         // Event should *not* be handled because the parent is hidden
         assert_matches!(
@@ -856,8 +941,9 @@ mod tests {
         // We are visible but *not* in focus
         terminal.draw(|frame| {
             let area = frame.area();
-            component.draw(
-                frame,
+            let mut canvas = Canvas::new(frame);
+            canvas.draw(
+                &component,
                 Props {
                     a: Mode::Focused,
                     b: Mode::Visible,

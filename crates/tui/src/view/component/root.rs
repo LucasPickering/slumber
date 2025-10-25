@@ -9,7 +9,7 @@ use crate::{
             modal::{Modal, ModalQueue},
         },
         component::{
-            Child, ComponentId, Draw, DrawMetadata, ToChild,
+            Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
             history::History,
             internal::ComponentExt,
@@ -23,7 +23,7 @@ use crate::{
 };
 use derive_more::From;
 use persisted::{PersistedContainer, PersistedKey};
-use ratatui::{Frame, layout::Layout, prelude::Constraint};
+use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
@@ -233,7 +233,7 @@ impl Component for Root {
 impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: RootProps<R>,
         metadata: DrawMetadata,
     ) {
@@ -247,18 +247,18 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
             .selected_request_id
             .0
             .and_then(|id| props.request_store.get(id));
-        self.primary_view.draw(
-            frame,
+        canvas.draw(
+            &self.primary_view,
             PrimaryViewProps { selected_request },
             main_area,
             !self.modal_queue.is_open(),
         );
 
         // Footer
-        self.footer.draw(frame, (), footer_area, false);
+        canvas.draw(&self.footer, (), footer_area, false);
 
         // Render modals last so they go on top
-        self.modal_queue.draw(frame, (), frame.area(), true);
+        canvas.draw(&self.modal_queue, (), canvas.area(), true);
     }
 }
 

@@ -4,8 +4,7 @@ use crate::{
         Generate,
         common::{list::List, modal::Modal},
         component::{
-            Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
-            ToChild,
+            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         context::UpdateContext,
         event::{Emitter, Event, LocalEvent, OptionEvent, ToEmitter},
@@ -14,7 +13,6 @@ use crate::{
 };
 use itertools::Itertools;
 use ratatui::{
-    Frame,
     layout::Constraint,
     text::{Line, Span},
 };
@@ -120,9 +118,9 @@ impl Component for ActionsModal {
 }
 
 impl Draw for ActionsModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        self.actions.draw(
-            frame,
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.draw(
+            &self.actions,
             List::from(&self.actions),
             metadata.area(),
             true,
@@ -243,7 +241,7 @@ mod tests {
     }
 
     impl Draw for Actionable {
-        fn draw_impl(&self, _: &mut Frame, (): (), _: DrawMetadata) {}
+        fn draw_impl(&self, _: &mut Canvas, (): (), _: DrawMetadata) {}
     }
 
     impl ToEmitter<TestMenuAction> for Actionable {

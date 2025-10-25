@@ -1,14 +1,14 @@
 use crate::{
     context::TuiContext,
     view::{
-        component::{Component, ComponentId, Draw, DrawMetadata},
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, OptionEvent},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
 use persisted::PersistedContainer;
-use ratatui::{Frame, style::Style, text::Line};
+use ratatui::{style::Style, text::Line};
 use slumber_config::Action;
 use std::fmt::Debug;
 
@@ -47,7 +47,7 @@ impl<T: FixedSelect> Component for Tabs<T> {
 }
 
 impl<T: FixedSelect> Draw for Tabs<T> {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles.tab;
         let titles = self.tabs.items_with_metadata().map(|item| {
             let style = if item.enabled() {
@@ -57,7 +57,7 @@ impl<T: FixedSelect> Draw for Tabs<T> {
             };
             Line::styled(item.value.to_string(), style)
         });
-        frame.render_widget(
+        canvas.render_widget(
             ratatui::widgets::Tabs::new(titles)
                 .select(self.tabs.selected_index())
                 .highlight_style(styles.highlight),

@@ -11,8 +11,8 @@ use crate::{
             modal::{Modal, ModalQueue},
         },
         component::{
-            Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
-            ToChild,
+            Canvas, Child, Component, ComponentExt, ComponentId, Draw,
+            DrawMetadata, ToChild,
         },
         context::ViewContext,
         event::{Event, LocalEvent, OptionEvent, ToEmitter},
@@ -22,7 +22,7 @@ use crate::{
 use derive_more::derive::{Deref, DerefMut};
 use itertools::Itertools;
 use persisted::PersistedContainer;
-use ratatui::{Frame, layout::Rect};
+use ratatui::layout::Rect;
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use std::{
@@ -150,7 +150,8 @@ where
         T: Draw<Props>,
     {
         self.terminal.draw(|frame| {
-            self.component.draw(frame, props, self.area, self.has_focus);
+            let mut canvas = Canvas::new(frame);
+            canvas.draw(&self.component, props, self.area, self.has_focus);
         });
     }
 
@@ -516,11 +517,11 @@ where
 {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: Props,
         metadata: DrawMetadata,
     ) {
-        self.0.draw(frame, props, metadata.area(), true);
+        canvas.draw(&*self.0, props, metadata.area(), true);
     }
 }
 
@@ -573,12 +574,11 @@ impl<T: Component> Component for TestWrapper<T> {
 impl<Props, T: Draw<Props>> Draw<Props> for TestWrapper<T> {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: Props,
         metadata: DrawMetadata,
     ) {
-        self.inner
-            .draw(frame, props, metadata.area(), metadata.has_focus());
-        self.modal_queue.draw(frame, (), metadata.area(), true);
+        canvas.draw(&self.inner, props, metadata.area(), metadata.has_focus());
+        canvas.draw(&self.modal_queue, (), metadata.area(), true);
     }
 }

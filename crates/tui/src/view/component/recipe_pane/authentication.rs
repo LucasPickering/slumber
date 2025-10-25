@@ -4,7 +4,7 @@ use crate::{
         Generate,
         common::{actions::MenuAction, table::Table},
         component::{
-            Component, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
+            Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
         },
@@ -15,7 +15,7 @@ use crate::{
 };
 use derive_more::derive::Display;
 use ratatui::{
-    Frame, layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
+    layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
 };
 use slumber_config::Action;
 use slumber_core::collection::{Authentication, RecipeId};
@@ -148,7 +148,7 @@ impl Component for AuthenticationDisplay {
 }
 
 impl Draw for AuthenticationDisplay {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
         let [label_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
@@ -158,7 +158,7 @@ impl Draw for AuthenticationDisplay {
             State::Basic { .. } => "Basic",
             State::Bearer { .. } => "Bearer",
         };
-        frame.render_widget(
+        canvas.render_widget(
             Span::styled(
                 format!("Authentication Type: {label}"),
                 styles.text.title,
@@ -180,15 +180,15 @@ impl Draw for AuthenticationDisplay {
                     column_widths: &[Constraint::Length(9), Constraint::Min(0)],
                     ..Default::default()
                 };
-                selected_field.draw(
-                    frame,
+                canvas.draw(
+                    selected_field,
                     table.generate(),
                     content_area,
                     true,
                 );
             }
             State::Bearer { token } => {
-                frame.render_widget(token.preview().generate(), content_area);
+                canvas.render_widget(token.preview().generate(), content_area);
             }
         }
     }

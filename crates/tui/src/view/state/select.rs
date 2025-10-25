@@ -1,14 +1,11 @@
 use crate::view::{
-    component::{Component, ComponentId, Draw, DrawMetadata},
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
     context::UpdateContext,
     event::{Emitter, Event, OptionEvent, ToEmitter},
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
-use ratatui::{
-    Frame,
-    widgets::{ListState, StatefulWidget, TableState},
-};
+use ratatui::widgets::{ListState, StatefulWidget, TableState};
 use slumber_config::Action;
 use slumber_core::collection::HasId;
 use std::{
@@ -419,8 +416,8 @@ where
     State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw_impl(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
-        frame.render_stateful_widget(
+    fn draw_impl(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
+        canvas.render_stateful_widget(
             props,
             metadata.area(),
             &mut self.state.borrow_mut(),

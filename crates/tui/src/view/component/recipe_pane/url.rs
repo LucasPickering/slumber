@@ -3,11 +3,12 @@ use crate::view::{
     common::{actions::MenuAction, template_preview::TemplatePreview},
     component::{
         Component, ComponentId, Draw, DrawMetadata,
+        internal::Canvas,
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     },
     event::{Emitter, Event, OptionEvent},
 };
-use ratatui::Frame;
+
 use slumber_config::Action;
 use slumber_core::collection::RecipeId;
 use slumber_template::Template;
@@ -100,8 +101,8 @@ impl Component for UrlDisplay {
 }
 
 impl Draw for UrlDisplay {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        frame.render_widget(self.url.preview(), metadata.area());
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.render_widget(self.url.preview(), metadata.area());
     }
 }
 

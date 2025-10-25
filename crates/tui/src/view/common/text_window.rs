@@ -2,14 +2,13 @@ use crate::{
     context::TuiContext,
     view::{
         common::scrollbar::Scrollbar,
-        component::{Component, ComponentId, Draw, DrawMetadata},
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, OptionEvent},
         state::{Identified, StateCell},
     },
 };
 use ratatui::{
-    Frame,
     buffer::Buffer,
     layout::{Layout, Rect},
     prelude::{Alignment, Constraint},
@@ -189,7 +188,7 @@ impl Component for TextWindow {
 impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: TextWindowProps<'a>,
         metadata: DrawMetadata,
     ) {
@@ -240,7 +239,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
             first_line + self.window_height.get() - 1,
             text_state.height,
         );
-        frame.render_widget(
+        canvas.render_widget(
             Paragraph::new(
                 (first_line..=last_line)
                     .map(|n| n.to_string().into())
@@ -252,11 +251,11 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         );
 
         // Draw the text content
-        self.render_chars(props.text, frame.buffer_mut(), text_area);
+        self.render_chars(props.text, canvas.buffer_mut(), text_area);
 
         // Scrollbars
         if has_vertical_scroll {
-            frame.render_widget(
+            canvas.render_widget(
                 Scrollbar {
                     content_length: text_state.height,
                     offset: self.offset_y.get(),
@@ -269,7 +268,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
             );
         }
         if has_horizontal_scroll {
-            frame.render_widget(
+            canvas.render_widget(
                 Scrollbar {
                     content_length: text_state.width,
                     offset: self.offset_x.get(),

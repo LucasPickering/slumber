@@ -2,14 +2,13 @@ use crate::{
     context::TuiContext,
     view::{
         Component, ViewContext,
-        component::{Child, ComponentExt, ComponentId, Draw, DrawMetadata},
+        component::{Canvas, Child, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Emitter, Event, LocalEvent, OptionEvent, ToEmitter},
         util::centered_rect,
     },
 };
 use ratatui::{
-    Frame,
     layout::Margin,
     prelude::Constraint,
     text::Line,
@@ -187,7 +186,7 @@ impl Component for ModalQueue {
 }
 
 impl Draw for ModalQueue {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if let Some(modal) = self.queue.front() {
             let styles = &TuiContext::get().styles;
             let (width, height) = modal.dimensions();
@@ -205,7 +204,7 @@ impl Draw for ModalQueue {
             area.width += x_buffer * 2;
             area.height += y_buffer * 2;
             // Don't overflow the draw area
-            area = area.clamp(frame.area());
+            area = area.clamp(canvas.area());
 
             let block = Block::default()
                 .title(modal.title())
@@ -215,11 +214,11 @@ impl Draw for ModalQueue {
             let inner_area = block.inner(area).inner(margin);
 
             // Draw the outline of the modal
-            frame.render_widget(Clear, area);
-            frame.render_widget(block, area);
+            canvas.render_widget(Clear, area);
+            canvas.render_widget(block, area);
 
             // Render the actual content
-            modal.draw(frame, (), inner_area, true);
+            canvas.draw(&**modal, (), inner_area, true);
         }
     }
 }

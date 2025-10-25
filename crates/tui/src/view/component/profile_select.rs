@@ -12,9 +12,7 @@ use crate::{
             table::Table,
             template_preview::TemplatePreview,
         },
-        component::{
-            Child, ComponentExt, ComponentId, Draw, DrawMetadata, ToChild,
-        },
+        component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
         context::UpdateContext,
         event::{Emitter, Event, OptionEvent, ToEmitter},
         state::{
@@ -28,7 +26,6 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use persisted::PersistedKey;
 use ratatui::{
-    Frame,
     layout::{Constraint, Layout},
     text::{Line, Text},
 };
@@ -124,7 +121,7 @@ impl Component for ProfilePane {
 }
 
 impl Draw for ProfilePane {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let title = TuiContext::get()
             .input_engine
             .add_hint("Profile", Action::SelectProfileList);
@@ -133,7 +130,7 @@ impl Draw for ProfilePane {
             has_focus: false,
         }
         .generate();
-        frame.render_widget(&block, metadata.area());
+        canvas.render_widget(&block, metadata.area());
         let area = block.inner(metadata.area());
 
         // Grab global profile selection state
@@ -141,7 +138,7 @@ impl Draw for ProfilePane {
         let selected_profile = (*self.selected_profile_id)
             .as_ref()
             .and_then(|profile_id| collection.profiles.get(profile_id));
-        frame.render_widget(
+        canvas.render_widget(
             if let Some(profile) = selected_profile {
                 profile.name()
             } else {
@@ -216,10 +213,10 @@ impl Component for ProfileListModal {
 }
 
 impl Draw for ProfileListModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Empty state
         if self.select.is_empty() {
-            frame.render_widget(
+            canvas.render_widget(
                 Text::from(vec![
                     "No profiles defined; add one to your collection.".into(),
                     doc_link("api/request_collection/profile").into(),
@@ -235,12 +232,10 @@ impl Draw for ProfileListModal {
             Constraint::Min(0),
         ])
         .areas(metadata.area());
-
-        self.select
-            .draw(frame, List::from(&self.select), list_area, true);
+        canvas.draw(&self.select, List::from(&self.select), list_area, true);
         if let Some(profile) = self.select.selected() {
-            self.detail.draw(
-                frame,
+            canvas.draw(
+                &self.detail,
                 ProfileDetailProps {
                     profile_id: &profile.id,
                 },
@@ -330,7 +325,7 @@ impl Component for ProfileDetail {
 impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: ProfileDetailProps<'a>,
         metadata: DrawMetadata,
     ) {
@@ -377,7 +372,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             alternate_row_style: true,
             ..Default::default()
         };
-        frame.render_widget(table.generate(), metadata.area());
+        canvas.render_widget(table.generate(), metadata.area());
     }
 }
 

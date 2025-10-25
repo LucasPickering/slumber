@@ -1,5 +1,5 @@
 use crate::view::{
-    component::{Component, ComponentId, Draw, DrawMetadata},
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
     context::UpdateContext,
     event::{Emitter, Event, ToEmitter},
     state::select::{
@@ -9,10 +9,7 @@ use crate::view::{
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
-use ratatui::{
-    Frame,
-    widgets::{ListState, StatefulWidget},
-};
+use ratatui::widgets::{ListState, StatefulWidget};
 use std::{
     fmt::{Debug, Display},
     ops::{Index, IndexMut},
@@ -178,8 +175,9 @@ where
     State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw_impl(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
-        self.inner.draw_impl(frame, props, metadata);
+    fn draw_impl(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
+        // This is a transparent wrapper so we should defer directly
+        self.inner.draw_impl(canvas, props, metadata);
     }
 }
 

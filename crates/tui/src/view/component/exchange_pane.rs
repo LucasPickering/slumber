@@ -5,7 +5,7 @@ use crate::{
         Generate, RequestState,
         common::{Pane, actions::MenuAction, modal::Modal, tabs::Tabs},
         component::{
-            Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             misc::DeleteRequestModal,
             request_view::RequestView,
@@ -18,7 +18,6 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Layout},
     style::Style,
     text::{Line, Span},
@@ -79,7 +78,7 @@ impl Component for ExchangePane {
 }
 
 impl Draw for ExchangePane {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let input_engine = &TuiContext::get().input_engine;
         let title =
             input_engine.add_hint("Request / Response", Action::SelectResponse);
@@ -94,18 +93,18 @@ impl Draw for ExchangePane {
             let text = input_engine.add_hint("History", Action::History);
             block = block.title(Line::from(text).alignment(Alignment::Right));
         }
-        frame.render_widget(&block, metadata.area());
+        canvas.render_widget(&block, metadata.area());
         let area = block.inner(metadata.area());
 
         match &self.state {
             // Recipe pane will show a note about how to add a recipe, so we
             // don't need anything here
             State::None => {}
-            State::Folder => frame.render_widget(
+            State::Folder => canvas.render_widget(
                 "Select a recipe to see its request history",
                 area,
             ),
-            State::NoHistory => frame.render_widget(
+            State::NoHistory => canvas.render_widget(
                 "No request history for this recipe & profile",
                 area,
             ),
@@ -116,8 +115,8 @@ impl Draw for ExchangePane {
                 ])
                 .areas(area);
 
-                metadata.draw(frame, (), metadata_area, true);
-                content.draw(frame, (), content_area, true);
+                canvas.draw(metadata, (), metadata_area, true);
+                canvas.draw(content, (), content_area, true);
             }
         }
     }
@@ -193,14 +192,14 @@ impl Component for ExchangePaneMetadata {
 }
 
 impl Draw for ExchangePaneMetadata {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let tui_context = TuiContext::get();
         let config = &tui_context.config;
         let styles = &tui_context.styles;
         let area = metadata.area();
 
         // Request metadata
-        frame.render_widget(
+        canvas.render_widget(
             Line::from(vec![
                 self.request.start_time.generate(),
                 " / ".into(),
@@ -211,7 +210,7 @@ impl Draw for ExchangePaneMetadata {
 
         // Response metadata
         if let Some(metadata) = self.response {
-            frame.render_widget(
+            canvas.render_widget(
                 Line::from(vec![
                     metadata.status.generate(),
                     " ".into(),
@@ -463,47 +462,51 @@ impl Component for ExchangePaneContent {
 }
 
 impl Draw for ExchangePaneContent {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [tabs_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
-        self.tabs.draw(frame, (), tabs_area, true);
+        canvas.draw(&*self.tabs, (), tabs_area, true);
         match &self.state {
             ExchangePaneContentState::Building => {
-                frame.render_widget("Initializing request...", content_area);
+                canvas.render_widget("Initializing request...", content_area);
             }
             ExchangePaneContentState::BuildError { error } => {
-                frame.render_widget(error, content_area);
+                canvas.render_widget(error, content_area);
             }
             ExchangePaneContentState::Loading { request } => {
                 match self.tabs.selected() {
-                    Tab::Request => request.draw(frame, (), content_area, true),
+                    Tab::Request => {
+                        canvas.draw(request, (), content_area, true);
+                    }
                     Tab::Body | Tab::Headers => {
-                        frame.render_widget("Loading...", content_area);
+                        canvas.render_widget("Loading...", content_area);
                     }
                 }
             }
             // Can't show cancelled request here because we might've cancelled
             // during the build
             ExchangePaneContentState::Cancelled => {
-                frame.render_widget("Request cancelled", content_area);
+                canvas.render_widget("Request cancelled", content_area);
             }
             ExchangePaneContentState::Response {
                 request,
                 response_body,
                 response_headers,
             } => match self.tabs.selected() {
-                Tab::Request => request.draw(frame, (), content_area, true),
-                Tab::Body => response_body.draw(frame, (), content_area, true),
+                Tab::Request => canvas.draw(request, (), content_area, true),
+                Tab::Body => canvas.draw(response_body, (), content_area, true),
                 Tab::Headers => {
-                    response_headers.draw(frame, (), content_area, true);
+                    canvas.draw(response_headers, (), content_area, true);
                 }
             },
             ExchangePaneContentState::RequestError { request, error } => {
                 match self.tabs.selected() {
-                    Tab::Request => request.draw(frame, (), content_area, true),
+                    Tab::Request => {
+                        canvas.draw(request, (), content_area, true);
+                    }
                     Tab::Body | Tab::Headers => {
-                        frame.render_widget(error, content_area);
+                        canvas.render_widget(error, content_area);
                     }
                 }
             }

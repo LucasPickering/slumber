@@ -12,7 +12,7 @@ use crate::{
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
-            Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+            Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
         },
         context::UpdateContext,
@@ -22,7 +22,6 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{
-    Frame,
     prelude::Constraint,
     text::{Line, Text},
 };
@@ -65,8 +64,8 @@ impl Component for ErrorModal {
 }
 
 impl Draw for ErrorModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        frame.render_widget(self.error.generate(), metadata.area());
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.render_widget(self.error.generate(), metadata.area());
     }
 }
 
@@ -156,9 +155,9 @@ impl Component for TextBoxModal {
 }
 
 impl Draw for TextBoxModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        self.text_box.draw(
-            frame,
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.draw(
+            &self.text_box,
             TextBoxProps::default(),
             metadata.area(),
             true,
@@ -269,19 +268,17 @@ impl Component for SelectListModal {
 }
 
 impl Draw for SelectListModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Empty state
         let options = &self.options;
         if options.is_empty() {
-            frame.render_widget(
+            canvas.render_widget(
                 Text::from(vec!["No options defined!".into()]),
                 metadata.area(),
             );
             return;
         }
-
-        self.options
-            .draw(frame, List::from(options), metadata.area(), true);
+        canvas.draw(&self.options, List::from(options), metadata.area(), true);
     }
 }
 
@@ -393,8 +390,8 @@ impl Component for ConfirmModal {
 }
 
 impl Draw for ConfirmModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        self.buttons.draw(frame, (), metadata.area(), true);
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.draw(&self.buttons, (), metadata.area(), true);
     }
 }
 
@@ -468,8 +465,8 @@ impl Component for DeleteRequestModal {
 }
 
 impl Draw for DeleteRequestModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        self.buttons.draw(frame, (), metadata.area(), true);
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.draw(&self.buttons, (), metadata.area(), true);
     }
 }
 
@@ -547,8 +544,8 @@ impl Modal for DeleteRecipeRequestsModal {
 }
 
 impl Draw for DeleteRecipeRequestsModal {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
-        self.buttons.draw(frame, (), metadata.area(), true);
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.draw(&self.buttons, (), metadata.area(), true);
     }
 }
 

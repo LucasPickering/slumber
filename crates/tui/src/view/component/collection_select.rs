@@ -9,8 +9,7 @@ use crate::{
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
-            Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
-            ToChild,
+            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         event::{Event, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
@@ -18,7 +17,6 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{
-    Frame,
     layout::Layout,
     prelude::{Constraint, Line},
 };
@@ -93,14 +91,12 @@ impl Component for CollectionSelect {
 }
 
 impl Draw for CollectionSelect {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
-        self.select
-            .draw(frame, List::from(&self.select), select_area, true);
-        self.filter
-            .draw(frame, TextBoxProps::default(), filter_area, true);
+        canvas.draw(&self.select, List::from(&self.select), select_area, true);
+        canvas.draw(&self.filter, TextBoxProps::default(), filter_area, true);
     }
 }
 

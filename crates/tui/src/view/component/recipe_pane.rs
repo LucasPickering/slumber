@@ -14,7 +14,7 @@ use crate::{
         Component, Generate,
         common::{Pane, actions::MenuAction},
         component::{
-            ComponentExt, ComponentId, Draw, DrawMetadata,
+            Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             recipe_pane::recipe::RecipeDisplay,
         },
@@ -25,7 +25,6 @@ use crate::{
 };
 use itertools::{Itertools, Position};
 use ratatui::{
-    Frame,
     layout::Alignment,
     text::{Line, Text},
 };
@@ -109,7 +108,7 @@ impl Component for RecipePane {
 impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: RecipePaneProps<'a>,
         metadata: DrawMetadata,
     ) {
@@ -137,7 +136,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     .style(context.styles.text.title),
             );
         }
-        frame.render_widget(block, metadata.area());
+        canvas.render_widget(block, metadata.area());
 
         // Whenever the recipe or profile changes, generate a preview for
         // each templated value. Almost anything that could change the
@@ -161,7 +160,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
         );
 
         match props.selected_recipe_node {
-            None => frame.render_widget(
+            None => canvas.render_widget(
                 Text::from(vec![
                     "No recipes defined; add one to your collection".into(),
                     doc_link("api/request_collection/request_recipe").into(),
@@ -169,11 +168,11 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                 inner_area,
             ),
             Some(RecipeNode::Folder(folder)) => {
-                frame.render_widget(folder.generate(), inner_area);
+                canvas.render_widget(folder.generate(), inner_area);
             }
             Some(RecipeNode::Recipe(_)) => {
                 if let Some(recipe_state) = &*recipe_state {
-                    recipe_state.draw(frame, (), inner_area, true);
+                    canvas.draw(recipe_state, (), inner_area, true);
                 }
             }
         }

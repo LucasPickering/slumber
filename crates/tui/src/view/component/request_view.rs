@@ -8,7 +8,7 @@ use crate::{
             text_window::{TextWindow, TextWindowProps},
         },
         component::{
-            ComponentExt, ComponentId, Draw, DrawMetadata,
+            Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
         },
         context::UpdateContext,
@@ -17,7 +17,7 @@ use crate::{
         util::{format_byte_size, highlight, view_text},
     },
 };
-use ratatui::{Frame, layout::Layout, prelude::Constraint, text::Text};
+use ratatui::{layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
     http::{RequestId, RequestRecord, content_type::ContentType},
@@ -96,7 +96,7 @@ impl Component for RequestView {
 }
 
 impl Draw for RequestView {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let request = &self.request;
         let [version_area, url_area, headers_area, body_area] =
             Layout::vertical([
@@ -109,12 +109,12 @@ impl Draw for RequestView {
 
         // This can get cut off which is jank but there isn't a good fix. User
         // can copy the URL to see the full thing
-        frame.render_widget(
+        canvas.render_widget(
             format!("{} {}", request.method, request.http_version),
             version_area,
         );
-        frame.render_widget(request.url.to_string(), url_area);
-        frame.render_widget(
+        canvas.render_widget(request.url.to_string(), url_area);
+        canvas.render_widget(
             HeaderTable {
                 headers: &request.headers,
             }
@@ -122,8 +122,8 @@ impl Draw for RequestView {
             headers_area,
         );
         if let Some(body) = &self.body {
-            self.body_text_window.draw(
-                frame,
+            canvas.draw(
+                &self.body_text_window,
                 TextWindowProps {
                     text: body,
                     margins: Default::default(),

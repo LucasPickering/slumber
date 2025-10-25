@@ -8,7 +8,7 @@ use crate::{
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         component::{
-            ComponentExt, ComponentId, Draw, DrawMetadata,
+            Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             recipe_pane::{
                 persistence::{RecipeOverrideKey, RecipeTemplate},
@@ -23,7 +23,6 @@ use crate::{
 use anyhow::Context;
 use indexmap::IndexMap;
 use mime::Mime;
-use ratatui::Frame;
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
@@ -146,16 +145,16 @@ impl Component for RecipeBodyDisplay {
 }
 
 impl Draw for RecipeBodyDisplay {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         match self {
             RecipeBodyDisplay::Raw(inner) => {
-                inner.draw(frame, (), metadata.area(), true);
+                canvas.draw(inner, (), metadata.area(), true);
             }
             RecipeBodyDisplay::Json(inner) => {
-                inner.draw(frame, (), metadata.area(), true);
+                canvas.draw(inner, (), metadata.area(), true);
             }
-            RecipeBodyDisplay::Form(form) => form.draw(
-                frame,
+            RecipeBodyDisplay::Form(form) => canvas.draw(
+                form,
                 RecipeFieldTableProps {
                     key_header: "Field",
                     value_header: "Value",
@@ -311,10 +310,10 @@ impl Component for TextBody {
 }
 
 impl Draw for TextBody {
-    fn draw_impl(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
+    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
-        self.text_window.draw(
-            frame,
+        canvas.draw(
+            &self.text_window,
             TextWindowProps {
                 // Do *not* call generate, because that clones the text and
                 // we only need a reference

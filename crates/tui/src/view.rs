@@ -21,7 +21,7 @@ use crate::{
     util::ResultReported,
     view::{
         common::modal::Modal,
-        component::{Component, ComponentExt, Root, RootProps},
+        component::{Canvas, Component, ComponentExt, Root, RootProps},
         debug::DebugMonitor,
         event::Event,
     },
@@ -87,9 +87,9 @@ impl View {
 
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
-    pub fn draw<'a>(
-        &'a self,
-        frame: &'a mut Frame,
+    pub fn draw<'f>(
+        &'f self,
+        frame: &'f mut Frame,
         request_store: &RequestStore,
     ) {
         fn draw_impl(
@@ -97,8 +97,10 @@ impl View {
             frame: &mut Frame,
             request_store: &RequestStore,
         ) {
-            let chunk = frame.area();
-            root.draw(frame, RootProps { request_store }, chunk, true);
+            let mut canvas = Canvas::new(frame);
+            let chunk = canvas.area();
+            canvas.draw(root, RootProps { request_store }, chunk, true);
+            canvas.draw_deferred();
         }
 
         // If the screen is too small to render anything, don't try. This avoids

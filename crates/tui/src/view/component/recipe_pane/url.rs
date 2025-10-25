@@ -1,6 +1,6 @@
 use crate::view::{
     UpdateContext,
-    common::{actions::MenuAction, template_preview::TemplatePreview},
+    common::{actions::MenuItem, template_preview::TemplatePreview},
     component::{
         Component, ComponentId, Draw, DrawMetadata,
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
@@ -85,16 +85,18 @@ impl Component for UrlDisplay {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
         vec![
             emitter
                 .menu(UrlMenuAction::Edit, "Edit URL")
-                .shortcut(Some(Action::Edit)),
+                .shortcut(Some(Action::Edit))
+                .into(),
             emitter
                 .menu(UrlMenuAction::Reset, "Reset URL")
                 .enable(self.url.is_overridden())
-                .shortcut(Some(Action::Reset)),
+                .shortcut(Some(Action::Reset))
+                .into(),
         ]
     }
 }

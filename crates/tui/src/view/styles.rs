@@ -27,6 +27,11 @@ pub struct Styles {
 pub struct ListStyles {
     /// Highlighted item in a list
     pub highlight: Style,
+    /// Highlight item in a list when the list is visible but not receiving
+    /// events. This isn't used for all inactive lists, only when we need to
+    /// visually distinguish between active and inactive (e.g. in a nested
+    /// action menu).
+    pub highlight_inactive: Style,
     /// Disabled item in a list
     pub disabled: Style,
 }
@@ -135,6 +140,9 @@ impl Styles {
                 highlight: Style::default()
                     .bg(theme.primary_color)
                     .fg(theme.primary_text_color)
+                    .add_modifier(Modifier::BOLD),
+                highlight_inactive: Style::default()
+                    .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
                 disabled: Style::default().add_modifier(Modifier::DIM),
             },

@@ -24,15 +24,26 @@ use std::marker::PhantomData;
 /// A sequence of items, with a scrollbar and optional surrounding pane
 pub struct List<'a, Item> {
     items: Vec<ListItem<Item>>,
+    /// Should we use active or inactive styling?
+    active: bool,
     /// This *shouldn't* be required, but without it we hit this ICE:
     /// <https://github.com/rust-lang/rust/issues/124189>
     phantom: PhantomData<&'a ()>,
+}
+
+impl<Item> List<'_, Item> {
+    /// Style this list as active/inactive
+    pub fn active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
 }
 
 impl<'a, Item> From<&'a SelectState<Item>> for List<'a, &'a Item> {
     fn from(select: &'a SelectState<Item>) -> Self {
         Self {
             items: select.items_with_metadata().map(ListItem::from).collect(),
+            active: true,
             phantom: PhantomData,
         }
     }
@@ -45,6 +56,7 @@ where
     fn from(select: &'a FixedSelectState<Item>) -> Self {
         Self {
             items: select.items_with_metadata().map(ListItem::from).collect(),
+            active: true,
             phantom: PhantomData,
         }
     }
@@ -58,7 +70,7 @@ where
     type State = ListState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut ListState) {
-        let styles = &TuiContext::get().styles;
+        let styles = &TuiContext::get().styles.list;
 
         // Draw list
         let items: Vec<TuiListItem<'_>> = self
@@ -67,13 +79,18 @@ where
             .map(|item| {
                 let mut list_item = TuiListItem::new(item.value.generate());
                 if !item.enabled {
-                    list_item = list_item.set_style(styles.list.disabled);
+                    list_item = list_item.set_style(styles.disabled);
                 }
                 list_item
             })
             .collect();
         let num_items = items.len();
-        let list = TuiList::new(items).highlight_style(styles.list.highlight);
+        let highlight_style = if self.active {
+            styles.highlight
+        } else {
+            styles.highlight_inactive
+        };
+        let list = TuiList::new(items).highlight_style(highlight_style);
         StatefulWidget::render(list, area, buf, state);
 
         // Draw scrollbar

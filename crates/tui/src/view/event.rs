@@ -191,7 +191,8 @@ impl<T: Any + Debug> LocalEvent for T {}
 /// ViewContext and therefore shouldn't be passed off the main thread, but there
 /// is one use case where it needs to be Send to be passed to the main loop via
 /// Message without actually changing threads.
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
+#[display("{id}")]
 pub struct Emitter<T: ?Sized> {
     id: EmitterId,
     phantom: PhantomData<T>,
@@ -311,6 +312,7 @@ pub trait ToEmitter<E: LocalEvent> {
     fn to_emitter(&self) -> Emitter<E>;
 }
 
+// Implement ToEmitter through Deref
 impl<T, E> ToEmitter<E> for T
 where
     T: Deref,

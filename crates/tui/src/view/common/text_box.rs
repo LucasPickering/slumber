@@ -4,14 +4,13 @@ use crate::{
     context::TuiContext,
     view::{
         common::scrollbar::Scrollbar,
-        component::{Component, ComponentId, Draw, DrawMetadata},
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Emitter, Event, OptionEvent, ToEmitter},
     },
 };
 use persisted::PersistedContainer;
 use ratatui::{
-    Frame,
     layout::Rect,
     text::{Line, Masked, Text},
     widgets::{Paragraph, ScrollbarOrientation},
@@ -230,7 +229,7 @@ impl Component for TextBox {
 impl Draw<TextBoxProps> for TextBox {
     fn draw_impl(
         &self,
-        frame: &mut Frame,
+        canvas: &mut Canvas,
         props: TextBoxProps,
         metadata: DrawMetadata,
     ) {
@@ -265,7 +264,7 @@ impl Draw<TextBoxProps> for TextBox {
             // Invalid and error state look the same
             styles.text_box.invalid
         };
-        frame.render_widget(
+        canvas.render_widget(
             Paragraph::new(text).scroll((0, scroll_x)).style(style),
             area,
         );
@@ -278,14 +277,14 @@ impl Draw<TextBoxProps> for TextBox {
                 width: 1,
                 height: 1,
             };
-            frame
+            canvas
                 .buffer_mut()
                 .set_style(cursor_area, styles.text_box.cursor);
 
             // Show scroll bar. We only show this while focused so we don't
             // cover up anyone else's scrollbar, e.g. in the queryable body
             if text_stats.text_width as u16 > area.width {
-                frame.render_widget(
+                canvas.render_widget(
                     Scrollbar {
                         content_length: text_stats.text_width,
                         offset: scroll_x as usize,

@@ -107,7 +107,7 @@ impl TextBoxModal {
         Self {
             id: ComponentId::default(),
             title,
-            text_box,
+            text_box: text_box.subscribe([TextBoxEvent::Submit]),
             on_submit: Box::new(on_submit),
         }
     }
@@ -139,16 +139,14 @@ impl Component for TextBoxModal {
         event
             .opt()
             .emitted(self.text_box.to_emitter(), |event| match event {
-                TextBoxEvent::Focus | TextBoxEvent::Change => {}
-                TextBoxEvent::Cancel => {
-                    // Propagate cancel to close the modal
-                    self.close(false);
-                }
                 TextBoxEvent::Submit => {
                     // We have to defer submission to on_close, because we need
                     // the owned value of `self.on_submit`
                     self.close(true);
                 }
+                TextBoxEvent::Focus
+                | TextBoxEvent::Change
+                | TextBoxEvent::Cancel => {}
             })
     }
 

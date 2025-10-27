@@ -84,10 +84,21 @@ impl QueryableBody {
                 "{query_bind} to query, {export_bind} to export"
             ))
             .placeholder_focused("Enter query command (ex: `jq .results`)")
-            .default_value(default_query.clone().unwrap_or_default());
-        let export_text_box = TextBox::default().placeholder_focused(
-            "Enter export command (ex: `tee > response.json`)",
-        );
+            .default_value(default_query.clone().unwrap_or_default())
+            .subscribe([
+                TextBoxEvent::Cancel,
+                TextBoxEvent::Focus,
+                TextBoxEvent::Submit,
+            ]);
+        let export_text_box = TextBox::default()
+            .placeholder_focused(
+                "Enter export command (ex: `tee > response.json`)",
+            )
+            .subscribe([
+                TextBoxEvent::Cancel,
+                TextBoxEvent::Focus,
+                TextBoxEvent::Submit,
+            ]);
 
         let text_state =
             TextState::new(response.content_type(), &response.body, true);

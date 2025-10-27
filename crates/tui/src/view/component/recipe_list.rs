@@ -78,8 +78,14 @@ impl RecipeListPane {
             SelectedRecipeKey,
             collapsed.build_select_state(recipes, ""),
         );
-        let filter =
-            TextBox::default().placeholder(format!("{binding} to filter"));
+        let filter = TextBox::default()
+            .placeholder(format!("{binding} to filter"))
+            .subscribe([
+                TextBoxEvent::Cancel,
+                TextBoxEvent::Change,
+                TextBoxEvent::Focus,
+                TextBoxEvent::Submit,
+            ]);
         Self {
             id: ComponentId::default(),
             emitter: Default::default(),

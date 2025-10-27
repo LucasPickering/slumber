@@ -35,6 +35,8 @@ pub struct TextBox {
     /// Predicate function to apply visual validation effect
     #[debug(skip)]
     validator: Option<Validator>,
+    /// Which event types to emit
+    subscribed_events: Vec<TextBoxEvent>,
 
     // State
     state: TextState,
@@ -80,6 +82,15 @@ impl TextBox {
         validator: impl 'static + Fn(&str) -> bool,
     ) -> Self {
         self.validator = Some(Box::new(validator));
+        self
+    }
+
+    /// Which types of events should this component emit?
+    pub fn subscribe(
+        mut self,
+        events: impl IntoIterator<Item = TextBoxEvent>,
+    ) -> Self {
+        self.subscribed_events.extend(events);
         self
     }
 
@@ -168,14 +179,21 @@ impl TextBox {
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
         if self.is_valid() {
-            self.emitter.emit(TextBoxEvent::Change);
+            self.emit(TextBoxEvent::Change);
         }
     }
 
     /// Emit a submit event
     fn submit(&mut self) {
         if self.is_valid() {
-            self.emitter.emit(TextBoxEvent::Submit);
+            self.emit(TextBoxEvent::Submit);
+        }
+    }
+
+    /// Emit the given event **if the parent has subcribed to it**
+    fn emit(&self, event: TextBoxEvent) {
+        if self.subscribed_events.contains(&event) {
+            self.emitter.emit(event);
         }
     }
 }
@@ -190,8 +208,8 @@ impl Component for TextBox {
             .opt()
             .action(|action, propagate| match action {
                 Action::Submit => self.submit(),
-                Action::Cancel => self.emitter.emit(TextBoxEvent::Cancel),
-                Action::LeftClick => self.emitter.emit(TextBoxEvent::Focus),
+                Action::Cancel => self.emit(TextBoxEvent::Cancel),
+                Action::LeftClick => self.emit(TextBoxEvent::Focus),
                 _ => propagate.set(),
             })
             .any(|event| match event {
@@ -448,8 +466,7 @@ impl ToEmitter<TextBoxEvent> for TextBox {
 }
 
 /// Emitted event type for a text box
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, PartialEq)]
 pub enum TextBoxEvent {
     Focus,
     Change,
@@ -505,8 +522,16 @@ mod tests {
         harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, TextBox::default());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            TextBox::default().subscribe([
+                TextBoxEvent::Cancel,
+                TextBoxEvent::Change,
+                TextBoxEvent::Focus,
+                TextBoxEvent::Submit,
+            ]),
+        );
 
         // Assert initial state/view
         assert_state(&component.state, "", 0);
@@ -570,8 +595,11 @@ mod tests {
         harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, TextBox::default());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            TextBox::default().subscribe([TextBoxEvent::Change]),
+        );
 
         // Type some text
         component.int().send_text("hello!").assert_emitted([
@@ -615,15 +643,18 @@ mod tests {
     /// we're mostly just testing that keys are mapped correctly
     #[rstest]
     fn test_scroll(harness: TestHarness, #[with(3, 3)] terminal: TestTerminal) {
-        let mut component =
-            TestComponent::builder(&harness, &terminal, TextBox::default())
-                .with_default_props()
-                // Leave vertical margin for the scroll bar
-                .with_area(terminal.area().inner(Margin {
-                    horizontal: 0,
-                    vertical: 1,
-                }))
-                .build();
+        let mut component = TestComponent::builder(
+            &harness,
+            &terminal,
+            TextBox::default().subscribe([TextBoxEvent::Change]),
+        )
+        .with_default_props()
+        // Leave vertical margin for the scroll bar
+        .with_area(terminal.area().inner(Margin {
+            horizontal: 0,
+            vertical: 1,
+        }))
+        .build();
 
         // Type some text
         component.int().send_text("012345").assert_emitted([
@@ -697,7 +728,9 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            TextBox::default().sensitive(true),
+            TextBox::default()
+                .sensitive(true)
+                .subscribe([TextBoxEvent::Change]),
         );
 
         component
@@ -768,7 +801,9 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            TextBox::default().validator(|text| text.len() <= 2),
+            TextBox::default()
+                .validator(|text| text.len() <= 2)
+                .subscribe([TextBoxEvent::Change, TextBoxEvent::Submit]),
         );
 
         // Valid text, everything is normal

@@ -40,7 +40,8 @@ impl CollectionSelect {
         Self {
             id: ComponentId::default(),
             select: build_select_state(""),
-            filter: TextBox::default(),
+            filter: TextBox::default()
+                .subscribe([TextBoxEvent::Change, TextBoxEvent::Cancel]),
         }
     }
 }

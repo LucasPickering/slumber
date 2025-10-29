@@ -9,7 +9,7 @@ use derive_more::Display;
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
 use ratatui::{
     Frame,
-    buffer::{self, Buffer},
+    buffer::Buffer,
     layout::Rect,
     widgets::{StatefulWidget, Widget},
 };
@@ -28,6 +28,8 @@ use tracing::{instrument, trace, trace_span, warn};
 use uuid::Uuid;
 
 thread_local! {
+    // TODO can any of this be moved onto the Canvas?
+
     /// All components that were drawn during the last draw phase. The purpose
     /// of this is to allow each component to return an exhaustive list of its
     /// children during event handling, then we can automatically filter that
@@ -221,40 +223,61 @@ impl<T: Component + ?Sized> ComponentExt for T {
 /// some component types (e.g. `SelectState`) that have multiple `Draw` impls.
 /// Using an associated type also makes prop types with lifetimes much less
 /// ergonomic.
-pub trait Draw<Props = ()>: Component {
+pub trait Draw<Props = ()> {
     /// Draw the component into the frame.
     ///
     /// This is what each component will implement itself, but this **should not
-    /// be called directly.** Instead, call [ComponentExt::draw] on child
-    /// components to ensure the wrapping draw logic is called correctly.
-    /// This is called `draw_impl` instead of `draw` to make it distinct
-    /// from [ComponentExt::draw].
-    fn draw_impl(
-        &self,
-        canvas: &mut Canvas,
-        props: Props,
-        metadata: DrawMetadata,
-    );
+    /// be called directly.** Instead, call [Canvas::draw] to ensure the
+    /// wrapping draw logic is called correctly.
+    fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata);
 }
 
-/// TODO
+/// A wrapper around a [Frame] that manages draw state for a single frame of
+/// drawing.
 #[derive(derive_more::Debug)]
 pub struct Canvas<'buf, 'fr> {
     frame: &'fr mut Frame<'buf>,
-    /// TODO
-    deferred: Vec<Buffer>,
+    /// Each [Portal] element is rendered to its own buffer. The buffers are
+    /// then merged together into the main frame buffer at the end of the draw.
+    /// If there are multiple portals, the *later* rendered portals take
+    /// priority.
+    portals: Vec<Buffer>,
 }
 
 impl<'buf, 'fr> Canvas<'buf, 'fr> {
-    /// TODO
+    /// Wrap a frame for a single walk down the draw tree
     pub fn new(frame: &'fr mut Frame<'buf>) -> Self {
         Self {
             frame,
-            deferred: vec![],
+            portals: vec![],
         }
     }
 
-    /// TODO
+    pub fn draw_all<T, Props>(
+        frame: &'fr mut Frame<'buf>,
+        root: &T,
+        props: Props,
+    ) where
+        T: Component + Draw<Props>,
+    {
+        let mut canvas = Self::new(frame);
+        canvas.draw(root, props, canvas.area(), true);
+
+        // Merge portaled buffers into the main buffer
+        let main_buffer = canvas.frame.buffer_mut();
+        for portal_buffer in &canvas.portals {
+            main_buffer.merge(portal_buffer);
+        }
+    }
+
+    /// Draw a component to the screen
+    ///
+    /// ## Params
+    ///
+    /// - `component`: Component to draw
+    /// - `props`: Arbitrary data to pass to the component's `draw()` method
+    /// - `area`: Area of the screen to draw the component to
+    /// - `has_focus`: Should this component receive future keyboard events?
     pub fn draw<T, Props>(
         &mut self,
         component: &T,
@@ -262,70 +285,78 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
         area: Rect,
         has_focus: bool,
     ) where
-        T: Draw<Props> + ?Sized,
+        T: Component + Draw<Props> + ?Sized,
     {
-        // Update internal state for event handling
         let metadata = DrawMetadata { area, has_focus };
-        let guard = DrawGuard::new(component.id(), metadata);
-
-        component.draw_impl(self, props, metadata);
-        drop(guard); // Make sure guard stays alive until here
+        Self::with_guard(component.id(), metadata, || {
+            component.draw(self, props, metadata);
+        });
     }
 
-    /// TODO
-    pub fn draw_on_top<T, Props>(
+    /// Draw a component to the screen *outside of its normal draw order.*
+    ///
+    /// See [Portal] for more info. Unlike [Self::draw], this does *not* take
+    /// an `area` param because the component determines its own draw area via
+    /// [Portal::area].
+    pub fn draw_portal<T, Props>(
         &mut self,
         component: &T,
         props: Props,
-        area: Rect,
         has_focus: bool,
     ) where
-        T: Draw<Props> + ?Sized,
+        T: Component + Draw<Props> + Portal,
     {
-        // TODO dedupe this
+        // Ask the component what area it wants to portal to
+        let area = component.area(self.area());
         let metadata = DrawMetadata { area, has_focus };
-        let guard = DrawGuard::new(component.id(), metadata);
 
-        // TODO explain
-        let main_buffer = mem::take(self.frame.buffer_mut());
-        component.draw_impl(self, props, metadata);
-        let deferred = mem::replace(self.frame.buffer_mut(), main_buffer);
-        self.deferred.push(deferred);
+        // We want to draw the portal to its own buffer, so we merge it into the
+        // main buffer *at the end*. We need a Frame to draw to, but ratatui
+        // doesn't expose a way to create one. We can reuse the existing frame,
+        // and just swap out its buffer with a new one.
+        //
+        // The portal buffer will only contain the area that the portal wants to
+        // draw to. Ratatui is smart enough to shift the buffers to align by
+        // area before merging.
+        let main_buffer =
+            mem::replace(self.frame.buffer_mut(), Buffer::empty(area));
+        Self::with_guard(component.id(), metadata, || {
+            component.draw(self, props, metadata);
+        });
+        // Swap the main buffer back into the frame
+        let portal = mem::replace(self.frame.buffer_mut(), main_buffer);
+        // Store what we rendered, to be merged in later
+        self.portals.push(portal);
+    }
 
+    fn with_guard(
+        component_id: ComponentId,
+        metadata: DrawMetadata,
+        f: impl FnOnce(),
+    ) {
+        // Update internal state for event handling
+        let guard = DrawGuard::new(component_id, metadata);
+
+        f();
         drop(guard); // Make sure guard stays alive until here
     }
 
-    /// TODO
-    pub fn draw_deferred(&mut self) {
-        let main_buffer = self.frame.buffer_mut();
-        for buffer in self.deferred.drain(..) {
-            assert_eq!(main_buffer.area(), buffer.area(), "TODO");
-            // TODO possible without clone?
-            for position in main_buffer.area().positions() {
-                let deferred_cell = &buffer[position];
-                if deferred_cell != &buffer::Cell::EMPTY {
-                    main_buffer[position] = deferred_cell.clone();
-                }
-            }
-        }
-    }
-
-    /// TODO
+    /// [Frame::area]
     pub fn area(&self) -> Rect {
         self.frame.area()
     }
 
-    /// TODO
+    /// [Frame::buffer_mut]
     pub fn buffer_mut(&mut self) -> &mut Buffer {
         self.frame.buffer_mut()
     }
 
-    /// TODO
+    /// [Frame::render_widget]
     pub fn render_widget<W: Widget>(&mut self, widget: W, area: Rect) {
         self.frame.render_widget(widget, area);
     }
 
-    /// TODO
+    /// [Frame::render_stateful_widget]
     pub fn render_stateful_widget<W>(
         &mut self,
         widget: W,
@@ -475,9 +506,17 @@ fn update_all(
     // None of our children handled it, we'll take it ourselves. Event is
     // already traced in the root span, so don't dupe it.
     trace_span!("component.update").in_scope(|| {
-        let update = component.update(context, event);
-        trace!(propagated = ?update);
-        update
+        let propagated = component.update(context, event);
+
+        // Little bit of logging innit
+        let status = if propagated.is_some() {
+            "propagated"
+        } else {
+            "consumed"
+        };
+        trace!(status);
+
+        propagated
     })
 }
 
@@ -571,7 +610,21 @@ impl Default for ComponentId {
     }
 }
 
-/// A RAII guard to ensure the mutable thread-global state is updated correctly
+/// An on-screen element that can be drawn outside of its normal draw order.
+///
+/// This allows certain types of components to subvert their normal draw order
+/// and be drawn *on top* of all other components. It detachs the component's
+/// draw order from its logical location in the component tree. Useful for
+/// modals and other elements that must be drawn on top. This concept allows
+/// components to logically live where they belong in a component tree,
+/// simplifying state management and reducing the need for indirect event-based
+/// logic.
+pub trait Portal {
+    /// Get the area of the screen that this component should be drawn to
+    fn area(&self, canvas_area: Rect) -> Rect;
+}
+
+/// An RAII guard to ensure the mutable thread-global state is updated correctly
 /// throughout the span of a draw. This should be created at the start of each
 /// component's draw, and dropped at the finish of that draw.
 struct DrawGuard {
@@ -690,7 +743,7 @@ mod tests {
     }
 
     impl Draw<Props> for Branch {
-        fn draw_impl(
+        fn draw(
             &self,
             canvas: &mut Canvas,
             props: Props,
@@ -741,12 +794,7 @@ mod tests {
     }
 
     impl Draw for Leaf {
-        fn draw_impl(
-            &self,
-            canvas: &mut Canvas,
-            (): (),
-            metadata: DrawMetadata,
-        ) {
+        fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
             canvas.render_widget("hello!", metadata.area());
         }
     }
@@ -847,16 +895,14 @@ mod tests {
 
         // Visible components get events
         terminal.draw(|frame| {
-            let mut canvas = Canvas::new(frame);
-            canvas.draw(
+            Canvas::draw_all(
+                frame,
                 &component,
                 Props {
                     a: Mode::Focused,
                     b: Mode::Visible,
                     c: Mode::Hidden,
                 },
-                area,
-                true,
             );
         });
         // Root - inherited mouse event from c, which is hidden
@@ -867,16 +913,14 @@ mod tests {
 
         // Switch things up, make sure new state is reflected
         terminal.draw(|frame| {
-            let mut canvas = Canvas::new(frame);
-            canvas.draw(
+            Canvas::draw_all(
+                frame,
                 &component,
                 Props {
                     a: Mode::Visible,
                     b: Mode::Hidden,
                     c: Mode::Focused,
                 },
-                area,
-                true,
             );
         });
         // Root - inherited mouse event from b, which is hidden
@@ -940,17 +984,14 @@ mod tests {
     ) {
         // We are visible but *not* in focus
         terminal.draw(|frame| {
-            let area = frame.area();
-            let mut canvas = Canvas::new(frame);
-            canvas.draw(
+            Canvas::draw_all(
+                frame,
                 &component,
                 Props {
                     a: Mode::Focused,
                     b: Mode::Visible,
                     c: Mode::Visible,
                 },
-                area,
-                false,
             );
         });
 

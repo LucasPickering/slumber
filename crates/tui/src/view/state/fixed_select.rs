@@ -175,9 +175,9 @@ where
     State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw_impl(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
         // This is a transparent wrapper so we should defer directly
-        self.inner.draw_impl(canvas, props, metadata);
+        self.inner.draw(canvas, props, metadata);
     }
 }
 

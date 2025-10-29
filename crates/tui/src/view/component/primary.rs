@@ -6,7 +6,7 @@ use crate::{
     util::ResultReported,
     view::{
         Component, ViewContext,
-        common::{actions::MenuAction, modal::Modal},
+        common::{actions::MenuAction, modal::ModalQueue},
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
@@ -59,6 +59,11 @@ pub struct PrimaryView {
     /// `None` if the recipe list is empty or a folder is selected
     exchange_pane:
         StateCell<Option<(RequestId, RequestStateType)>, ExchangePane>,
+    help_modal: ModalQueue<HelpModal>,
+    /// Modal to select a different collection file
+    collection_select: ModalQueue<CollectionSelect>,
+    /// Modal to delete all requests for a recipe
+    delete_requests_modal: ModalQueue<DeleteRecipeRequestsModal>,
 
     global_actions_emitter: Emitter<PrimaryMenuAction>,
 }
@@ -82,6 +87,9 @@ impl PrimaryView {
             profile_pane,
             recipe_pane: Default::default(),
             exchange_pane: Default::default(),
+            help_modal: Default::default(),
+            collection_select: Default::default(),
+            delete_requests_modal: Default::default(),
 
             global_actions_emitter: Default::default(),
         }
@@ -213,7 +221,7 @@ impl PrimaryView {
     }
 
     /// Handle a menu action from the recipe list or recipe pane
-    fn handle_recipe_menu_action(&self, action: RecipeMenuAction) {
+    fn handle_recipe_menu_action(&mut self, action: RecipeMenuAction) {
         match action {
             RecipeMenuAction::CopyUrl => {
                 ViewContext::send_message(Message::CopyRequestUrl);
@@ -223,11 +231,12 @@ impl PrimaryView {
             }
             RecipeMenuAction::DeleteRecipe => {
                 if let Some(recipe_id) = self.selected_recipe_id() {
-                    DeleteRecipeRequestsModal::new(
-                        self.selected_profile_id().cloned(),
-                        recipe_id.clone(),
-                    )
-                    .open();
+                    self.delete_requests_modal.open(
+                        DeleteRecipeRequestsModal::new(
+                            self.selected_profile_id().cloned(),
+                            recipe_id.clone(),
+                        ),
+                    );
                 }
             }
         }
@@ -260,7 +269,7 @@ impl Component for PrimaryView {
                 Action::NextPane => self.selected_pane.get_mut().next(),
                 // Send a request from anywhere
                 Action::Submit => self.send_request(),
-                Action::OpenHelp => HelpModal::default().open(),
+                Action::OpenHelp => self.help_modal.open(HelpModal::default()),
 
                 // Pane hotkeys
                 Action::SelectProfileList => {
@@ -276,7 +285,9 @@ impl Component for PrimaryView {
                 Action::SelectResponse => {
                     self.selected_pane.get_mut().select(&PrimaryPane::Exchange);
                 }
-                Action::SelectCollection => CollectionSelect::new().open(),
+                Action::SelectCollection => {
+                    self.collection_select.open(CollectionSelect::new());
+                }
 
                 // Toggle fullscreen
                 Action::Fullscreen => {
@@ -356,6 +367,11 @@ impl Component for PrimaryView {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
+            // Modals
+            self.help_modal.to_child_mut(),
+            self.delete_requests_modal.to_child_mut(),
+            self.collection_select.to_child_mut(),
+            // Not modals
             self.profile_pane.to_child_mut(),
             self.recipe_list_pane.to_child_mut(),
             self.recipe_pane.to_child_mut(),
@@ -365,7 +381,7 @@ impl Component for PrimaryView {
 }
 
 impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: PrimaryViewProps<'a>,
@@ -426,6 +442,11 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             panes.exchange.area,
             panes.exchange.focus,
         );
+
+        // Modals!!
+        canvas.draw_portal(&self.help_modal, (), true);
+        canvas.draw_portal(&self.delete_requests_modal, (), true);
+        canvas.draw_portal(&self.collection_select, (), true);
     }
 }
 

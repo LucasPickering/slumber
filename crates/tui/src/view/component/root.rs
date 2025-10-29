@@ -3,17 +3,14 @@ use crate::{
     message::{Message, RequestConfig},
     util::ResultReported,
     view::{
-        Component, ViewContext,
-        common::{
-            actions::ActionsModal,
-            modal::{Modal, ModalQueue},
-        },
+        Component, Confirm, ViewContext,
+        common::{actions::ActionsModal, modal::ModalQueue, text_box::TextBox},
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
             history::History,
             internal::ComponentExt,
-            misc::ConfirmModal,
+            misc::{ConfirmModal, ErrorModal, SelectListModal, TextBoxModal},
             primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
@@ -29,6 +26,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId},
     http::RequestId,
+    render::{Prompt, Select},
 };
 use std::ops::Deref;
 
@@ -42,8 +40,19 @@ pub struct Root {
 
     // ==== Children =====
     primary_view: PrimaryView,
-    modal_queue: ModalQueue,
     footer: Footer,
+    // Modals!!
+    // Some of these can only have one instance at a time while some are
+    // queues. They use the same implementation, but it's only possible to open
+    // multiple modals at a time if the trigger is from the background (e.g.
+    // errors or prompts).
+    actions: ModalQueue<ActionsModal>,
+    cancel_request_confirm: ModalQueue<ConfirmModal>,
+    confirms: ModalQueue<ConfirmModal>,
+    errors: ModalQueue<ErrorModal>,
+    history: ModalQueue<History>,
+    prompts: ModalQueue<TextBoxModal>,
+    selects: ModalQueue<SelectListModal>,
 }
 
 impl Root {
@@ -60,9 +69,55 @@ impl Root {
 
             // Children
             primary_view,
-            modal_queue: ModalQueue::default(),
             footer: Footer::default(),
+            actions: ModalQueue::default(),
+            cancel_request_confirm: ModalQueue::default(),
+            confirms: ModalQueue::default(),
+            errors: ModalQueue::default(),
+            history: ModalQueue::default(),
+            prompts: ModalQueue::default(),
+            selects: ModalQueue::default(),
         }
+    }
+
+    /// Ask the user a yes/no question
+    pub fn confirm(&mut self, confirm: Confirm) {
+        self.confirms
+            .open(ConfirmModal::new(confirm.message, |response| {
+                confirm.channel.respond(response);
+            }));
+    }
+
+    /// Display an error to the user
+    pub fn error(&mut self, error: anyhow::Error) {
+        self.errors.open(ErrorModal::new(error));
+    }
+
+    /// Display an informational message to the user
+    pub fn notify(&mut self, message: String) {
+        self.footer.notify(message);
+    }
+
+    /// Prompt the user for text input
+    pub fn prompt(&mut self, prompt: Prompt) {
+        self.prompts.open(TextBoxModal::new(
+            prompt.message,
+            TextBox::default()
+                .sensitive(prompt.sensitive)
+                .default_value(prompt.default.unwrap_or_default()),
+            |response| prompt.channel.respond(response),
+        ));
+    }
+
+    /// Ask the user to select an item from a list
+    pub fn select(&mut self, select: Select) {
+        self.selects.open(SelectListModal::new(
+            select.message,
+            select.options,
+            |response| {
+                select.channel.respond(response);
+            },
+        ));
     }
 
     /// ID of the selected profile. `None` iff the list is empty
@@ -132,25 +187,43 @@ impl Root {
         Ok(())
     }
 
-    /// Open the history modal for current recipe+profile. Return an error if
-    /// the harness.database load failed.
-    fn open_history(
-        &mut self,
-        request_store: &mut RequestStore,
-    ) -> anyhow::Result<()> {
+    /// Open the history modal for current recipe+profile
+    fn open_history(&mut self, request_store: &mut RequestStore) {
         if let Some(recipe_id) = self.primary_view.selected_recipe_id() {
             // Make sure all requests for this profile+recipe are loaded
             let requests = request_store
                 .load_summaries(
                     self.primary_view.selected_profile_id(),
                     recipe_id,
-                )?
-                .collect();
+                )
+                .reported(&ViewContext::messages_tx())
+                .map(Vec::from_iter)
+                .unwrap_or_default();
 
-            History::new(recipe_id, requests, self.selected_request_id())
-                .open();
+            self.history.open(History::new(
+                recipe_id,
+                requests,
+                self.selected_request_id(),
+            ));
         }
-        Ok(())
+    }
+
+    /// Cancel the active request
+    fn cancel_request(&mut self, context: &mut UpdateContext<'_>) {
+        if let Some(request_id) = self.selected_request_id.0
+            && context.request_store.can_cancel(request_id)
+        {
+            self.cancel_request_confirm.open(ConfirmModal::new(
+                "Cancel request?".into(),
+                move |response| {
+                    if response {
+                        ViewContext::send_message(Message::HttpCancel(
+                            request_id,
+                        ));
+                    }
+                },
+            ));
+        }
     }
 }
 
@@ -173,30 +246,11 @@ impl Component for Root {
                     let actions = self.primary_view.collect_actions();
                     // Actions can be empty if a modal is already open
                     if !actions.is_empty() {
-                        ActionsModal::new(actions).open();
+                        self.actions.open(ActionsModal::new(actions));
                     }
                 }
-                Action::History => {
-                    self.open_history(context.request_store)
-                        .reported(&ViewContext::messages_tx());
-                }
-                Action::Cancel => {
-                    if let Some(request_id) = self.selected_request_id.0
-                        && context.request_store.can_cancel(request_id)
-                    {
-                        ConfirmModal::new(
-                            "Cancel request?".into(),
-                            move |response| {
-                                if response {
-                                    ViewContext::send_message(
-                                        Message::HttpCancel(request_id),
-                                    );
-                                }
-                            },
-                        )
-                        .open();
-                    }
-                }
+                Action::History => self.open_history(context.request_store),
+                Action::Cancel => self.cancel_request(context),
                 Action::Quit => ViewContext::send_message(Message::Quit),
                 Action::ReloadCollection => {
                     ViewContext::send_message(Message::CollectionStartReload);
@@ -217,13 +271,23 @@ impl Component for Root {
 
                 // There shouldn't be anything left unhandled. Bubble up to log
                 // it
-                _ => Some(event),
+                Event::Emitted { .. } => Some(event),
             })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
-            self.modal_queue.to_child_mut(),
+            // Modals first. They won't eat events when closed
+            // Error modal is always shown first, so it gets events first
+            self.errors.to_child_mut(),
+            // Rest of the modals
+            self.actions.to_child_mut(),
+            self.cancel_request_confirm.to_child_mut(),
+            self.confirms.to_child_mut(),
+            self.history.to_child_mut(),
+            self.prompts.to_child_mut(),
+            self.selects.to_child_mut(),
+            // Non-modals
             self.primary_view.to_child_mut(),
             self.footer.to_child_mut(),
         ]
@@ -231,7 +295,7 @@ impl Component for Root {
 }
 
 impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: RootProps<R>,
@@ -251,14 +315,23 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
             &self.primary_view,
             PrimaryViewProps { selected_request },
             main_area,
-            !self.modal_queue.is_open(),
+            // If any modals are open, the modal queue will eat all input
+            // events so we don't have to worry about catching stray events
+            true,
         );
 
         // Footer
         canvas.draw(&self.footer, (), footer_area, false);
 
-        // Render modals last so they go on top
-        canvas.draw(&self.modal_queue, (), canvas.area(), true);
+        // Modals
+        canvas.draw_portal(&self.actions, (), true);
+        canvas.draw_portal(&self.cancel_request_confirm, (), true);
+        canvas.draw_portal(&self.confirms, (), true);
+        canvas.draw_portal(&self.history, (), true);
+        canvas.draw_portal(&self.prompts, (), true);
+        canvas.draw_portal(&self.selects, (), true);
+        // Errors render last because they're drawn on top (highest priority)
+        canvas.draw_portal(&self.errors, (), true);
     }
 }
 

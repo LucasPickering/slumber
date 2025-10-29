@@ -191,16 +191,16 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         self.items.iter().map(|item| &item.value)
     }
 
+    /// Get mutable references to all items in the list
+    pub fn items_mut(&mut self) -> &mut [SelectItem<Item>] {
+        &mut self.items
+    }
+
     /// Get all items in the list, including each one's metadata
     pub fn items_with_metadata(
         &self,
     ) -> impl Iterator<Item = &SelectItem<Item>> {
         self.items.iter()
-    }
-
-    /// Get mutable references to all items in the list
-    pub fn items_mut(&mut self) -> &mut [SelectItem<Item>] {
-        &mut self.items
     }
 
     pub fn is_empty(&self) -> bool {
@@ -416,7 +416,7 @@ where
     State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw_impl(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
         canvas.render_stateful_widget(
             props,
             metadata.area(),

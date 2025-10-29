@@ -9,7 +9,6 @@ mod styles;
 pub mod test_util;
 mod util;
 
-pub use common::modal::{IntoModal, ModalPriority};
 pub use context::{UpdateContext, ViewContext};
 pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter, TuiPrompter};
@@ -20,7 +19,6 @@ use crate::{
     message::{Message, MessageSender, RequestConfig},
     util::ResultReported,
     view::{
-        common::modal::Modal,
         component::{Canvas, Component, ComponentExt, Root, RootProps},
         debug::DebugMonitor,
         event::Event,
@@ -38,6 +36,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
+    render::{Prompt, Select},
 };
 use std::{
     fmt::{Debug, Display},
@@ -92,17 +91,6 @@ impl View {
         frame: &'f mut Frame,
         request_store: &RequestStore,
     ) {
-        fn draw_impl(
-            root: &Root,
-            frame: &mut Frame,
-            request_store: &RequestStore,
-        ) {
-            let mut canvas = Canvas::new(frame);
-            let chunk = canvas.area();
-            canvas.draw(root, RootProps { request_store }, chunk, true);
-            canvas.draw_deferred();
-        }
-
         // If the screen is too small to render anything, don't try. This avoids
         // panics within ratatui from trying to render borders and margins
         // outside the buffer area
@@ -113,10 +101,14 @@ impl View {
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
             debug_monitor.draw(frame, |frame| {
-                draw_impl(&self.root, frame, request_store);
+                Canvas::draw_all(
+                    frame,
+                    &self.root,
+                    RootProps { request_store },
+                );
             });
         } else {
-            draw_impl(&self.root, frame, request_store);
+            Canvas::draw_all(frame, &self.root, RootProps { request_store });
         }
     }
 
@@ -171,15 +163,29 @@ impl View {
             .reported(&ViewContext::messages_tx());
     }
 
-    /// Queue an event to open a new modal. The input can be anything that
-    /// converts to modal content
-    pub fn open_modal(&self, modal: impl IntoModal + 'static) {
-        modal.into_modal().open();
+    /// Ask the user a yes/no question
+    pub fn confirm(&mut self, confirm: Confirm) {
+        self.root.confirm(confirm);
     }
 
-    /// Queue an event to send an informational notification to the user
-    pub fn notify(&self, message: impl ToString) {
-        ViewContext::notify(message);
+    /// Display an error to the user in a modal
+    pub fn error(&mut self, error: anyhow::Error) {
+        self.root.error(error);
+    }
+
+    /// Display an informational notification to the user
+    pub fn notify(&mut self, message: impl ToString) {
+        self.root.notify(message.to_string());
+    }
+
+    /// Prompt the user for text input
+    pub fn prompt(&mut self, prompt: Prompt) {
+        self.root.prompt(prompt);
+    }
+
+    /// Ask the user to select an item from a list
+    pub fn select(&mut self, select: Select) {
+        self.root.select(select);
     }
 
     /// Queue an event to update the view according to an input event from the

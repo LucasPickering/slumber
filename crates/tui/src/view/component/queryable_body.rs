@@ -2,11 +2,11 @@
 
 use crate::{
     context::TuiContext,
+    message::Message,
     util,
     view::{
-        Component, Generate, IntoModal, ViewContext,
+        Component, Generate, ViewContext,
         common::{
-            modal::Modal,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
@@ -204,8 +204,10 @@ impl QueryableBody {
         self.spawn_command(command, body, |command, result| match result {
             // We provide feedback via a global mechanism in both cases, so we
             // don't need an emitter here
-            Ok(_) => ViewContext::notify(format!("`{command}` succeeded")),
-            Err(error) => error.into_modal().open(),
+            Ok(_) => ViewContext::send_message(Message::Notify(format!(
+                "`{command}` succeeded"
+            ))),
+            Err(error) => ViewContext::send_message(Message::Error { error }),
         });
     }
 
@@ -294,7 +296,7 @@ impl Component for QueryableBody {
 }
 
 impl Draw for QueryableBody {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [body_area, query_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
@@ -688,7 +690,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_export(
-        harness: TestHarness,
+        mut harness: TestHarness,
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
         temp_dir: TempDir,
@@ -719,23 +721,18 @@ mod tests {
         })
         .await;
         // Success should push a notification
-        assert_matches!(
-            component.int().drain_draw().events(),
-            &[Event::Notify(_)]
-        );
+        assert_matches!(harness.pop_message_now(), Message::Notify(_));
         let file_content = fs::read_to_string(&path).await.unwrap();
         assert_eq!(file_content, TEXT);
 
-        // Error should appear as a modal
+        // Error should be sent as a message. Testing that the error is actually
+        // displayed is someone else's problem!!
         component.int().send_text(":bad!").assert_empty();
         run_local(async {
             component.int().send_key(KeyCode::Enter).assert_empty();
         })
         .await;
         component.int().drain_draw().assert_empty();
-        // Asserting on the modal within the view is a pain, so a shortcut is
-        // to just make sure an error modal is present
-        let modal = component.modal().expect("Error modal should be visible");
-        assert_eq!(&modal.title().to_string(), "Error");
+        assert_matches!(harness.pop_message_now(), Message::Error { .. });
     }
 }

@@ -173,7 +173,7 @@ impl Component for RecipeDisplay {
 }
 
 impl Draw for RecipeDisplay {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Render request contents
         let method = self.method.to_string();
 
@@ -192,7 +192,7 @@ impl Draw for RecipeDisplay {
 
         // First line: Method + URL
         canvas.render_widget(Paragraph::new(method), method_area);
-        canvas.render_widget(self.url.preview(), url_area);
+        canvas.draw(&self.url, (), url_area, false);
 
         // Navigation tabs
         canvas.draw(&*self.tabs, (), tabs_area, true);

@@ -343,7 +343,7 @@ impl LoadedState {
                 // the command is done
                 drop(file);
             }
-            Message::Error { error } => self.view.open_modal(error),
+            Message::Error { error } => self.view.error(error),
             Message::HttpBeginRequest => self.send_request()?,
             Message::HttpBuildingTriggered {
                 id,
@@ -377,15 +377,9 @@ impl LoadedState {
                 self.view.handle_input(event, action);
             }
             Message::Notify(message) => self.view.notify(message),
-            Message::PromptStart(prompt) => {
-                self.view.open_modal(prompt);
-            }
-            Message::SelectStart(select) => {
-                self.view.open_modal(select);
-            }
-            Message::ConfirmStart(confirm) => {
-                self.view.open_modal(confirm);
-            }
+            Message::PromptStart(prompt) => self.view.prompt(prompt),
+            Message::SelectStart(select) => self.view.select(select),
+            Message::ConfirmStart(confirm) => self.view.confirm(confirm),
             Message::TemplatePreview {
                 template,
                 can_stream,

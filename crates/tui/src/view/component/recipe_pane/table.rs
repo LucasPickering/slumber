@@ -2,11 +2,13 @@ use crate::view::{
     Generate,
     common::{
         actions::MenuAction,
+        modal::ModalQueue,
         table::{Table, ToggleRow},
     },
     component::{
         Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
         internal::Child,
+        misc::TextBoxModal,
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     },
     context::UpdateContext,
@@ -51,6 +53,11 @@ where
         RowSelectKey,
         SelectState<RowState<RowToggleKey>, TableState>,
     >,
+    /// Modal to edit template overrides. One modal is used for all rows,
+    /// because we only ever need one at a time and it makes the state
+    /// management simpler. Otherwise each row would need to be its own
+    /// component.
+    edit_modal: ModalQueue<TextBoxModal>,
 }
 
 impl<RowSelectKey, RowToggleKey> RecipeFieldTable<RowSelectKey, RowToggleKey>
@@ -90,6 +97,7 @@ where
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
             select: PersistedLazy::new(select_key, select),
+            edit_modal: ModalQueue::default(),
         }
     }
 
@@ -103,9 +111,21 @@ where
             .collect()
     }
 
-    fn edit_selected_row(&self) {
+    /// Open a modal to create or edit the selected row's temporary override
+    fn edit_selected_row(&mut self) {
         if let Some(selected_row) = self.select.selected() {
-            selected_row.open_edit_modal(self.override_emitter);
+            let emitter = self.override_emitter;
+            let index = selected_row.index;
+            self.edit_modal.open(selected_row.value.edit_modal(
+                format!("Edit value for {}", selected_row.key),
+                // Defer the state update into an event so it can get &mut
+                move |template| {
+                    emitter.emit(SaveRecipeTableOverride {
+                        row_index: index,
+                        template,
+                    });
+                },
+            ));
         }
     }
 
@@ -184,7 +204,7 @@ where
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut()]
+        vec![self.edit_modal.to_child_mut(), self.select.to_child_mut()]
     }
 }
 
@@ -194,7 +214,7 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: 'static + PersistedKey<Value = bool>,
 {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: RecipeFieldTableProps<'a>,
@@ -211,6 +231,7 @@ where
             ..Default::default()
         };
         canvas.draw(&*self.select, table.generate(), metadata.area(), true);
+        canvas.draw_portal(&self.edit_modal, (), true);
     }
 }
 
@@ -281,21 +302,6 @@ impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
 impl<K: PersistedKey<Value = bool>> RowState<K> {
     fn toggle(&mut self) {
         *self.enabled.get_mut() ^= true;
-    }
-
-    /// Open a modal to create or edit the value's temporary override
-    fn open_edit_modal(&self, emitter: Emitter<SaveRecipeTableOverride>) {
-        let index = self.index;
-        self.value.open_edit_modal(
-            format!("Edit value for {}", self.key),
-            move |template| {
-                // Defer the state update into an event, so it can get &mut
-                emitter.emit(SaveRecipeTableOverride {
-                    row_index: index,
-                    template,
-                });
-            },
-        );
     }
 
     /// Get the disabled/override state of this row

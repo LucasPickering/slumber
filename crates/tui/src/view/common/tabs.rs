@@ -47,7 +47,7 @@ impl<T: FixedSelect> Component for Tabs<T> {
 }
 
 impl<T: FixedSelect> Draw for Tabs<T> {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles.tab;
         let titles = self.tabs.items_with_metadata().map(|item| {
             let style = if item.enabled() {

@@ -4,9 +4,7 @@ use crate::{
     util::ResultReported,
     view::{
         ViewContext,
-        common::{
-            modal::Modal, template_preview::TemplatePreview, text_box::TextBox,
-        },
+        common::{template_preview::TemplatePreview, text_box::TextBox},
         component::misc::TextBoxModal,
     },
 };
@@ -120,13 +118,15 @@ impl RecipeTemplate {
         self.0.override_template.is_some()
     }
 
-    /// Open a text box modal to edit this template. Accepts a callback that
-    /// will be called with a new template upon submission.
-    pub fn open_edit_modal(
+    /// Create a modal that will edit this template in a text box. This **does
+    /// not** open the modal. The parent has to open and store the modal,
+    /// because modals aren't necessarily 1:1 with templates (e.g. a table
+    /// has multiple templates but only one edit modal).
+    pub fn edit_modal(
         &self,
         title: String,
         on_submit: impl 'static + FnOnce(Template),
-    ) {
+    ) -> TextBoxModal {
         let template = self.template().display().into_owned();
         TextBoxModal::new(
             title,
@@ -144,7 +144,6 @@ impl RecipeTemplate {
                 }
             },
         )
-        .open();
     }
 }
 

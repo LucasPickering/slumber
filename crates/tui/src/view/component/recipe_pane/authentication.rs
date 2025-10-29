@@ -2,10 +2,11 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
-        common::{actions::MenuAction, table::Table},
+        common::{actions::MenuAction, modal::ModalQueue, table::Table},
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
+            misc::TextBoxModal,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
         },
         context::UpdateContext,
@@ -20,6 +21,7 @@ use ratatui::{
 use slumber_config::Action;
 use slumber_core::collection::{Authentication, RecipeId};
 use slumber_template::Template;
+use std::iter;
 use strum::{EnumCount, EnumIter};
 
 /// Display authentication settings for a recipe
@@ -31,6 +33,8 @@ pub struct AuthenticationDisplay {
     /// Emitter for menu actions
     actions_emitter: Emitter<AuthenticationMenuAction>,
     state: State,
+    /// Modal to edit template overrides. One modal is used for all templates
+    edit_modal: ModalQueue<TextBoxModal>,
 }
 
 impl AuthenticationDisplay {
@@ -70,6 +74,7 @@ impl AuthenticationDisplay {
             override_emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             state,
+            edit_modal: ModalQueue::default(),
         }
     }
 
@@ -93,6 +98,30 @@ impl AuthenticationDisplay {
             None
         }
     }
+
+    /// Open a modal to let the user edit temporary override values
+    fn open_edit_modal(
+        &mut self,
+        emitter: Emitter<SaveAuthenticationOverride>,
+    ) {
+        let (label, template) = match &self.state {
+            State::Basic {
+                username,
+                password,
+                selected_field,
+                ..
+            } => match selected_field.selected() {
+                BasicFields::Username => ("username", username),
+                BasicFields::Password => ("password", password),
+            },
+            State::Bearer { token, .. } => ("bearer token", token),
+        };
+        self.edit_modal.open(template.edit_modal(
+            format!("Edit {label}"),
+            // Defer the state update into an event so it can get &mut
+            move |template| emitter.emit(SaveAuthenticationOverride(template)),
+        ));
+    }
 }
 
 impl Component for AuthenticationDisplay {
@@ -105,7 +134,7 @@ impl Component for AuthenticationDisplay {
             .opt()
             .action(|action, propagate| match action {
                 Action::Edit => {
-                    self.state.open_edit_modal(self.override_emitter);
+                    self.open_edit_modal(self.override_emitter);
                 }
                 Action::Reset => self.state.reset_override(),
                 _ => propagate.set(),
@@ -118,7 +147,7 @@ impl Component for AuthenticationDisplay {
             )
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 AuthenticationMenuAction::Edit => {
-                    self.state.open_edit_modal(self.override_emitter);
+                    self.open_edit_modal(self.override_emitter);
                 }
                 AuthenticationMenuAction::Reset => self.state.reset_override(),
             })
@@ -138,17 +167,20 @@ impl Component for AuthenticationDisplay {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        match &mut self.state {
+        let field = match &mut self.state {
             State::Basic { selected_field, .. } => {
-                vec![selected_field.to_child_mut()]
+                Some(selected_field.to_child_mut())
             }
-            State::Bearer { .. } => vec![],
-        }
+            State::Bearer { .. } => None,
+        };
+        iter::once(self.edit_modal.to_child_mut())
+            .chain(field)
+            .collect()
     }
 }
 
 impl Draw for AuthenticationDisplay {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
         let [label_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
@@ -191,6 +223,8 @@ impl Draw for AuthenticationDisplay {
                 canvas.render_widget(token.preview().generate(), content_area);
             }
         }
+
+        canvas.draw_portal(&self.edit_modal, (), true);
     }
 }
 
@@ -232,26 +266,6 @@ impl State {
             } => username.is_overridden() || password.is_overridden(),
             Self::Bearer { token } => token.is_overridden(),
         }
-    }
-
-    /// Open a modal to let the user edit temporary override values
-    fn open_edit_modal(&self, emitter: Emitter<SaveAuthenticationOverride>) {
-        let (label, template) = match &self {
-            Self::Basic {
-                username,
-                password,
-                selected_field,
-                ..
-            } => match selected_field.selected() {
-                BasicFields::Username => ("username", username),
-                BasicFields::Password => ("password", password),
-            },
-            Self::Bearer { token, .. } => ("bearer token", token),
-        };
-        template.open_edit_modal(format!("Edit {label}"), move |template| {
-            // Defer the state update into an event, so it can get &mut
-            emitter.emit(SaveAuthenticationOverride(template));
-        });
     }
 
     /// Override the value template for whichever field is selected, and

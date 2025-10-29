@@ -3,11 +3,7 @@
 
 use crate::{
     util::Flag,
-    view::{
-        ViewContext,
-        common::{actions::MenuAction, modal::Modal},
-        state::Notification,
-    },
+    view::{ViewContext, common::actions::MenuAction},
 };
 use slumber_config::Action;
 use slumber_core::http::RequestId;
@@ -66,28 +62,14 @@ pub enum Event {
         action: Option<Action>,
     },
 
-    // HTTP
     /// Load a request from the database. If the ID is given, load that
     /// specific request. If not, get the most recent for the current
     /// profile+recipe.
+    ///
+    /// This is a top-level event because it's send from multiple different
+    /// components throughout the tree, such that using emitted events would be
+    /// excessively complicated.
     HttpSelectRequest(Option<RequestId>),
-
-    /// Show a modal to the user
-    OpenModal(Box<dyn Modal>),
-    /// Close the current modal. This is useful for the contents of the modal
-    /// to implement custom close triggers
-    CloseModal {
-        /// Some modals have a concept of submission, and want to execute
-        /// certain one-time code during close, conditional on whether the
-        /// modal was submitted or cancelled. For modals without submissions,
-        /// this is `false`.
-        submitted: bool,
-    },
-
-    /// Tell the user something informational
-    Notify(Notification),
-    /// Clear the current notification if it matches the given ID
-    NotifyClear(Uuid),
 
     /// A localized event emitted by a particular [Emitter] implementation.
     /// The event type here does not need to be unique because the emitter ID
@@ -130,6 +112,16 @@ pub trait OptionEvent {
     fn emitted<E>(self, emitter: Emitter<E>, f: impl FnOnce(E)) -> Self
     where
         E: LocalEvent;
+
+    /// Handle an emitted event, where the emitter may or may not exist. If the
+    /// emitter is `Some`, forward to [Self::emitted].
+    fn emitted_opt<E>(
+        self,
+        emitter: Option<Emitter<E>>,
+        f: impl FnOnce(E),
+    ) -> Self
+    where
+        E: LocalEvent;
 }
 
 impl OptionEvent for Option<Event> {
@@ -170,6 +162,21 @@ impl OptionEvent for Option<Event> {
                 None
             }
             Err(event) => Some(event),
+        }
+    }
+
+    fn emitted_opt<E>(
+        self,
+        emitter: Option<Emitter<E>>,
+        f: impl FnOnce(E),
+    ) -> Self
+    where
+        E: LocalEvent,
+    {
+        if let Some(emitter) = emitter {
+            self.emitted(emitter, f)
+        } else {
+            self
         }
     }
 }

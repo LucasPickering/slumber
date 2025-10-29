@@ -145,7 +145,7 @@ impl Component for RecipeBodyDisplay {
 }
 
 impl Draw for RecipeBodyDisplay {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         match self {
             RecipeBodyDisplay::Raw(inner) => {
                 canvas.draw(inner, (), metadata.area(), true);
@@ -310,7 +310,7 @@ impl Component for TextBody {
 }
 
 impl Draw for TextBody {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
         canvas.draw(
             &self.text_window,

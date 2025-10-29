@@ -30,9 +30,8 @@ pub struct History {
     /// Are we in the process of deleting the selected request? If so, we'll
     /// show a delete confirmation instead of the normal list.
     deleting: bool,
-    /// Confirmation buttons for a deletion. This can't be part of the above
-    /// option because it makes the emitter handling logic in `update()`
-    /// annoying. This needs to be reset between deletes.
+    /// Confirmation buttons for a deletion. This needs to be reset between
+    /// deletes.
     delete_confirm_buttons: ButtonGroup<ConfirmButton>,
 }
 
@@ -127,15 +126,16 @@ impl Component for History {
                         self.deleting = true;
                     }
                 }
-                _ => propagate.set(),
-            })
-            .emitted(self.delete_confirm_buttons.to_emitter(), |event| {
-                if event == ConfirmButton::Yes {
-                    self.delete_selected(context.request_store);
+                // Only consume submission if we're in delete confirmation
+                Action::Submit if self.deleting => {
+                    if self.delete_confirm_buttons.selected().to_bool() {
+                        self.delete_selected(context.request_store);
+                    }
+                    // Reset state for next time
+                    self.deleting = false;
+                    self.delete_confirm_buttons = Default::default();
                 }
-                // Reset state for next time
-                self.deleting = false;
-                self.delete_confirm_buttons = Default::default();
+                _ => propagate.set(),
             })
             .emitted(self.select.to_emitter(), |event| {
                 if let SelectStateEvent::Select(index) = event {
@@ -156,7 +156,7 @@ impl Component for History {
 }
 
 impl Draw for History {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if self.deleting {
             canvas.draw(
                 &self.delete_confirm_buttons,

@@ -16,7 +16,7 @@ mod root;
 
 pub use internal::{
     Canvas, Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
-    ToChild,
+    Portal, ToChild,
 };
 pub use root::{Root, RootProps};
 // Exported for the view context

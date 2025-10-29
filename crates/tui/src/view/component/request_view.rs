@@ -96,7 +96,7 @@ impl Component for RequestView {
 }
 
 impl Draw for RequestView {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let request = &self.request;
         let [version_area, url_area, headers_area, body_area] =
             Layout::vertical([

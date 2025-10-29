@@ -186,7 +186,7 @@ impl Component for TextWindow {
 
 /// `T` has to be convertible to text to be drawn
 impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: TextWindowProps<'a>,

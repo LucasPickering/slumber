@@ -7,7 +7,7 @@ use crate::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             help::HelpFooter,
         },
-        event::{Event, OptionEvent},
+        event::{Emitter, Event, OptionEvent},
         state::Notification,
     },
 };
@@ -19,12 +19,29 @@ use slumber_config::Action;
 use slumber_core::database::CollectionDatabase;
 use slumber_util::ResultTraced;
 use tokio::time;
+use uuid::Uuid;
 
 /// Component at the bottom
 #[derive(Debug, Default)]
 pub struct Footer {
     id: ComponentId,
     notification: Option<Notification>,
+    clear_emitter: Emitter<ClearNotification>,
+}
+
+impl Footer {
+    /// Display an informational message to the user
+    pub fn notify(&mut self, message: String) {
+        let notification = Notification::new(message.to_string());
+        let id = notification.id;
+        self.notification = Some(notification);
+        let emitter = self.clear_emitter;
+        // Spawn a task to clear the notification
+        util::spawn(async move {
+            time::sleep(Notification::DURATION).await;
+            emitter.emit(ClearNotification(id));
+        });
+    }
 }
 
 impl Component for Footer {
@@ -33,36 +50,21 @@ impl Component for Footer {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().any(|event| match event {
-            Event::Notify(notification) => {
-                let id = notification.id;
-                self.notification = Some(notification);
-                // Spawn a task to clear the notification
-                util::spawn(async move {
-                    time::sleep(Notification::DURATION).await;
-                    ViewContext::push_event(Event::NotifyClear(id));
-                });
-                None
-            }
-            Event::NotifyClear(id) => {
+        event
+            .opt()
+            .emitted(self.clear_emitter, |ClearNotification(id)| {
                 // Clear the notification only if the clear message matches what
                 // we have. This prevents early clears when multiple
                 // notifcations are send in quick succession
-                if let Some(notification) = &self.notification
-                    && notification.id == id
-                {
+                if self.notification.as_ref().is_some_and(|n| n.id == id) {
                     self.notification = None;
                 }
-                None
-            }
-
-            _ => Some(event),
-        })
+            })
     }
 }
 
 impl Draw for Footer {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // If a notification is present, it gets the entire footer.
         // Notifications are auto-cleared so it's ok to hide other stuff
         // temporarily
@@ -97,3 +99,7 @@ impl Draw for Footer {
         canvas.render_widget(help.into_right_aligned_line(), help_area);
     }
 }
+
+/// Emitted event to clear a particular notification
+#[derive(Debug)]
+struct ClearNotification(Uuid);

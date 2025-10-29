@@ -177,23 +177,13 @@ impl TextBox {
 
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
-        if self.is_valid() {
-            self.emit(TextBoxEvent::Change);
+        if self.is_valid() && self.is_subscribed(TextBoxEvent::Change) {
+            self.emitter.emit(TextBoxEvent::Change);
         }
     }
 
-    /// Emit a submit event
-    fn submit(&mut self) {
-        if self.is_valid() {
-            self.emit(TextBoxEvent::Submit);
-        }
-    }
-
-    /// Emit the given event **if the parent has subcribed to it**
-    fn emit(&self, event: TextBoxEvent) {
-        if self.subscribed_events.contains(&event) {
-            self.emitter.emit(event);
-        }
+    fn is_subscribed(&self, event_type: TextBoxEvent) -> bool {
+        self.subscribed_events.contains(&event_type)
     }
 }
 
@@ -206,9 +196,20 @@ impl Component for TextBox {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::Submit => self.submit(),
-                Action::Cancel => self.emit(TextBoxEvent::Cancel),
-                Action::LeftClick => self.emit(TextBoxEvent::Focus),
+                // Don't consume the input event if the caller isn't subscribed
+                Action::Submit if self.is_subscribed(TextBoxEvent::Submit) => {
+                    if self.is_valid() {
+                        self.emitter.emit(TextBoxEvent::Submit);
+                    }
+                }
+                Action::Cancel if self.is_subscribed(TextBoxEvent::Cancel) => {
+                    self.emitter.emit(TextBoxEvent::Cancel);
+                }
+                Action::LeftClick
+                    if self.is_subscribed(TextBoxEvent::Focus) =>
+                {
+                    self.emitter.emit(TextBoxEvent::Focus);
+                }
                 _ => propagate.set(),
             })
             .any(|event| match event {
@@ -227,7 +228,7 @@ impl Component for TextBox {
 }
 
 impl Draw<TextBoxProps> for TextBox {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: TextBoxProps,

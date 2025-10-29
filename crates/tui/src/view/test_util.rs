@@ -6,10 +6,7 @@ use crate::{
     test_util::{TestHarness, TestTerminal},
     view::{
         UpdateContext,
-        common::{
-            actions::ActionsModal,
-            modal::{Modal, ModalQueue},
-        },
+        common::{actions::ActionsModal, modal::ModalQueue},
         component::{
             Canvas, Child, Component, ComponentExt, ComponentId, Draw,
             DrawMetadata, ToChild,
@@ -98,11 +95,6 @@ where
         Self::builder(harness, terminal, data)
             .with_default_props()
             .build()
-    }
-
-    /// Get the current visible modal, if any
-    pub fn modal(&self) -> Option<&dyn Modal> {
-        self.component.modal_queue.get()
     }
 
     /// Modify the area the component will be drawn to
@@ -513,9 +505,9 @@ impl<K, C, Props> Draw<Props> for PersistedComponent<K, C>
 where
     K: PersistedKey + Debug,
     K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
-    C: Draw<Props> + PersistedContainer<Value = K::Value> + Debug,
+    C: Component + Draw<Props> + PersistedContainer<Value = K::Value> + Debug,
 {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: Props,
@@ -526,23 +518,20 @@ where
 }
 
 /// A wrapper component to provide global functionality to a component in unit
-/// tests. This provides a modal queue and action menu, which are provided by
-/// the root component during app operation. This is included automatically in
-/// all tests.
-///
-/// In a sense this is a duplicate of the root component. Maybe someday we could
-/// make that component generic and get rid of this?
+/// tests. This provides a modal queue for the action menu, which is normally
+/// provided by the root component during app operation. This is included
+/// automatically in all tests.
 #[derive(Debug)]
 struct TestWrapper<T> {
     inner: T,
-    modal_queue: ModalQueue,
+    actions: ModalQueue<ActionsModal>,
 }
 
 impl<T> TestWrapper<T> {
     pub fn new(component: T) -> Self {
         Self {
             inner: component,
-            modal_queue: ModalQueue::default(),
+            actions: ModalQueue::default(),
         }
     }
 }
@@ -560,25 +549,28 @@ impl<T: Component> Component for TestWrapper<T> {
                 // Walk down the component tree and collect actions from
                 // all visible+focused components
                 let actions = self.inner.collect_actions();
-                ActionsModal::new(actions).open();
+                self.actions.open(ActionsModal::new(actions));
             }
             _ => propagate.set(),
         })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.modal_queue.to_child_mut(), self.inner.to_child_mut()]
+        vec![self.actions.to_child_mut(), self.inner.to_child_mut()]
     }
 }
 
-impl<Props, T: Draw<Props>> Draw<Props> for TestWrapper<T> {
-    fn draw_impl(
+impl<T, Props> Draw<Props> for TestWrapper<T>
+where
+    T: Component + Draw<Props>,
+{
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: Props,
         metadata: DrawMetadata,
     ) {
         canvas.draw(&self.inner, props, metadata.area(), metadata.has_focus());
-        canvas.draw(&self.modal_queue, (), metadata.area(), true);
+        canvas.draw_portal(&self.actions, (), true);
     }
 }

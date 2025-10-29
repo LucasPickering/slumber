@@ -106,7 +106,7 @@ impl Component for RecipePane {
 }
 
 impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: RecipePaneProps<'a>,

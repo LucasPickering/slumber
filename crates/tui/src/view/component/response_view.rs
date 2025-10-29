@@ -92,7 +92,7 @@ impl Component for ResponseBodyView {
 }
 
 impl Draw for ResponseBodyView {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         canvas.draw(&*self.body, (), metadata.area(), true);
     }
 }
@@ -144,7 +144,7 @@ impl Component for ResponseHeadersView {
 }
 
 impl Draw for ResponseHeadersView {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         canvas.render_widget(
             HeaderTable {
                 headers: &self.response.headers,

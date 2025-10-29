@@ -6,7 +6,7 @@ use crate::{
         Generate,
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent, ToEmitter},
+        event::{Event, OptionEvent},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
@@ -47,15 +47,21 @@ impl Generate for Button<'_> {
 }
 
 /// A collection of buttons. User can cycle between buttons and hit enter to
-/// activate one. When a button is activated, it will emit a dynamic event with
-/// type `T`.
+/// activate one.
+///
+/// This does **not** listen for submission events; the user is responsible for
+/// listening and checking which button is selected at that time. This makes it
+/// easier to use in modals, where the modal queue listens for submission.
 #[derive(Debug, Default)]
 pub struct ButtonGroup<T: FixedSelect> {
     id: ComponentId,
-    /// The only type of event we can emit is a button being selected, so just
-    /// emit the button type
-    emitter: Emitter<T>,
     select: FixedSelectState<T>,
+}
+
+impl<T: FixedSelect> ButtonGroup<T> {
+    pub fn selected(&self) -> T {
+        self.select.selected()
+    }
 }
 
 impl<T: FixedSelect> Component for ButtonGroup<T> {
@@ -67,10 +73,6 @@ impl<T: FixedSelect> Component for ButtonGroup<T> {
         event.opt().action(|action, propagate| match action {
             Action::Left => self.select.previous(),
             Action::Right => self.select.next(),
-            Action::Submit => {
-                // Propagate the selected item as a dynamic event
-                self.emitter.emit(self.select.selected());
-            }
             _ => propagate.set(),
         })
     }
@@ -80,7 +82,7 @@ impl<T: FixedSelect> Component for ButtonGroup<T> {
 }
 
 impl<T: FixedSelect> Draw for ButtonGroup<T> {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let (areas, _) =
             Layout::horizontal(self.select.items().map(|button| {
                 Constraint::Length(button.to_string().len() as u16)
@@ -98,11 +100,5 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
                 *area,
             );
         }
-    }
-}
-
-impl<T: FixedSelect> ToEmitter<T> for ButtonGroup<T> {
-    fn to_emitter(&self) -> Emitter<T> {
-        self.emitter
     }
 }

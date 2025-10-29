@@ -3,7 +3,7 @@ use crate::{
     http::{RequestMetadata, ResponseMetadata},
     view::{
         Generate, RequestState,
-        common::{Pane, actions::MenuAction, modal::Modal, tabs::Tabs},
+        common::{Pane, actions::MenuAction, modal::ModalQueue, tabs::Tabs},
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
@@ -78,7 +78,7 @@ impl Component for ExchangePane {
 }
 
 impl Draw for ExchangePane {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let input_engine = &TuiContext::get().input_engine;
         let title =
             input_engine.add_hint("Request / Response", Action::SelectResponse);
@@ -192,7 +192,7 @@ impl Component for ExchangePaneMetadata {
 }
 
 impl Draw for ExchangePaneMetadata {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let tui_context = TuiContext::get();
         let config = &tui_context.config;
         let styles = &tui_context.styles;
@@ -263,6 +263,7 @@ struct ExchangePaneContent {
     actions_emitter: Emitter<ExchangePaneMenuAction>,
     tabs: PersistedLazy<ExchangeTabKey, Tabs<Tab>>,
     state: ExchangePaneContentState,
+    delete_request_modal: ModalQueue<DeleteRequestModal>,
 }
 
 impl ExchangePaneContent {
@@ -302,10 +303,11 @@ impl ExchangePaneContent {
             }
         };
         Self {
-            id: ComponentId::default(),
+            id: Default::default(),
             actions_emitter: Default::default(),
             tabs: Default::default(),
             state,
+            delete_request_modal: Default::default(),
         }
     }
 }
@@ -322,7 +324,8 @@ impl Component for ExchangePaneContent {
                 Action::Delete => {
                     if let Some(request) = self.state.request() {
                         // Show a confirmation modal
-                        DeleteRequestModal::new(request.id()).open();
+                        self.delete_request_modal
+                            .open(DeleteRequestModal::new(request.id()));
                     }
                 }
                 _ => propagate.set(),
@@ -366,7 +369,8 @@ impl Component for ExchangePaneContent {
                     ExchangePaneMenuAction::DeleteRequest => {
                         if let Some(request) = self.state.request() {
                             // Show a confirmation modal
-                            DeleteRequestModal::new(request.id()).open();
+                            self.delete_request_modal
+                                .open(DeleteRequestModal::new(request.id()));
                         }
                     }
                 }
@@ -434,39 +438,43 @@ impl Component for ExchangePaneContent {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
+        let mut children = vec![self.delete_request_modal.to_child_mut()];
+
+        // Add tab content
         match &mut self.state {
-            // Tabs last so the children get priority
             ExchangePaneContentState::Building
             | ExchangePaneContentState::BuildError { .. }
-            | ExchangePaneContentState::Cancelled => {
-                vec![self.tabs.to_child_mut()]
-            }
+            | ExchangePaneContentState::Cancelled => {}
             ExchangePaneContentState::Loading { request } => {
-                vec![request.to_child_mut(), self.tabs.to_child_mut()]
+                children.extend([request.to_child_mut()]);
             }
             ExchangePaneContentState::Response {
                 request,
                 response_headers,
                 response_body,
-            } => vec![
+            } => children.extend([
                 request.to_child_mut(),
                 response_headers.to_child_mut(),
                 response_body.to_child_mut(),
-                self.tabs.to_child_mut(),
-            ],
+            ]),
             ExchangePaneContentState::RequestError { request, .. } => {
-                vec![request.to_child_mut(), self.tabs.to_child_mut()]
+                children.extend([request.to_child_mut()]);
             }
         }
+
+        // Tabs last so the pane content gets priority
+        children.push(self.tabs.to_child_mut());
+        children
     }
 }
 
 impl Draw for ExchangePaneContent {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [tabs_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
         canvas.draw(&*self.tabs, (), tabs_area, true);
+        canvas.draw_portal(&self.delete_request_modal, (), true);
         match &self.state {
             ExchangePaneContentState::Building => {
                 canvas.render_widget("Initializing request...", content_area);

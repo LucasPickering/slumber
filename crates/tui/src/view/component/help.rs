@@ -78,7 +78,8 @@ impl Modal for HelpModal {
         let num_bindings = Self::bindings().count() as u16;
         (
             Constraint::Percentage(60),
-            Constraint::Length(Self::GENERAL_LENGTH + 3 + num_bindings),
+            // +2 for subtitles, +1 for blank line
+            Constraint::Length(Self::GENERAL_LENGTH + num_bindings + 3),
         )
     }
 }
@@ -90,7 +91,7 @@ impl Component for HelpModal {
 }
 
 impl Draw for HelpModal {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Create layout
         let [collection_area, _, keybindings_area] = Layout::vertical([
             Constraint::Length(Self::GENERAL_LENGTH + 1),

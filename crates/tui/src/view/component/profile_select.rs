@@ -8,17 +8,14 @@ use crate::{
         common::{
             Pane,
             list::List,
-            modal::{Modal, ModalHandle},
+            modal::{Modal, ModalQueue},
             table::Table,
             template_preview::TemplatePreview,
         },
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
         context::UpdateContext,
         event::{Emitter, Event, OptionEvent, ToEmitter},
-        state::{
-            StateCell,
-            select::{SelectState, SelectStateEvent, SelectStateEventType},
-        },
+        state::{StateCell, select::SelectState},
         util::persistence::Persisted,
     },
 };
@@ -45,8 +42,11 @@ pub struct ProfilePane {
     /// necessarily the same: the user could highlight a profile without
     /// actually selecting it.
     selected_profile_id: Persisted<SelectedProfileKey>,
-    /// Handle events from the opened modal
-    modal_handle: ModalHandle<SelectProfile>,
+    /// The modal presented to change the profile. This modal's selection is
+    /// detached from our own selected ID, because a user can highlight an item
+    /// in the modal without switching to that profile. The modal emits an
+    /// event when the selected profile should change.
+    modal: ModalQueue<ProfileListModal>,
 }
 
 /// Persisted key for the ID of the selected profile
@@ -78,9 +78,9 @@ impl ProfilePane {
         }
 
         Self {
-            id: Default::default(),
+            id: ComponentId::default(),
             selected_profile_id,
-            modal_handle: ModalHandle::new(),
+            modal: ModalQueue::default(),
         }
     }
 
@@ -90,7 +90,7 @@ impl ProfilePane {
 
     /// Open the profile list modal
     pub fn open_modal(&mut self) {
-        self.modal_handle
+        self.modal
             .open(ProfileListModal::new(self.selected_profile_id.as_ref()));
     }
 }
@@ -107,21 +107,21 @@ impl Component for ProfilePane {
                 Action::LeftClick => self.open_modal(),
                 _ => propagate.set(),
             })
-            .emitted(
-                self.modal_handle.to_emitter(),
-                |SelectProfile(profile_id)| {
-                    // Handle message from the modal
-                    *self.selected_profile_id.get_mut() =
-                        Some(profile_id.clone());
-                    // Refresh template previews
-                    ViewContext::push_event(Event::HttpSelectRequest(None));
-                },
-            )
+            .emitted(self.modal.to_emitter(), |SelectProfile(profile_id)| {
+                // Handle message from the modal
+                *self.selected_profile_id.get_mut() = Some(profile_id);
+                // Refresh template previews
+                ViewContext::push_event(Event::HttpSelectRequest(None));
+            })
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.modal.to_child_mut()]
     }
 }
 
 impl Draw for ProfilePane {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let title = TuiContext::get()
             .input_engine
             .add_hint("Profile", Action::SelectProfileList);
@@ -146,6 +146,9 @@ impl Draw for ProfilePane {
             },
             area,
         );
+
+        // Draw the selection modal. Does nothing if the modal is closed
+        canvas.draw_portal(&self.modal, (), true);
     }
 }
 
@@ -169,7 +172,6 @@ impl ProfileListModal {
 
         let select = SelectState::builder(profiles)
             .preselect_opt(selected_profile_id)
-            .subscribe([SelectStateEventType::Submit])
             .build();
         Self {
             id: Default::default(),
@@ -188,23 +190,17 @@ impl Modal for ProfileListModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (Constraint::Percentage(60), Constraint::Percentage(40))
     }
+
+    fn on_submit(self, _: &mut UpdateContext) {
+        if let Some(item) = self.select.into_selected() {
+            self.emitter.emit(SelectProfile(item.id));
+        }
+    }
 }
 
 impl Component for ProfileListModal {
     fn id(&self) -> ComponentId {
         self.id
-    }
-
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.select.to_emitter(), |event| {
-            // Loaded request depends on the profile, so refresh on change
-            if let SelectStateEvent::Submit(index) = event {
-                // Close modal first so the parent can consume the emitted event
-                self.close(true);
-                let profile_id = self.select[index].id.clone();
-                self.emitter.emit(SelectProfile(profile_id));
-            }
-        })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -213,7 +209,8 @@ impl Component for ProfileListModal {
 }
 
 impl Draw for ProfileListModal {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let area = metadata.area();
         // Empty state
         if self.select.is_empty() {
             canvas.render_widget(
@@ -221,7 +218,7 @@ impl Draw for ProfileListModal {
                     "No profiles defined; add one to your collection.".into(),
                     doc_link("api/request_collection/profile").into(),
                 ]),
-                metadata.area(),
+                area,
             );
             return;
         }
@@ -231,7 +228,7 @@ impl Draw for ProfileListModal {
             Constraint::Length(1), // Padding
             Constraint::Min(0),
         ])
-        .areas(metadata.area());
+        .areas(area);
         canvas.draw(&self.select, List::from(&self.select), list_area, true);
         if let Some(profile) = self.select.selected() {
             canvas.draw(
@@ -323,7 +320,7 @@ impl Component for ProfileDetail {
 }
 
 impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
-    fn draw_impl(
+    fn draw(
         &self,
         canvas: &mut Canvas,
         props: ProfileDetailProps<'a>,

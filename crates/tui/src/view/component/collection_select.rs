@@ -16,10 +16,7 @@ use crate::{
     },
 };
 use derive_more::Display;
-use ratatui::{
-    layout::Layout,
-    prelude::{Constraint, Line},
-};
+use ratatui::{layout::Layout, prelude::Constraint, text::Line};
 use slumber_core::database::CollectionId;
 use std::path::PathBuf;
 
@@ -38,8 +35,7 @@ impl CollectionSelect {
         Self {
             id: ComponentId::default(),
             select: build_select_state(""),
-            filter: TextBox::default()
-                .subscribe([TextBoxEvent::Change, TextBoxEvent::Cancel]),
+            filter: TextBox::default().subscribe([TextBoxEvent::Change]),
         }
     }
 }
@@ -68,7 +64,6 @@ impl Component for CollectionSelect {
                 // The ol' Tennessee Switcharoo
                 if let SelectStateEvent::Submit(index) = event {
                     let item = &self.select[index];
-                    self.close(true);
                     ViewContext::send_message(Message::CollectionSelect(
                         item.path.clone(),
                     ));
@@ -79,8 +74,9 @@ impl Component for CollectionSelect {
                     // Rebuild the list with the filter applied
                     self.select = build_select_state(self.filter.text());
                 }
-                TextBoxEvent::Cancel => self.close(false),
-                TextBoxEvent::Focus | TextBoxEvent::Submit => {}
+                TextBoxEvent::Cancel
+                | TextBoxEvent::Focus
+                | TextBoxEvent::Submit => {}
             })
     }
 
@@ -91,7 +87,7 @@ impl Component for CollectionSelect {
 }
 
 impl Draw for CollectionSelect {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());

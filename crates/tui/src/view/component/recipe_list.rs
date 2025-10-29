@@ -222,7 +222,7 @@ impl Component for RecipeListPane {
 }
 
 impl Draw for RecipeListPane {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let context = TuiContext::get();
 
         let title = context

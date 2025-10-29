@@ -4,7 +4,6 @@ use crate::{
     view::{
         component::RecipeOverrideStore,
         event::{Event, EventQueue},
-        state::Notification,
     },
 };
 use slumber_core::{collection::Collection, database::CollectionDatabase};
@@ -126,12 +125,6 @@ impl ViewContext {
         Self::with_mut(|context| context.event_queue.pop())
     }
 
-    /// Queue an event to send an informational notification to the user
-    pub fn notify(message: impl ToString) {
-        let notification = Notification::new(message.to_string());
-        Self::push_event(Event::Notify(notification));
-    }
-
     /// Get a clone of the async message sender. Generally you should use
     /// [Self::send_message] instead, but in some contexts you need the whole
     /// sender.
@@ -176,12 +169,12 @@ mod tests {
     fn test_event_queue(_harness: TestHarness) {
         assert_events!(); // Start empty
 
-        ViewContext::push_event(Event::CloseModal { submitted: false });
-        assert_events!(Event::CloseModal { submitted: false },);
+        ViewContext::push_event(Event::HttpSelectRequest(None));
+        assert_events!(Event::HttpSelectRequest(None));
 
         assert_matches!(
             ViewContext::pop_event(),
-            Some(Event::CloseModal { .. })
+            Some(Event::HttpSelectRequest(None))
         );
         assert_events!(); // Empty again
     }

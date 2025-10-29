@@ -2,13 +2,16 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
-        common::{list::List, modal::Modal},
+        common::{
+            list::List,
+            modal::{Modal, ModalEvent},
+        },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         context::UpdateContext,
-        event::{Emitter, Event, LocalEvent, OptionEvent, ToEmitter},
-        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
+        event::{Emitter, Event, LocalEvent, OptionEvent},
+        state::select::SelectState,
     },
 };
 use itertools::Itertools;
@@ -31,6 +34,8 @@ pub struct ActionsModal {
     id: ComponentId,
     /// Join the list of global actions into the given one
     actions: SelectState<MenuAction>,
+    /// Emit modal close events back to the parent
+    modal_emitter: Emitter<ModalEvent>,
 }
 
 impl ActionsModal {
@@ -47,8 +52,8 @@ impl ActionsModal {
             id: ComponentId::default(),
             actions: SelectState::builder(actions)
                 .disabled_indexes(disabled_indexes)
-                .subscribe([SelectStateEventType::Submit])
                 .build(),
+            modal_emitter: Emitter::default(),
         }
     }
 }
@@ -65,17 +70,19 @@ impl Modal for ActionsModal {
         )
     }
 
-    fn on_close(self: Box<Self>, submitted: bool) {
-        if submitted {
-            let Some(action) = self.actions.into_selected() else {
-                // Possible if the action list is empty
-                return;
-            };
-            // Emit an event on behalf of the component that supplied this
-            // action. The component will use its own supplied emitter ID to
-            // consume the event
-            action.emitter.emit(action.value);
-        }
+    fn emitter(&self) -> Option<Emitter<ModalEvent>> {
+        Some(self.modal_emitter)
+    }
+
+    fn on_submit(self, _: &mut UpdateContext) {
+        let Some(action) = self.actions.into_selected() else {
+            // Possible if the action list is empty
+            return;
+        };
+        // Emit an event on behalf of the component that supplied this
+        // action. The component will use its own supplied emitter ID to
+        // consume the event
+        action.emitter.emit(action.value);
     }
 }
 
@@ -85,31 +92,29 @@ impl Component for ActionsModal {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event
-            .opt()
-            .action(|action, propagate| {
-                // For any input action, check if any menu items are bound to it
-                // as a shortcut. If there are multiple menu actions bound to
-                // the same shortcut, we'll just take the first.
-                let bound_index =
-                    self.actions.items().position(|menu_action| {
-                        menu_action.shortcut == Some(action)
-                    });
-                if let Some(index) = bound_index {
-                    // We need ownership of the menu action to emit it, so defer
-                    // into the on_close handler. Selecting the item is how we
-                    // know which one to submit
-                    self.actions.select_index(index);
-                    self.close(true);
-                } else {
-                    propagate.set();
-                }
-            })
-            .emitted(self.actions.to_emitter(), |event| {
-                if let SelectStateEvent::Submit(_) = event {
-                    self.close(true);
-                }
-            })
+        // Enter submission is handled by the modal parent. Hotkey submission
+        // requires extra logic
+        event.opt().action(|action, propagate| {
+            // For any input action, check if any menu items are bound to it
+            // as a shortcut. If there are multiple menu actions bound to
+            // the same shortcut, we'll just take the first.
+            let bound_index = self
+                .actions
+                .items()
+                .position(|menu_action| menu_action.shortcut == Some(action));
+            if let Some(index) = bound_index {
+                // We need ownership of the menu action to emit it, so defer
+                // into the on_submit handler. Selecting the item is how we
+                // know which one to submit
+                self.actions.select_index(index);
+                // Normally the modal queue parent listens for the Enter key
+                // to know when a submission occurs. Since this is a hotkey
+                // submission, we have to explicitly tell it
+                self.modal_emitter.emit(ModalEvent::Submit);
+            } else {
+                propagate.set();
+            }
+        })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -118,7 +123,7 @@ impl Component for ActionsModal {
 }
 
 impl Draw for ActionsModal {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         canvas.draw(
             &self.actions,
             List::from(&self.actions),
@@ -208,7 +213,7 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        view::{event::ToEmitter, test_util::TestComponent},
     };
     use rstest::rstest;
     use terminput::KeyCode;
@@ -241,7 +246,7 @@ mod tests {
     }
 
     impl Draw for Actionable {
-        fn draw_impl(&self, _: &mut Canvas, (): (), _: DrawMetadata) {}
+        fn draw(&self, _: &mut Canvas, (): (), _: DrawMetadata) {}
     }
 
     impl ToEmitter<TestMenuAction> for Actionable {

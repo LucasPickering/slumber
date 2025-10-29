@@ -1,14 +1,13 @@
 use crate::view::{
     UpdateContext,
-    common::{actions::MenuAction, template_preview::TemplatePreview},
+    common::{actions::MenuAction, modal::ModalQueue},
     component::{
-        Component, ComponentId, Draw, DrawMetadata,
-        internal::Canvas,
+        Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+        misc::TextBoxModal,
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     },
     event::{Emitter, Event, OptionEvent},
 };
-
 use slumber_config::Action;
 use slumber_core::collection::RecipeId;
 use slumber_template::Template;
@@ -23,6 +22,8 @@ pub struct UrlDisplay {
     actions_emitter: Emitter<UrlMenuAction>,
     /// Rendered URL
     url: RecipeTemplate,
+    /// Modal to edit template override
+    edit_modal: ModalQueue<TextBoxModal>,
 }
 
 impl UrlDisplay {
@@ -38,12 +39,8 @@ impl UrlDisplay {
             override_emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             url,
+            edit_modal: ModalQueue::default(),
         }
-    }
-
-    /// Get current template preview, which may be overridden
-    pub fn preview(&self) -> &TemplatePreview {
-        self.url.preview()
     }
 
     /// If the template has been overridden, get the new template
@@ -54,13 +51,13 @@ impl UrlDisplay {
     }
 
     /// Open a modal to let the user edit the temporary override URL
-    fn open_edit_modal(&self) {
+    fn open_edit_modal(&mut self) {
         let emitter = self.override_emitter;
-        self.url
-            .open_edit_modal("Edit URL".to_owned(), move |template| {
-                // Defer the state update into an event, so it can use &mut
-                emitter.emit(SaveUrlOverride(template));
-            });
+        self.edit_modal.open(self.url.edit_modal(
+            "Edit URL".to_owned(),
+            // Defer the state update into an event so it can use &mut
+            move |template| emitter.emit(SaveUrlOverride(template)),
+        ));
     }
 }
 
@@ -98,11 +95,16 @@ impl Component for UrlDisplay {
                 .shortcut(Some(Action::Reset)),
         ]
     }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.edit_modal.to_child_mut()]
+    }
 }
 
 impl Draw for UrlDisplay {
-    fn draw_impl(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         canvas.render_widget(self.url.preview(), metadata.area());
+        canvas.draw_portal(&self.edit_modal, (), true);
     }
 }
 

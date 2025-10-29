@@ -28,8 +28,6 @@ use tracing::{instrument, trace, trace_span, warn};
 use uuid::Uuid;
 
 thread_local! {
-    // TODO can any of this be moved onto the Canvas?
-
     /// All components that were drawn during the last draw phase. The purpose
     /// of this is to allow each component to return an exhaustive list of its
     /// children during event handling, then we can automatically filter that
@@ -45,11 +43,6 @@ thread_local! {
     /// mutability.
     static VISIBLE_COMPONENTS: RefCell<HashMap<ComponentId, DrawMetadata>> =
         Default::default();
-
-    /// Track whichever components are *currently* being drawn. Whenever we
-    /// draw a child, push it onto the stack. Pop off when done drawing it. This
-    /// makes it easy to track when we're done with a draw phase.
-    static STACK: RefCell<Vec<ComponentId>> = Default::default();
 }
 
 /// A UI element that can handle user/async input.
@@ -247,6 +240,9 @@ pub struct Canvas<'buf, 'fr> {
 impl<'buf, 'fr> Canvas<'buf, 'fr> {
     /// Wrap a frame for a single walk down the draw tree
     pub fn new(frame: &'fr mut Frame<'buf>) -> Self {
+        // TODO
+        VISIBLE_COMPONENTS.with_borrow_mut(HashMap::clear);
+
         Self {
             frame,
             portals: vec![],
@@ -268,6 +264,8 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
         for portal_buffer in &canvas.portals {
             main_buffer.merge(portal_buffer);
         }
+
+        VISIBLE_COMPONENTS.with_borrow(|d| println!("{d:?}"));
     }
 
     /// Draw a component to the screen
@@ -288,9 +286,13 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
         T: Component + Draw<Props> + ?Sized,
     {
         let metadata = DrawMetadata { area, has_focus };
-        Self::with_guard(component.id(), metadata, || {
-            component.draw(self, props, metadata);
+
+        // Mark this component as visible so it can receive events
+        VISIBLE_COMPONENTS.with_borrow_mut(|visible_components| {
+            visible_components.insert(component.id(), metadata);
         });
+
+        component.draw(self, props, metadata);
     }
 
     /// Draw a component to the screen *outside of its normal draw order.*
@@ -308,7 +310,6 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
     {
         // Ask the component what area it wants to portal to
         let area = component.area(self.area());
-        let metadata = DrawMetadata { area, has_focus };
 
         // We want to draw the portal to its own buffer, so we merge it into the
         // main buffer *at the end*. We need a Frame to draw to, but ratatui
@@ -320,25 +321,11 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
         // area before merging.
         let main_buffer =
             mem::replace(self.frame.buffer_mut(), Buffer::empty(area));
-        Self::with_guard(component.id(), metadata, || {
-            component.draw(self, props, metadata);
-        });
+        self.draw(component, props, area, has_focus);
         // Swap the main buffer back into the frame
         let portal = mem::replace(self.frame.buffer_mut(), main_buffer);
         // Store what we rendered, to be merged in later
         self.portals.push(portal);
-    }
-
-    fn with_guard(
-        component_id: ComponentId,
-        metadata: DrawMetadata,
-        f: impl FnOnce(),
-    ) {
-        // Update internal state for event handling
-        let guard = DrawGuard::new(component_id, metadata);
-
-        f();
-        drop(guard); // Make sure guard stays alive until here
     }
 
     /// [Frame::area]
@@ -624,61 +611,6 @@ pub trait Portal {
     fn area(&self, canvas_area: Rect) -> Rect;
 }
 
-/// An RAII guard to ensure the mutable thread-global state is updated correctly
-/// throughout the span of a draw. This should be created at the start of each
-/// component's draw, and dropped at the finish of that draw.
-struct DrawGuard {
-    id: ComponentId,
-    is_root: bool,
-}
-
-impl DrawGuard {
-    fn new(id: ComponentId, metadata: DrawMetadata) -> Self {
-        // Push onto the render stack, so children know about their parent
-        let is_root = STACK.with_borrow_mut(|stack| {
-            stack.push(id);
-            stack.len() == 1
-        });
-
-        VISIBLE_COMPONENTS.with_borrow_mut(|visible_components| {
-            // If we're the root component, then anything in the visibility list
-            // is from the previous draw, so we want to clear it out
-            if is_root {
-                visible_components.clear();
-            }
-            visible_components.insert(id, metadata);
-        });
-        Self { id, is_root }
-    }
-}
-
-impl Drop for DrawGuard {
-    fn drop(&mut self) {
-        let popped = STACK.with_borrow_mut(std::vec::Vec::pop);
-
-        // Do some sanity checks here
-        match popped {
-            Some(popped) if popped == self.id => {}
-            Some(popped) => panic!(
-                "Popped incorrect component off render stack; \
-                expected `{expected}`, got `{popped}`",
-                expected = self.id
-            ),
-            None => panic!(
-                "Failed to pop component `{expected}` off render stack; \
-                stack is empty",
-                expected = self.id
-            ),
-        }
-        if self.is_root {
-            assert!(
-                STACK.with_borrow(std::vec::Vec::is_empty),
-                "Render stack is not empty after popping root component"
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -956,6 +888,7 @@ mod tests {
         mut component: Branch,
     ) {
         terminal.draw(|frame| {
+            // Don't use draw_all() because we don't want to draw the root
             let area = frame.area();
             let mut canvas = Canvas::new(frame);
             canvas.draw(&component.a, (), area, true);
@@ -984,14 +917,18 @@ mod tests {
     ) {
         // We are visible but *not* in focus
         terminal.draw(|frame| {
-            Canvas::draw_all(
-                frame,
+            // Don't use draw_all() because we don't want the root to have focus
+            let area = frame.area();
+            let mut canvas = Canvas::new(frame);
+            canvas.draw(
                 &component,
                 Props {
                     a: Mode::Focused,
-                    b: Mode::Visible,
-                    c: Mode::Visible,
+                    b: Mode::Focused,
+                    c: Mode::Focused,
                 },
+                area,
+                false,
             );
         });
 

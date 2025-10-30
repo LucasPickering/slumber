@@ -4,6 +4,7 @@
 
 use crate::view::{
     common::actions::MenuAction, context::UpdateContext, event::Event,
+    util::format_type_name,
 };
 use derive_more::Display;
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
@@ -240,15 +241,13 @@ pub struct Canvas<'buf, 'fr> {
 impl<'buf, 'fr> Canvas<'buf, 'fr> {
     /// Wrap a frame for a single walk down the draw tree
     pub fn new(frame: &'fr mut Frame<'buf>) -> Self {
-        // TODO
-        VISIBLE_COMPONENTS.with_borrow_mut(HashMap::clear);
-
         Self {
             frame,
             portals: vec![],
         }
     }
 
+    /// Draw an entire component tree to the canvas
     pub fn draw_all<T, Props>(
         frame: &'fr mut Frame<'buf>,
         root: &T,
@@ -256,6 +255,9 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
     ) where
         T: Component + Draw<Props>,
     {
+        // Clear the set of visible components so we can start fresh
+        VISIBLE_COMPONENTS.with_borrow_mut(HashMap::clear);
+
         let mut canvas = Self::new(frame);
         canvas.draw(root, props, canvas.area(), true);
 
@@ -264,8 +266,6 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
         for portal_buffer in &canvas.portals {
             main_buffer.merge(portal_buffer);
         }
-
-        VISIBLE_COMPONENTS.with_borrow(|d| println!("{d:?}"));
     }
 
     /// Draw a component to the screen
@@ -507,16 +507,6 @@ fn update_all(
     })
 }
 
-/// Get a minified name for a type. Common prefixes are stripped from the type
-/// to reduce clutter
-fn format_type_name(type_name: &str) -> String {
-    type_name
-        .replace("slumber_tui::view::common::", "")
-        .replace("slumber_tui::view::component::", "")
-        .replace("slumber_tui::view::test_util::", "")
-        .replace("slumber_tui::view::util::", "")
-}
-
 /// Should this component handle the given event? This is based on a few
 /// criteria:
 /// - Am I currently visible? I.e. was I drawn on the last draw phase?
@@ -624,6 +614,47 @@ mod tests {
         MouseButton, MouseEventKind,
     };
 
+    /// The root component. This exists just to push [Branch] down the tree
+    /// one layer to enable tests that hide/unfocus the branch.
+    #[derive(Debug, Default)]
+    struct Root {
+        id: ComponentId,
+        branch: Branch,
+    }
+
+    struct RootProps {
+        branch_mode: Mode,
+        branch_props: BranchProps,
+    }
+
+    impl Component for Root {
+        fn id(&self) -> ComponentId {
+            self.id
+        }
+
+        fn children(&mut self) -> Vec<Child<'_>> {
+            vec![self.branch.to_child_mut()]
+        }
+    }
+
+    impl Draw<RootProps> for Root {
+        fn draw(
+            &self,
+            canvas: &mut Canvas,
+            props: RootProps,
+            metadata: DrawMetadata,
+        ) {
+            if props.branch_mode != Mode::Hidden {
+                canvas.draw(
+                    &self.branch,
+                    props.branch_props,
+                    metadata.area(),
+                    props.branch_mode == Mode::Focused,
+                );
+            }
+        }
+    }
+
     #[derive(Debug, Default)]
     struct Branch {
         id: ComponentId,
@@ -634,16 +665,10 @@ mod tests {
         c: Leaf,
     }
 
-    struct Props {
+    struct BranchProps {
         a: Mode,
         b: Mode,
         c: Mode,
-    }
-
-    enum Mode {
-        Focused,
-        Visible,
-        Hidden,
     }
 
     impl Branch {
@@ -674,11 +699,11 @@ mod tests {
         }
     }
 
-    impl Draw<Props> for Branch {
+    impl Draw<BranchProps> for Branch {
         fn draw(
             &self,
             canvas: &mut Canvas,
-            props: Props,
+            props: BranchProps,
             metadata: DrawMetadata,
         ) {
             let [a_area, b_area, c_area] =
@@ -689,13 +714,8 @@ mod tests {
                 (&self.b, b_area, props.b),
                 (&self.c, c_area, props.c),
             ] {
-                if !matches!(mode, Mode::Hidden) {
-                    canvas.draw(
-                        component,
-                        (),
-                        area,
-                        matches!(mode, Mode::Focused),
-                    );
+                if mode != Mode::Hidden {
+                    canvas.draw(component, (), area, mode == Mode::Focused);
                 }
             }
         }
@@ -731,6 +751,13 @@ mod tests {
         }
     }
 
+    #[derive(PartialEq)]
+    enum Mode {
+        Focused,
+        Visible,
+        Hidden,
+    }
+
     fn keyboard_event() -> Event {
         Event::Input {
             event: terminput::Event::Key(KeyEvent {
@@ -760,8 +787,8 @@ mod tests {
     /// wonky things unique to these tests that require calling the component
     /// methods directly.
     #[fixture]
-    fn component() -> Branch {
-        Branch::default()
+    fn component() -> Root {
+        Root::default()
     }
 
     /// Render a simple component tree and test that events are propagated as
@@ -771,21 +798,14 @@ mod tests {
     fn test_render_component_tree(
         harness: TestHarness,
         terminal: TestTerminal,
-        mut component: Branch,
+        mut component: Root,
     ) {
-        // One level of nesting
-        let area = Rect {
-            x: 0,
-            y: 0,
-            width: 10,
-            height: 3,
-        };
         let a_coords = (0, 0);
         let b_coords = (0, 1);
         let c_coords = (0, 2);
 
         let assert_events =
-            |component: &mut Branch, expected_counts: [u32; 4]| {
+            |component: &mut Root, expected_counts: [u32; 4]| {
                 let events = [
                     keyboard_event(),
                     mouse_event(a_coords),
@@ -802,24 +822,24 @@ mod tests {
                 let [expected_root, expected_a, expected_b, expected_c] =
                     expected_counts;
                 assert_eq!(
-                    component.count, expected_root,
+                    component.branch.count, expected_root,
                     "count mismatch on root component"
                 );
                 assert_eq!(
-                    component.a.count, expected_a,
+                    component.branch.a.count, expected_a,
                     "count mismatch on component a"
                 );
                 assert_eq!(
-                    component.b.count, expected_b,
+                    component.branch.b.count, expected_b,
                     "count mismatch on component b"
                 );
                 assert_eq!(
-                    component.c.count, expected_c,
+                    component.branch.c.count, expected_c,
                     "count mismatch on component c"
                 );
 
                 // Reset state for the next assertion
-                component.reset();
+                component.branch.reset();
             };
 
         // Initial event handling - nothing is visible so nothing should consume
@@ -830,10 +850,13 @@ mod tests {
             Canvas::draw_all(
                 frame,
                 &component,
-                Props {
-                    a: Mode::Focused,
-                    b: Mode::Visible,
-                    c: Mode::Hidden,
+                RootProps {
+                    branch_mode: Mode::Focused,
+                    branch_props: BranchProps {
+                        a: Mode::Focused,
+                        b: Mode::Visible,
+                        c: Mode::Hidden,
+                    },
                 },
             );
         });
@@ -848,10 +871,13 @@ mod tests {
             Canvas::draw_all(
                 frame,
                 &component,
-                Props {
-                    a: Mode::Visible,
-                    b: Mode::Hidden,
-                    c: Mode::Focused,
+                RootProps {
+                    branch_mode: Mode::Focused,
+                    branch_props: BranchProps {
+                        a: Mode::Visible,
+                        b: Mode::Hidden,
+                        c: Mode::Focused,
+                    },
                 },
             );
         });
@@ -863,16 +889,17 @@ mod tests {
 
         // Hide all children, root should eat everything
         terminal.draw(|frame| {
-            let mut canvas = Canvas::new(frame);
-            canvas.draw(
+            Canvas::draw_all(
+                frame,
                 &component,
-                Props {
-                    a: Mode::Hidden,
-                    b: Mode::Hidden,
-                    c: Mode::Hidden,
+                RootProps {
+                    branch_mode: Mode::Focused,
+                    branch_props: BranchProps {
+                        a: Mode::Hidden,
+                        b: Mode::Hidden,
+                        c: Mode::Hidden,
+                    },
                 },
-                area,
-                true,
             );
         });
         assert_events(&mut component, [4, 0, 0, 0]);
@@ -885,15 +912,22 @@ mod tests {
     fn test_parent_hidden(
         harness: TestHarness,
         terminal: TestTerminal,
-        mut component: Branch,
+        mut component: Root,
     ) {
         terminal.draw(|frame| {
-            // Don't use draw_all() because we don't want to draw the root
-            let area = frame.area();
-            let mut canvas = Canvas::new(frame);
-            canvas.draw(&component.a, (), area, true);
-            canvas.draw(&component.b, (), area, true);
-            canvas.draw(&component.c, (), area, true);
+            Canvas::draw_all(
+                frame,
+                &component,
+                // The inner a/b/c are focused but their parent is hidden
+                RootProps {
+                    branch_mode: Mode::Hidden,
+                    branch_props: BranchProps {
+                        a: Mode::Focused,
+                        b: Mode::Focused,
+                        c: Mode::Focused,
+                    },
+                },
+            );
         });
         // Event should *not* be handled because the parent is hidden
         assert_matches!(
@@ -913,22 +947,22 @@ mod tests {
     fn test_parent_unfocused(
         harness: TestHarness,
         terminal: TestTerminal,
-        mut component: Branch,
+        mut component: Root,
     ) {
         // We are visible but *not* in focus
         terminal.draw(|frame| {
-            // Don't use draw_all() because we don't want the root to have focus
-            let area = frame.area();
-            let mut canvas = Canvas::new(frame);
-            canvas.draw(
+            Canvas::draw_all(
+                frame,
                 &component,
-                Props {
-                    a: Mode::Focused,
-                    b: Mode::Focused,
-                    c: Mode::Focused,
+                // The inner a/b/c are focused but their parent isn't
+                RootProps {
+                    branch_mode: Mode::Visible,
+                    branch_props: BranchProps {
+                        a: Mode::Focused,
+                        b: Mode::Focused,
+                        c: Mode::Focused,
+                    },
                 },
-                area,
-                false,
             );
         });
 

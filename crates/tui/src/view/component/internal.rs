@@ -507,37 +507,32 @@ fn update_all(
     })
 }
 
-/// Should this component handle the given event? This is based on a few
-/// criteria:
-/// - Am I currently visible? I.e. was I drawn on the last draw phase?
-/// - If it's a non-mouse event, do I have focus?
-/// - If it's a mouse event, was it over me? Mouse events should always go to
-///   the clicked element, even when unfocused, because that's intuitive.
+/// Should this component handle the given event?
 fn should_handle(component: &dyn Component, event: &Event) -> bool {
-    // If this component isn't currently in the visible tree, it shouldn't
-    // handle any events
-    if !component.is_visible() {
-        trace!("Skipping component, not visible");
-        return false;
-    }
+    match event {
+        // These events are triggered internally and generally only consumed by
+        // a single specific component. Therefore they should be handled by
+        // anyone regardless of state. The intended consume will eat it,
+        // everyone else will ignore it
+        Event::HttpSelectRequest(_) | Event::Emitted { .. } => true,
 
-    if let Event::Input { event, .. } = event {
-        match event {
-            Key(_) | Paste(_) => has_focus(component),
+        // Keyboard events are sent only to visible+focused components
+        Event::Input {
+            event: Key(_) | Paste(_),
+            ..
+        } => has_focus(component),
 
-            Mouse(mouse_event) => {
-                // Check if the mouse is over the component
-                intersects(component, *mouse_event)
-            }
+        // Mouse events are sent to any visible component under the event
+        Event::Input {
+            event: Mouse(mouse_event),
+            ..
+        } => component.is_visible() && intersects(component, *mouse_event),
 
-            // We expect everything else to have already been killed
-            _ => {
-                warn!(?event, "Unexpected event kind");
-                false
-            }
+        // We expect everything else to have already been killed
+        Event::Input { .. } => {
+            warn!(?event, "Unexpected event kind");
+            false
         }
-    } else {
-        true
     }
 }
 

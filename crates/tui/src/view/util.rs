@@ -172,6 +172,16 @@ pub fn format_byte_size(size: usize) -> String {
     format!("{size:.1} {suffix}B")
 }
 
+/// Get a minified name for a type. Common prefixes are stripped from the type
+/// to reduce clutter
+pub fn format_type_name(type_name: &str) -> String {
+    type_name
+        .replace("slumber_tui::view::common::", "")
+        .replace("slumber_tui::view::component::", "")
+        .replace("slumber_tui::view::test_util::", "")
+        .replace("slumber_tui::view::util::", "")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

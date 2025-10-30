@@ -727,12 +727,14 @@ mod tests {
 
         // Error should be sent as a message. Testing that the error is actually
         // displayed is someone else's problem!!
-        component.int().send_text(":bad!").assert_empty();
+        component.int().send_text("bad!").assert_empty();
         run_local(async {
             component.int().send_key(KeyCode::Enter).assert_empty();
         })
         .await;
         component.int().drain_draw().assert_empty();
+        // First message is for a redraw from the local task. Then the error
+        assert_matches!(harness.pop_message_now(), Message::Draw);
         assert_matches!(harness.pop_message_now(), Message::Error { .. });
     }
 }

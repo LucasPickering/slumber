@@ -33,6 +33,7 @@ use terminput::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
+use tracing::trace_span;
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make
@@ -159,15 +160,16 @@ where
         );
 
         let mut propagated = Vec::new();
-        let mut update_context = UpdateContext {
+        let mut context = UpdateContext {
             request_store: &mut self.request_store.borrow_mut(),
         };
         while let Some(event) = ViewContext::pop_event() {
-            if let Some(event) =
-                self.component.update_all(&mut update_context, event)
-            {
-                propagated.push(event);
-            }
+            trace_span!("Handling event", ?event).in_scope(|| {
+                let event = self.component.update_all(&mut context, event);
+                if let Some(event) = event {
+                    propagated.push(event);
+                }
+            });
         }
         propagated
     }
@@ -507,12 +509,7 @@ where
     K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
     C: Component + Draw<Props> + PersistedContainer<Value = K::Value> + Debug,
 {
-    fn draw(
-        &self,
-        canvas: &mut Canvas,
-        props: Props,
-        metadata: DrawMetadata,
-    ) {
+    fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata) {
         canvas.draw(&*self.0, props, metadata.area(), true);
     }
 }
@@ -564,12 +561,7 @@ impl<T, Props> Draw<Props> for TestWrapper<T>
 where
     T: Component + Draw<Props>,
 {
-    fn draw(
-        &self,
-        canvas: &mut Canvas,
-        props: Props,
-        metadata: DrawMetadata,
-    ) {
+    fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata) {
         canvas.draw(&self.inner, props, metadata.area(), metadata.has_focus());
         canvas.draw_portal(&self.actions, (), true);
     }

@@ -47,6 +47,10 @@ pub struct ProfilePane {
     /// in the modal without switching to that profile. The modal emits an
     /// event when the selected profile should change.
     modal: ModalQueue<ProfileListModal>,
+    /// An emitter that we'll pass down to the modal and it will it use to emit
+    /// the selected profile back to us. We have to store this here so the
+    /// emitter is still available after the modal's closed
+    select_emitter: Emitter<SelectProfile>,
 }
 
 /// Persisted key for the ID of the selected profile
@@ -81,6 +85,7 @@ impl ProfilePane {
             id: ComponentId::default(),
             selected_profile_id,
             modal: ModalQueue::default(),
+            select_emitter: Emitter::default(),
         }
     }
 
@@ -90,8 +95,10 @@ impl ProfilePane {
 
     /// Open the profile list modal
     pub fn open_modal(&mut self) {
-        self.modal
-            .open(ProfileListModal::new(self.selected_profile_id.as_ref()));
+        self.modal.open(ProfileListModal::new(
+            self.selected_profile_id.as_ref(),
+            self.select_emitter,
+        ));
     }
 }
 
@@ -107,7 +114,7 @@ impl Component for ProfilePane {
                 Action::LeftClick => self.open_modal(),
                 _ => propagate.set(),
             })
-            .emitted(self.modal.to_emitter(), |SelectProfile(profile_id)| {
+            .emitted(self.select_emitter, |SelectProfile(profile_id)| {
                 // Handle message from the modal
                 *self.selected_profile_id.get_mut() = Some(profile_id);
                 // Refresh template previews
@@ -163,7 +170,10 @@ struct ProfileListModal {
 }
 
 impl ProfileListModal {
-    pub fn new(selected_profile_id: Option<&ProfileId>) -> Self {
+    pub fn new(
+        selected_profile_id: Option<&ProfileId>,
+        emitter: Emitter<SelectProfile>,
+    ) -> Self {
         let profiles = ViewContext::collection()
             .profiles
             .values()
@@ -175,7 +185,7 @@ impl ProfileListModal {
             .build();
         Self {
             id: Default::default(),
-            emitter: Default::default(),
+            emitter,
             select,
             detail: Default::default(),
         }

@@ -215,11 +215,11 @@ impl View {
         // going until the queue is empty
         while let Some(event) = ViewContext::pop_event() {
             handled = true;
-            trace_span!("View event", ?event).in_scope(|| {
+            trace_span!("Handling event", ?event).in_scope(|| {
                 match self.root.update_all(&mut context, event) {
-                    None => trace!("View event consumed"),
+                    None => trace!("Event consumed"),
                     // Consumer didn't eat the event - huh?
-                    Some(event) => warn!(?event, "View event was unhandled"),
+                    Some(event) => warn!(?event, "Event was unhandled"),
                 }
             });
         }

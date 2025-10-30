@@ -37,10 +37,15 @@ impl Footer {
         self.notification = Some(notification);
         let emitter = self.clear_emitter;
         // Spawn a task to clear the notification
-        util::spawn(async move {
-            time::sleep(Notification::DURATION).await;
-            emitter.emit(ClearNotification(id));
-        });
+        // Hack alert! We skip this in tests because spawning a local task adds
+        // accidental complexity. Since this task is a fixed length, it slows
+        // tests down a lot.
+        if !cfg!(test) {
+            util::spawn(async move {
+                time::sleep(Notification::DURATION).await;
+                emitter.emit(ClearNotification(id));
+            });
+        }
     }
 }
 

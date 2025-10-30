@@ -755,7 +755,7 @@ fn watch_collection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TestHarness, harness, run_local};
+    use crate::test_util::{TestHarness, harness};
     use rstest::rstest;
     use slumber_util::{TempDir, assert_matches, temp_dir};
     use std::fs;
@@ -808,8 +808,7 @@ requests:
         state.handle_message(message).unwrap();
         let message = harness.pop_message_wait().await;
         assert_matches!(message, Message::CollectionEndReload { .. });
-        // TODO explain
-        run_local(async { state.handle_message(message).unwrap() }).await;
+        state.handle_message(message).unwrap();
 
         // And it's done!
         let collection = assert_matches!(

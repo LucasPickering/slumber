@@ -3,7 +3,7 @@
 
 use crate::{
     util::Flag,
-    view::{ViewContext, common::actions::MenuAction},
+    view::{ViewContext, common::actions::MenuAction, util::format_type_name},
 };
 use slumber_config::Action;
 use slumber_core::http::RequestId;
@@ -79,7 +79,7 @@ pub enum Event {
         /// Who emitted this event?
         emitter_id: EmitterId,
         /// Store the type name for better debug messages
-        emitter_type: &'static str,
+        emitter_type: String,
         event: Box<dyn LocalEvent>,
     },
 }
@@ -211,12 +211,6 @@ impl<T: ?Sized> Emitter<T> {
             phantom: PhantomData,
         }
     }
-
-    /// An emitter with the null ID, which shouldn't actually be used to emit.
-    /// This is a bit jank :(
-    pub fn null() -> Self {
-        Self::new(EmitterId(Uuid::nil()))
-    }
 }
 
 impl<T: Sized + LocalEvent> Emitter<T> {
@@ -228,7 +222,7 @@ impl<T: Sized + LocalEvent> Emitter<T> {
 
         ViewContext::push_event(Event::Emitted {
             emitter_id: self.id,
-            emitter_type: any::type_name::<T>(),
+            emitter_type: format_type_name(any::type_name::<T>()),
             event: Box::new(event),
         });
     }
@@ -283,7 +277,7 @@ impl Emitter<dyn LocalEvent> {
         ViewContext::push_event(Event::Emitted {
             emitter_id: self.id,
             // We lose the original type name :(
-            emitter_type: any::type_name_of_val(&event),
+            emitter_type: format_type_name(any::type_name_of_val(&event)),
             // The event is already boxed, so do *not* double box it
             event,
         });

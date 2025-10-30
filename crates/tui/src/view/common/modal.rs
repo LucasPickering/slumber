@@ -3,7 +3,7 @@ use crate::{
     view::{
         Component, UpdateContext,
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, Portal},
-        event::{Emitter, Event, LocalEvent, OptionEvent, ToEmitter},
+        event::{Emitter, Event, OptionEvent},
         util::centered_rect,
     },
 };
@@ -15,7 +15,15 @@ use ratatui::{
 use slumber_config::Action;
 use std::{collections::VecDeque, fmt::Debug};
 
-/// A *homogenous* queue of modals. TODO
+/// A *homogenous* queue of modals.
+///
+/// This can be used to handle singleton or multi-use modals, as long as they're
+/// all of the same type. It provides all the boilerplate logic needed to work
+/// with modals, including:
+///
+/// - Rendering on top (via [Portal])
+/// - Drawing the modal frame
+/// - Closing on Escape/Enter
 #[derive(Debug)]
 pub struct ModalQueue<T> {
     id: ComponentId,
@@ -170,16 +178,6 @@ where
     }
 }
 
-// TODO this good? bad?
-impl<T: ToEmitter<E>, E: LocalEvent> ToEmitter<E> for ModalQueue<T> {
-    fn to_emitter(&self) -> Emitter<E> {
-        self.queue
-            .front()
-            .map(ToEmitter::to_emitter)
-            .unwrap_or(Emitter::null())
-    }
-}
-
 /// A modal (AKA popup or dialog) is a high-priority element to be shown to the
 /// user. It may be informational (e.g. an error message) or interactive (e.g.
 /// an input prompt). Any type that implements this trait can be used as a
@@ -195,12 +193,19 @@ pub trait Modal {
     /// Dimensions of the modal, relative to the whole screen
     fn dimensions(&self) -> (Constraint, Constraint);
 
-    /// TODO
+    /// Get an emitter of [ModalEvent]. This allows modal implementations to
+    /// *optionally* provide an emitter to communicate back to their
+    /// [ModalQueue].
     fn emitter(&self) -> Option<Emitter<ModalEvent>> {
         None
     }
 
-    /// TODO
+    /// Callback when the user hits Enter while a modal is open.
+    ///
+    /// Most modals should use this to handle submissions logic, such as
+    /// accessing text or the select state of a list, because it allows the
+    /// modal queue to handle the boilerplate submission/closing logic and also
+    /// grants access to an owned `self`.
     fn on_submit(self, _context: &mut UpdateContext)
     where
         Self: Sized,

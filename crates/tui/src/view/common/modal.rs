@@ -4,7 +4,6 @@ use crate::{
         Component, UpdateContext,
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, Portal},
         event::{Emitter, Event, OptionEvent},
-        util::centered_rect,
     },
 };
 use ratatui::{
@@ -79,22 +78,10 @@ impl<T: Modal> ModalQueue<T> {
 // space we intend to take up in the middle of the screen.
 impl<T: Modal> Portal for ModalQueue<T> {
     fn area(&self, canvas_area: Rect) -> Rect {
-        fn pad(constraint: Constraint, padding: u16) -> Constraint {
-            match constraint {
-                Constraint::Min(l) => Constraint::Min(l + padding),
-                Constraint::Max(l) => Constraint::Max(l + padding),
-                Constraint::Length(l) => Constraint::Length(l + padding),
-                Constraint::Percentage(_)
-                | Constraint::Ratio(_, _)
-                | Constraint::Fill(_) => constraint,
-            }
-        }
-
         if let Some(modal) = self.active() {
             let (width, height) = modal.dimensions();
-            // Add space for the modal border/padding to fixed-length
-            // constraints. Percentages will be unaffected
-            centered_rect(pad(width, 4), pad(height, 2), canvas_area)
+            // 1x1 margin for the border, plus 1x0 of padding
+            canvas_area.centered(width, height).outer(Margin::new(2, 1))
         } else {
             Rect::default()
         }

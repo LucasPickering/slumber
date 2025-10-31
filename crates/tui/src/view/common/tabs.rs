@@ -3,7 +3,7 @@ use crate::{
     view::{
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        event::{Event, OptionEvent},
+        event::{Event, EventMatch},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
@@ -37,8 +37,8 @@ impl<T: FixedSelect> Component for Tabs<T> {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+        event.m().action(|action, propagate| match action {
             Action::Left => self.tabs.previous(),
             Action::Right => self.tabs.next(),
             _ => propagate.set(),

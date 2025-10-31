@@ -12,7 +12,7 @@ use crate::view::{
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     },
     context::UpdateContext,
-    event::{Emitter, Event, OptionEvent, ToEmitter},
+    event::{Emitter, Event, EventMatch, ToEmitter},
     state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     util::persistence::{Persisted, PersistedKey, PersistedLazy},
 };
@@ -146,9 +146,9 @@ where
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 // Consume the event even if we have no rows, for consistency
                 Action::Edit => self.edit_selected_row(),

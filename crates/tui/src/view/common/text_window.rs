@@ -4,7 +4,7 @@ use crate::{
         common::scrollbar::Scrollbar,
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
-        event::{Event, OptionEvent},
+        event::{Event, EventMatch},
         state::{Identified, StateCell},
     },
 };
@@ -169,8 +169,8 @@ impl Component for TextWindow {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+        event.m().action(|action, propagate| match action {
             Action::Up | Action::ScrollUp => self.scroll_up(1),
             Action::Down | Action::ScrollDown => self.scroll_down(1),
             Action::ScrollLeft => self.scroll_left(1),

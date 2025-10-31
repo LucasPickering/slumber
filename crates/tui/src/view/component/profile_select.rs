@@ -14,7 +14,7 @@ use crate::{
         },
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent, ToEmitter},
+        event::{Emitter, Event, EventMatch, ToEmitter},
         state::{StateCell, select::SelectState},
         util::persistence::Persisted,
     },
@@ -107,9 +107,9 @@ impl Component for ProfilePane {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::LeftClick => self.open_modal(),
                 _ => propagate.set(),

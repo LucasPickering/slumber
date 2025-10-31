@@ -14,10 +14,7 @@ use chrono::{
 };
 use itertools::Itertools;
 use mime::Mime;
-use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    text::{Line, Text},
-};
+use ratatui::text::{Line, Text};
 use slumber_core::render::{Prompt, Prompter, ResponseChannel, Select};
 use std::io::Write;
 use tracing::trace;
@@ -70,38 +67,6 @@ impl Prompter for PreviewPrompter {
     fn select(&self, select: Select) {
         select.channel.respond("<select>".into());
     }
-}
-
-/// Created a rectangle centered on the given `Rect`.
-pub fn centered_rect(
-    width: Constraint,
-    height: Constraint,
-    rect: Rect,
-) -> Rect {
-    fn buffer(constraint: Constraint, full_size: u16) -> Constraint {
-        match constraint {
-            Constraint::Percentage(percent) => {
-                Constraint::Percentage((100 - percent) / 2)
-            }
-            Constraint::Length(length) => {
-                Constraint::Length((full_size.saturating_sub(length)) / 2)
-            }
-            // Implement these as needed
-            _ => unimplemented!("Other center constraints unsupported"),
-        }
-    }
-
-    let buffer_x = buffer(width, rect.width);
-    let buffer_y = buffer(height, rect.height);
-    let columns = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([buffer_y, height, buffer_y].as_ref())
-        .split(rect);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([buffer_x, width, buffer_x].as_ref())
-        .split(columns[1])[1]
 }
 
 /// Convert a `&str` to an **owned** `Text` object. This is functionally the

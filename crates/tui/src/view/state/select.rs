@@ -1,7 +1,7 @@
 use crate::view::{
     component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
     context::UpdateContext,
-    event::{Emitter, Event, OptionEvent, ToEmitter},
+    event::{Emitter, Event, EventMatch, ToEmitter},
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
@@ -385,8 +385,8 @@ where
     }
 
     // Handle input events to cycle between items
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+        event.m().action(|action, propagate| match action {
             // Up/down keys and scrolling. Scrolling will only work if
             // .set_area() is called on the wrapping Component by our parent
             Action::Up | Action::ScrollUp => self.previous(),

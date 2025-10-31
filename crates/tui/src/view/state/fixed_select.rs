@@ -1,7 +1,7 @@
 use crate::view::{
     component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
     context::UpdateContext,
-    event::{Emitter, Event, ToEmitter},
+    event::{Emitter, Event, EventMatch, ToEmitter},
     state::select::{
         SelectItem, SelectState, SelectStateBuilder, SelectStateData,
         SelectStateEvent, SelectStateEventType,
@@ -163,7 +163,7 @@ where
         &mut self,
         context: &mut UpdateContext,
         event: Event,
-    ) -> Option<Event> {
+    ) -> EventMatch {
         self.inner.update(context, event)
     }
 }

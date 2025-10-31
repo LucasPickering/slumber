@@ -7,7 +7,7 @@ use crate::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             help::HelpFooter,
         },
-        event::{Emitter, Event, OptionEvent},
+        event::{Emitter, Event, EventMatch},
         state::Notification,
     },
 };
@@ -54,9 +54,9 @@ impl Component for Footer {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .emitted(self.clear_emitter, |ClearNotification(id)| {
                 // Clear the notification only if the clear message matches what
                 // we have. This prevents early clears when multiple

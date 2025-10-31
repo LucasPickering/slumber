@@ -14,7 +14,7 @@ use crate::{
             primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
-        event::{Event, OptionEvent},
+        event::{Event, EventMatch},
         util::persistence::PersistedLazy,
     },
 };
@@ -236,9 +236,9 @@ impl Component for Root {
         &mut self,
         context: &mut UpdateContext,
         event: Event,
-    ) -> Option<Event> {
+    ) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::OpenActions => {
                     // Walk down the component tree and collect actions from

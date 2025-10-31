@@ -11,7 +11,7 @@ use crate::{
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
-        event::{Event, OptionEvent, ToEmitter},
+        event::{Event, EventMatch, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
@@ -57,9 +57,9 @@ impl Component for CollectionSelect {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .emitted(self.select.to_emitter(), |event| {
                 // The ol' Tennessee Switcharoo
                 if let SelectStateEvent::Submit(index) = event {

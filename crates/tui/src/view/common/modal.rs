@@ -3,7 +3,7 @@ use crate::{
     view::{
         Component, UpdateContext,
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, Portal},
-        event::{Event, OptionEvent},
+        event::{Event, EventMatch},
     },
 };
 use ratatui::{
@@ -97,14 +97,14 @@ impl<T: Component + Modal> Component for ModalQueue<T> {
         &mut self,
         context: &mut UpdateContext,
         event: Event,
-    ) -> Option<Event> {
+    ) -> EventMatch {
         // If we're closed, don't eat any events
         if !self.is_open() {
-            return Some(event);
+            return event.m();
         }
 
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 // Close the active modal. If there's no modal open, we'll
                 // propagate the event down. Enter to close is a convenience

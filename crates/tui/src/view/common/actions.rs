@@ -6,7 +6,7 @@ use crate::{
             ToChild,
         },
         context::UpdateContext,
-        event::{Emitter, Event, LocalEvent, OptionEvent, ToEmitter},
+        event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
         state::select::{
             SelectItem, SelectState, SelectStateEvent, SelectStateEventType,
         },
@@ -104,15 +104,15 @@ impl Component for ActionsMenu {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         // Don't eat events until we're open
         let Some(content) = &self.content else {
-            return Some(event);
+            return event.m();
         };
         let emitter = content.emitter;
 
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::Cancel | Action::Quit => self.close(),
                 _ => propagate.set(),
@@ -274,9 +274,9 @@ impl Component for ActionMenuContent {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         let mut propagated =
-            event.opt().action(|action, propagate| match action {
+            event.m().action(|action, propagate| match action {
                 // Navigate between layers with left/right
                 Action::Left => self.previous_layer(),
                 Action::Right => self.next_layer(),

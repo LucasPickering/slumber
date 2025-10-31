@@ -13,7 +13,7 @@ use crate::{
             recipe_pane::RecipeMenuAction,
         },
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent, ToEmitter},
+        event::{Emitter, Event, EventMatch, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedLazy},
     },
@@ -164,9 +164,9 @@ impl Component for RecipeListPane {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::LeftClick => {
                     self.emitter.emit(RecipeListPaneEvent::Click);

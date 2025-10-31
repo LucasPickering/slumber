@@ -12,7 +12,7 @@ use crate::{
             DrawMetadata, ToChild,
         },
         context::ViewContext,
-        event::{Event, LocalEvent, OptionEvent, ToEmitter},
+        event::{Event, EventMatch, LocalEvent, ToEmitter},
         util::persistence::{PersistedKey, PersistedLazy},
     },
 };
@@ -536,8 +536,8 @@ impl<T: Component> Component for TestWrapper<T> {
         self.inner.id()
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+        event.m().action(|action, propagate| match action {
             // Unfortunately we have to duplicate this with Root because the
             // child component is different
             Action::OpenActions => {

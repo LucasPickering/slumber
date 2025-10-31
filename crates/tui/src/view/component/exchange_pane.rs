@@ -3,7 +3,7 @@ use crate::{
     http::{RequestMetadata, ResponseMetadata},
     view::{
         Generate, RequestState,
-        common::{Pane, actions::MenuAction, modal::ModalQueue, tabs::Tabs},
+        common::{Pane, actions::MenuItem, modal::ModalQueue, tabs::Tabs},
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
@@ -377,7 +377,7 @@ impl Component for ExchangePaneContent {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
         let request = self.state.request();
         let has_request = request.is_some();
@@ -393,47 +393,67 @@ impl Component for ExchangePaneContent {
         let selected_tab = self.tabs.selected();
 
         vec![
-            emitter
-                .menu(ExchangePaneMenuAction::CopyUrl, "Copy URL")
-                .enable(has_request),
-            emitter
-                .menu(
-                    ExchangePaneMenuAction::CopyRequestBody,
-                    "Copy Request Body",
-                )
-                .enable(has_request_body),
-            emitter
-                .menu(
-                    ExchangePaneMenuAction::ViewRequestBody,
-                    "View Request Body",
-                )
-                .enable(has_request_body)
-                .shortcut(
-                    (selected_tab == Tab::Request).then_some(Action::View),
-                ),
-            emitter
-                .menu(
-                    ExchangePaneMenuAction::CopyResponseBody,
-                    "Copy Response Body",
-                )
-                .enable(has_response_body),
-            emitter
-                .menu(
-                    ExchangePaneMenuAction::ViewResponseBody,
-                    "View Response Body",
-                )
-                .enable(has_response_body)
-                .shortcut((selected_tab == Tab::Body).then_some(Action::View)),
-            emitter
-                .menu(
-                    ExchangePaneMenuAction::SaveResponseBody,
-                    "Save Response Body as File",
-                )
-                .enable(has_response_body),
+            MenuItem::Group {
+                name: "Request".into(),
+                children: vec![
+                    emitter
+                        .menu(ExchangePaneMenuAction::CopyUrl, "Copy URL")
+                        .enable(has_request)
+                        .into(),
+                    emitter
+                        .menu(
+                            ExchangePaneMenuAction::CopyRequestBody,
+                            "Copy Body",
+                        )
+                        .enable(has_request_body)
+                        .into(),
+                    emitter
+                        .menu(
+                            ExchangePaneMenuAction::ViewRequestBody,
+                            "View Body",
+                        )
+                        .enable(has_request_body)
+                        .shortcut(
+                            (selected_tab == Tab::Request)
+                                .then_some(Action::View),
+                        )
+                        .into(),
+                ],
+            },
+            MenuItem::Group {
+                name: "Response".into(),
+                children: vec![
+                    emitter
+                        .menu(
+                            ExchangePaneMenuAction::CopyResponseBody,
+                            "Copy Body",
+                        )
+                        .enable(has_response_body)
+                        .into(),
+                    emitter
+                        .menu(
+                            ExchangePaneMenuAction::ViewResponseBody,
+                            "View Body",
+                        )
+                        .enable(has_response_body)
+                        .shortcut(
+                            (selected_tab == Tab::Body).then_some(Action::View),
+                        )
+                        .into(),
+                    emitter
+                        .menu(
+                            ExchangePaneMenuAction::SaveResponseBody,
+                            "Save Body as File",
+                        )
+                        .enable(has_response_body)
+                        .into(),
+                ],
+            },
             emitter
                 .menu(ExchangePaneMenuAction::DeleteRequest, "Delete Request")
                 .enable(has_request)
-                .shortcut(Some(Action::Delete)),
+                .shortcut(Some(Action::Delete))
+                .into(),
         ]
     }
 

@@ -4,7 +4,7 @@ use crate::{
     view::{
         Component, ViewContext,
         common::{
-            actions::MenuAction,
+            actions::MenuItem,
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         component::{
@@ -287,20 +287,23 @@ impl Component for TextBody {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
         vec![
             emitter
                 .menu(RawBodyMenuAction::View, "View Body")
-                .shortcut(Some(Action::View)),
-            emitter.menu(RawBodyMenuAction::Copy, "Copy Body"),
+                .shortcut(Some(Action::View))
+                .into(),
+            emitter.menu(RawBodyMenuAction::Copy, "Copy Body").into(),
             emitter
                 .menu(RawBodyMenuAction::Edit, "Edit Body")
-                .shortcut(Some(Action::Edit)),
+                .shortcut(Some(Action::Edit))
+                .into(),
             emitter
                 .menu(RawBodyMenuAction::Reset, "Reset Body")
                 .enable(self.body.is_overridden())
-                .shortcut(Some(Action::Reset)),
+                .shortcut(Some(Action::Reset))
+                .into(),
         ]
     }
 

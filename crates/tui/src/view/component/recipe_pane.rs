@@ -12,7 +12,7 @@ use crate::{
     message::RequestConfig,
     view::{
         Component, Generate,
-        common::{Pane, actions::MenuAction},
+        common::{Pane, actions::MenuItem},
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
@@ -89,8 +89,8 @@ impl Component for RecipePane {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeMenuAction::menu_actions(
+    fn menu(&self) -> Vec<MenuItem> {
+        RecipeMenuAction::menu(
             self.actions_emitter,
             self.recipe_state.borrow().is_some(),
         )
@@ -215,18 +215,20 @@ pub enum RecipeMenuAction {
 impl RecipeMenuAction {
     /// Build a list of these actions. This action is used in multiple
     /// components so the list is centralized here
-    pub fn menu_actions(
-        emitter: Emitter<Self>,
-        has_recipe: bool,
-    ) -> Vec<MenuAction> {
+    pub fn menu(emitter: Emitter<Self>, has_recipe: bool) -> Vec<MenuItem> {
         vec![
-            emitter.menu(Self::CopyUrl, "Copy URL").enable(has_recipe),
+            emitter
+                .menu(Self::CopyUrl, "Copy URL")
+                .enable(has_recipe)
+                .into(),
             emitter
                 .menu(Self::CopyCurl, "Copy as cURL")
-                .enable(has_recipe),
+                .enable(has_recipe)
+                .into(),
             emitter
                 .menu(Self::DeleteRecipe, "Delete Requests")
-                .enable(has_recipe),
+                .enable(has_recipe)
+                .into(),
         ]
     }
 }

@@ -738,7 +738,7 @@ mod tests {
             component
                 .int_props(&props_fn)
                 .send_key(KeyCode::Enter)
-                .events(),
+                .propagated(),
             &[Event::Input {
                 action: Some(Action::Submit),
                 ..
@@ -748,7 +748,7 @@ mod tests {
             component
                 .int_props(&props_fn)
                 .send_key(KeyCode::Char(' '))
-                .events(),
+                .propagated(),
             &[Event::Input {
                 action: Some(Action::Toggle),
                 ..

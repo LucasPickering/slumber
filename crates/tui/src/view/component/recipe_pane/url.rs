@@ -6,7 +6,7 @@ use crate::view::{
         misc::TextBoxModal,
         recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
     },
-    event::{Emitter, Event, OptionEvent},
+    event::{Emitter, Event, EventMatch},
 };
 use slumber_config::Action;
 use slumber_core::collection::RecipeId;
@@ -66,9 +66,9 @@ impl Component for UrlDisplay {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::Edit => self.open_edit_modal(),
                 Action::Reset => self.url.reset_override(),

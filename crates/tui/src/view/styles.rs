@@ -11,6 +11,7 @@ use slumber_config::Theme;
 #[derive(Debug)]
 pub struct Styles {
     pub list: ListStyles,
+    pub menu: MenuStyles,
     pub modal: ModalStyles,
     pub pane: PaneStyles,
     pub status_code: StatusCodeStyles,
@@ -27,6 +28,18 @@ pub struct Styles {
 pub struct ListStyles {
     /// Highlighted item in a list
     pub highlight: Style,
+    /// Disabled item in a list
+    pub disabled: Style,
+}
+
+/// Styles for menus with nested groups
+#[derive(Debug)]
+pub struct MenuStyles {
+    /// Highlighted item in a menu
+    pub highlight: Style,
+    /// Highlight item in an inactive layer in a menu (a different menu group
+    /// is )
+    pub highlight_inactive: Style,
     /// Disabled item in a list
     pub disabled: Style,
 }
@@ -135,6 +148,16 @@ impl Styles {
                 highlight: Style::default()
                     .bg(theme.primary_color)
                     .fg(theme.primary_text_color)
+                    .add_modifier(Modifier::BOLD),
+                disabled: Style::default().add_modifier(Modifier::DIM),
+            },
+            menu: MenuStyles {
+                highlight: Style::default()
+                    .bg(theme.primary_color)
+                    .fg(theme.primary_text_color)
+                    .add_modifier(Modifier::BOLD),
+                highlight_inactive: Style::default()
+                    .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
                 disabled: Style::default().add_modifier(Modifier::DIM),
             },

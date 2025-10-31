@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Changed
+
+- Some menu actions have been moved into nested sections for better organization
+
+## [Unreleased] - ReleaseDate
+
+<!-- ANCHOR: changelog -->
+
 ### Added
 
 - Add `default` keyword arg to `env()`

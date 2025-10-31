@@ -3,7 +3,7 @@
 //! component state.
 
 use crate::view::{
-    common::actions::MenuAction, context::UpdateContext, event::Event,
+    common::actions::MenuItem, context::UpdateContext, event::Event,
     util::format_type_name,
 };
 use derive_more::Display;
@@ -84,7 +84,7 @@ pub trait Component: ToChild {
     /// the user opens the actions menu, all available actions for all
     /// **focused** components will be collected and show in the menu. If an
     /// action is selected, an event will be emitted with that action value.
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         Vec::new()
     }
 
@@ -129,8 +129,8 @@ where
         self.deref_mut().update(context, event)
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
-        self.deref().menu_actions()
+    fn menu(&self) -> Vec<MenuItem> {
+        self.deref().menu()
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -152,7 +152,7 @@ pub trait ComponentExt: Component {
     /// this component (including this component). This takes a mutable
     /// reference so we don't have to duplicate the code that provides children;
     /// it will *not* mutate anything.
-    fn collect_actions(&mut self) -> Vec<MenuAction>
+    fn collect_actions(&mut self) -> Vec<MenuItem>
     where
         Self: Sized;
 
@@ -173,23 +173,23 @@ impl<T: Component + ?Sized> ComponentExt for T {
         VISIBLE_COMPONENTS.with_borrow(|map| map.contains_key(&self.id()))
     }
 
-    fn collect_actions(&mut self) -> Vec<MenuAction>
+    fn collect_actions(&mut self) -> Vec<MenuItem>
     where
         Self: Sized,
     {
-        fn inner(actions: &mut Vec<MenuAction>, component: &mut dyn Component) {
+        fn inner(items: &mut Vec<MenuItem>, component: &mut dyn Component) {
             // Only include actions from visible+focused components
             if component.is_visible() && has_focus(component) {
-                actions.extend(component.menu_actions());
+                items.extend(component.menu());
                 for mut child in component.children() {
-                    inner(actions, child.component());
+                    inner(items, child.component());
                 }
             }
         }
 
-        let mut actions = Vec::new();
-        inner(&mut actions, self);
-        actions
+        let mut items = Vec::new();
+        inner(&mut items, self);
+        items
     }
 
     fn update_all(
@@ -308,8 +308,9 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
     ) where
         T: Component + Draw<Props> + Portal,
     {
-        // Ask the component what area it wants to portal to
-        let area = component.area(self.area());
+        // Ask the component what area it wants to portal to. Clamp it to fit
+        // inside the frame.
+        let area = component.area(self.area()).clamp(self.area());
 
         // We want to draw the portal to its own buffer, so we merge it into the
         // main buffer *at the end*. We need a Frame to draw to, but ratatui

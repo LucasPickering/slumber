@@ -2,7 +2,7 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
-        common::{actions::MenuAction, modal::ModalQueue, table::Table},
+        common::{actions::MenuItem, modal::ModalQueue, table::Table},
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
@@ -153,16 +153,18 @@ impl Component for AuthenticationDisplay {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
         vec![
             emitter
                 .menu(AuthenticationMenuAction::Edit, "Edit Authentication")
-                .shortcut(Some(Action::Edit)),
+                .shortcut(Some(Action::Edit))
+                .into(),
             emitter
                 .menu(AuthenticationMenuAction::Reset, "Reset Authentication")
                 .enable(self.state.is_overridden())
-                .shortcut(Some(Action::Reset)),
+                .shortcut(Some(Action::Reset))
+                .into(),
         ]
     }
 

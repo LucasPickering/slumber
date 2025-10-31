@@ -3,7 +3,7 @@ use crate::{
     view::{
         Component, UpdateContext,
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, Portal},
-        event::{Emitter, Event, OptionEvent},
+        event::{Event, OptionEvent},
     },
 };
 use ratatui::{
@@ -115,13 +115,6 @@ impl<T: Component + Modal> Component for ModalQueue<T> {
                 Action::Submit => self.close(context, true),
                 _ => propagate.set(),
             })
-            .emitted_opt(
-                // If this modal type emits ModalEvent, check for that
-                self.active().and_then(Modal::emitter),
-                |event: ModalEvent| match event {
-                    ModalEvent::Submit => self.close(context, true),
-                },
-            )
             .any(|event| match event {
                 // Modals are meant to consume all focus, so don't allow any
                 // events to go to background components
@@ -180,13 +173,6 @@ pub trait Modal {
     /// Dimensions of the modal, relative to the whole screen
     fn dimensions(&self) -> (Constraint, Constraint);
 
-    /// Get an emitter of [ModalEvent]. This allows modal implementations to
-    /// *optionally* provide an emitter to communicate back to their
-    /// [ModalQueue].
-    fn emitter(&self) -> Option<Emitter<ModalEvent>> {
-        None
-    }
-
     /// Callback when the user hits Enter while a modal is open.
     ///
     /// Most modals should use this to handle submissions logic, such as
@@ -198,12 +184,4 @@ pub trait Modal {
         Self: Sized,
     {
     }
-}
-
-/// An emitted event that allows a modal to communicate back to its containing
-/// [ModalQueue].
-#[derive(Debug)]
-pub enum ModalEvent {
-    /// Close the modal *with* submission
-    Submit,
 }

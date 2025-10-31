@@ -565,7 +565,7 @@ mod tests {
                     KeyCode::Char('W'),
                     KeyModifiers::CTRL | KeyModifiers::SHIFT,
                 )
-                .events(),
+                .propagated(),
             &[Event::Input { .. }]
         );
         assert_state(&component.state, "hi!W", 4);

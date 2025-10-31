@@ -263,14 +263,14 @@ mod tests {
 
         // Initial state
         let selected = assert_matches!(
-            component.int().drain_draw().events(),
+            component.int().drain_draw().propagated(),
             &[Event::HttpSelectRequest(Some(selected))] => selected,
         );
         assert_eq!(selected, exchanges[0].id);
 
         // Select the next one
         let selected = assert_matches!(
-            component.int().send_key(KeyCode::Down).events(),
+            component.int().send_key(KeyCode::Down).propagated(),
             &[Event::HttpSelectRequest(Some(selected))] => selected,
         );
         assert_eq!(selected, exchanges[1].id);
@@ -308,7 +308,7 @@ mod tests {
 
         // Initial state
         let selected = assert_matches!(
-            component.int().drain_draw().events(),
+            component.int().drain_draw().propagated(),
             &[Event::HttpSelectRequest(Some(selected))] => selected,
         );
         assert_eq!(selected, exchanges[0].id);
@@ -318,7 +318,7 @@ mod tests {
             component
                 .int()
                 .send_keys([KeyCode::Delete, KeyCode::Enter])
-                .events(),
+                .propagated(),
             &[Event::HttpSelectRequest(Some(selected))] => selected,
         );
         assert_eq!(selected, exchanges[1].id);
@@ -328,7 +328,7 @@ mod tests {
             component
                 .int()
                 .send_keys([KeyCode::Delete, KeyCode::Enter])
-                .events(),
+                .propagated(),
             &[Event::HttpSelectRequest(None)],
         );
 

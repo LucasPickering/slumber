@@ -1,7 +1,7 @@
 use crate::view::{
     Generate,
     common::{
-        actions::MenuAction,
+        actions::MenuItem,
         modal::ModalQueue,
         table::{Table, ToggleRow},
     },
@@ -187,7 +187,7 @@ where
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
         let noun = self.noun;
         let selected = self.select.selected();
@@ -195,11 +195,13 @@ where
             emitter
                 .menu(RecipeTableMenuAction::Edit, format!("Edit {noun}"))
                 .enable(selected.is_some())
-                .shortcut(Some(Action::Edit)),
+                .shortcut(Some(Action::Edit))
+                .into(),
             emitter
                 .menu(RecipeTableMenuAction::Reset, format!("Reset {noun}"))
                 .enable(selected.is_some_and(|row| row.value.is_overridden()))
-                .shortcut(Some(Action::Reset)),
+                .shortcut(Some(Action::Reset))
+                .into(),
         ]
     }
 

@@ -1,6 +1,6 @@
 use crate::view::{
     UpdateContext,
-    common::{actions::MenuAction, modal::ModalQueue},
+    common::{actions::MenuItem, modal::ModalQueue},
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         misc::TextBoxModal,
@@ -83,16 +83,18 @@ impl Component for UrlDisplay {
             })
     }
 
-    fn menu_actions(&self) -> Vec<MenuAction> {
+    fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
         vec![
             emitter
                 .menu(UrlMenuAction::Edit, "Edit URL")
-                .shortcut(Some(Action::Edit)),
+                .shortcut(Some(Action::Edit))
+                .into(),
             emitter
                 .menu(UrlMenuAction::Reset, "Reset URL")
                 .enable(self.url.is_overridden())
-                .shortcut(Some(Action::Reset)),
+                .shortcut(Some(Action::Reset))
+                .into(),
         ]
     }
 

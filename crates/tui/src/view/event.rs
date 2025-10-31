@@ -112,16 +112,6 @@ pub trait OptionEvent {
     fn emitted<E>(self, emitter: Emitter<E>, f: impl FnOnce(E)) -> Self
     where
         E: LocalEvent;
-
-    /// Handle an emitted event, where the emitter may or may not exist. If the
-    /// emitter is `Some`, forward to [Self::emitted].
-    fn emitted_opt<E>(
-        self,
-        emitter: Option<Emitter<E>>,
-        f: impl FnOnce(E),
-    ) -> Self
-    where
-        E: LocalEvent;
 }
 
 impl OptionEvent for Option<Event> {
@@ -164,21 +154,6 @@ impl OptionEvent for Option<Event> {
             Err(event) => Some(event),
         }
     }
-
-    fn emitted_opt<E>(
-        self,
-        emitter: Option<Emitter<E>>,
-        f: impl FnOnce(E),
-    ) -> Self
-    where
-        E: LocalEvent,
-    {
-        if let Some(emitter) = emitter {
-            self.emitted(emitter, f)
-        } else {
-            self
-        }
-    }
 }
 
 /// A wrapper trait for [Any] that also gives us access to the type's [Debug]
@@ -198,7 +173,8 @@ impl<T: Any + Debug> LocalEvent for T {}
 /// ViewContext and therefore shouldn't be passed off the main thread, but there
 /// is one use case where it needs to be Send to be passed to the main loop via
 /// Message without actually changing threads.
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
+#[display("{id}")]
 pub struct Emitter<T: ?Sized> {
     id: EmitterId,
     phantom: PhantomData<T>,
@@ -312,6 +288,7 @@ pub trait ToEmitter<E: LocalEvent> {
     fn to_emitter(&self) -> Emitter<E>;
 }
 
+// Implement ToEmitter through Deref
 impl<T, E> ToEmitter<E> for T
 where
     T: Deref,

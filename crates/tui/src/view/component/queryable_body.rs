@@ -12,7 +12,7 @@ use crate::{
         },
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent, ToEmitter},
+        event::{Emitter, Event, EventMatch, ToEmitter},
         state::Identified,
         util::{highlight, str_to_text},
     },
@@ -234,9 +234,9 @@ impl Component for QueryableBody {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::Search => self.focus(CommandFocus::Query),
                 Action::Export => self.focus(CommandFocus::Export),

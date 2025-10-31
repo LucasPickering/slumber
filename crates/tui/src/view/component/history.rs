@@ -10,7 +10,7 @@ use crate::{
             internal::{Child, ToChild},
             misc::ConfirmButton,
         },
-        event::{Event, OptionEvent, ToEmitter},
+        event::{Event, EventMatch, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
 };
@@ -116,9 +116,9 @@ impl Component for History {
         &mut self,
         context: &mut UpdateContext,
         event: Event,
-    ) -> Option<Event> {
+    ) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::Delete => {
                     if self.select.selected().is_some() {

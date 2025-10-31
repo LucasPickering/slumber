@@ -12,7 +12,7 @@ use crate::{
             internal::{Child, ToChild},
         },
         context::UpdateContext,
-        event::{Event, OptionEvent},
+        event::{Event, EventMatch},
         state::Identified,
         util::{format_byte_size, highlight, view_text},
     },
@@ -83,8 +83,8 @@ impl Component for RequestView {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+        event.m().action(|action, propagate| match action {
             Action::View => self.view_body(),
             _ => propagate.set(),
         })

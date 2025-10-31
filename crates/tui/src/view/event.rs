@@ -85,45 +85,32 @@ pub enum Event {
 }
 
 impl Event {
-    /// Convert to `Option<Event>` so the methods from [OptionEvent] can be used
-    /// to match the event
-    #[expect(clippy::unnecessary_wraps)]
-    pub fn opt(self) -> Option<Event> {
-        Some(self)
+    /// Convert to [EventMatch] so its methods can be used to match the event
+    pub fn m(self) -> EventMatch {
+        Some(self).into()
     }
 }
 
-/// Extension trait for `Option<Event>`
-pub trait OptionEvent {
+/// Wrapper for matching an event to various expected cases.
+///
+/// Use the `From` impls to convert from `Event` and to `Option<Event>`.
+pub struct EventMatch {
+    event: Option<Event>,
+}
+
+impl EventMatch {
     /// Match and handle any event
-    fn any(self, f: impl FnOnce(Event) -> Option<Event>) -> Self;
+    pub fn any(self, f: impl FnOnce(Event) -> Option<Event>) -> Self {
+        let Some(event) = self.event else {
+            return self;
+        };
+        f(event).into()
+    }
 
     /// Handle any input event bound to an action. If the action is unhandled
     /// and the event should continue to be propagated, set the given flag.
-    fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self;
-
-    /// Handle an emitted event for a particular emitter. Each emitter should
-    /// only be handled by a single parent, so this doesn't provide any way to
-    /// propagate the event if it matches the emitter.
-    ///
-    /// Typically you'll need to pass a handle for the emitter here, in order
-    /// to detach the emitter's lifetime from `self`, so that `self` can be used
-    /// in the lambda.
-    fn emitted<E>(self, emitter: Emitter<E>, f: impl FnOnce(E)) -> Self
-    where
-        E: LocalEvent;
-}
-
-impl OptionEvent for Option<Event> {
-    fn any(self, f: impl FnOnce(Event) -> Option<Event>) -> Self {
-        let Some(event) = self else {
-            return self;
-        };
-        f(event)
-    }
-
-    fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self {
-        let Some(event) = self else {
+    pub fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self {
+        let Some(event) = self.event else {
             return self;
         };
         if let Event::Input {
@@ -133,26 +120,45 @@ impl OptionEvent for Option<Event> {
         {
             let mut propagate = Flag::default();
             f(*action, &mut propagate);
-            if *propagate { Some(event) } else { None }
+            if *propagate { Some(event) } else { None }.into()
         } else {
-            Some(event)
+            Some(event).into()
         }
     }
 
-    fn emitted<E>(self, emitter: Emitter<E>, f: impl FnOnce(E)) -> Self
+    /// Handle an emitted event for a particular emitter. Each emitter should
+    /// only be handled by a single parent, so this doesn't provide any way to
+    /// propagate the event if it matches the emitter.
+    ///
+    /// Typically you'll need to pass a handle for the emitter here, in order
+    /// to detach the emitter's lifetime from `self`, so that `self` can be used
+    /// in the lambda.
+    pub fn emitted<E>(self, emitter: Emitter<E>, f: impl FnOnce(E)) -> Self
     where
         E: LocalEvent,
     {
-        let Some(event) = self else {
+        let Some(event) = self.event else {
             return self;
         };
         match emitter.emitted(event) {
             Ok(output) => {
                 f(output);
-                None
+                None.into()
             }
-            Err(event) => Some(event),
+            Err(event) => Some(event).into(),
         }
+    }
+}
+
+impl From<EventMatch> for Option<Event> {
+    fn from(value: EventMatch) -> Self {
+        value.event
+    }
+}
+
+impl From<Option<Event>> for EventMatch {
+    fn from(event: Option<Event>) -> Self {
+        Self { event }
     }
 }
 

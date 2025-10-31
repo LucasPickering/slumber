@@ -16,7 +16,7 @@ use crate::{
             },
         },
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent},
+        event::{Emitter, Event, EventMatch},
         util::view_text,
     },
 };
@@ -254,9 +254,9 @@ impl Component for TextBody {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::View => self.view_body(),
                 Action::Edit => self.open_editor(),

@@ -12,7 +12,7 @@ use crate::{
             response_view::{ResponseBodyView, ResponseHeadersView},
         },
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent, ToEmitter},
+        event::{Emitter, Event, EventMatch, ToEmitter},
         util::{format_byte_size, persistence::PersistedLazy},
     },
 };
@@ -58,8 +58,8 @@ impl Component for ExchangePane {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+        event.m().action(|action, propagate| match action {
             Action::LeftClick => self.emitter.emit(ExchangePaneEvent::Click),
             _ => propagate.set(),
         })
@@ -317,9 +317,9 @@ impl Component for ExchangePaneContent {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::Delete => {
                     if let Some(request) = self.state.request() {

@@ -10,7 +10,7 @@ use crate::{
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
         },
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent},
+        event::{Emitter, Event, EventMatch},
         state::fixed_select::FixedSelectState,
     },
 };
@@ -129,9 +129,9 @@ impl Component for AuthenticationDisplay {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::Edit => {
                     self.open_edit_modal(self.override_emitter);

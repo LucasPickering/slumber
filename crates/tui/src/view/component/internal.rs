@@ -3,7 +3,9 @@
 //! component state.
 
 use crate::view::{
-    common::actions::MenuItem, context::UpdateContext, event::Event,
+    common::actions::MenuItem,
+    context::UpdateContext,
+    event::{Event, EventMatch},
     util::format_type_name,
 };
 use derive_more::Display;
@@ -72,11 +74,10 @@ pub trait Component: ToChild {
     /// [EventQueue](crate::view::event::EventQueue) to queue subsequent
     /// events, and the given message sender to queue async messages.
     ///
-    /// Generally event matching should be done with [Event::opt] and the
-    /// matching methods defined by
-    /// [OptionEvent](crate::view::event::OptionEvent).
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        Some(event)
+    /// Generally event matching should be done with [Event::m] and the
+    /// matching methods defined by [EventMatch].
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+        event.m()
     }
 
     /// Provide a list of actions that are accessible from the actions menu.
@@ -125,7 +126,7 @@ where
         &mut self,
         context: &mut UpdateContext,
         event: Event,
-    ) -> Option<Event> {
+    ) -> EventMatch {
         self.deref_mut().update(context, event)
     }
 
@@ -494,7 +495,7 @@ fn update_all(
     // None of our children handled it, we'll take it ourselves. Event is
     // already traced in the root span, so don't dupe it.
     trace_span!("component.update").in_scope(|| {
-        let propagated = component.update(context, event);
+        let propagated: Option<Event> = component.update(context, event).into();
 
         // Little bit of logging innit
         let status = if propagated.is_some() {
@@ -681,9 +682,9 @@ mod tests {
             self.id
         }
 
-        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Option<Event> {
+        fn update(&mut self, _: &mut UpdateContext, _: Event) -> EventMatch {
             self.count += 1;
-            None
+            None.into()
         }
 
         fn children(&mut self) -> Vec<Child<'_>> {
@@ -735,9 +736,9 @@ mod tests {
             self.id
         }
 
-        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Option<Event> {
+        fn update(&mut self, _: &mut UpdateContext, _: Event) -> EventMatch {
             self.count += 1;
-            None
+            None.into()
         }
     }
 

@@ -20,7 +20,7 @@ use crate::{
             },
         },
         context::UpdateContext,
-        event::{Emitter, Event, OptionEvent, ToEmitter},
+        event::{Emitter, Event, EventMatch, ToEmitter},
         state::{
             StateCell,
             fixed_select::FixedSelectState,
@@ -261,9 +261,9 @@ impl Component for PrimaryView {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
-            .opt()
+            .m()
             .action(|action, propagate| match action {
                 Action::PreviousPane => self.selected_pane.get_mut().previous(),
                 Action::NextPane => self.selected_pane.get_mut().next(),

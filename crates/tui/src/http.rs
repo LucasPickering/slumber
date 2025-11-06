@@ -24,6 +24,7 @@ use slumber_core::{
 use std::{
     collections::{HashMap, hash_map::Entry},
     fmt::Debug,
+    path::Path,
     sync::Arc,
 };
 use strum::EnumDiscriminants;
@@ -40,10 +41,12 @@ pub struct RequestConfig {
 }
 
 impl RequestConfig {
-    /// Build a Slumber CLI command equivalent to this request seed
-    pub fn to_cli(&self) -> String {
+    /// Generate a Slumber CLI command that will execute this request
+    pub fn to_cli(&self, collection_path: &Path) -> String {
         let mut command: Vec<String> = vec![
             "slumber".into(),
+            "--file".into(),
+            collection_path.display().to_string(),
             "request".into(),
             self.recipe_id.to_string(),
         ];
@@ -56,6 +59,37 @@ impl RequestConfig {
         // that (yet)
 
         command.join(" ")
+    }
+
+    /// Generate Python code that will execute this request
+    pub fn to_python(&self, collection_path: &Path) -> String {
+        fn format_kwarg(arg: &str, value: &str) -> String {
+            // Values are all strings so wrap with single quotes, escaping
+            // internal quotes
+            format!(
+                "{arg}='{escaped_value}'",
+                escaped_value = value.replace('\'', "\\'")
+            )
+        }
+
+        let mut kwargs = vec![("recipe", self.recipe_id.to_string())];
+        if let Some(profile_id) = &self.profile_id {
+            kwargs.push(("profile", profile_id.to_string()));
+        }
+
+        format!(
+            "import asyncio
+from slumber import Collection
+
+collection = Collection('{file}')
+response = asyncio.run(collection.request({kwargs}))
+",
+            file = collection_path.display(),
+            kwargs = kwargs
+                .iter()
+                .map(|(arg, value)| format_kwarg(arg, value))
+                .join(", ")
+        )
     }
 }
 

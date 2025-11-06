@@ -54,10 +54,11 @@ mod slumber {
 /// https://slumber.lucaspickering.me/api/request_collection/index.html)
 ///
 /// ```python
+/// import asyncio
 /// from slumber import Collection
 ///
 /// collection = Collection()
-/// response = collection.request('get_current_user')
+/// response = asyncio.run(collection.request('get_current_user'))
 /// ```
 #[pyclass]
 #[expect(clippy::struct_field_names)]

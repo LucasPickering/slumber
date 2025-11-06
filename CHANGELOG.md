@@ -8,9 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Added
+
+- Add `Copy as CLI` action to the recipe pane to generate a `slumber request` CLI command for the selected recipe/profile
+
 ### Changed
 
 - Some menu actions have been moved into nested sections for better organization
+- Refactor significant portions of the TUI logic. There should be no user-facing changes, but if you notice any bugs [please report them!](https://github.com/LucasPickering/slumber/issues/new/choose)
 
 ## [4.2.0] - 2025-10-14
 

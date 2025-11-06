@@ -1,8 +1,8 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    http::{RequestState, RequestStateType},
-    message::{Message, RequestConfig},
+    http::{RequestConfig, RequestState, RequestStateType},
+    message::{Message, RecipeCopyTarget},
     util::ResultReported,
     view::{
         Component, ViewContext,
@@ -223,12 +223,15 @@ impl PrimaryView {
     /// Handle a menu action from the recipe list or recipe pane
     fn handle_recipe_menu_action(&mut self, action: RecipeMenuAction) {
         match action {
-            RecipeMenuAction::CopyUrl => {
-                ViewContext::send_message(Message::CopyRequestUrl);
-            }
-            RecipeMenuAction::CopyCurl => {
-                ViewContext::send_message(Message::CopyRequestCurl);
-            }
+            RecipeMenuAction::CopyUrl => ViewContext::send_message(
+                Message::CopyRecipe(RecipeCopyTarget::Url),
+            ),
+            RecipeMenuAction::CopyAsCli => ViewContext::send_message(
+                Message::CopyRecipe(RecipeCopyTarget::Cli),
+            ),
+            RecipeMenuAction::CopyAsCurl => ViewContext::send_message(
+                Message::CopyRecipe(RecipeCopyTarget::Curl),
+            ),
             RecipeMenuAction::DeleteRecipe => {
                 if let Some(recipe_id) = self.selected_recipe_id() {
                     self.delete_requests_modal.open(
@@ -523,7 +526,8 @@ struct PaneState {
 mod tests {
     use super::*;
     use crate::{
-        message::{Message, RequestConfig},
+        http::RequestConfig,
+        message::Message,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
@@ -592,7 +596,7 @@ mod tests {
 
         harness.clear_messages(); // Clear init junk
 
-        component.int().action("Edit Recipe").assert_empty();
+        component.int().action(&["Edit Recipe"]).assert_empty();
         // Event should be converted into a message appropriately
         assert_matches!(
             harness.pop_message_now(),
@@ -611,10 +615,31 @@ mod tests {
         component
             .int()
             .send_key(KeyCode::Char('l')) // Select recipe list
-            .action("Copy URL")
+            .action(&["Copy", "URL"])
             .assert_empty();
 
-        assert_matches!(harness.pop_message_now(), Message::CopyRequestUrl);
+        assert_matches!(
+            harness.pop_message_now(),
+            Message::CopyRecipe(RecipeCopyTarget::Url)
+        );
+    }
+
+    /// Test "Copy as CLI" action, which is available via the Recipe List or
+    /// Recipe panes
+    #[rstest]
+    fn test_copy_as_cli(mut harness: TestHarness, terminal: TestTerminal) {
+        let mut component = create_component(&mut harness, &terminal);
+
+        component
+            .int()
+            .send_key(KeyCode::Char('l')) // Select recipe list
+            .action(&["Copy", "as CLI"])
+            .assert_empty();
+
+        assert_matches!(
+            harness.pop_message_now(),
+            Message::CopyRecipe(RecipeCopyTarget::Cli)
+        );
     }
 
     /// Test "Copy as cURL" action, which is available via the Recipe List or
@@ -626,9 +651,12 @@ mod tests {
         component
             .int()
             .send_key(KeyCode::Char('l')) // Select recipe list
-            .action("Copy as cURL")
+            .action(&["Copy", "as cURL"])
             .assert_empty();
 
-        assert_matches!(harness.pop_message_now(), Message::CopyRequestCurl);
+        assert_matches!(
+            harness.pop_message_now(),
+            Message::CopyRecipe(RecipeCopyTarget::Curl)
+        );
     }
 }

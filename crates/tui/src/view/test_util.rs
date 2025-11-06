@@ -6,7 +6,7 @@ use crate::{
     test_util::{TestHarness, TestTerminal},
     view::{
         UpdateContext,
-        common::actions::ActionsMenu,
+        common::actions::{ActionsMenu, MenuItem},
         component::{
             Canvas, Child, Component, ComponentExt, ComponentId, Draw,
             DrawMetadata, ToChild,
@@ -373,40 +373,68 @@ where
         self.send_keys(text.chars().map(KeyCode::Char))
     }
 
-    /// Open the actions menu, find the first action *containing* the given
-    /// string, and execute it. Panic if no matching action exists
-    pub fn action(self, name: &str) -> Self {
-        let items = self.component.component.collect_actions();
-        // Find the index of the action in the list so we know how far to scroll
-        let item_opt = items
-            .iter()
-            .enumerate()
-            .find(|(_, action)| action.to_string() == name);
-        let index = match item_opt {
-            Some((i, item)) if item.enabled() => i,
-            // Disabled actions can't be selected or triggered so this is
-            // probably a mistake
-            Some((_, item)) => panic!(
-                "Action `{item}` cannot be selected because it is disabled"
-            ),
-            None => panic!(
-                "No action `{name}`. Available actions: {}",
-                items.iter().format(", "),
-            ),
-        };
-        // Disabled actions are auto-skipped, so don't include them in the
-        // number of hops to make
-        let steps = index
-            - items[0..index]
+    /// Open the action menu and execute the action matching the given path.
+    /// Each step in the path corresponds to a single layer in the action menu.
+    /// For actions in the top level of the menu, the path will be just a single
+    /// element.
+    ///
+    /// Panic if no matching action exists
+    pub fn action(mut self, path: &[&str]) -> Self {
+        /// Inner helper to select+Enter an item within a single menu layer
+        fn find_item<'a>(
+            items: &'a [MenuItem],
+            name: &str,
+        ) -> (usize, &'a MenuItem) {
+            // Find the index of the action in the list so we know how far to
+            // scroll
+            let (index, item) = items
                 .iter()
-                .filter(|action| !action.enabled())
-                .count();
-        // Open actions menu
-        self.send_key(KeyCode::Char('x'))
-            // Move down to select the matching action
-            .send_keys(iter::repeat_n(KeyCode::Down, steps))
-            // Execute
-            .send_key(KeyCode::Enter)
+                .enumerate()
+                .find(|(_, action)| action.to_string() == name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "No action `{name}`. Available actions: {}",
+                        items.iter().format(", "),
+                    )
+                });
+            // Disabled actions can't be selected or triggered
+            assert!(
+                item.enabled(),
+                "Action `{item}` cannot be selected because it is disabled"
+            );
+
+            // Disabled actions are auto-skipped, so don't include them in the
+            // number of steps to make
+            let steps = index
+                - items[0..index]
+                    .iter()
+                    .filter(|action| !action.enabled())
+                    .count();
+
+            (steps, item)
+        }
+
+        let items = self.component.component.collect_actions();
+        // Open the menu
+        self = self.send_key(KeyCode::Char('x'));
+
+        // For each layer in the path, find+select the matching item
+        let mut next = &items;
+        for name in path {
+            let (steps, item) = find_item(next, name);
+            // If this is a group, drop down a layer
+            if let MenuItem::Group { children, .. } = item {
+                next = children;
+            }
+
+            self = self
+                // Move down to select the matching action
+                .send_keys(iter::repeat_n(KeyCode::Down, steps))
+                // Open group or execute action
+                .send_key(KeyCode::Enter);
+        }
+
+        self
     }
 
     /// Assert that no events were propagated, i.e. the component handled all

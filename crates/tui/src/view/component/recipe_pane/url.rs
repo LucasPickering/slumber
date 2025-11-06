@@ -189,7 +189,7 @@ mod tests {
         // Edit URL
         component
             .int()
-            .action("Edit URL")
+            .action(&["Edit URL"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
@@ -198,7 +198,7 @@ mod tests {
         );
 
         // Edit URL
-        component.int().action("Reset URL").assert_empty();
+        component.int().action(&["Reset URL"]).assert_empty();
         assert_eq!(component.override_value(), None);
     }
 

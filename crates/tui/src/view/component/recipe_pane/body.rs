@@ -1,5 +1,5 @@
 use crate::{
-    message::Message,
+    message::{Message, RecipeCopyTarget},
     util::{ResultReported, TempFile},
     view::{
         Component, ViewContext,
@@ -279,9 +279,9 @@ impl Component for TextBody {
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 RawBodyMenuAction::View => self.view_body(),
-                RawBodyMenuAction::Copy => {
-                    ViewContext::send_message(Message::CopyRequestBody);
-                }
+                RawBodyMenuAction::Copy => ViewContext::send_message(
+                    Message::CopyRecipe(RecipeCopyTarget::Body),
+                ),
                 RawBodyMenuAction::Edit => self.open_editor(),
                 RawBodyMenuAction::Reset => self.body.reset_override(),
             })

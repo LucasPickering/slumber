@@ -176,7 +176,7 @@ pub enum Message {
 }
 
 /// Component/form of a recipe to copy to the clipboard
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum RecipeCopyTarget {
     /// Render request URL from the selected recipe, then copy rendered URL
     Url,
@@ -187,6 +187,8 @@ pub enum RecipeCopyTarget {
     /// Render request from the selected recipe, then generate an equivalent
     /// cURL command and copy it
     Curl,
+    /// Copy selected recipe as Python code that uses the `slumber` package
+    Python,
 }
 
 /// A static callback included in a message

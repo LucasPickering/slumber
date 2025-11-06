@@ -479,7 +479,8 @@ impl LoadedState {
             // Copy the recipe as a CLI command. This does *not* require
             // rendering; the render is done when the command is executed
             RecipeCopyTarget::Cli => {
-                let command = self.request_config()?.to_cli();
+                let command =
+                    self.request_config()?.to_cli(self.collection_file.path());
                 self.view.copy_text(command)
             }
 
@@ -492,6 +493,13 @@ impl LoadedState {
                         .await
                         .map_err(anyhow::Error::from)
                 })
+            }
+
+            RecipeCopyTarget::Python => {
+                let code = self
+                    .request_config()?
+                    .to_python(self.collection_file.path());
+                self.view.copy_text(code)
             }
         }
     }

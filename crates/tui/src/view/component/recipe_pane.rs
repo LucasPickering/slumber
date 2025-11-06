@@ -9,7 +9,7 @@ pub use persistence::RecipeOverrideStore;
 
 use crate::{
     context::TuiContext,
-    message::RequestConfig,
+    http::RequestConfig,
     view::{
         Component, Generate,
         common::{Pane, actions::MenuItem},
@@ -208,7 +208,8 @@ struct RecipeStateKey {
 #[derive(Copy, Clone, Debug)]
 pub enum RecipeMenuAction {
     CopyUrl,
-    CopyCurl,
+    CopyAsCli,
+    CopyAsCurl,
     DeleteRecipe,
 }
 
@@ -217,14 +218,23 @@ impl RecipeMenuAction {
     /// components so the list is centralized here
     pub fn menu(emitter: Emitter<Self>, has_recipe: bool) -> Vec<MenuItem> {
         vec![
-            emitter
-                .menu(Self::CopyUrl, "Copy URL")
-                .enable(has_recipe)
-                .into(),
-            emitter
-                .menu(Self::CopyCurl, "Copy as cURL")
-                .enable(has_recipe)
-                .into(),
+            MenuItem::Group {
+                name: "Copy".into(),
+                children: vec![
+                    emitter
+                        .menu(Self::CopyUrl, "URL")
+                        .enable(has_recipe)
+                        .into(),
+                    emitter
+                        .menu(Self::CopyAsCli, "as CLI")
+                        .enable(has_recipe)
+                        .into(),
+                    emitter
+                        .menu(Self::CopyAsCurl, "as cURL")
+                        .enable(has_recipe)
+                        .into(),
+                ],
+            },
             emitter
                 .menu(Self::DeleteRecipe, "Delete Requests")
                 .enable(has_recipe)

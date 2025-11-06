@@ -210,6 +210,7 @@ pub enum RecipeMenuAction {
     CopyUrl,
     CopyAsCli,
     CopyAsCurl,
+    CopyAsPython,
     DeleteRecipe,
 }
 
@@ -231,6 +232,10 @@ impl RecipeMenuAction {
                         .into(),
                     emitter
                         .menu(Self::CopyAsCurl, "as cURL")
+                        .enable(has_recipe)
+                        .into(),
+                    emitter
+                        .menu(Self::CopyAsPython, "as Python")
                         .enable(has_recipe)
                         .into(),
                 ],

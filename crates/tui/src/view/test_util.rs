@@ -6,7 +6,7 @@ use crate::{
     test_util::{TestHarness, TestTerminal},
     view::{
         UpdateContext,
-        common::actions::{ActionsMenu, MenuItem},
+        common::actions::{ActionMenu, MenuItem},
         component::{
             Canvas, Child, Component, ComponentExt, ComponentId, Draw,
             DrawMetadata, ToChild,
@@ -547,14 +547,14 @@ where
 #[derive(Debug)]
 struct TestWrapper<T> {
     inner: T,
-    actions: ActionsMenu,
+    actions: ActionMenu,
 }
 
 impl<T> TestWrapper<T> {
     pub fn new(component: T) -> Self {
         Self {
             inner: component,
-            actions: ActionsMenu::default(),
+            actions: ActionMenu::default(),
         }
     }
 }

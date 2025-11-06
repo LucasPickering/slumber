@@ -680,7 +680,7 @@ mod tests {
         // Select a basic action
         component
             .int()
-            .action("Action 2")
+            .action(&["Action 2"])
             .assert_emitted([TestAction::Action2]);
 
         // Actions can be selected by shortcut

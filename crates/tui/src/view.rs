@@ -15,8 +15,8 @@ pub use util::{Confirm, PreviewPrompter, TuiPrompter};
 
 use crate::{
     context::TuiContext,
-    http::{RequestState, RequestStore},
-    message::{Message, MessageSender, RequestConfig},
+    http::{RequestConfig, RequestState, RequestStore},
+    message::MessageSender,
     util::ResultReported,
     view::{
         component::{Canvas, Component, ComponentExt, Root, RootProps},
@@ -227,18 +227,12 @@ impl View {
     }
 
     /// Copy text to the user's clipboard, and notify them
-    pub fn copy_text(&mut self, text: String) {
-        match execute!(io::stdout(), CopyToClipboard::to_clipboard_from(text)) {
-            Ok(()) => self.notify("Copied text to clipboard"),
-            Err(error) => {
-                // Returned error doesn't impl 'static so we can't
-                // directly convert it to anyhow
-                ViewContext::send_message(Message::Error {
-                    error: anyhow::Error::from(error)
-                        .context("Error copying text"),
-                });
-            }
-        }
+    pub fn copy_text(&mut self, text: String) -> anyhow::Result<()> {
+        execute!(io::stdout(), CopyToClipboard::to_clipboard_from(text))
+            .inspect(|()| self.notify("Copied text to clipboard"))
+            .map_err(|error| {
+                anyhow::Error::from(error).context("Error copying text")
+            })
     }
 }
 

@@ -4,7 +4,7 @@ use crate::{
     util::ResultReported,
     view::{
         Component, Confirm, ViewContext,
-        common::{actions::ActionsMenu, modal::ModalQueue, text_box::TextBox},
+        common::{actions::ActionMenu, modal::ModalQueue, text_box::TextBox},
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
@@ -46,7 +46,7 @@ pub struct Root {
     // queues. They use the same implementation, but it's only possible to open
     // multiple modals at a time if the trigger is from the background (e.g.
     // errors or prompts).
-    actions: ActionsMenu,
+    actions: ActionMenu,
     cancel_request_confirm: ModalQueue<ConfirmModal>,
     confirms: ModalQueue<ConfirmModal>,
     errors: ModalQueue<ErrorModal>,
@@ -70,7 +70,7 @@ impl Root {
             // Children
             primary_view,
             footer: Footer::default(),
-            actions: ActionsMenu::default(),
+            actions: ActionMenu::default(),
             cancel_request_confirm: ModalQueue::default(),
             confirms: ModalQueue::default(),
             errors: ModalQueue::default(),

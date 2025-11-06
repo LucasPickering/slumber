@@ -22,6 +22,8 @@ use ratatui::{
     widgets::{List, ListItem, ListState, StatefulWidget},
 };
 use slumber_config::Action;
+use std::fmt::{self, Display};
+use unicode_width::UnicodeWidthStr;
 
 /// Popup menu to list and trigger arbitrary actions.
 ///
@@ -40,13 +42,13 @@ use slumber_config::Action;
 /// - The location isn't necessarily centered
 /// - The event handling is more complex (indirect submission)
 #[derive(Debug, Default)]
-pub struct ActionsMenu {
+pub struct ActionMenu {
     id: ComponentId,
     /// Menu content, which is `Some` when the menu is open
     content: Option<ActionMenuContent>,
 }
 
-impl ActionsMenu {
+impl ActionMenu {
     /// Open the actions menu with the given actions/groups
     pub fn open(&mut self, items: Vec<MenuItem>) {
         self.content = Some(ActionMenuContent::new(items));
@@ -57,7 +59,7 @@ impl ActionsMenu {
     }
 }
 
-impl Portal for ActionsMenu {
+impl Portal for ActionMenu {
     fn area(&self, canvas_area: Rect) -> Rect {
         let Some(content) = &self.content else {
             return Rect::default();
@@ -67,25 +69,27 @@ impl Portal for ActionsMenu {
         // opening other layers
         let first = content.stack.first().expect("Menu stack cannot be empty");
         let Rect { x, y, .. } = canvas_area.centered(
-            Constraint::Length(ActionMenuContent::WIDTH),
+            Constraint::Length(content.layer_width(&content.stack[0])),
             Constraint::Length(first.len() as u16),
         );
 
-        let width = ActionMenuContent::WIDTH * content.stack.len() as u16;
+        // Each layer has a dynamic width, so sum them up
+        let width = content
+            .stack
+            .iter()
+            .map(|layer| content.layer_width(layer))
+            .sum();
+
         // Calculate how far down the menus expand. Each menu is offset so that
         // the first item lines up with the selected item in the parent
+        let mut offset_y = 0;
         let height = content
             .stack
             .iter()
-            .enumerate()
-            .map(|(i, layer)| {
-                let offset = if i == 0 {
-                    None
-                } else {
-                    content.stack[i - 1].selected_index()
-                }
-                .unwrap_or(0);
-                (offset + layer.len()) as u16
+            .map(|layer| {
+                let layer_height = offset_y + layer.len() as u16;
+                offset_y += layer.selected_index().unwrap_or(0) as u16;
+                layer_height
             })
             .max()
             .unwrap_or(0);
@@ -99,7 +103,7 @@ impl Portal for ActionsMenu {
     }
 }
 
-impl Component for ActionsMenu {
+impl Component for ActionMenu {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -139,7 +143,7 @@ impl Component for ActionsMenu {
     }
 }
 
-impl Draw for ActionsMenu {
+impl Draw for ActionMenu {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if let Some(state) = &self.content {
             canvas.draw(state, (), metadata.area(), true);
@@ -171,8 +175,6 @@ struct ActionMenuContent {
 }
 
 impl ActionMenuContent {
-    const WIDTH: u16 = 30;
-
     fn new(items: Vec<MenuItem>) -> Self {
         let root_select = build_select(map_items(&items));
         Self {
@@ -267,6 +269,17 @@ impl ActionMenuContent {
             }
         }
     }
+
+    /// Get the pixel width of a particular layer
+    fn layer_width(&self, layer: &SelectState<MenuItemDisplay>) -> u16 {
+        // Get the longest item
+        layer
+            .items()
+            .map(|item| item.to_string().width() as u16)
+            .max()
+            .unwrap_or(0)
+            + 1 // Padding between layers
+    }
 }
 
 impl Component for ActionMenuContent {
@@ -355,26 +368,29 @@ impl Component for ActionMenuContent {
 
 impl Draw for ActionMenuContent {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        for (i, select) in self.stack.iter().enumerate() {
-            // Each menu steps out to the right
-            let x = Self::WIDTH * (i as u16);
-            // Offset in y so our first item aligns with the parent, which is
-            // the selected item from the previous layer
-            let y = if i == 0 {
-                0
-            } else {
-                self.stack[i - 1].selected_index().unwrap_or(0) as u16
-            };
+        // Accumulate x/y offset across all layers
+        let mut offset_x = 0;
+        let mut offset_y = 0;
+
+        for (i, layer) in self.stack.iter().enumerate() {
+            let width = self.layer_width(layer);
             let area = Rect {
-                width: Self::WIDTH,
-                height: select.len() as u16,
-                x: metadata.area().x + x,
-                y: metadata.area().y + y,
+                width,
+                height: layer.len() as u16,
+                x: metadata.area().x + offset_x,
+                y: metadata.area().y + offset_y,
             };
 
+            // Add to the offsets for a potential child
+            offset_x += width + 1;
+            offset_y += layer.selected_index().unwrap_or(0) as u16;
+
             let active = i == self.active_layer;
-            let widget = MenuLayer { select, active };
-            canvas.draw(select, widget, area, active);
+            let widget = MenuLayer {
+                select: layer,
+                active,
+            };
+            canvas.draw(layer, widget, area, active);
         }
     }
 }
@@ -523,6 +539,29 @@ enum MenuItemDisplay {
         name: String,
         children: Vec<Self>,
     },
+}
+
+impl Display for MenuItemDisplay {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            // If a shortcut is given, include the binding in the text
+            Self::Action {
+                name,
+                shortcut: Some(shortcut),
+                ..
+            } => {
+                let s =
+                    TuiContext::get().input_engine.add_hint(name, *shortcut);
+                write!(fmt, "{s}")
+            }
+            Self::Action { name, .. } => {
+                write!(fmt, "{name}")
+            }
+            Self::Group { name, .. } => {
+                write!(fmt, "{name} ▶")
+            }
+        }
+    }
 }
 
 /// Map data tree to a tree that can be freely cloned and displayed

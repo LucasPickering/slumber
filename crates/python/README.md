@@ -21,11 +21,11 @@ pip install slumber-python
 First, [create a Slumber collection](https://slumber.lucaspickering.me/getting_started.html).
 
 ```py
-
+import asyncio
 from slumber import Collection
 
 collection = Collection()
-response = collection.request('example_get')
+response = asyncio.run(collection.request('example_get'))
 print(response.text)
 ```
 

@@ -25,14 +25,47 @@ fn test_to_cli(
     #[case] profile_id: Option<&str>,
     #[case] expected_args: &[&str],
 ) {
+    let file = "slumber.yml";
     let config = RequestConfig {
         recipe_id: "r1".into(),
         profile_id: profile_id.map(ProfileId::from),
         options: BuildOptions::default(),
     };
-    let expected_command =
-        format!("slumber request {}", expected_args.join(" "));
-    assert_eq!(config.to_cli(), expected_command);
+    let expected_command = format!(
+        "slumber --file {file} request {args}",
+        args = expected_args.join(" "),
+    );
+    assert_eq!(config.to_cli(Path::new(file)), expected_command);
+}
+
+/// Test [RequestConfig::to_python]
+#[rstest]
+#[case::recipe_only(None, &[("recipe", "'r1'")])]
+#[case::profile(Some("p1"), &[("recipe", "'r1'"), ("profile", "'p1'")])]
+fn test_to_python(
+    #[case] profile_id: Option<&str>,
+    #[case] expected_kwargs: &[(&str, &str)],
+) {
+    let file = "slumber.yml";
+    let config = RequestConfig {
+        recipe_id: "r1".into(),
+        profile_id: profile_id.map(ProfileId::from),
+        options: BuildOptions::default(),
+    };
+
+    let expected_code = format!(
+        "import asyncio
+from slumber import Collection
+
+collection = Collection('{file}')
+response = asyncio.run(collection.request({kwargs}))
+",
+        kwargs = expected_kwargs
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .join(", "),
+    );
+    assert_eq!(config.to_python(Path::new(file)), expected_code);
 }
 
 /// Test getting a request from the request store

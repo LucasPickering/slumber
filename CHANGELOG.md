@@ -10,7 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Add `Copy as CLI` action to the recipe pane to generate a `slumber request` CLI command for the selected recipe/profile
+- Add `Copy as CLI` action to generate a `slumber request` CLI command for the selected recipe/profile
+- Add `Copy as Python` action to generate Python code that uses the [slumber-python](https://pypi.org/project/slumber-python/) API to make a request with the selected recipe/profile
 
 ## [4.3.1] - 2026-01-02
 

@@ -232,6 +232,9 @@ impl PrimaryView {
             RecipeMenuAction::CopyAsCurl => ViewContext::send_message(
                 Message::CopyRecipe(RecipeCopyTarget::Curl),
             ),
+            RecipeMenuAction::CopyAsPython => ViewContext::send_message(
+                Message::CopyRecipe(RecipeCopyTarget::Python),
+            ),
             RecipeMenuAction::DeleteRecipe => {
                 if let Some(recipe_id) = self.selected_recipe_id() {
                     self.delete_requests_modal.open(
@@ -606,57 +609,30 @@ mod tests {
         );
     }
 
-    /// Test "Copy URL" action, which is available via the Recipe List or Recipe
-    /// panes
+    /// Test actions under the "Copy" submenu
     #[rstest]
-    fn test_copy_url(mut harness: TestHarness, terminal: TestTerminal) {
+    #[case::url("URL", RecipeCopyTarget::Url)]
+    #[case::cli("as CLI", RecipeCopyTarget::Cli)]
+    #[case::curl("as cURL", RecipeCopyTarget::Curl)]
+    #[case::python("as Python", RecipeCopyTarget::Python)]
+    fn test_copy_action(
+        mut harness: TestHarness,
+        terminal: TestTerminal,
+        #[case] label: &str,
+        #[case] expected_target: RecipeCopyTarget,
+    ) {
         let mut component = create_component(&mut harness, &terminal);
 
         component
             .int()
             .send_key(KeyCode::Char('l')) // Select recipe list
-            .action(&["Copy", "URL"])
+            .action(&["Copy", label])
             .assert_empty();
 
-        assert_matches!(
+        let actual_target = assert_matches!(
             harness.pop_message_now(),
-            Message::CopyRecipe(RecipeCopyTarget::Url)
+            Message::CopyRecipe(target) => target
         );
-    }
-
-    /// Test "Copy as CLI" action, which is available via the Recipe List or
-    /// Recipe panes
-    #[rstest]
-    fn test_copy_as_cli(mut harness: TestHarness, terminal: TestTerminal) {
-        let mut component = create_component(&mut harness, &terminal);
-
-        component
-            .int()
-            .send_key(KeyCode::Char('l')) // Select recipe list
-            .action(&["Copy", "as CLI"])
-            .assert_empty();
-
-        assert_matches!(
-            harness.pop_message_now(),
-            Message::CopyRecipe(RecipeCopyTarget::Cli)
-        );
-    }
-
-    /// Test "Copy as cURL" action, which is available via the Recipe List or
-    /// Recipe panes
-    #[rstest]
-    fn test_copy_as_curl(mut harness: TestHarness, terminal: TestTerminal) {
-        let mut component = create_component(&mut harness, &terminal);
-
-        component
-            .int()
-            .send_key(KeyCode::Char('l')) // Select recipe list
-            .action(&["Copy", "as cURL"])
-            .assert_empty();
-
-        assert_matches!(
-            harness.pop_message_now(),
-            Message::CopyRecipe(RecipeCopyTarget::Curl)
-        );
+        assert_eq!(actual_target, expected_target);
     }
 }

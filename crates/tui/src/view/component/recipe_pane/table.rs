@@ -544,7 +544,7 @@ mod tests {
 
         component
             .int_props(props_factory)
-            .action("Edit Row")
+            .action(&["Edit Row"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
 

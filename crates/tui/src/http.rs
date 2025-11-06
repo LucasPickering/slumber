@@ -15,8 +15,9 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     database::{CollectionDatabase, DatabaseError, ProfileFilter},
     http::{
-        Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
-        RequestRecord, RequestSeed, StoredRequestError, TriggeredRequestError,
+        BuildOptions, Exchange, ExchangeSummary, RequestBuildError,
+        RequestError, RequestId, RequestRecord, RequestSeed,
+        StoredRequestError, TriggeredRequestError,
     },
     render::{HttpProvider, TemplateContext},
 };
@@ -28,6 +29,35 @@ use std::{
 use strum::EnumDiscriminants;
 use tokio::{sync::oneshot, task::AbortHandle};
 use tracing::warn;
+
+/// Configuration that defines how to render a request
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct RequestConfig {
+    pub profile_id: Option<ProfileId>,
+    pub recipe_id: RecipeId,
+    pub options: BuildOptions,
+}
+
+impl RequestConfig {
+    /// Build a Slumber CLI command equivalent to this request seed
+    pub fn to_cli(&self) -> String {
+        let mut command: Vec<String> = vec![
+            "slumber".into(),
+            "request".into(),
+            self.recipe_id.to_string(),
+        ];
+
+        if let Some(profile_id) = &self.profile_id {
+            command.extend(["--profile".into(), profile_id.to_string()]);
+        }
+
+        // It'd be great to include overrides here but the CLI doesn't support
+        // that (yet)
+
+        command.join(" ")
+    }
+}
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
 ///

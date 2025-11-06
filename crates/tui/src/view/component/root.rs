@@ -1,6 +1,6 @@
 use crate::{
-    http::{RequestState, RequestStore},
-    message::{Message, RequestConfig},
+    http::{RequestConfig, RequestState, RequestStore},
+    message::Message,
     util::ResultReported,
     view::{
         Component, Confirm, ViewContext,
@@ -640,7 +640,7 @@ mod tests {
         // Select "Delete Requests" but decline the confirmation
         component
             .int_props(props_factory)
-            .action("Delete Requests")
+            .action(&["Delete Requests"])
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
             .assert_empty();
@@ -652,7 +652,7 @@ mod tests {
         // for All Profiles
         component
             .int_props(props_factory)
-            .action("Delete Requests")
+            .action(&["Delete Requests"])
             // Confirm
             .send_keys([KeyCode::Enter])
             .assert_empty();
@@ -696,7 +696,7 @@ mod tests {
         // Select "Delete Request" but decline the confirmation
         component
             .int_props(props_factory)
-            .action("Delete Request")
+            .action(&["Delete Request"])
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
             .assert_empty();
@@ -707,7 +707,7 @@ mod tests {
         component
             .int_props(props_factory)
             .send_key(KeyCode::Char('r'))
-            .action("Delete Request")
+            .action(&["Delete Request"])
             // Confirm
             .send_keys([KeyCode::Enter])
             .assert_empty();

@@ -17,6 +17,25 @@ use std::{
 };
 use tokio::time;
 
+/// Test [RequestConfig::to_cli]
+#[rstest]
+#[case::recipe_only(None, &["r1"])]
+#[case::profile(Some("p1"), &["r1", "--profile", "p1"])]
+fn test_to_cli(
+    #[case] profile_id: Option<&str>,
+    #[case] expected_args: &[&str],
+) {
+    let config = RequestConfig {
+        recipe_id: "r1".into(),
+        profile_id: profile_id.map(ProfileId::from),
+        options: BuildOptions::default(),
+    };
+    let expected_command =
+        format!("slumber request {}", expected_args.join(" "));
+    assert_eq!(config.to_cli(), expected_command);
+}
+
+/// Test getting a request from the request store
 #[rstest]
 fn test_get() {
     let mut store = RequestStore::new(CollectionDatabase::factory(()));

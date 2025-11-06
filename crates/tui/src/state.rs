@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
-    http::{RequestState, RequestStore, TuiHttpProvider},
-    message::{Callback, Message, MessageSender, RequestConfig},
+    http::{RequestConfig, RequestState, RequestStore, TuiHttpProvider},
+    message::{Callback, Message, MessageSender, RecipeCopyTarget},
     util::{self, ResultReported},
     view::{PreviewPrompter, TuiPrompter, UpdateContext, View},
 };
@@ -310,10 +310,8 @@ impl LoadedState {
             Message::CollectionEdit { location } => {
                 self.edit_collection(location)?;
             }
-            Message::CopyRequestUrl => self.copy_request_url()?,
-            Message::CopyRequestBody => self.copy_request_body()?,
-            Message::CopyRequestCurl => self.copy_request_curl()?,
-            Message::CopyText(text) => self.view.copy_text(text),
+            Message::CopyRecipe(target) => self.copy_recipe(target)?,
+            Message::CopyText(text) => self.view.copy_text(text)?,
             Message::SaveResponseBody { request_id, data } => {
                 self.save_response_body(request_id, data).with_context(
                     || {
@@ -453,73 +451,74 @@ impl LoadedState {
         self.database.set_name(self.collection.name.as_deref());
     }
 
-    /// Render URL for a request, then copy it to the clipboard
-    fn copy_request_url(&self) -> anyhow::Result<()> {
-        let RequestConfig {
-            profile_id,
-            recipe_id,
-            options,
-        } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false);
-        let messages_tx = self.messages_tx();
-        // Spawn a task to do the render+copy
-        util::spawn_result(async move {
-            let url = TuiContext::get()
-                .http_engine
-                .build_url(seed, &template_context)
-                .await?;
-            messages_tx.send(Message::CopyText(url.to_string()));
-            Ok(())
-        });
-        Ok(())
+    /// Copy some component of the current recipe. Depending on the target, this
+    /// may require rendering some or all of the recipe
+    fn copy_recipe(&mut self, target: RecipeCopyTarget) -> anyhow::Result<()> {
+        match target {
+            // Render+copy URL
+            RecipeCopyTarget::Url => self.render_copy(async |context, seed| {
+                let http_engine = &TuiContext::get().http_engine;
+                let url = http_engine.build_url(seed, &context).await?;
+                Ok(url.to_string())
+            }),
+
+            // Render+copy body
+            RecipeCopyTarget::Body => {
+                self.render_copy(async |context, seed| {
+                    let http_engine = &TuiContext::get().http_engine;
+                    let body = http_engine
+                        .build_body(seed, &context)
+                        .await?
+                        .ok_or(anyhow!("Request has no body"))?;
+                    // Clone the bytes :(
+                    String::from_utf8(body.into())
+                        .context("Cannot copy request body")
+                })
+            }
+
+            // Copy the recipe as a CLI command. This does *not* require
+            // rendering; the render is done when the command is executed
+            RecipeCopyTarget::Cli => {
+                let command = self.request_config()?.to_cli();
+                self.view.copy_text(command)
+            }
+
+            // Render request, then copy the equivalent curl command
+            RecipeCopyTarget::Curl => {
+                self.render_copy(async |context, seed| {
+                    let http_engine = &TuiContext::get().http_engine;
+                    http_engine
+                        .build_curl(seed, &context)
+                        .await
+                        .map_err(anyhow::Error::from)
+                })
+            }
+        }
     }
 
-    /// Render body for a request, then copy it to the clipboard
-    fn copy_request_body(&self) -> anyhow::Result<()> {
+    /// Call an async function to render some part of a request to a string,
+    /// then copy that string to the clipboard
+    fn render_copy<F>(&self, render: F) -> anyhow::Result<()>
+    where
+        F: 'static
+            + AsyncFnOnce(TemplateContext, RequestSeed) -> anyhow::Result<String>,
+    {
+        let messages_tx = self.messages_tx();
         let RequestConfig {
             profile_id,
             recipe_id,
             options,
         } = self.request_config()?;
+        let context = self.template_context(profile_id, false);
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false);
-        let messages_tx = self.messages_tx();
-        // Spawn a task to do the render+copy
-        util::spawn_result(async move {
-            let body = TuiContext::get()
-                .http_engine
-                .build_body(seed, &template_context)
-                .await?
-                .ok_or(anyhow!("Request has no body"))?;
-            // Clone the bytes :(
-            let body = String::from_utf8(body.into())
-                .context("Cannot copy request body")?;
-            messages_tx.send(Message::CopyText(body));
-            Ok(())
-        });
-        Ok(())
-    }
 
-    /// Render a request, then copy the equivalent curl command to the clipboard
-    fn copy_request_curl(&self) -> anyhow::Result<()> {
-        let RequestConfig {
-            profile_id,
-            recipe_id,
-            options,
-        } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false);
-        let messages_tx = self.messages_tx();
-        // Spawn a task to do the render+copy
+        let future = render(context, seed);
         util::spawn_result(async move {
-            let command = TuiContext::get()
-                .http_engine
-                .build_curl(seed, &template_context)
-                .await?;
-            messages_tx.send(Message::CopyText(command));
+            let text = future.await?;
+            messages_tx.send(Message::CopyText(text));
             Ok(())
         });
+
         Ok(())
     }
 

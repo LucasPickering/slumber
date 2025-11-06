@@ -9,8 +9,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
-        RequestRecord,
+        Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
     render::{Prompt, ResponseChannel, Select},
 };
@@ -71,11 +70,7 @@ pub enum Message {
     ConfirmStart(Confirm),
 
     /// Render request URL from a recipe, then copy rendered URL
-    CopyRequestUrl,
-    /// Render request body from the selected recipe, then copy rendered text
-    CopyRequestBody,
-    /// Render request, then generate an equivalent cURL command and copy it
-    CopyRequestCurl,
+    CopyRecipe(RecipeCopyTarget),
     /// Copy some text to the clipboard
     CopyText(String),
 
@@ -180,14 +175,19 @@ pub enum Message {
     },
 }
 
+/// Component/form of a recipe to copy to the clipboard
+#[derive(Debug)]
+pub enum RecipeCopyTarget {
+    /// Render request URL from the selected recipe, then copy rendered URL
+    Url,
+    /// Render request body from the selected recipe, then copy rendered text
+    Body,
+    /// Copy selected recipe as an equivelent Slumber CLI command
+    Cli,
+    /// Render request from the selected recipe, then generate an equivalent
+    /// cURL command and copy it
+    Curl,
+}
+
 /// A static callback included in a message
 pub type Callback<T> = Box<dyn 'static + Send + Sync + FnOnce(T)>;
-
-/// Configuration that defines how to render a request
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct RequestConfig {
-    pub profile_id: Option<ProfileId>,
-    pub recipe_id: RecipeId,
-    pub options: BuildOptions,
-}

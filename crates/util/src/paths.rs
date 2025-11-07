@@ -3,11 +3,15 @@ use std::{
     borrow::Cow,
     fs, io,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 /// Set this environment variable to change the data directory. Useful for tests
 #[cfg(debug_assertions)]
 pub const DATA_DIRECTORY_ENV_VARIABLE: &str = "SLUMBER_DB";
+/// Lock for the log file. A random file name is generated once during startup,
+/// then used for that session
+static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
 
 /// Get the path of the directory to contain the config file (e.g. the
 /// database). **Directory may not exist yet**, caller must create it.
@@ -25,30 +29,30 @@ pub fn data_directory() -> PathBuf {
     debug_or(dirs::data_dir().unwrap().join("slumber"))
 }
 
-/// Get the path of the directory to contain log files. **Directory
-/// may not exist yet**, caller must create it.
-pub fn log_directory() -> PathBuf {
-    // State dir is only present on windows, but cache dir will be present on
-    // all platforms
-    // https://docs.rs/dirs/latest/dirs/fn.state_dir.html
-    // https://docs.rs/dirs/latest/dirs/fn.cache_dir.html
-    debug_or(
-        dirs::state_dir()
-            .unwrap_or_else(|| dirs::cache_dir().unwrap())
-            .join("slumber"),
-    )
-}
-
-/// Get the path to the primary log file. **Parent direct may not exist yet,**
-/// caller must create it.
+/// Get the path to the log file. Each session gets a unique file within a
+/// temporary directory. The parent directory **may not exist yet.** Caller must
+/// ensure it is created.
 pub fn log_file() -> PathBuf {
-    log_directory().join("slumber.log")
-}
+    LOG_FILE
+        .get_or_init(|| {
+            // Use a static file in dev for easier access
+            #[cfg(debug_assertions)]
+            {
+                data_directory().join("slumber.log")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                use std::env;
+                use uuid::Uuid;
 
-/// Get the path to the backup log file **Parent direct may not exist yet,**
-/// caller must create it.
-pub fn log_file_old() -> PathBuf {
-    log_directory().join("slumber.log.old")
+                let directory = env::temp_dir();
+                // Temp dir isn't guaranteed to be unique, so make sure the file
+                // name is
+                let file_name = format!("slumber-{}.log", Uuid::new_v4());
+                directory.join(file_name)
+            }
+        })
+        .clone()
 }
 
 /// In debug mode, use a local directory for all files. In release, use the

@@ -27,7 +27,7 @@ serde_yaml = {workspace = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}
 tracing-subscriber = {workspace = true, optional = true}
-uuid = {workspace = true, features = ["v4"], optional = true}
+uuid = {workspace = true, features = ["v4"]}
 winnow = {workspace = true}
 
 [dev-dependencies]
@@ -39,7 +39,7 @@ tracing-subscriber = {workspace = true}
 uuid = {workspace = true, features = ["v4"]}
 
 [features]
-test = ["dep:rstest", "dep:uuid", "dep:tracing-subscriber"]
+test = ["dep:rstest", "dep:tracing-subscriber"]
 
 [lints]
 workspace = true

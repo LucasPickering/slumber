@@ -22,6 +22,7 @@ use crate::{
 use clap::{CommandFactory, Parser};
 use clap_complete::CompleteEnv;
 use slumber_core::collection::{CollectionError, CollectionFile};
+use slumber_util::paths;
 use std::{path::PathBuf, process::ExitCode};
 
 const COMMAND_NAME: &str = "slumber";
@@ -65,6 +66,9 @@ pub struct GlobalArgs {
     /// same search logic from the given directory rather than the current.
     #[clap(long, short, add = complete_collection_path())]
     pub file: Option<PathBuf>,
+    /// Print the path to the log file for this session
+    #[clap(long)]
+    pub print_log_path: bool,
 }
 
 impl GlobalArgs {
@@ -92,6 +96,11 @@ pub enum CliCommand {
 impl CliCommand {
     /// Execute this CLI subcommand
     pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
+        if global.print_log_path {
+            let path = paths::log_file();
+            println!("Logging to {}", path.display());
+        }
+
         match self {
             Self::Collection(command) => command.execute(global).await,
             Self::Collections(command) => command.execute(global).await,

@@ -11,7 +11,7 @@ Some common CLI use cases:
 - [Send requests](./subcommands.md#slumber-request)
 - [Import from an external format](./subcommands.md#slumber-import)
 - [Generate request in an external format (e.g. curl)](./subcommands.md#slumber-generate)
-- [View Slumber configuration/metadata](./subcommands.md#slumber-show)
+- [View & edit Slumber configuration](./subcommands.md#slumber-config)
 
 ## Examples
 

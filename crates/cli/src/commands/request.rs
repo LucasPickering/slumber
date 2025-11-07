@@ -34,7 +34,7 @@ use tracing::warn;
 /// an error status code
 const HTTP_ERROR_EXIT_CODE: u8 = 2;
 
-/// Execute a single request, and print its response
+/// Execute a single request and print its response
 #[derive(Clone, Debug, Parser)]
 #[clap(aliases=&["req", "rq"])]
 pub struct RequestCommand {

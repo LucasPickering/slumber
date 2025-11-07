@@ -1,10 +1,18 @@
 # Subcommands
 
+## `slumber collection`
+
+Show the [request collection file](../../api/request_collection/index.md). You can open the file in your [configured editor](../tui/editor.md) with `slumber collection --edit`.
+
 ## `slumber collections`
 
 View and manipulate stored collection history/state. Slumber uses a local database to store all request/response history, as well as UI state and other persisted values. **As a user, you rarely have to worry about this.** The most common scenario in which you _do_ have to is if you've renamed a collection file and want to migrate the history to match the new path. [See here for how to migrate collection files](../database.md#migrating-collections).
 
 See `slumber collections --help` for more options.
+
+## `slumber config`
+
+Show the [global configuration file](../../api/configuration/index.md). You can open the file in your [configured editor](../tui/editor.md) with `slumber config --edit`.
 
 ## `slumber db`
 
@@ -57,7 +65,7 @@ slumber generate curl --profile production list_fishes -o host=http://localhost:
 
 ## `slumber history`
 
-View and modify your Slumber request history. Slumber stores every command sent **from the TUI** in a local SQLite database (requests are **not** stored remotely). You can find the database file with `slumber show paths db`.
+View and modify your Slumber request history. Slumber stores every command sent **from the TUI** in a local SQLite database (requests are **not** stored remotely). You can find the database file with `slumber db --path`.
 
 You can use the `slumber history` subcommand to browse and delete request history.
 
@@ -213,20 +221,4 @@ requests:
 slumber request --profile production list_fishes
 slumber rq -p production list_fishes # rq is a shorter alias
 slumber -f fishes.yml -p production list_fishes # Different collection file
-```
-
-## `slumber show`
-
-Print metadata about Slumber.
-
-See `slumber show --help` for more options.
-
-**Examples**
-
-```sh
-slumber show paths # Show paths of various Slumber data files/directories
-slumber show config # Print global configuration
-slumber show config --edit # Edit global configuration
-slumber show collection # Print collection file
-slumber show collection --edit # Edit collection file
 ```

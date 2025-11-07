@@ -1,5 +1,7 @@
 # Logs
 
+TODO update this
+
 Each Slumber session logs information and events to a log file. This can often be helpful in debugging bugs and other issues with the app. All sessions of Slumber log to the same file. Currently there is no easy to way disambiguate between logs from parallel sessions :(
 
 ## Finding the Log File

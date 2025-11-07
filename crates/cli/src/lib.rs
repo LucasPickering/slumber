@@ -8,12 +8,14 @@ mod commands;
 mod completions;
 mod util;
 
+pub use util::print_error;
+
 use crate::{
     commands::{
-        collections::CollectionsCommand, db::DbCommand,
-        generate::GenerateCommand, history::HistoryCommand,
-        import::ImportCommand, new::NewCommand, request::RequestCommand,
-        show::ShowCommand,
+        collection::CollectionCommand, collections::CollectionsCommand,
+        config::ConfigCommand, db::DbCommand, generate::GenerateCommand,
+        history::HistoryCommand, import::ImportCommand, new::NewCommand,
+        request::RequestCommand,
     },
     completions::complete_collection_path,
 };
@@ -28,9 +30,10 @@ const COMMAND_NAME: &str = "slumber";
 ///
 /// If subcommand is omitted, start the TUI.
 ///
-/// <https://slumber.lucaspickering.me/>
+/// https://slumber.lucaspickering.me/
 #[derive(Debug, Parser)]
 #[clap(author, version, about, name = COMMAND_NAME)]
+#[expect(rustdoc::bare_urls)]
 pub struct Args {
     #[command(flatten)]
     pub global: GlobalArgs,
@@ -54,11 +57,12 @@ impl Args {
 /// Arguments that are available to all subcommands and the TUI
 #[derive(Debug, Parser)]
 pub struct GlobalArgs {
-    /// Collection file, which defines profiles, recipes, etc. If omitted,
-    /// check the current and all parent directories for the following files
-    /// (in this order): slumber.yml, slumber.yaml, .slumber.yml,
-    /// .slumber.yaml. If a directory is passed, apply the same search
-    /// logic from the given directory rather than the current.
+    /// Collection file, which defines profiles, recipes, etc.
+    ///
+    /// If omitted, check the current and all parent directories for the
+    /// following files (in this order): slumber.yml, slumber.yaml,
+    /// .slumber.yml, .slumber.yaml. If a directory is passed, apply the
+    /// same search logic from the given directory rather than the current.
     #[clap(long, short, add = complete_collection_path())]
     pub file: Option<PathBuf>,
 }
@@ -74,28 +78,30 @@ impl GlobalArgs {
 /// A CLI subcommand
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
+    Collection(CollectionCommand),
     Collections(CollectionsCommand),
+    Config(ConfigCommand),
     Db(DbCommand),
     Generate(GenerateCommand),
     History(HistoryCommand),
     Import(ImportCommand),
     New(NewCommand),
     Request(RequestCommand),
-    Show(ShowCommand),
 }
 
 impl CliCommand {
     /// Execute this CLI subcommand
     pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self {
+            Self::Collection(command) => command.execute(global).await,
             Self::Collections(command) => command.execute(global).await,
+            Self::Config(command) => command.execute(global).await,
             Self::Db(command) => command.execute(global).await,
             Self::Generate(command) => command.execute(global).await,
             Self::History(command) => command.execute(global).await,
             Self::Import(command) => command.execute(global).await,
             Self::New(command) => command.execute(global).await,
             Self::Request(command) => command.execute(global).await,
-            Self::Show(command) => command.execute(global).await,
         }
     }
 }
@@ -106,13 +112,4 @@ impl CliCommand {
 trait Subcommand {
     /// Execute the subcommand
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode>;
-}
-
-/// Print an error chain to stderr
-pub fn print_error(error: &anyhow::Error) {
-    eprintln!("{error}");
-    error
-        .chain()
-        .skip(1)
-        .for_each(|cause| eprintln!("  {cause}"));
 }

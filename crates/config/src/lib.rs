@@ -1,7 +1,7 @@
 //! App configuration. Some config fields apply to core functionality, while
 //! some are interface-specific. While it's maybe not the "best" design, we
 //! compile them all into one crate to give consistent behavior between the
-//! CLI and TUI. Specifically, it allows the `slumber show config` command to
+//! CLI and TUI. Specifically, it allows the `slumber config` command to
 //! show exactly what the TUI is actually using.
 //!
 //! The downside of this is we have to pull in some types that are specific to
@@ -197,7 +197,7 @@ impl Config {
     ///
     /// This intentionally does **not** populate all available fields. That
     /// makes it harder to change default values in the future.
-    fn default_content() -> String {
+    pub fn default_content() -> String {
         const SOURCE: &str = include_str!("default.yml");
         /// This string will be replaced with the link to the schema file
         const SCHEMA_REPLACEMENT: &str = "{{#schema}}";

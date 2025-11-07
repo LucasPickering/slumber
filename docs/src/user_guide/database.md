@@ -4,7 +4,7 @@
 
 Slumber uses a [SQLite](https://www.sqlite.org/) database to persist requests and responses. The database also stores UI state that needs to be persisted between sessions. This database exists exclusively on your device. **The Slumber database is never uploaded to the cloud or shared in any way.** Slumber does not make any network connections beyond the ones you define and execute yourself. You own your data; I don't want it.
 
-Data for all your Slumber collections are stored in a single file. To find this file, run `slumber show paths`, and look for the `Database` entry. I encourage you to browse this file if you're curious; it's pretty simple and there's nothing secret in it. Keep in mind though that **the database format is NOT considered part of Slumber's API contract.** It may change at any time, including the database path moving or tables be changed or removed, even in a minor or patch release.
+Data for all your Slumber collections are stored in a single file. To find this file, run `slumber db --path`. You can also open it in the `sqlite3` REPL with `slumber db`. I encourage you to browse this file if you're curious; it's pretty simple and there's nothing secret in it. Keep in mind though that **the database format is NOT considered part of Slumber's API contract.** It may change at any time, including the database path moving or tables be changed or removed, even in a minor or patch release.
 
 ### Controlling Persistence
 

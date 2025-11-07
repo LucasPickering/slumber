@@ -17,7 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `slumber show paths config` -> `slumber config --path`
   - `slumber show paths collection` -> `slumber collection --path`
   - `slumber show paths db` -> `slumber db --path`
-  - `slumber show paths log` -> TODO
+  - `slumber show paths log` -> `slumber --print-log-path`
+- Logs are now written to temporary files. Each Slumber session uses a different log file. To find the log file:
+  - In the TUI, open the help menu with `?`
+  - CLI commands that fail will automatically print the log path. You can also pass `--print-log-path` to have it always print
 
 ### Added
 

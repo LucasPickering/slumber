@@ -33,10 +33,10 @@ input_bindings:
 
 | Action                | Default Binding | Description                                           |
 | --------------------- | --------------- | ----------------------------------------------------- |
-| `scroll_up`           | `shift up`      |                                                       |
-| `scroll_down`         | `shift down`    |                                                       |
-| `scroll_left`         | `shift left`    |                                                       |
-| `scroll_right`        | `shift right`   |                                                       |
+| `scroll_up`           | `shift up`      | Scroll up one line in the current list/view           |
+| `scroll_down`         | `shift down`    | Scroll up one line in the current list/view           |
+| `scroll_left`         | `shift left`    | Scroll left one column in the current view            |
+| `scroll_right`        | `shift right`   | Scroll right one column in the current view           |
 | `quit`                | `q`             | Exit current dialog, or the entire app                |
 | `force_quit`          | `ctrl c`        | Exit the app, regardless                              |
 | `previous_pane`       | `shift tab`     | Select previous pane in the cycle                     |

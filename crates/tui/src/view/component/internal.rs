@@ -2,18 +2,21 @@
 //! components., and exposes a small API for accessing both local and global
 //! component state.
 
-use crate::view::{
-    common::actions::MenuItem,
-    context::UpdateContext,
-    event::{Event, EventMatch},
-    util::format_type_name,
+use crate::{
+    input::InputEvent,
+    view::{
+        common::actions::MenuItem,
+        context::UpdateContext,
+        event::{Event, EventMatch},
+        util::format_type_name,
+    },
 };
 use derive_more::Display;
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
 use ratatui::{
     Frame,
     buffer::Buffer,
-    layout::Rect,
+    layout::{Position, Rect},
     widgets::{StatefulWidget, Widget},
 };
 use std::{
@@ -22,10 +25,6 @@ use std::{
     collections::HashMap,
     mem,
     ops::{Deref, DerefMut},
-};
-use terminput::{
-    Event::{Key, Mouse, Paste},
-    MouseEvent,
 };
 use tracing::{instrument, trace, trace_span, warn};
 use uuid::Uuid;
@@ -519,16 +518,15 @@ fn should_handle(component: &dyn Component, event: &Event) -> bool {
         Event::HttpSelectRequest(_) | Event::Emitted { .. } => true,
 
         // Keyboard events are sent only to visible+focused components
-        Event::Input {
-            event: Key(_) | Paste(_),
-            ..
-        } => has_focus(component),
+        Event::Input(InputEvent::Key { .. } | InputEvent::Paste) => {
+            has_focus(component)
+        }
 
         // Mouse events are sent to any visible component under the event
-        Event::Input {
-            event: Mouse(mouse_event),
-            ..
-        } => component.is_visible() && intersects(component, *mouse_event),
+        Event::Input(
+            InputEvent::Click { position, .. }
+            | InputEvent::Scroll { position, .. },
+        ) => component.is_visible() && intersects(component, *position),
 
         // We expect everything else to have already been killed
         Event::Input { .. } => {
@@ -538,19 +536,12 @@ fn should_handle(component: &dyn Component, event: &Event) -> bool {
     }
 }
 
-/// Did the given mouse event occur over/on this component?
-fn intersects(component: &dyn Component, mouse_event: MouseEvent) -> bool {
+/// Does the given x/y position fall within this component's last draw area?
+fn intersects(component: &dyn Component, position: Position) -> bool {
     // If the component isn't in the map, that means it's not visible
     VISIBLE_COMPONENTS.with_borrow(|map| {
         let metadata = map.get(&component.id());
-        metadata.is_some_and(|metadata| {
-            metadata.area().intersects(Rect {
-                x: mouse_event.column,
-                y: mouse_event.row,
-                width: 1,
-                height: 1,
-            })
-        })
+        metadata.is_some_and(|metadata| metadata.area().contains(position))
     })
 }
 
@@ -606,10 +597,7 @@ mod tests {
     use rstest::{fixture, rstest};
     use slumber_config::Action;
     use slumber_util::assert_matches;
-    use terminput::{
-        KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
-        MouseButton, MouseEventKind,
-    };
+    use terminput::{KeyCode, KeyModifiers};
 
     /// The root component. This exists just to push [Branch] down the tree
     /// one layer to enable tests that hide/unfocus the branch.
@@ -756,27 +744,17 @@ mod tests {
     }
 
     fn keyboard_event() -> Event {
-        Event::Input {
-            event: terminput::Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                modifiers: KeyModifiers::NONE,
-                kind: KeyEventKind::Press,
-                state: KeyEventState::NONE,
-            }),
+        Event::Input(InputEvent::Key {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
             action: Some(Action::Submit),
-        }
+        })
     }
 
-    fn mouse_event((x, y): (u16, u16)) -> Event {
-        Event::Input {
-            event: terminput::Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: x,
-                row: y,
-                modifiers: KeyModifiers::NONE,
-            }),
-            action: Some(Action::LeftClick),
-        }
+    fn click_event((x, y): (u16, u16)) -> Event {
+        Event::Input(InputEvent::Click {
+            position: Position { x, y },
+        })
     }
 
     /// Get a testing component. This *doesn't* use `TestComponent` because
@@ -805,9 +783,9 @@ mod tests {
             |component: &mut Root, expected_counts: [u32; 4]| {
                 let events = [
                     keyboard_event(),
-                    mouse_event(a_coords),
-                    mouse_event(b_coords),
-                    mouse_event(c_coords),
+                    click_event(a_coords),
+                    click_event(b_coords),
+                    click_event(c_coords),
                 ];
                 // Now visible components get events
                 let mut update_context = UpdateContext {

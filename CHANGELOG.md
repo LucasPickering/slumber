@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Logs are now written to temporary files. Each Slumber session uses a different log file. To find the log file:
   - In the TUI, open the help menu with `?`
   - CLI commands that fail will automatically print the log path. You can also pass `--print-log-path` to have it always print
+- Remove `left_click` and `right_click` mappable actions
+  - Mouse clicks can no longer be mapped to keys
 
 ### Added
 

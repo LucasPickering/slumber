@@ -1,5 +1,7 @@
 use crate::view::{
-    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+    component::{
+        Canvas, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+    },
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
 };
@@ -389,6 +391,23 @@ where
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
+            .click(|position, propagate| {
+                // Map the position to the relative to our top-left. Each item
+                // is one row, so the index is just the y position.
+                //
+                // Area should always be Some because this can't receive events
+                // if it's not visible, but check to be safe
+                if let Some(area) = self.area() {
+                    let clicked_index = (position.y - area.y) as usize;
+                    if clicked_index < self.items.len() {
+                        self.select_index(clicked_index);
+                    }
+                }
+
+                // Always propagate this click, because the parent may be a
+                // pane that uses it to select itself
+                propagate.set();
+            })
             .scroll(|direction| match direction {
                 ScrollDirection::Up => self.previous(),
                 ScrollDirection::Down => self.next(),
@@ -730,6 +749,31 @@ mod tests {
             .int_props(&props_fn)
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_emitted([SelectStateEvent::Submit(1)]);
+    }
+
+    /// Test that the clicked item is selected
+    #[rstest]
+    fn test_click(harness: TestHarness, terminal: TestTerminal) {
+        let items = vec!["a", "b", "c"];
+        let props_fn = props_fn(&items);
+        let select = SelectState::builder(items).build();
+        let mut component = TestComponent::builder(&harness, &terminal, select)
+            .with_props(props_fn())
+            .build();
+
+        // Select item by click. Click is always propagated
+        assert_matches!(
+            component.int_props(&props_fn).click(0, 1).propagated(),
+            &[Event::Input(InputEvent::Click { .. })]
+        );
+        assert_eq!(component.selected_index(), Some(1));
+
+        // Click outside the select - does nothing
+        assert_matches!(
+            component.int_props(&props_fn).click(0, 3).propagated(),
+            &[Event::Input(InputEvent::Click { .. })]
+        );
+        assert_eq!(component.selected_index(), Some(1));
     }
 
     /// Test that submit and toggle input events are propagated if we're not

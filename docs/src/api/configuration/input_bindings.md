@@ -33,10 +33,8 @@ input_bindings:
 
 | Action                | Default Binding | Description                                           |
 | --------------------- | --------------- | ----------------------------------------------------- |
-| `left_click`          | None            |                                                       |
-| `right_click`         | None            |                                                       |
-| `scroll_up`           | None            |                                                       |
-| `scroll_down`         | None            |                                                       |
+| `scroll_up`           | `shift up`      |                                                       |
+| `scroll_down`         | `shift down`    |                                                       |
 | `scroll_left`         | `shift left`    |                                                       |
 | `scroll_right`        | `shift right`   |                                                       |
 | `quit`                | `q`             | Exit current dialog, or the entire app                |
@@ -71,8 +69,6 @@ input_bindings:
 | `select_recipe`       | `c`             | Select Recipe pane                                    |
 | `select_response`     | `s`             | Select Request/Response pane                          |
 | `select_request`      | `r`             | Select Request/Response pane (backward compatibility) |
-
-> Note: mouse bindings are not configurable; mouse actions such as `left_click` _can_ be bound to a key combination, which cannot be unbound from the default mouse action.
 
 ## Key Combinations
 

@@ -105,13 +105,6 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     // vvvvv If adding a variant, make sure to update the docs vvvvv
-    //
-    // Mouse actions do *not* get mapped, they're hard-coded. Use the
-    // associated raw event for button/position info if needed
-    LeftClick,
-    RightClick,
-    ScrollUp,
-    ScrollDown,
     /// This can be triggered by mouse event OR key event
     #[display("Scroll Left")]
     ScrollLeft,

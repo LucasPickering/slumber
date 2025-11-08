@@ -80,7 +80,7 @@ impl Component for RecipePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .click(|| self.emitter.emit(RecipePaneEvent::Click))
+            .click(|_, _| self.emitter.emit(RecipePaneEvent::Click))
             .emitted(self.actions_emitter, |menu_action| {
                 self.emitter.emit(RecipePaneEvent::Action(menu_action));
             })

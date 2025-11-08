@@ -6,6 +6,7 @@ use crate::{
     util::Flag,
     view::{ViewContext, common::actions::MenuAction, util::format_type_name},
 };
+use ratatui::layout::Position;
 use slumber_config::Action;
 use slumber_core::http::RequestId;
 use std::{
@@ -106,16 +107,19 @@ impl EventMatch {
         f(event).into()
     }
 
-    /// Handle a left click event
-    pub fn click(self, f: impl FnOnce()) -> Self {
+    /// Handle a left click event. Given position is the absolute position of
+    /// the cursor. If the action is unhandled and the event should continue
+    /// to be propagated, set the given flag.
+    pub fn click(self, f: impl FnOnce(Position, &mut Flag)) -> Self {
         let Some(event) = self.event else {
             return self;
         };
         // Component logic is responsible for making sure a component only
         // receives a mouse event that's over the component
-        if let Event::Input(InputEvent::Click { .. }) = event {
-            f();
-            None.into()
+        if let Event::Input(InputEvent::Click { position }) = event {
+            let mut propagate = Flag::default();
+            f(position, &mut propagate);
+            if *propagate { Some(event) } else { None }.into()
         } else {
             Some(event).into()
         }

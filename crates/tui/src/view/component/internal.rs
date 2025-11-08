@@ -148,6 +148,10 @@ pub trait ComponentExt: Component {
     /// Was this component drawn to the screen during the previous draw phase?
     fn is_visible(&self) -> bool;
 
+    /// Get the area that this component was last drawn to. Return `None` if
+    /// not visible
+    fn area(&self) -> Option<Rect>;
+
     /// Collect all available menu actions from all **focused** descendents of
     /// this component (including this component). This takes a mutable
     /// reference so we don't have to duplicate the code that provides children;
@@ -171,6 +175,13 @@ pub trait ComponentExt: Component {
 impl<T: Component + ?Sized> ComponentExt for T {
     fn is_visible(&self) -> bool {
         VISIBLE_COMPONENTS.with_borrow(|map| map.contains_key(&self.id()))
+    }
+
+    fn area(&self) -> Option<Rect> {
+        VISIBLE_COMPONENTS.with_borrow(|map| {
+            let metadata = map.get(&self.id())?;
+            Some(metadata.area)
+        })
     }
 
     fn collect_actions(&mut self) -> Vec<MenuItem>

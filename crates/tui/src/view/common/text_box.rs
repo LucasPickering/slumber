@@ -196,7 +196,7 @@ impl Component for TextBox {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .click(|| self.emitter.emit(TextBoxEvent::Focus))
+            .click(|_, _| self.emitter.emit(TextBoxEvent::Focus))
             .action(|action, propagate| match action {
                 // Don't consume the input event if the caller isn't subscribed
                 Action::Submit if self.is_subscribed(TextBoxEvent::Submit) => {

@@ -61,7 +61,7 @@ impl Component for ExchangePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .click(|| self.emitter.emit(ExchangePaneEvent::Click))
+            .click(|_, _| self.emitter.emit(ExchangePaneEvent::Click))
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {

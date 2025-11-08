@@ -310,12 +310,11 @@ where
     /// draw. This will include the bound action for the event, based on the key
     /// code or mouse button. See [Self::update_draw] about return value.
     pub fn send_input(self, terminal_event: terminput::Event) -> Self {
-        let action = TuiContext::get().input_engine.action(&terminal_event);
-        let event = Event::Input {
-            event: terminal_event,
-            action,
-        };
-        self.update_draw(event)
+        let input_event = TuiContext::get()
+            .input_engine
+            .convert_event(terminal_event)
+            .expect("Event does not map to an input event");
+        self.update_draw(Event::Input(input_event))
     }
 
     /// Simulate a left click at the given location, then drain events and draw.

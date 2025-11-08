@@ -16,6 +16,7 @@ pub use util::{Confirm, PreviewPrompter, TuiPrompter};
 use crate::{
     context::TuiContext,
     http::{RequestConfig, RequestState, RequestStore},
+    input::InputEvent,
     message::MessageSender,
     util::ResultReported,
     view::{
@@ -191,12 +192,8 @@ impl View {
     /// Queue an event to update the view according to an input event from the
     /// user. If possible, a bound action is provided which tells us what
     /// abstract action the input maps to.
-    pub fn handle_input(
-        &self,
-        event: terminput::Event,
-        action: Option<Action>,
-    ) {
-        ViewContext::push_event(Event::Input { event, action });
+    pub fn handle_input(&self, event: InputEvent) {
+        ViewContext::push_event(Event::Input(event));
     }
 
     /// Drain all view events from the queue. The component three will process

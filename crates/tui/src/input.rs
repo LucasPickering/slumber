@@ -1,11 +1,11 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crate::message::Message;
 use derive_more::Display;
+use ratatui::layout::{Position, Size};
 use slumber_config::{Action, InputBinding, InputMap};
 use terminput::{
-    Event, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
-    ScrollDirection,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
+    MouseEvent, MouseEventKind, ScrollDirection,
 };
 use tracing::trace;
 
@@ -51,48 +51,22 @@ impl InputEngine {
         }
     }
 
-    /// Convert an input event into its bound action, if any
-    pub fn action(&self, event: &Event) -> Option<Action> {
-        let action = match event {
-            // Trigger click on mouse *up* (feels the most natural)
-            Event::Mouse(MouseEvent { kind, .. }) => match kind {
-                MouseEventKind::Up(MouseButton::Left) => {
-                    Some(Action::LeftClick)
-                }
-                MouseEventKind::Up(MouseButton::Right) => {
-                    Some(Action::RightClick)
-                }
-                MouseEventKind::Up(MouseButton::Middle) => None,
-                MouseEventKind::Scroll(ScrollDirection::Down) => {
-                    Some(Action::ScrollDown)
-                }
-                MouseEventKind::Scroll(ScrollDirection::Up) => {
-                    Some(Action::ScrollUp)
-                }
-                MouseEventKind::Scroll(ScrollDirection::Left) => {
-                    Some(Action::ScrollLeft)
-                }
-                MouseEventKind::Scroll(ScrollDirection::Right) => {
-                    Some(Action::ScrollRight)
-                }
-                _ => None,
-            },
-
-            Event::Key(key) => {
-                // Scan all bindings for a match
-                self.bindings
-                    .iter()
-                    .find(|(_, binding)| binding.matches(key))
-                    .inspect(|(action, binding)| {
-                        trace!(
-                            event = ?key, ?action, ?binding,
-                            "Matched key event to binding"
-                        );
-                    })
-                    .map(|(action, _)| *action)
-            }
-            _ => None,
-        };
+    /// Convert a key event into its bound action, if any
+    pub fn action(&self, event: &KeyEvent) -> Option<Action> {
+        // Scan all bindings for a match
+        let action = self
+            .bindings
+            .iter()
+            .find(|(_, binding)| binding.matches(event))
+            .inspect(|(action, binding)| {
+                trace!(
+                    ?event,
+                    ?action,
+                    ?binding,
+                    "Matched key event to binding"
+                );
+            })
+            .map(|(action, _)| *action);
 
         if let Some(action) = action {
             trace!(?action, "Input action");
@@ -101,42 +75,96 @@ impl InputEngine {
         action
     }
 
-    /// Given an input event, generate a corresponding message with mapped
-    /// action. Some events will *not* generate a message, because they
-    /// shouldn't get handled by components. This could be because they're just
-    /// useless and noisy, or because they actually cause bugs (e.g. double key
-    /// presses).
-    pub fn event_to_message(&self, event: Event) -> Option<Message> {
-        if matches!(
-            event,
-            Event::FocusGained
-                | Event::FocusLost
-                // Windows sends a release event that causes double triggers
-                // https://github.com/LucasPickering/slumber/issues/226
-                | Event::Key(KeyEvent {
-                    kind: KeyEventKind::Release,
-                    ..
+    /// Given a raw input event, generate a corresponding [InputEvent]. For key
+    /// events, this includes mapping to the bound action (if any). Some
+    /// events should *not* be handled; these will return `None`. This could be
+    /// because they're just useless and noisy, or because they actually
+    /// cause bugs (e.g. double key presses).
+    pub fn convert_event(&self, event: Event) -> Option<InputEvent> {
+        match event {
+            // Windows sends a release event that causes double triggers
+            // https://github.com/LucasPickering/slumber/issues/226
+            Event::Key(KeyEvent {
+                kind: KeyEventKind::Release,
+                ..
+            }) => None,
+
+            // Handle everything else
+            Event::Key(key_event) => {
+                // Check for mapped actions
+                let action = self.action(&key_event);
+                Some(InputEvent::Key {
+                    code: key_event.code,
+                    modifiers: key_event.modifiers,
+                    action,
                 })
-                | Event::Mouse(MouseEvent {
-                    kind: MouseEventKind::Down(_)
-                    | MouseEventKind::Drag(_)
-                    | MouseEventKind::Moved,
-                    ..
-                })
-        ) {
-            None
-        } else {
-            let action = self.action(&event);
-            Some(Message::Input { event, action })
+            }
+
+            // Detecting mouse UP feels the most natural
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Left),
+                row,
+                column,
+                ..
+            }) => Some(InputEvent::Click {
+                position: (column, row).into(),
+            }),
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Scroll(direction),
+                row,
+                column,
+                ..
+            }) => Some(InputEvent::Scroll {
+                direction,
+                position: (column, row).into(),
+            }),
+            Event::Paste(_) => Some(InputEvent::Paste),
+            Event::Resize { rows, cols } => Some(InputEvent::Resize {
+                size: Size {
+                    width: cols as u16,
+                    height: rows as u16,
+                },
+            }),
+
+            // Toss everything else
+            _ => None,
         }
     }
+}
+
+/// An event triggered by input from the user. This is a simplified version of
+/// [terminput::Event] that eliminates all the possible events that we don't
+/// care about handling.
+#[derive(Debug, PartialEq)]
+pub enum InputEvent {
+    /// Key pressed down or repeated
+    Key {
+        /// Key pressed
+        code: KeyCode,
+        /// Additional modifiers keys that are active
+        modifiers: KeyModifiers,
+        /// Mapped input action, if any. Most consumers just care about the
+        /// action. The input code/modifiers are only useful to things like
+        /// text boxes that need to capture all input.
+        action: Option<Action>,
+    },
+    /// Left click
+    Click { position: Position },
+    /// Scroll up/down/left/right
+    Scroll {
+        direction: ScrollDirection,
+        position: Position,
+    },
+    /// Pasta!!
+    Paste,
+    /// Terminal was resized
+    Resize { size: Size },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-    use slumber_util::assert_matches;
     use terminput::{KeyCode, KeyEventState, KeyModifiers};
 
     /// Helper to create a key event
@@ -163,23 +191,39 @@ mod tests {
         })
     }
 
-    /// Test events that should be handled get a message generated
+    /// Test keyboard input events to `convert_event`
     #[rstest]
     #[case::key_down_mapped(
         key_event(KeyEventKind::Press, KeyCode::Enter, KeyModifiers::NONE),
-        Some(Action::Submit)
+        Some(InputEvent::Key {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            action: Some(Action::Submit),
+        })
     )]
     #[case::key_down_unmapped(
         key_event(KeyEventKind::Press, KeyCode::Char('k'), KeyModifiers::NONE),
-        None
+        Some(InputEvent::Key {
+            code: KeyCode::Char('k'),
+            modifiers: KeyModifiers::NONE,
+            action: None,
+        })
     )]
     #[case::key_down_bonus_modifiers(
         key_event(KeyEventKind::Press, KeyCode::Enter, KeyModifiers::SHIFT),
-        None
+        Some(InputEvent::Key {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::SHIFT,
+            action: None,
+        })
     )]
     #[case::key_repeat_mapped(
         key_event(KeyEventKind::Repeat, KeyCode::Enter, KeyModifiers::NONE),
-        Some(Action::Submit)
+        Some(InputEvent::Key {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            action: Some(Action::Submit),
+        })
     )]
     #[case::key_repeat_unmapped(
         key_event(
@@ -187,60 +231,71 @@ mod tests {
             KeyCode::Char('k'),
             KeyModifiers::NONE
         ),
-        None
+        Some(InputEvent::Key {
+            code: KeyCode::Char('k'),
+            modifiers: KeyModifiers::NONE,
+            action: None,
+        })
     )]
     #[case::mouse_up_left(
         mouse_event(MouseEventKind::Up(MouseButton::Left)),
-        Some(Action::LeftClick)
-    )]
-    #[case::mouse_up_right(
-        mouse_event(MouseEventKind::Up(MouseButton::Right)),
-        Some(Action::RightClick)
+        Some(InputEvent::Click { position: (0, 0).into() })
     )]
     #[case::mouse_scroll_up(
         mouse_event(MouseEventKind::Scroll(ScrollDirection::Up)),
-        Some(Action::ScrollUp)
+        Some(InputEvent::Scroll {
+            direction: ScrollDirection::Up,
+            position: (0, 0).into(),
+        })
     )]
     #[case::mouse_scroll_down(
         mouse_event(MouseEventKind::Scroll(ScrollDirection::Down)),
-        Some(Action::ScrollDown)
+        Some(InputEvent::Scroll {
+            direction: ScrollDirection::Down,
+                position: (0, 0).into(),
+        })
     )]
     #[case::mouse_scroll_left(
         mouse_event(MouseEventKind::Scroll(ScrollDirection::Left)),
-        Some(Action::ScrollLeft)
+        Some(InputEvent::Scroll {
+            direction: ScrollDirection::Left,
+                position: (0, 0).into(),
+        })
     )]
     #[case::mouse_scroll_right(
         mouse_event(MouseEventKind::Scroll(ScrollDirection::Right)),
-        Some(Action::ScrollRight)
+        Some(InputEvent::Scroll {
+            direction: ScrollDirection::Right,
+                position: (0, 0).into(),
+        })
     )]
-    #[case::paste(Event::Paste("hello!".into()), None)]
-    fn test_to_message_handled(
+    #[case::paste(Event::Paste("hello!".into()), Some(InputEvent::Paste))]
+    // All these events should *not* be handled
+    #[case::key_release(
+        key_event(KeyEventKind::Release, KeyCode::Enter, KeyModifiers::NONE),
+        None
+    )]
+    #[case::kill_focus_gained(Event::FocusGained, None)]
+    #[case::kill_focus_lost(Event::FocusLost, None)]
+    #[case::key_release(
+        key_event(KeyEventKind::Release, KeyCode::Enter, KeyModifiers::NONE),
+        None
+    )]
+    #[case::mouse_down(
+        mouse_event(MouseEventKind::Down(MouseButton::Left)),
+        None
+    )]
+    #[case::mouse_drag(
+        mouse_event(MouseEventKind::Drag(MouseButton::Left)),
+        None
+    )]
+    #[case::mouse_move(mouse_event(MouseEventKind::Moved), None)]
+    fn test_convert_event(
         #[case] event: Event,
-        #[case] expected_action: Option<Action>,
+        #[case] expected: Option<InputEvent>,
     ) {
         let engine = InputEngine::default();
-        let (queued_event, queued_action) = assert_matches!(
-            engine.event_to_message(event.clone()),
-            Some(Message::Input { event, action }) => (event, action),
-        );
-        assert_eq!(queued_event, event);
-        assert_eq!(queued_action, expected_action);
-    }
-
-    /// Test that these events get thrown out, and never queue any messages
-    #[rstest]
-    #[case::focus_gained(Event::FocusGained)]
-    #[case::focus_lost(Event::FocusLost)]
-    #[case::key_release(key_event(
-        KeyEventKind::Release,
-        KeyCode::Enter,
-        KeyModifiers::NONE
-    ))]
-    #[case::mouse_down(mouse_event(MouseEventKind::Down(MouseButton::Left)))]
-    #[case::mouse_drag(mouse_event(MouseEventKind::Drag(MouseButton::Left)))]
-    #[case::mouse_move(mouse_event(MouseEventKind::Moved))]
-    fn test_handle_event_killed(#[case] event: Event) {
-        let engine = InputEngine::default();
-        assert_matches!(engine.event_to_message(event), None);
+        let actual = engine.convert_event(event.clone());
+        assert_eq!(actual, expected);
     }
 }

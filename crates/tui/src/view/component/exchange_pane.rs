@@ -59,10 +59,9 @@ impl Component for ExchangePane {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event.m().action(|action, propagate| match action {
-            Action::LeftClick => self.emitter.emit(ExchangePaneEvent::Click),
-            _ => propagate.set(),
-        })
+        event
+            .m()
+            .click(|| self.emitter.emit(ExchangePaneEvent::Click))
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -458,7 +457,11 @@ impl Component for ExchangePaneContent {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        let mut children = vec![self.delete_request_modal.to_child_mut()];
+        let mut children = vec![
+            self.delete_request_modal.to_child_mut(),
+            // Tabs before content so text window can't eat left/right actions
+            self.tabs.to_child_mut(),
+        ];
 
         // Add tab content
         match &mut self.state {
@@ -482,8 +485,6 @@ impl Component for ExchangePaneContent {
             }
         }
 
-        // Tabs last so the pane content gets priority
-        children.push(self.tabs.to_child_mut());
         children
     }
 }

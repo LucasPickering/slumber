@@ -105,10 +105,12 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     // vvvvv If adding a variant, make sure to update the docs vvvvv
-    /// This can be triggered by mouse event OR key event
+    #[display("Scroll Up")]
+    ScrollUp,
+    #[display("Scroll Down")]
+    ScrollDown,
     #[display("Scroll Left")]
     ScrollLeft,
-    /// This can be triggered by mouse event OR key event
     #[display("Scroll Right")]
     ScrollRight,
 
@@ -458,6 +460,14 @@ impl Default for InputMap {
             Action::ForceQuit => KeyCombination {
                 code: KeyCode::Char('c'),
                 modifiers: KeyModifiers::CTRL,
+            }.into(),
+            Action::ScrollUp => KeyCombination {
+                code: KeyCode::Up,
+                modifiers: KeyModifiers::SHIFT,
+            }.into(),
+            Action::ScrollDown => KeyCombination {
+                code: KeyCode::Down,
+                modifiers: KeyModifiers::SHIFT,
             }.into(),
             Action::ScrollLeft => KeyCombination {
                 code: KeyCode::Left,

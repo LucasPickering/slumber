@@ -16,6 +16,7 @@ mod view;
 
 use crate::{
     context::TuiContext,
+    input::InputEvent,
     message::{Message, MessageSender},
     state::TuiState,
     util::{CANCEL_TOKEN, ResultReported},
@@ -38,7 +39,6 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
-use terminput::Event;
 use tokio::{
     select,
     sync::mpsc::{self, UnboundedReceiver},
@@ -134,7 +134,7 @@ impl Tui {
                 // Convert from crossterm to the common terminput format. This
                 // enables support for multiple terminal backends
                 let event = terminput_crossterm::to_terminput(event).unwrap();
-                input_engine.event_to_message(event)
+                input_engine.convert_event(event)
             });
         pin_mut!(input_stream);
 
@@ -171,7 +171,7 @@ impl Tui {
                 },
                 event_option = input_stream.next() => {
                     if let Some(event) = event_option {
-                        Some(event)
+                        Some(Message::Input(event))
                     } else {
                         // We ran out of input, just end the program
                         break;
@@ -223,18 +223,15 @@ impl Tui {
 
             // Force quit short-circuits the view/message cycle, to make sure
             // it doesn't get ate by text boxes
-            Message::Input {
+            Message::Input(InputEvent::Key {
                 action: Some(Action::ForceQuit),
                 ..
-            }
+            })
             | Message::Quit => {
                 self.quit();
                 Ok(())
             }
-            Message::Input {
-                event: Event::Resize { .. },
-                ..
-            } => {
+            Message::Input(InputEvent::Resize { .. }) => {
                 // Redraw the entire screen. There are certain scenarios where
                 // the terminal gets cleared but ratatui's (e.g. waking from
                 // sleep) buffer doesn't, so the two get out of sync

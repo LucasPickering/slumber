@@ -2,6 +2,7 @@
 //! events (e.g. HTTP responses)
 
 use crate::{
+    input::InputEvent,
     util::Flag,
     view::{ViewContext, common::actions::MenuAction, util::format_type_name},
 };
@@ -14,6 +15,7 @@ use std::{
     marker::PhantomData,
     ops::Deref,
 };
+use terminput::ScrollDirection;
 use tracing::{error, trace};
 use uuid::Uuid;
 
@@ -55,12 +57,9 @@ impl EventQueue {
 /// queued asynchronously and are used to interact *between* threads.
 #[derive(derive_more::Debug)]
 pub enum Event {
-    /// Input from the user, which may or may not correspond to a bound action.
-    /// Most components just care about the action, but some require raw input
-    Input {
-        event: terminput::Event,
-        action: Option<Action>,
-    },
+    /// Input from the user, which may or may not be bound to an action. Most
+    /// components just care about the action, but some require raw input
+    Input(InputEvent),
 
     /// Load a request from the database. If the ID is given, load that
     /// specific request. If not, get the most recent for the current
@@ -107,16 +106,47 @@ impl EventMatch {
         f(event).into()
     }
 
-    /// Handle any input event bound to an action. If the action is unhandled
-    /// and the event should continue to be propagated, set the given flag.
+    /// Handle a left click event
+    pub fn click(self, f: impl FnOnce()) -> Self {
+        let Some(event) = self.event else {
+            return self;
+        };
+        // Component logic is responsible for making sure a component only
+        // receives a mouse event that's over the component
+        if let Event::Input(InputEvent::Click { .. }) = event {
+            f();
+            None.into()
+        } else {
+            Some(event).into()
+        }
+    }
+
+    /// Handle any scroll input event
+    pub fn scroll(self, f: impl FnOnce(ScrollDirection)) -> Self {
+        let Some(event) = self.event else {
+            return self;
+        };
+        // Component logic is responsible for making sure a component only
+        // receives a mouse event that's over the component
+        if let Event::Input(InputEvent::Scroll { direction, .. }) = event {
+            f(direction);
+            None.into()
+        } else {
+            Some(event).into()
+        }
+    }
+
+    /// Handle any key input event bound to an action. If the action is
+    /// unhandled and the event should continue to be propagated, set the
+    /// given flag.
     pub fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self {
         let Some(event) = self.event else {
             return self;
         };
-        if let Event::Input {
+        if let Event::Input(InputEvent::Key {
             action: Some(action),
             ..
-        } = &event
+        }) = &event
         {
             let mut propagate = Flag::default();
             f(*action, &mut propagate);

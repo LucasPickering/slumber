@@ -63,6 +63,12 @@
         "force_quit": [
           "ctrl c"
         ],
+        "scroll_up": [
+          "shift up"
+        ],
+        "scroll_down": [
+          "shift down"
+        ],
         "scroll_left": [
           "shift left"
         ],
@@ -196,6 +202,12 @@
         ],
         "force_quit": [
           "ctrl c"
+        ],
+        "scroll_up": [
+          "shift up"
+        ],
+        "scroll_down": [
+          "shift down"
         ],
         "scroll_left": [
           "shift left"

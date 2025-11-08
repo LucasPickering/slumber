@@ -1,11 +1,10 @@
 //! Async message passing! This is how inputs and other external events trigger
 //! state updates.
 
-use crate::{util::TempFile, view::Confirm};
+use crate::{input::InputEvent, util::TempFile, view::Confirm};
 use anyhow::Context;
 use derive_more::From;
 use mime::Mime;
-use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
@@ -127,12 +126,7 @@ pub enum Message {
     },
 
     /// User input from the terminal
-    Input {
-        /// Raw input event
-        event: terminput::Event,
-        /// Action mapped via input bindings. This is what most consumers use
-        action: Option<Action>,
-    },
+    Input(InputEvent),
 
     /// Send an informational notification to the user
     Notify(String),

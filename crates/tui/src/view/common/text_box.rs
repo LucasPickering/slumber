@@ -2,6 +2,7 @@
 
 use crate::{
     context::TuiContext,
+    input::InputEvent,
     view::{
         common::scrollbar::Scrollbar,
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
@@ -195,6 +196,7 @@ impl Component for TextBox {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
+            .click(|| self.emitter.emit(TextBoxEvent::Focus))
             .action(|action, propagate| match action {
                 // Don't consume the input event if the caller isn't subscribed
                 Action::Submit if self.is_subscribed(TextBoxEvent::Submit) => {
@@ -205,21 +207,13 @@ impl Component for TextBox {
                 Action::Cancel if self.is_subscribed(TextBoxEvent::Cancel) => {
                     self.emitter.emit(TextBoxEvent::Cancel);
                 }
-                Action::LeftClick
-                    if self.is_subscribed(TextBoxEvent::Focus) =>
-                {
-                    self.emitter.emit(TextBoxEvent::Focus);
-                }
                 _ => propagate.set(),
             })
             .any(|event| match event {
                 // Handle any other input as text
-                Event::Input {
-                    event: terminput::Event::Key(key_event),
-                    ..
-                } if self.handle_key(key_event.code, key_event.modifiers) => {
-                    None
-                }
+                Event::Input(InputEvent::Key {
+                    code, modifiers, ..
+                }) if self.handle_key(code, modifiers) => None,
                 // Propagate any keystrokes we don't handle (e.g. f keys), as
                 // well as other event types
                 _ => Some(event),

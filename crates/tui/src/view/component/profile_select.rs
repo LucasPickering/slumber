@@ -108,7 +108,7 @@ impl Component for ProfilePane {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event.m().click(|| self.open_modal()).emitted(
+        event.m().click(|_, _| self.open_modal()).emitted(
             self.select_emitter,
             |SelectProfile(profile_id)| {
                 // Handle message from the modal

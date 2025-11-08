@@ -167,7 +167,7 @@ impl Component for RecipeListPane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .click(|| self.emitter.emit(RecipeListPaneEvent::Click))
+            .click(|_, _| self.emitter.emit(RecipeListPaneEvent::Click))
             .action(|action, propagate| match action {
                 Action::Left => {
                     self.set_selected_collapsed(CollapseState::Collapse);

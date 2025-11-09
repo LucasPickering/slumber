@@ -102,6 +102,7 @@ fn test_collection_delete(collection_file: CollectionFile) {
     let ui_key = "key1";
     collection.insert_exchange(&exchange).unwrap();
     collection.set_ui(key_type, ui_key, "value1").unwrap();
+    collection.insert_command("jq .").unwrap();
 
     // Sanity checks
     assert_eq!(collection.get_all_requests().unwrap().len(), 1);
@@ -109,6 +110,7 @@ fn test_collection_delete(collection_file: CollectionFile) {
         collection.get_ui::<_, String>(key_type, ui_key).unwrap(),
         Some("value1".into())
     );
+    assert_eq!(collection.get_commands("jq").unwrap().len(), 1);
 
     // Do the delete
     database
@@ -122,17 +124,19 @@ fn test_collection_delete(collection_file: CollectionFile) {
         collection.get_ui::<_, String>(key_type, ui_key).unwrap(),
         None
     );
+    assert_eq!(collection.get_commands("jq").unwrap(), [""; 0]);
 }
 
+/// Merge one collection into the other. The source collection should no longer
+/// exist
 #[rstest]
 fn test_collection_merge(
     collection_file: CollectionFile,
     other_collection_file: CollectionFile,
 ) {
     let database = Database::factory(());
-    let collection1 =
-        database.clone().into_collection(&collection_file).unwrap();
-    let collection2 = database
+    let target = database.clone().into_collection(&collection_file).unwrap();
+    let source = database
         .clone()
         .into_collection(&other_collection_file)
         .unwrap();
@@ -145,14 +149,20 @@ fn test_collection_merge(
     let recipe_id = &exchange1.request.recipe_id;
     let key_type = "MyKey";
     let ui_key = "key1";
-    collection1.insert_exchange(&exchange1).unwrap();
-    collection1.set_ui(key_type, ui_key, "value1").unwrap();
-    collection2.insert_exchange(&exchange2).unwrap();
-    collection2.set_ui(key_type, ui_key, "value2").unwrap();
+    // Target
+    target.insert_exchange(&exchange1).unwrap();
+    target.set_ui(key_type, ui_key, "value1").unwrap();
+    target.insert_command("jq .").unwrap();
+    // Source
+    source.insert_exchange(&exchange2).unwrap();
+    source.set_ui(key_type, ui_key, "value2").unwrap();
+    source.insert_command("jq .").unwrap(); // Merged
+    source.insert_command("jq .data").unwrap(); // Inserted
 
     // Sanity checks
+    // Target
     assert_eq!(
-        collection1
+        target
             .get_latest_request(profile_id.into(), recipe_id)
             .unwrap()
             .unwrap()
@@ -160,11 +170,13 @@ fn test_collection_merge(
         exchange1.id
     );
     assert_eq!(
-        collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        target.get_ui::<_, String>(key_type, ui_key).unwrap(),
         Some("value1".into())
     );
+    assert_eq!(target.get_commands("jq").unwrap(), ["jq ."]);
+    // Target
     assert_eq!(
-        collection2
+        source
             .get_latest_request(profile_id.into(), recipe_id)
             .unwrap()
             .unwrap()
@@ -172,18 +184,19 @@ fn test_collection_merge(
         exchange2.id
     );
     assert_eq!(
-        collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        source.get_ui::<_, String>(key_type, ui_key).unwrap(),
         Some("value2".into())
     );
+    assert_eq!(source.get_commands("jq").unwrap(), ["jq .data", "jq ."]);
 
     // Do the merge
     database
-        .merge_collections(collection2.collection_id, collection1.collection_id)
+        .merge_collections(source.collection_id, target.collection_id)
         .unwrap();
 
-    // Collection 2 values should've overwritten
+    // Source values should've overwritten
     assert_eq!(
-        collection1
+        target
             .get_latest_request(profile_id.into(), recipe_id)
             .unwrap()
             .unwrap()
@@ -191,11 +204,12 @@ fn test_collection_merge(
         exchange2.id
     );
     assert_eq!(
-        collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        target.get_ui::<_, String>(key_type, ui_key).unwrap(),
         Some("value2".into())
     );
+    assert_eq!(target.get_commands("jq").unwrap(), ["jq .data", "jq ."]);
 
-    // Make sure collection2 was deleted
+    // Make sure source was deleted
     assert_eq!(
         database
             .get_collections()
@@ -395,4 +409,20 @@ fn test_ui_state(
         collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
         Some("value2".into())
     );
+}
+
+/// Insert and query command history
+#[test]
+fn test_commands() {
+    let database = CollectionDatabase::factory(());
+    database.insert_command("tail").unwrap();
+    database.insert_command("jq .").unwrap();
+    database.insert_command("jq .data").unwrap();
+    database.insert_command("jq .").unwrap(); // Dupes just refresh the time
+
+    // `jq .` comes first because it was the most recent
+    assert_eq!(database.get_commands("jq").unwrap(), ["jq .", "jq .data"]);
+
+    // Prefix search only - internal matches don't work!!
+    assert_eq!(database.get_commands("q").unwrap(), [""; 0]);
 }

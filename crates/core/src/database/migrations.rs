@@ -100,6 +100,20 @@ pub fn migrations() -> Migrations<'static> {
         .down("ALTER TABLE requests_v2 DROP COLUMN http_version"),
         M::up("ALTER TABLE collections ADD COLUMN name TEXT")
             .down("ALTER TABLE collections DROP COLUMN name"),
+        M::up(
+            // Store query/export commands. The purpose of this is to suggest
+            // commands from history, so there's no reason to store duplicates.
+            // The time is when it was most recently run
+            "CREATE TABLE commands (
+                collection_id   UUID NOT NULL,
+                command         TEXT NOT NULL,
+                time            TEXT NOT NULL,
+
+                PRIMARY KEY (collection_id, command),
+                FOREIGN KEY(collection_id) REFERENCES collections(id)
+            )",
+        )
+        .down("DROP TABLE IF EXISTS commands"),
     ])
 }
 

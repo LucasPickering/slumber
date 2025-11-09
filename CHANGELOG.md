@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Breaking
 
+The breaking changes in this release are mostly limited to CLI commands. Unless you have an automated workflow defined that uses this command, you won't see any breakage in your experience.
+
 - `slumber show` command has been removed; its functionality has be split up across a set of more discoverable subcommands:
   - `slumber show config` -> `slumber config`
   - `slumber show collection` -> `slumber collection`
@@ -18,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `slumber show paths collection` -> `slumber collection --path`
   - `slumber show paths db` -> `slumber db --path`
   - `slumber show paths log` -> `slumber --print-log-path`
+- `slumber collections` and `slumber history` have been moved under `slumber db`
+  - `slumber collections ...` -> `slumber db collection ...`
+  - `slumber history ...` -> `slumber db request ...`
+  - The goal is to group all commands related to direct DB access together. These are advanced/niche commands that are often used together.
 - Logs are now written to temporary files. Each Slumber session uses a different log file. To find the log file:
   - In the TUI, open the help menu with `?`
   - CLI commands that fail will automatically print the log path. You can also pass `--print-log-path` to have it always print

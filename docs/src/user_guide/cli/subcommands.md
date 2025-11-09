@@ -4,19 +4,13 @@
 
 Show the [request collection file](../../api/request_collection/index.md). You can open the file in your [configured editor](../tui/editor.md) with `slumber collection --edit`.
 
-## `slumber collections`
-
-View and manipulate stored collection history/state. Slumber uses a local database to store all request/response history, as well as UI state and other persisted values. **As a user, you rarely have to worry about this.** The most common scenario in which you _do_ have to is if you've renamed a collection file and want to migrate the history to match the new path. [See here for how to migrate collection files](../database.md#migrating-collections).
-
-See `slumber collections --help` for more options.
-
 ## `slumber config`
 
 Show the [global configuration file](../../api/configuration/index.md). You can open the file in your [configured editor](../tui/editor.md) with `slumber config --edit`.
 
 ## `slumber db`
 
-Access the local Slumber database file. This is an advanced command; most users never need to manually view or modify the database file. By default this executes `sqlite3` and thus requires `sqlite3` to be installed.
+Access and modify the local Slumber database. **This has an optional subcommand that provides direct access to the collection or request history.** Without the subcommand, it just opens a shell into the SQLite file. By default this executes `sqlite3` and thus requires `sqlite3` to be installed.
 
 Open a shell to the database:
 
@@ -28,6 +22,48 @@ Run a single query and exit:
 
 ```
 slumber db 'select 1'
+```
+
+[Read more about the database.](../database.md)
+
+### `slumber db collection`
+
+View and manipulate stored collection history/state. Slumber uses a local database to store all request/response history, as well as UI state and other persisted values. **As a user, you rarely have to worry about this.** The most common scenario in which you _do_ have to is if you've renamed a collection file and want to migrate the history to match the new path. [See here for how to migrate collection files](../database.md#migrating-collections).
+
+See `slumber db collection --help` for more options.
+
+### `slumber db request`
+
+View and modify your Slumber request history. Slumber stores every request sent **from the TUI** in a local SQLite database (requests are **never** stored in a remote server). You can find the database file with `slumber db --path`.
+
+#### `slumber db request list`
+
+List requests in a table.
+
+```sh
+slumber db request list # List all requests for the current collection
+slumber db request list --all # List all requests for all collections
+slumber db request list login # List all requests for the "login" recipe
+slumber db request list login -p dev # List all requests for "login" under the "dev" profile
+```
+
+#### `slumber db request get`
+
+Show a single request/response from history.
+
+```sh
+slumber db request get login # Get the most recent request/response for "login"
+slumber db request get 548ba3e7-3b96-4695-9856-236626ea0495 # Get a particular request/response by ID (IDs can be retrieved from the `list` subcommand)
+```
+
+#### `slumber db request delete`
+
+Delete requests from history by ID.
+
+```sh
+slumber db request delete 548ba3e7-3b96-4695-9856-236626ea0495
+# Delete multiple requests
+slumber db request list login --id-only | xargs slumber db request delete
 ```
 
 ## `slumber generate`
@@ -61,42 +97,6 @@ requests:
 ```sh
 slumber generate curl --profile production list_fishes
 slumber generate curl --profile production list_fishes -o host=http://localhost:8000
-```
-
-## `slumber history`
-
-View and modify your Slumber request history. Slumber stores every command sent **from the TUI** in a local SQLite database (requests are **not** stored remotely). You can find the database file with `slumber db --path`.
-
-You can use the `slumber history` subcommand to browse and delete request history.
-
-### `slumber history list`
-
-List requests in a table.
-
-```sh
-slumber history list # List all requests for the current collection
-slumber history list --all # List all requests for all collections
-slumber history list login # List all requests for the "login" recipe
-slumber history list login -p dev # List all requests for "login" under the "dev" profile
-```
-
-### `slumber history get`
-
-Show a single request/response from history.
-
-```sh
-slumber history get login # Get the most recent request/response for "login"
-slumber history get 548ba3e7-3b96-4695-9856-236626ea0495 # Get a particular request/response by ID (IDs can be retrieved from the `list` subcommand)
-```
-
-### `slumber history delete`
-
-Delete requests from history by ID.
-
-```sh
-slumber history delete 548ba3e7-3b96-4695-9856-236626ea0495
-# Delete multiple requests
-slumber history list login --id-only | xargs slumber history delete
 ```
 
 ## `slumber import`

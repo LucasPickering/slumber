@@ -1,7 +1,9 @@
 use crate::{
     GlobalArgs, Subcommand,
     commands::request::DisplayExchangeCommand,
-    completions::{complete_profile, complete_recipe, complete_request_id},
+    completions::{
+        complete_profile, complete_recipe, complete_recipe_or_request_id,
+    },
     util::print_table,
 };
 use anyhow::{anyhow, bail};
@@ -24,13 +26,13 @@ use std::{process::ExitCode, str::FromStr};
 /// requests can be viewed in the TUI. This subcommand allows you to browse and
 /// prune that history.
 #[derive(Clone, Debug, Parser)]
-pub struct HistoryCommand {
+pub struct DbRequestCommand {
     #[command(subcommand)]
-    subcommand: HistorySubcommand,
+    subcommand: DbRequestSubcommand,
 }
 
 #[derive(Clone, Debug, clap::Subcommand)]
-enum HistorySubcommand {
+enum DbRequestSubcommand {
     /// List requests
     #[command(visible_alias = "ls")]
     List {
@@ -61,11 +63,7 @@ enum HistorySubcommand {
     Get {
         /// ID of the request to print. Pass a recipe ID to get the most recent
         /// request for that recipe
-        #[clap(
-            // Autocomplete recipe IDs, because users won't ever be typing request
-            // IDs by hand
-            add = complete_recipe(),
-        )]
+        #[clap(add = complete_recipe_or_request_id())]
         request: RecipeOrRequest,
 
         #[clap(flatten)]
@@ -74,9 +72,9 @@ enum HistorySubcommand {
 
     /// Delete requests from history
     ///
-    /// This operation is irreversible! Combine with `slumber history list
+    /// This operation is irreversible! Combine with `slumber db request list
     /// --id-only` to delete requests in bulk. To delete all requests for a
-    /// collection, you can also use `slumber collections delete`
+    /// collection, you can also use `slumber db collection delete`
     #[command(visible_alias = "rm")]
     Delete {
         /// Request ID(s) to delete
@@ -91,10 +89,10 @@ enum RecipeOrRequest {
     Request(RequestId),
 }
 
-impl Subcommand for HistoryCommand {
+impl Subcommand for DbRequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.subcommand {
-            HistorySubcommand::List {
+            DbRequestSubcommand::List {
                 recipe,
                 profile,
                 all,
@@ -152,7 +150,7 @@ impl Subcommand for HistoryCommand {
                 }
             }
 
-            HistorySubcommand::Get { request, display } => {
+            DbRequestSubcommand::Get { request, display } => {
                 let database = Database::load()?
                     .into_collection(&global.collection_file()?)?;
                 let exchange = match request {
@@ -171,7 +169,7 @@ impl Subcommand for HistoryCommand {
                 display.write_response(&exchange.response)?;
             }
 
-            HistorySubcommand::Delete { request } => {
+            DbRequestSubcommand::Delete { request } => {
                 // Do the deletion
                 let database = Database::load()?;
                 for id in &request {
@@ -194,50 +192,6 @@ impl FromStr for RecipeOrRequest {
                 RecipeOrRequest::Recipe(RecipeId::from(s.to_owned()))
             }))
     }
-}
-
-/// An abstraction for selecting multiple requests for deletion. We use this
-/// for deletion, while the arg grouping is simpler for listing, for a few
-/// reasons:
-/// - Deletion is destructive, so we want the selection to be more explicit
-/// - Deletion also supports a single request by ID, which would be pretty
-///   useless for listing
-#[derive(Clone, Debug, Parser)]
-enum DeleteSelection {
-    /// Delete all requests across all collections
-    All,
-    /// Delete all requests for the current collection
-    Collection,
-    /// Delete all requests for a recipe in the current collection
-    ///
-    /// Note: The recipe does not have to currently be in the collection file.
-    /// You can view and modify history for recipes that have since been removed
-    /// from the collection file.
-    Recipe {
-        /// Recipe to delete requests for
-        #[clap(add = complete_recipe())]
-        recipe: RecipeId,
-        /// Optional filter to delete requests for only a single profile. To
-        /// delete requests that _no_ associated profile, pass `--profile`
-        /// with no value.
-        #[clap(
-            long = "profile",
-            short,
-            add = complete_profile(),
-        )]
-        // None -> All profiles
-        // Some(None) -> No profile
-        // Some(Some("profile1")) -> profile1
-        // It'd be nice if we could load directly into ProfileFilter, but I
-        // couldn't figure out how to set that up with clap
-        #[expect(clippy::option_option)]
-        profile: Option<Option<ProfileId>>,
-    },
-    /// Delete a single request by ID
-    Request {
-        #[clap(add = complete_request_id())]
-        request: RequestId,
-    },
 }
 
 /// Format a datetime in ISO 8601 format

@@ -12,9 +12,8 @@ pub use util::print_error;
 
 use crate::{
     commands::{
-        collection::CollectionCommand, collections::CollectionsCommand,
-        config::ConfigCommand, db::DbCommand, generate::GenerateCommand,
-        history::HistoryCommand, import::ImportCommand, new::NewCommand,
+        collection::CollectionCommand, config::ConfigCommand, db::DbCommand,
+        generate::GenerateCommand, import::ImportCommand, new::NewCommand,
         request::RequestCommand,
     },
     completions::complete_collection_path,
@@ -83,11 +82,9 @@ impl GlobalArgs {
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
     Collection(CollectionCommand),
-    Collections(CollectionsCommand),
     Config(ConfigCommand),
     Db(DbCommand),
     Generate(GenerateCommand),
-    History(HistoryCommand),
     Import(ImportCommand),
     New(NewCommand),
     Request(RequestCommand),
@@ -103,11 +100,9 @@ impl CliCommand {
 
         match self {
             Self::Collection(command) => command.execute(global).await,
-            Self::Collections(command) => command.execute(global).await,
             Self::Config(command) => command.execute(global).await,
             Self::Db(command) => command.execute(global).await,
             Self::Generate(command) => command.execute(global).await,
-            Self::History(command) => command.execute(global).await,
             Self::Import(command) => command.execute(global).await,
             Self::New(command) => command.execute(global).await,
             Self::Request(command) => command.execute(global).await,

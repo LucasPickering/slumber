@@ -13,13 +13,13 @@ use std::{
 
 /// View and modify request collection metadata
 #[derive(Clone, Debug, Parser)]
-pub struct CollectionsCommand {
+pub struct DbCollectionCommand {
     #[command(subcommand)]
-    subcommand: CollectionsSubcommand,
+    subcommand: DbCollectionSubcommand,
 }
 
 #[derive(Clone, Debug, clap::Subcommand)]
-enum CollectionsSubcommand {
+enum DbCollectionSubcommand {
     /// List all known request collections
     #[command(visible_alias = "ls")]
     List,
@@ -45,11 +45,11 @@ enum CollectionsSubcommand {
     },
 }
 
-impl Subcommand for CollectionsCommand {
+impl Subcommand for DbCollectionCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let database = Database::load()?;
         match self.subcommand {
-            CollectionsSubcommand::List => {
+            DbCollectionSubcommand::List => {
                 let rows = database
                     .get_collections()?
                     .into_iter()
@@ -63,12 +63,12 @@ impl Subcommand for CollectionsCommand {
                     .collect::<Vec<_>>();
                 print_table(["ID", "Path", "Name"], &rows);
             }
-            CollectionsSubcommand::Delete { collection } => {
+            DbCollectionSubcommand::Delete { collection } => {
                 let id = collection.to_id(&database)?;
                 database.delete_collection(id)?;
                 println!("Deleted collection {id}");
             }
-            CollectionsSubcommand::Migrate { from, to } => {
+            DbCollectionSubcommand::Migrate { from, to } => {
                 let from_id = from.to_id(&database)?;
                 let to_id = to.to_id(&database)?;
                 database.merge_collections(from_id, to_id)?;

@@ -34,39 +34,40 @@ pub fn complete_profile() -> ArgValueCompleter {
 pub fn complete_recipe() -> ArgValueCompleter {
     ArgValueCompleter::new(|current: &OsStr| {
         load_collection()
-            .map(|collection| {
-                get_candidates(
-                    collection
-                        .recipes
-                        .iter()
-                        // Include recipe IDs only. Folder IDs are never passed
-                        // to the CLI
-                        .filter_map(|(_, node)| {
-                            Some(node.recipe()?.id.to_string())
-                        }),
-                    current,
-                )
-            })
+            .map(|collection| get_recipe_ids(&collection, current))
             .unwrap_or_default()
     })
 }
 
-/// Build a completer for request IDs from the DB
-///
-/// DB can be provided for tests
-pub fn complete_request_id() -> ArgValueCompleter {
+/// Build a completer for recipe IDs from the default collection OR request IDs
+/// from the DB
+pub fn complete_recipe_or_request_id() -> ArgValueCompleter {
     ArgValueCompleter::new(move |current: &OsStr| {
-        Database::load()
-            .and_then(|db| db.get_all_requests())
-            .map(|exchanges| {
-                get_candidates(
-                    exchanges
-                        .into_iter()
-                        .map(|exchange| exchange.id.to_string()),
-                    current,
-                )
-            })
-            .unwrap_or_default()
+        let mut completions = Vec::new();
+
+        // Suggest recipe IDs *first* because they're probably more useful
+        completions.extend(
+            load_collection()
+                .map(|collection| get_recipe_ids(&collection, current))
+                .unwrap_or_default(),
+        );
+
+        // Suggestion request IDs
+        completions.extend(
+            Database::load()
+                .and_then(|db| db.get_all_requests())
+                .map(|exchanges| {
+                    get_candidates(
+                        exchanges
+                            .into_iter()
+                            .map(|exchange| exchange.id.to_string()),
+                        current,
+                    )
+                })
+                .unwrap_or_default(),
+        );
+
+        completions
     })
 }
 
@@ -121,6 +122,22 @@ fn collection_path_completer() -> PathCompleter {
         extension == Some(OsStr::new("yml"))
             || extension == Some(OsStr::new("yaml"))
     })
+}
+
+/// Find matching recipe IDs in the collection
+fn get_recipe_ids(
+    collection: &Collection,
+    current: &OsStr,
+) -> Vec<CompletionCandidate> {
+    get_candidates(
+        collection
+            .recipes
+            .iter()
+            // Include recipe IDs only. Folder IDs are never passed
+            // to the CLI
+            .filter_map(|(_, node)| Some(node.recipe()?.id.to_string())),
+        current,
+    )
 }
 
 /// Get all iterms in the iterator that match the given prefix, returning them
@@ -178,10 +195,12 @@ mod tests {
         );
     }
 
-    /// Complete request IDs from the database
-    // #[from(database)] (database, _guard): (Database, EnvGuard),
+    /// Complete recipe IDs from the collection OR request IDs from the database
     #[rstest]
-    fn test_complete_request_id(database: TestDatabase) {
+    fn test_complete_recipe_or_request_id(
+        _current_dir: CurrentDirGuard,
+        database: TestDatabase,
+    ) {
         // Put two requests in the DB
         let id1 = RequestId::new();
         let id2 = RequestId::new();
@@ -195,8 +214,24 @@ mod tests {
                 .unwrap();
         }
 
-        let completions = complete(complete_request_id());
-        assert_eq!(&completions, &[id2.to_string(), id1.to_string()]);
+        let completions = complete(complete_recipe_or_request_id());
+        assert_eq!(
+            &completions,
+            &[
+                "getUser",
+                "query",
+                "headers",
+                "authBasic",
+                "authBearer",
+                "textBody",
+                "jsonBody",
+                "fileBody",
+                "multipart",
+                "chained",
+                &id2.to_string(),
+                &id1.to_string()
+            ]
+        );
     }
 
     /// Complete YAML file paths

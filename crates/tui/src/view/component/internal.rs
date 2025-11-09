@@ -79,6 +79,17 @@ pub trait Component: ToChild {
         event.m()
     }
 
+    /// Does this component contain the given cursor position?
+    ///
+    /// This is used to determine if the component should receive mouse events
+    /// for this position. This should typically not be overridden. The default
+    /// implementation checks if the component's last draw area contains the
+    /// point.
+    fn contains_cursor(&self, position: Position) -> bool {
+        // By default, we want to receive any mouse event in our draw area
+        self.area().is_some_and(|area| area.contains(position))
+    }
+
     /// Provide a list of actions that are accessible from the actions menu.
     /// This list may be static (e.g. determined from an enum) or dynamic. When
     /// the user opens the actions menu, all available actions for all
@@ -479,8 +490,13 @@ fn update_all(
     context: &mut UpdateContext,
     mut event: Event,
 ) -> Option<Event> {
-    // If we can't handle the event, our children can't either
-    if !should_handle(component, &event) {
+    // Keyboard input should only go to focused components. If a parent is
+    // unfocused, then its children can't receive the event either. This is so
+    // that parents don't have to propagate their focus state down the tree
+    // manually
+    if let Event::Input(InputEvent::Key { .. } | InputEvent::Paste) = &event
+        && !has_focus(component)
+    {
         return Some(event);
     }
 
@@ -502,58 +518,41 @@ fn update_all(
         }
     }
 
-    // None of our children handled it, we'll take it ourselves. Event is
-    // already traced in the root span, so don't dupe it.
-    trace_span!("component.update").in_scope(|| {
-        let propagated: Option<Event> = component.update(context, event).into();
-
-        // Little bit of logging innit
-        let status = if propagated.is_some() {
-            "propagated"
-        } else {
-            "consumed"
-        };
-        trace!(status);
-
-        propagated
-    })
-}
-
-/// Should this component handle the given event?
-fn should_handle(component: &dyn Component, event: &Event) -> bool {
-    match event {
-        // These events are triggered internally and generally only consumed by
-        // a single specific component. Therefore they should be handled by
-        // anyone regardless of state. The intended consume will eat it,
-        // everyone else will ignore it
-        Event::HttpSelectRequest(_) | Event::Emitted { .. } => true,
-
-        // Keyboard events are sent only to visible+focused components
-        Event::Input(InputEvent::Key { .. } | InputEvent::Paste) => {
-            has_focus(component)
-        }
-
-        // Mouse events are sent to any visible component under the event
+    // At this point we know a few things about the event:
+    // - A child didn't handle it
+    // - IF it's a key event, we have focus (because of the gate above)
+    // We need to check one more thing before handling the event: if it's a
+    // mouse event, is the cursor within our area? We can't check this before
+    // handling children because it's possible for an event to be over a child
+    // without being over the parent (in the case of portals). In that case, the
+    // child receives the event but the parent doesn't.
+    let should_receive = match &event {
         Event::Input(
             InputEvent::Click { position, .. }
             | InputEvent::Scroll { position, .. },
-        ) => component.is_visible() && intersects(component, *position),
+        ) => component.contains_cursor(*position),
+        _ => true,
+    };
+    if should_receive {
+        // None of our children handled it, we'll take it ourselves. Event is
+        // already traced in the root span, so don't dupe it.
+        trace_span!("component.update").in_scope(|| {
+            let propagated: Option<Event> =
+                component.update(context, event).into();
 
-        // We expect everything else to have already been killed
-        Event::Input { .. } => {
-            warn!(?event, "Unexpected event kind");
-            false
-        }
+            // Little bit of logging innit
+            let status = if propagated.is_some() {
+                "propagated"
+            } else {
+                "consumed"
+            };
+            trace!(status);
+
+            propagated
+        })
+    } else {
+        Some(event)
     }
-}
-
-/// Does the given x/y position fall within this component's last draw area?
-fn intersects(component: &dyn Component, position: Position) -> bool {
-    // If the component isn't in the map, that means it's not visible
-    VISIBLE_COMPONENTS.with_borrow(|map| {
-        let metadata = map.get(&component.id());
-        metadata.is_some_and(|metadata| metadata.area().contains(position))
-    })
 }
 
 /// Was this component in focus during the previous draw phase?
@@ -604,10 +603,10 @@ pub trait Portal {
 mod tests {
     use super::*;
     use crate::test_util::{TestHarness, TestTerminal, harness, terminal};
-    use ratatui::layout::Layout;
+    use Mode::*;
+    use ratatui::layout::{Layout, Position};
     use rstest::{fixture, rstest};
     use slumber_config::Action;
-    use slumber_util::assert_matches;
     use terminput::{KeyCode, KeyModifiers};
 
     /// The root component. This exists just to push [Branch] down the tree
@@ -616,11 +615,6 @@ mod tests {
     struct Root {
         id: ComponentId,
         branch: Branch,
-    }
-
-    struct RootProps {
-        branch_mode: Mode,
-        branch_props: BranchProps,
     }
 
     impl Component for Root {
@@ -640,14 +634,38 @@ mod tests {
             props: RootProps,
             metadata: DrawMetadata,
         ) {
-            if props.branch_mode != Mode::Hidden {
+            if props.branch_mode != Hidden {
                 canvas.draw(
                     &self.branch,
                     props.branch_props,
                     metadata.area(),
-                    props.branch_mode == Mode::Focused,
+                    props.branch_mode == Focused,
                 );
             }
+        }
+    }
+
+    struct RootProps {
+        branch_mode: Mode,
+        branch_props: BranchProps,
+    }
+
+    impl RootProps {
+        fn new(branch: Mode, a: Mode, b: Mode, c: Mode) -> Self {
+            Self {
+                branch_mode: branch,
+                branch_props: BranchProps { a, b, c },
+            }
+        }
+
+        /// Create a common prop combination:
+        ///
+        /// - branch: Focused
+        /// - a: Focused
+        /// - b: Visible
+        /// - c: Hidden
+        fn fvh() -> Self {
+            Self::new(Focused, Focused, Visible, Hidden)
         }
     }
 
@@ -661,13 +679,25 @@ mod tests {
         c: Leaf,
     }
 
-    struct BranchProps {
-        a: Mode,
-        b: Mode,
-        c: Mode,
-    }
-
     impl Branch {
+        /// Assert that the component has received exactly one event (or zero
+        /// for `Recipient::None`), and it went to the specified recipient.
+        #[track_caller]
+        fn assert_received(&self, recipient: Recipient) {
+            let expected = match recipient {
+                Recipient::None => [0, 0, 0, 0],
+                Recipient::Branch => [1, 0, 0, 0],
+                Recipient::A => [0, 1, 0, 0],
+                Recipient::B => [0, 0, 1, 0],
+                Recipient::C => [0, 0, 0, 1],
+            };
+            let actual = [self.count, self.a.count, self.b.count, self.c.count];
+            assert_eq!(
+                actual, expected,
+                "Event count mismatch; expected recipient {recipient:?}"
+            );
+        }
+
         fn reset(&mut self) {
             self.count = 0;
             self.a.reset();
@@ -710,11 +740,17 @@ mod tests {
                 (&self.b, b_area, props.b),
                 (&self.c, c_area, props.c),
             ] {
-                if mode != Mode::Hidden {
-                    canvas.draw(component, (), area, mode == Mode::Focused);
+                if mode != Hidden {
+                    canvas.draw(component, (), area, mode == Focused);
                 }
             }
         }
+    }
+
+    struct BranchProps {
+        a: Mode,
+        b: Mode,
+        c: Mode,
     }
 
     #[derive(Debug, Default)]
@@ -754,7 +790,19 @@ mod tests {
         Hidden,
     }
 
-    fn keyboard_event() -> Event {
+    /// The recipient of an event
+    #[derive(Debug, PartialEq)]
+    enum Recipient {
+        /// No one has received any events
+        None,
+        Branch,
+        A,
+        B,
+        C,
+    }
+
+    /// Create a keyboard event
+    fn key_event() -> Event {
         Event::Input(InputEvent::Key {
             code: KeyCode::Enter,
             modifiers: KeyModifiers::NONE,
@@ -762,7 +810,8 @@ mod tests {
         })
     }
 
-    fn click_event((x, y): (u16, u16)) -> Event {
+    /// Create a left click event
+    fn click(x: u16, y: u16) -> Event {
         Event::Input(InputEvent::Click {
             position: Position { x, y },
         })
@@ -777,190 +826,101 @@ mod tests {
         Root::default()
     }
 
-    /// Render a simple component tree and test that events are propagated as
-    /// expected, and that state updates as the visible and focused components
-    /// change.
+    /// Test the life cycle of a component tree, where individual components
+    /// change state between focused/visible/hidden. In each state, **key**
+    /// events should only go to focused components.
     #[rstest]
-    fn test_render_component_tree(
+    fn test_life_cycle(
         harness: TestHarness,
         terminal: TestTerminal,
         mut component: Root,
     ) {
-        let a_coords = (0, 0);
-        let b_coords = (0, 1);
-        let c_coords = (0, 2);
-
-        let assert_events =
-            |component: &mut Root, expected_counts: [u32; 4]| {
-                let events = [
-                    keyboard_event(),
-                    click_event(a_coords),
-                    click_event(b_coords),
-                    click_event(c_coords),
-                ];
-                // Now visible components get events
-                let mut update_context = UpdateContext {
-                    request_store: &mut harness.request_store.borrow_mut(),
-                };
-                for event in events {
-                    component.update_all(&mut update_context, event);
-                }
-                let [expected_root, expected_a, expected_b, expected_c] =
-                    expected_counts;
-                assert_eq!(
-                    component.branch.count, expected_root,
-                    "count mismatch on root component"
-                );
-                assert_eq!(
-                    component.branch.a.count, expected_a,
-                    "count mismatch on component a"
-                );
-                assert_eq!(
-                    component.branch.b.count, expected_b,
-                    "count mismatch on component b"
-                );
-                assert_eq!(
-                    component.branch.c.count, expected_c,
-                    "count mismatch on component c"
-                );
-
-                // Reset state for the next assertion
-                component.branch.reset();
+        let update_assert = |component: &mut Root, recipient: Recipient| {
+            let mut update_context = UpdateContext {
+                request_store: &mut harness.request_store.borrow_mut(),
             };
 
+            component.update_all(&mut update_context, key_event());
+            component.branch.assert_received(recipient);
+            component.branch.reset(); // Reset for the next assertion
+        };
+
         // Initial event handling - nothing is visible so nothing should consume
-        assert_events(&mut component, [0, 0, 0, 0]);
+        update_assert(&mut component, Recipient::None);
 
         // Visible components get events
         terminal.draw(|frame| {
-            Canvas::draw_all(
-                frame,
-                &component,
-                RootProps {
-                    branch_mode: Mode::Focused,
-                    branch_props: BranchProps {
-                        a: Mode::Focused,
-                        b: Mode::Visible,
-                        c: Mode::Hidden,
-                    },
-                },
-            );
+            Canvas::draw_all(frame, &component, RootProps::fvh());
         });
-        // Root - inherited mouse event from c, which is hidden
-        // a - keyboard + mouse
-        // b - mouse
-        // c - hidden
-        assert_events(&mut component, [1, 2, 1, 0]);
+        update_assert(&mut component, Recipient::A);
 
         // Switch things up, make sure new state is reflected
         terminal.draw(|frame| {
             Canvas::draw_all(
                 frame,
                 &component,
-                RootProps {
-                    branch_mode: Mode::Focused,
-                    branch_props: BranchProps {
-                        a: Mode::Visible,
-                        b: Mode::Hidden,
-                        c: Mode::Focused,
-                    },
-                },
+                RootProps::new(Focused, Visible, Hidden, Focused),
             );
         });
-        // Root - inherited mouse event from b, which is hidden
-        // a - mouse
-        // b - hidden
-        // c - keyboard + mouse
-        assert_events(&mut component, [1, 1, 0, 2]);
+        update_assert(&mut component, Recipient::C);
 
         // Hide all children, root should eat everything
         terminal.draw(|frame| {
             Canvas::draw_all(
                 frame,
                 &component,
-                RootProps {
-                    branch_mode: Mode::Focused,
-                    branch_props: BranchProps {
-                        a: Mode::Hidden,
-                        b: Mode::Hidden,
-                        c: Mode::Hidden,
-                    },
-                },
+                RootProps::new(Focused, Hidden, Hidden, Hidden),
             );
         });
-        assert_events(&mut component, [4, 0, 0, 0]);
+        update_assert(&mut component, Recipient::Branch);
     }
 
-    /// If the parent component is hidden, nobody gets to see events, even if
-    /// the children have been drawn. This is a very odd scenario and shouldn't
-    /// happen in the wild, but it's good to have it be well-defined.
+    /// Render a simple component tree and test that events are propagated as
+    /// expected, and that state updates as the visible and focused components
+    /// change.
+    ///
+    /// For all these, the child states are:
+    /// - a: Focused
+    /// - b: Visible
+    /// - c: Hidden
     #[rstest]
-    fn test_parent_hidden(
+    // Keyboard event goes to the focused child
+    #[case::keyboard(key_event(), RootProps::fvh(), Recipient::A)]
+    // If the parent is unfocused but the child is focused, the child should
+    // *not* receive focus-only events.
+    #[case::keyboard_parent_unfocused(
+        key_event(),
+        RootProps::new(Visible, Focused, Focused, Focused,),
+        Recipient::None
+    )]
+    // If the parent component is hidden, nobody gets to see events, even if
+    // the children have been drawn. This is a very odd scenario and shouldn't
+    // happen in the wild, but it's good to have it be well-defined.
+    #[case::keyboard_parent_hidden(
+        key_event(),
+        RootProps::new(Hidden, Focused, Focused, Focused),
+        Recipient::None
+    )]
+    #[case::mouse_focused(click(0, 0), RootProps::fvh(), Recipient::A)]
+    // Mouse events can go to any visible component; don't have to be focused
+    #[case::mouse_visible(click(0, 1), RootProps::fvh(), Recipient::B)]
+    // If the clicked child is hidden, it goes through to the parent
+    #[case::mouse_hidden(click(0, 2), RootProps::fvh(), Recipient::Branch)]
+    fn test_event(
         harness: TestHarness,
         terminal: TestTerminal,
         mut component: Root,
+        #[case] event: Event,
+        #[case] props: RootProps,
+        #[case] expected_recipient: Recipient,
     ) {
-        terminal.draw(|frame| {
-            Canvas::draw_all(
-                frame,
-                &component,
-                // The inner a/b/c are focused but their parent is hidden
-                RootProps {
-                    branch_mode: Mode::Hidden,
-                    branch_props: BranchProps {
-                        a: Mode::Focused,
-                        b: Mode::Focused,
-                        c: Mode::Focused,
-                    },
-                },
-            );
-        });
-        // Event should *not* be handled because the parent is hidden
-        assert_matches!(
-            component.update_all(
-                &mut UpdateContext {
-                    request_store: &mut harness.request_store.borrow_mut(),
-                },
-                keyboard_event()
-            ),
-            Some(_)
-        );
-    }
+        terminal.draw(|frame| Canvas::draw_all(frame, &component, props));
 
-    /// If the parent is unfocused but the child is focused, the child should
-    /// *not* receive focus-only events.
-    #[rstest]
-    fn test_parent_unfocused(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        mut component: Root,
-    ) {
-        // We are visible but *not* in focus
-        terminal.draw(|frame| {
-            Canvas::draw_all(
-                frame,
-                &component,
-                // The inner a/b/c are focused but their parent isn't
-                RootProps {
-                    branch_mode: Mode::Visible,
-                    branch_props: BranchProps {
-                        a: Mode::Focused,
-                        b: Mode::Focused,
-                        c: Mode::Focused,
-                    },
-                },
-            );
-        });
+        let mut update_context = UpdateContext {
+            request_store: &mut harness.request_store.borrow_mut(),
+        };
 
-        // Event should *not* be handled because the parent is unfocused
-        assert_matches!(
-            component.update_all(
-                &mut UpdateContext {
-                    request_store: &mut harness.request_store.borrow_mut(),
-                },
-                keyboard_event()
-            ),
-            Some(_)
-        );
+        component.update_all(&mut update_context, event);
+        component.branch.assert_received(expected_recipient);
     }
 }

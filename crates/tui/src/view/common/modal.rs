@@ -7,7 +7,7 @@ use crate::{
     },
 };
 use ratatui::{
-    layout::{Constraint, Margin, Rect},
+    layout::{Constraint, Margin, Position, Rect},
     text::Line,
     widgets::{Block, Borders},
 };
@@ -121,6 +121,12 @@ impl<T: Component + Modal> Component for ModalQueue<T> {
                 Event::Input { .. } => None,
                 _ => Some(event),
             })
+    }
+
+    fn contains_cursor(&self, _position: Position) -> bool {
+        // We want to receive clicks in the background, but we can't draw to
+        // that space or it would actually cover everything up
+        true
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {

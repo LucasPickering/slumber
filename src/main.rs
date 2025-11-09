@@ -95,7 +95,7 @@ fn initialize_tracing(stdout: bool) {
             .with_writer(log_file)
             .with_target(false)
             .with_ansi(false)
-            .with_span_events(FmtSpan::NEW)
+            .with_span_events(FmtSpan::NONE)
             .with_filter(targets)
     });
 
@@ -105,7 +105,7 @@ fn initialize_tracing(stdout: bool) {
             tracing_subscriber::fmt::layer()
                 .with_writer(io::stderr)
                 .with_target(false)
-                .with_span_events(FmtSpan::NEW)
+                .with_span_events(FmtSpan::NONE)
                 .without_time()
                 .with_filter(LevelFilter::WARN),
         )

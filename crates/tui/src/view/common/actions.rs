@@ -15,7 +15,7 @@ use crate::{
 use itertools::Itertools;
 use ratatui::{
     buffer::Buffer,
-    layout::Constraint,
+    layout::{Constraint, Position},
     prelude::Rect,
     style::Style,
     text::Span,
@@ -132,6 +132,12 @@ impl Component for ActionMenu {
                 Event::Input { .. } => None,
                 _ => Some(event),
             })
+    }
+
+    fn contains_cursor(&self, _position: Position) -> bool {
+        // We want to receive clicks in the background, but we can't draw to
+        // that space or it would actually cover everything up
+        true
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {

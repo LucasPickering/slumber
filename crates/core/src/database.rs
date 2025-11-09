@@ -11,6 +11,7 @@ use crate::{
     database::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
 };
+use chrono::Utc;
 use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
 use serde::{Serialize, de::DeserializeOwned};
 use slumber_util::{ResultTraced, paths};
@@ -192,6 +193,7 @@ impl Database {
         let statements = [
             "DELETE FROM requests_v2 WHERE collection_id = :id",
             "DELETE FROM ui_state_v2 WHERE collection_id = :id",
+            "DELETE FROM commands WHERE collection_id = :id",
             "DELETE FROM collections WHERE id = :id",
         ];
 
@@ -243,7 +245,18 @@ impl Database {
         )
         .map_err(DatabaseError::add_context("Merging table `ui_state_v2`"))
         .traced()?;
+        tx.execute(
+            // Overwrite command history. If there's an overlap, we'll take the
+            // timestamp from the source collection because it's easiest.
+            // Sqlite doesn't have an "UPDATE OR DELETE"
+            "UPDATE OR REPLACE commands SET collection_id = :target
+                WHERE collection_id = :source",
+            named_params! {":source": source, ":target": target},
+        )
+        .map_err(DatabaseError::add_context("Merging table `commands`"))
+        .traced()?;
 
+        // Delete the collection now that nothing is referencing it
         tx.execute(
             "DELETE FROM collections WHERE id = :source",
             named_params! {":source": source},
@@ -729,6 +742,67 @@ impl CollectionDatabase {
             })
             .traced()?;
         Ok(())
+    }
+
+    /// Insert a query/export command into the command history table. Commands
+    /// are deduped in history, so if it's already in the table, just update
+    /// the timestamp on it
+    pub fn insert_command(&self, command: &str) -> Result<(), DatabaseError> {
+        debug!(?command, "Storing query/export command");
+        self.database
+            .connection()
+            .execute(
+                // Holy fuck it's an upsert!!
+                "INSERT INTO commands (collection_id, command, time)
+                VALUES (:collection_id, :command, :time)
+                ON CONFLICT DO UPDATE SET time = :time",
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":command": command,
+                    ":time": Utc::now(),
+                },
+            )
+            .map_err({
+                DatabaseError::add_context(format!(
+                    "Inserting command `{command:?}`"
+                ))
+            })
+            .traced()?;
+        Ok(())
+    }
+
+    /// Get historical query/export commands that start with the given prefix.
+    /// Results will be ordered descending by their most recent execution time
+    /// (most recent commands first).
+    pub fn get_commands(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<String>, DatabaseError> {
+        trace!(prefix, "Getting commands from history matching prefix");
+        self.database
+            .connection()
+            .prepare(
+                "SELECT command FROM commands
+                WHERE collection_id = :collection_id
+                    AND command LIKE :prefix || '%'
+                ORDER BY time DESC",
+            )?
+            .query_map(
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":prefix": prefix,
+                },
+                |row| row.get("command"),
+            )
+            .map_err(DatabaseError::add_context(format!(
+                "Querying commands with prefix `{prefix}`",
+            )))
+            .and_then(|cursor| {
+                cursor.collect::<rusqlite::Result<Vec<_>>>().map_err(
+                    DatabaseError::add_context("Extracting command history"),
+                )
+            })
+            .traced()
     }
 
     /// Get the unique ID of this collection

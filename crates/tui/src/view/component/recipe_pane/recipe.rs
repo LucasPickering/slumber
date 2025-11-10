@@ -158,17 +158,14 @@ impl Component for RecipeDisplay {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        [
-            Some(self.tabs.to_child_mut()),
-            Some(self.url.to_child_mut()),
-            self.body.as_mut().map(ToChild::to_child_mut),
-            Some(self.query.to_child_mut()),
-            Some(self.headers.to_child_mut()),
-            self.authentication.as_mut().map(ToChild::to_child_mut),
+        vec![
+            self.tabs.to_child_mut(),
+            self.url.to_child_mut(),
+            self.body.to_child_mut(),
+            self.query.to_child_mut(),
+            self.headers.to_child_mut(),
+            self.authentication.to_child_mut(),
         ]
-        .into_iter()
-        .flatten() // Remove None
-        .collect()
     }
 }
 

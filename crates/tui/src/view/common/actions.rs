@@ -141,11 +141,7 @@ impl Component for ActionMenu {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        self.content
-            .as_mut()
-            .into_iter()
-            .map(ToChild::to_child_mut)
-            .collect()
+        vec![self.content.to_child_mut()]
     }
 }
 

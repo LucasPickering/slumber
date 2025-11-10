@@ -204,7 +204,9 @@ impl<T: Component + ?Sized> ComponentExt for T {
             if component.is_visible() && has_focus(component) {
                 items.extend(component.menu());
                 for mut child in component.children() {
-                    inner(items, child.component());
+                    if let Some(component) = child.component() {
+                        inner(items, component);
+                    }
                 }
             }
         }
@@ -410,6 +412,8 @@ impl DrawMetadata {
 /// [Owned](Self::Owned) is useful for types that need to wrap the mutable
 /// reference in some type of guard. See [ToChild].
 pub enum Child<'a> {
+    /// TODO
+    None,
     Borrowed {
         name: &'static str,
         component: &'a mut dyn Component,
@@ -424,20 +428,23 @@ impl<'a> Child<'a> {
     /// Get a descriptive name for this component type
     pub fn name(&self) -> &'static str {
         match self {
+            Self::None => "None",
             Self::Borrowed { name, .. } => name,
             Self::Owned { name, .. } => name,
         }
     }
 
     /// Get the contained component trait object
-    pub fn component<'b>(&'b mut self) -> &'b mut dyn Component
+    /// TODO
+    pub fn component<'b>(&'b mut self) -> Option<&'b mut dyn Component>
     where
         // 'b is the given &self, 'a is the contained &dyn Component
         'a: 'b,
     {
         match self {
-            Self::Borrowed { component, .. } => *component,
-            Self::Owned { component, .. } => &mut **component,
+            Self::None => None,
+            Self::Borrowed { component, .. } => Some(*component),
+            Self::Owned { component, .. } => Some(&mut **component),
         }
     }
 }
@@ -455,6 +462,15 @@ impl<T: Component + Sized> ToChild for T {
         Child::Borrowed {
             name: any::type_name::<Self>(),
             component: self,
+        }
+    }
+}
+
+impl<T: Component + Sized> ToChild for Option<T> {
+    fn to_child_mut(&mut self) -> Child<'_> {
+        match self {
+            Some(component) => component.to_child_mut(),
+            None => Child::None,
         }
     }
 }
@@ -502,9 +518,13 @@ fn update_all(
 
     // If we have a child, send them the event. If not, eat it ourselves
     for mut child in component.children() {
+        let name = child.name();
+        let Some(component) = child.component() else {
+            // If child is None, skip it
+            continue;
+        };
         // RECURSION
-        let propagated =
-            update_all(child.name(), child.component(), context, event);
+        let propagated = update_all(name, component, context, event);
         match propagated {
             Some(returned) => {
                 // Keep going to the next child. The propagated event

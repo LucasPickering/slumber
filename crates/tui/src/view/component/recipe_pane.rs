@@ -94,11 +94,7 @@ impl Component for RecipePane {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        if let Some(recipe_state) = self.recipe_state.get_mut() {
-            vec![recipe_state.to_child_mut()]
-        } else {
-            vec![]
-        }
+        vec![self.recipe_state.get_mut().to_child_mut()]
     }
 }
 

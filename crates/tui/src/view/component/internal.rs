@@ -412,7 +412,9 @@ impl DrawMetadata {
 /// [Owned](Self::Owned) is useful for types that need to wrap the mutable
 /// reference in some type of guard. See [ToChild].
 pub enum Child<'a> {
-    /// TODO
+    /// A null child, produced by an optional component. This is an ergonomic
+    /// feature that makes it possible to call to_child_mut() on optional
+    /// children.
     None,
     Borrowed {
         name: &'static str,
@@ -434,8 +436,8 @@ impl<'a> Child<'a> {
         }
     }
 
-    /// Get the contained component trait object
-    /// TODO
+    /// Get the contained component trait object. Return `None` iff this is
+    /// [Child::None].
     pub fn component<'b>(&'b mut self) -> Option<&'b mut dyn Component>
     where
         // 'b is the given &self, 'a is the contained &dyn Component

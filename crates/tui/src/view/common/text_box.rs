@@ -17,7 +17,7 @@ use ratatui::{
     widgets::{Paragraph, ScrollbarOrientation},
 };
 use slumber_config::Action;
-use std::{cell::Cell, mem};
+use std::{cell::Cell, collections::HashSet, mem};
 use terminput::{KeyCode, KeyModifiers};
 
 /// Single line text submission component
@@ -36,7 +36,7 @@ pub struct TextBox {
     #[debug(skip)]
     validator: Option<Validator>,
     /// Which event types to emit
-    subscribed_events: Vec<TextBoxEvent>,
+    subscribed_events: HashSet<TextBoxEvent>,
 
     // State
     state: TextState,
@@ -459,8 +459,8 @@ impl ToEmitter<TextBoxEvent> for TextBox {
     }
 }
 
-/// Emitted event type for a text box
-#[derive(Debug, PartialEq)]
+/// Emitted event for [TextBox]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub enum TextBoxEvent {
     Focus,
     Change,

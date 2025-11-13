@@ -1,5 +1,3 @@
-//! Request/response body display component
-
 use crate::{
     context::TuiContext,
     message::Message,
@@ -7,10 +5,13 @@ use crate::{
     view::{
         Component, Generate, ViewContext,
         common::{
-            text_box::{TextBox, TextBoxEvent, TextBoxProps},
+            text_box::{TextBox, TextBoxProps},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
-        component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
+        component::{
+            Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
+            command_text_box::{CommandTextBox, CommandTextBoxEvent},
+        },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         state::Identified,
@@ -37,7 +38,7 @@ use tokio::task::AbortHandle;
 #[derive(Debug)]
 pub struct QueryableBody {
     id: ComponentId,
-    emitter: Emitter<QueryComplete>,
+    emitter: Emitter<CommandComplete>,
     response: Arc<ResponseRecord>,
 
     /// Which command box, if any, are we typing in?
@@ -47,15 +48,15 @@ pub struct QueryableBody {
     /// this will come from the config but it's parameterized for testing
     default_query: Option<String>,
     /// Track status of the current query command
-    query_state: QueryState,
+    query_state: CommandState,
     /// Where the user enters their body query
-    query_text_box: TextBox,
+    query_text_box: CommandTextBox,
     /// Query command to reset back to when the user hits cancel
     last_executed_query: Option<String>,
 
     /// Export command, for side effects. This isn't persistent, so the state
     /// is a lot simpler. We'll clear this out whenever the user exits.
-    export_text_box: TextBox,
+    export_text_box: CommandTextBox,
 
     /// Filtered text display
     text_window: TextWindow,
@@ -76,26 +77,18 @@ impl QueryableBody {
         let query_bind = input_engine.binding_display(Action::Search);
         let export_bind = input_engine.binding_display(Action::Export);
 
-        let query_text_box = TextBox::default()
-            .placeholder(format!(
-                "{query_bind} to query, {export_bind} to export"
-            ))
-            .placeholder_focused("Enter query command (ex: `jq .results`)")
-            .default_value(default_query.clone().unwrap_or_default())
-            .subscribe([
-                TextBoxEvent::Cancel,
-                TextBoxEvent::Focus,
-                TextBoxEvent::Submit,
-            ]);
-        let export_text_box = TextBox::default()
-            .placeholder_focused(
+        let query_text_box = CommandTextBox::new(
+            TextBox::default()
+                .placeholder(format!(
+                    "{query_bind} to query, {export_bind} to export"
+                ))
+                .placeholder_focused("Enter query command (ex: `jq .results`)")
+                .default_value(default_query.clone().unwrap_or_default()),
+        );
+        let export_text_box =
+            CommandTextBox::new(TextBox::default().placeholder_focused(
                 "Enter export command (ex: `tee > response.json`)",
-            )
-            .subscribe([
-                TextBoxEvent::Cancel,
-                TextBoxEvent::Focus,
-                TextBoxEvent::Submit,
-            ]);
+            ));
 
         let text_state =
             TextState::new(response.content_type(), &response.body, true);
@@ -106,7 +99,7 @@ impl QueryableBody {
             response,
             command_focus: CommandFocus::None,
             default_query,
-            query_state: QueryState::None,
+            query_state: CommandState::None,
             query_text_box,
             last_executed_query: None,
             export_text_box,
@@ -124,7 +117,8 @@ impl QueryableBody {
     /// Binary bodies will return `None` here. Return an owned value because we
     /// have to join the text to a string.
     pub fn modified_text(&self) -> Option<String> {
-        if matches!(self.query_state, QueryState::Ok) || self.text_state.pretty
+        if matches!(self.query_state, CommandState::Ok)
+            || self.text_state.pretty
         {
             Some(self.text_state.text.to_string())
         } else {
@@ -159,7 +153,7 @@ impl QueryableBody {
         if command.is_empty() {
             // Reset to initial body
             self.last_executed_query = None;
-            self.query_state = QueryState::None;
+            self.query_state = CommandState::None;
             self.text_state = TextState::new(
                 self.response.content_type(),
                 &self.response.body,
@@ -176,9 +170,9 @@ impl QueryableBody {
             let emitter = self.emitter;
             let abort_handle =
                 self.spawn_command(command, body, move |_, result| {
-                    emitter.emit(QueryComplete(result));
+                    emitter.emit(CommandComplete(result));
                 });
-            self.query_state = QueryState::Running(abort_handle);
+            self.query_state = CommandState::Running(abort_handle);
         }
     }
 
@@ -202,8 +196,8 @@ impl QueryableBody {
             .unwrap_or_else(|| self.response.body.bytes().clone());
 
         self.spawn_command(command, body, |command, result| match result {
-            // We provide feedback via a global mechanism in both cases, so we
-            // don't need an emitter here
+            // We provide feedback via a global mechanism in both cases, so
+            // we don't need an emitter here
             Ok(_) => ViewContext::send_message(Message::Notify(format!(
                 "`{command}` succeeded"
             ))),
@@ -211,7 +205,7 @@ impl QueryableBody {
         });
     }
 
-    /// Run a shell command in a background task
+    /// Run the current text as a shell command in a background task
     fn spawn_command(
         &self,
         command: String,
@@ -219,6 +213,10 @@ impl QueryableBody {
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
     ) -> AbortHandle {
         util::spawn(async move {
+            // Store the command in history. Query and export commands are
+            // stored together. We can toss the error; it gets traced by the DB
+            let _ =
+                ViewContext::with_database(|db| db.insert_command(&command));
             let shell = &TuiContext::get().config.tui.commands.shell;
             let result = util::run_command(shell, &command, Some(&body))
                 .await
@@ -242,9 +240,9 @@ impl Component for QueryableBody {
                 Action::Export => self.focus(CommandFocus::Export),
                 _ => propagate.set(),
             })
-            .emitted(self.emitter, |QueryComplete(result)| match result {
+            .emitted(self.emitter, |CommandComplete(result)| match result {
                 Ok(stdout) => {
-                    self.query_state = QueryState::Ok;
+                    self.query_state = CommandState::Ok;
                     self.text_state = TextState::new(
                         // Assume the output has the same content type
                         self.response.content_type(),
@@ -255,31 +253,29 @@ impl Component for QueryableBody {
                     );
                 }
                 // Trigger error state. Error will be shown in the pane
-                Err(error) => self.query_state = QueryState::Error(error),
+                Err(error) => self.query_state = CommandState::Error(error),
             })
             .emitted(self.query_text_box.to_emitter(), |event| match event {
-                TextBoxEvent::Focus => self.focus(CommandFocus::Query),
-                TextBoxEvent::Change => {}
-                TextBoxEvent::Cancel => {
+                CommandTextBoxEvent::Focus => self.focus(CommandFocus::Query),
+                CommandTextBoxEvent::Cancel => {
                     // Reset text to whatever was submitted last
                     self.query_text_box.set_text(
                         self.last_executed_query.clone().unwrap_or_default(),
                     );
                     self.focus(CommandFocus::None);
                 }
-                TextBoxEvent::Submit => {
+                CommandTextBoxEvent::Submit => {
                     self.update_query();
                     self.focus(CommandFocus::None);
                 }
             })
             .emitted(self.export_text_box.to_emitter(), |event| match event {
-                TextBoxEvent::Focus => self.focus(CommandFocus::Export),
-                TextBoxEvent::Change => {}
-                TextBoxEvent::Cancel => {
+                CommandTextBoxEvent::Focus => self.focus(CommandFocus::Export),
+                CommandTextBoxEvent::Cancel => {
                     self.export_text_box.clear();
                     self.focus(CommandFocus::None);
                 }
-                TextBoxEvent::Submit => {
+                CommandTextBoxEvent::Submit => {
                     self.export();
                     self.focus(CommandFocus::None);
                 }
@@ -301,7 +297,7 @@ impl Draw for QueryableBody {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
 
-        if let QueryState::Error(error) = &self.query_state {
+        if let CommandState::Error(error) = &self.query_state {
             canvas.render_widget(error.generate(), body_area);
         } else {
             canvas.draw(
@@ -330,7 +326,10 @@ impl Draw for QueryableBody {
             canvas.draw(
                 &self.query_text_box,
                 TextBoxProps {
-                    has_error: matches!(self.query_state, QueryState::Error(_)),
+                    has_error: matches!(
+                        self.query_state,
+                        CommandState::Error(_)
+                    ),
                 },
                 query_area,
                 self.command_focus == CommandFocus::Query,
@@ -348,15 +347,14 @@ impl PersistedContainer for QueryableBody {
     }
 
     fn restore_persisted(&mut self, value: Self::Value) {
-        let text_box = &mut self.query_text_box;
-        text_box.restore_persisted(value);
+        self.query_text_box.restore_persisted(value);
 
         // It's pretty common to clear the whole text box without thinking about
         // it. In that case, we want to restore the default the next time we
         // reload from persistence (probably either app restart or next response
         // for this recipe). It's possible the user really wants an empty box
         // and this is annoying, but I think it'll be more good than bad.
-        if text_box.text().is_empty() {
+        if self.query_text_box.text().is_empty() {
             if let Some(query) = self.default_query.clone() {
                 self.query_text_box.set_text(query);
             }
@@ -367,8 +365,8 @@ impl PersistedContainer for QueryableBody {
     }
 }
 
-impl ToEmitter<QueryComplete> for QueryableBody {
-    fn to_emitter(&self) -> Emitter<QueryComplete> {
+impl ToEmitter<CommandComplete> for QueryableBody {
+    fn to_emitter(&self) -> Emitter<CommandComplete> {
         self.emitter
     }
 }
@@ -459,11 +457,11 @@ enum CommandFocus {
 /// Emitted event to notify when a query subprocess has completed. Contains the
 /// stdout of the process if successful.
 #[derive(Debug)]
-struct QueryComplete(Result<Vec<u8>, anyhow::Error>);
+struct CommandComplete(Result<Vec<u8>, anyhow::Error>);
 
 #[derive(Debug, Default)]
-enum QueryState {
-    /// Query has not been run yet
+enum CommandState {
+    /// Command has not been run yet
     #[default]
     None,
     /// Command is running. Handle can be used to kill it
@@ -475,7 +473,7 @@ enum QueryState {
     Ok,
 }
 
-impl QueryState {
+impl CommandState {
     fn take_abort_handle(&mut self) -> Option<AbortHandle> {
         match mem::take(self) {
             Self::Running(handle) => Some(handle),

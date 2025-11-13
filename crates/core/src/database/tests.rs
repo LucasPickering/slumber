@@ -425,4 +425,53 @@ fn test_commands() {
 
     // Prefix search only - internal matches don't work!!
     assert_eq!(database.get_commands("q").unwrap(), [""; 0]);
+
+    // Get a single command
+    assert_eq!(
+        database.get_command(0, "").unwrap().as_deref(),
+        Some("jq .")
+    );
+    assert_eq!(
+        database.get_command(0, "jq .").unwrap().as_deref(),
+        Some("jq .data")
+    );
+}
+
+/// When the command table hits the max size, old commands are evicted when
+/// new are inserted
+#[rstest]
+fn test_commands_max_history_size(request_db: RequestDb) {
+    let [collection1, collection2] = request_db.collections;
+    // Fill out history for both collections. They shouldn't interfere with each
+    // other
+    for i in 0..MAX_COMMAND_HISTORY_SIZE {
+        let command = format!("command {i}");
+        collection1.insert_command(&command).unwrap();
+        collection2.insert_command(&command).unwrap();
+    }
+
+    // Sanity check
+    assert_eq!(
+        collection1.get_commands("").unwrap().len(),
+        MAX_COMMAND_HISTORY_SIZE
+    );
+
+    // Add one more command; oldest should be evicted
+    collection1.insert_command("new command").unwrap();
+    assert_eq!(
+        collection1.get_commands("").unwrap().len(),
+        MAX_COMMAND_HISTORY_SIZE
+    );
+    assert_eq!(
+        collection1.get_command(0, "").unwrap().as_deref(),
+        Some("new command")
+    );
+    // Make sure `command 0` was evicted
+    assert_eq!(
+        collection1
+            .get_command(MAX_COMMAND_HISTORY_SIZE - 1, "")
+            .unwrap()
+            .as_deref(),
+        Some("command 1")
+    );
 }

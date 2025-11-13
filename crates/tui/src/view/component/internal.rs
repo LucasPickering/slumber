@@ -562,7 +562,7 @@ fn update_all(
             let propagated: Option<Event> =
                 component.update(context, event).into();
 
-            // Little bit of logging innit
+            // Little bit a logging innit
             let status = if propagated.is_some() {
                 "propagated"
             } else {

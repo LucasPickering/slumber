@@ -27,6 +27,10 @@ use thiserror::Error;
 use tracing::{debug, info, trace};
 use uuid::Uuid;
 
+/// Maximum number of commands to store in history **per collection**. When we
+/// hit the cap, the oldest commands get evicted.
+const MAX_COMMAND_HISTORY_SIZE: usize = 100;
+
 /// A SQLite database for persisting data. Generally speaking, any error that
 /// occurs *after* opening the DB connection should be an internal bug, but
 /// should be shown to the user whenever possible. All operations are blocking,
@@ -749,10 +753,13 @@ impl CollectionDatabase {
     /// the timestamp on it
     pub fn insert_command(&self, command: &str) -> Result<(), DatabaseError> {
         debug!(?command, "Storing query/export command");
-        self.database
-            .connection()
-            .execute(
+
+        // Shitty try block
+        let deleted = (|| {
+            let connection = self.database.connection();
+            connection.execute(
                 // Holy fuck it's an upsert!!
+                // Also, delete any commands beyond the max size
                 "INSERT INTO commands (collection_id, command, time)
                 VALUES (:collection_id, :command, :time)
                 ON CONFLICT DO UPDATE SET time = :time",
@@ -761,13 +768,38 @@ impl CollectionDatabase {
                     ":command": command,
                     ":time": Utc::now(),
                 },
+            )?;
+            // Delete oldest commands beyond max size. Cap is PER COLLECTION!!
+            //
+            // SQLite supports LIMIT/OFFSET directly in the DELETE which would
+            // work here, but it requires a compile-time option to be enabled.
+            // The CTE is just easier that fucking around with that.
+            // https://sqlite.org/compile.html#enable_update_delete_limit
+            connection.execute(
+                "WITH to_delete AS
+                    (SELECT command FROM commands WHERE
+                        collection_id = :collection_id
+                        ORDER BY time DESC
+                        LIMIT -1 OFFSET :max_history_size)
+                DELETE FROM commands WHERE command IN to_delete",
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":max_history_size": MAX_COMMAND_HISTORY_SIZE
+                },
             )
-            .map_err({
-                DatabaseError::add_context(format!(
-                    "Inserting command `{command:?}`"
-                ))
-            })
-            .traced()?;
+        })()
+        .map_err({
+            DatabaseError::add_context(format!(
+                "Inserting command `{command:?}`"
+            ))
+        })
+        .traced()?;
+
+        if deleted > 0 {
+            debug!("Evicted {deleted} rows from `commands` table");
+            dbg!(deleted);
+        }
+
         Ok(())
     }
 
@@ -802,6 +834,39 @@ impl CollectionDatabase {
                     DatabaseError::add_context("Extracting command history"),
                 )
             })
+            .traced()
+    }
+
+    /// Get a command from the command history table
+    ///
+    /// ## Params
+    ///
+    /// - `offset`: Index of the command to grab, with 0 being the most recent
+    ///   and moving back in time from there
+    /// - `exclude`: Command string to exclude from the results. The command
+    ///   prompt excludes the current text from results to prevent duplicates.
+    pub fn get_command(
+        &self,
+        offset: usize,
+        exclude: &str,
+    ) -> Result<Option<String>, DatabaseError> {
+        trace!(offset, "Getting command from history with offset");
+        self.database
+            .connection()
+            .query_row(
+                "SELECT command FROM commands
+                WHERE collection_id = :collection_id AND command != :exclude
+                ORDER BY time DESC
+                LIMIT 1 OFFSET :offset",
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":offset": offset,
+                    ":exclude": exclude,
+                },
+                |row| row.get("command"),
+            )
+            .optional()
+            .map_err(DatabaseError::add_context("Querying commands"))
             .traced()
     }
 

@@ -43,6 +43,9 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Some menu actions have been moved into nested sections for better organization
 - Refactor significant portions of the TUI logic. There should be no user-facing changes, but if you notice any bugs [please report them!](https://github.com/LucasPickering/slumber/issues/new/choose)
 - List items can now be selected by click
+- You can now scroll through command history in the query/export command text box
+  - Up/down to navigate past commands
+  - Command history is specific to each collection and capped at 100 commands per collection
 
 ## [Unreleased] - ReleaseDate
 

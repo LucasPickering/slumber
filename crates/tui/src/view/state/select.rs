@@ -12,6 +12,7 @@ use slumber_config::Action;
 use slumber_core::collection::HasId;
 use std::{
     cell::RefCell,
+    collections::HashSet,
     fmt::Debug,
     marker::PhantomData,
     ops::{Index, IndexMut},
@@ -33,7 +34,7 @@ where
     id: ComponentId,
     emitter: Emitter<SelectStateEvent>,
     /// Which event types to emit
-    subscribed_events: Vec<SelectStateEventType>,
+    subscribed_events: HashSet<SelectStateEventType>,
     /// Use interior mutability because this needs to be modified during the
     /// draw phase, by [ratatui::Frame::render_stateful_widget]. This allows
     /// rendering without a mutable reference.
@@ -64,7 +65,7 @@ pub struct SelectStateBuilder<Item, State> {
     /// type of the value. Defaults to 0. If a filter is give, this will be
     /// the index *after* the filter is applied.
     preselect_index: usize,
-    subscribed_events: Vec<SelectStateEventType>,
+    subscribed_events: HashSet<SelectStateEventType>,
     _state: PhantomData<State>,
 }
 
@@ -184,7 +185,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
                 })
                 .collect(),
             preselect_index: 0,
-            subscribed_events: Vec::new(),
+            subscribed_events: HashSet::new(),
             _state: PhantomData,
         }
     }
@@ -530,7 +531,7 @@ impl SelectStateData for usize {
 
 /// Emitted event for select list
 #[derive(Debug, EnumDiscriminants)]
-#[strum_discriminants(name(SelectStateEventType))]
+#[strum_discriminants(name(SelectStateEventType), derive(Hash))]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum SelectStateEvent {
     /// User highlight a new item in the list

@@ -1,4 +1,5 @@
 mod collection_select;
+mod command_text_box;
 mod exchange_pane;
 mod footer;
 mod help;

@@ -14,8 +14,7 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         state::select::{
-            SelectState, SelectStateEvent, SelectStateEventType,
-            SelectStateListProps,
+            Select, SelectEvent, SelectEventType, SelectListProps,
         },
         util::persistence::{Persisted, PersistedLazy},
     },
@@ -53,7 +52,7 @@ pub struct RecipeListPane {
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
-    select: PersistedLazy<SelectedRecipeKey, SelectState<RecipeListItem>>,
+    select: PersistedLazy<SelectedRecipeKey, Select<RecipeListItem>>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     ///
@@ -77,7 +76,7 @@ impl RecipeListPane {
         let collapsed: Persisted<CollapsedKey> = Persisted::default();
         let select = PersistedLazy::new(
             SelectedRecipeKey,
-            collapsed.build_select_state(recipes, ""),
+            collapsed.build_select(recipes, ""),
         );
         let filter = TextBox::default()
             .placeholder(format!("{binding} to filter"))
@@ -140,24 +139,24 @@ impl RecipeListPane {
 
         // If we changed the set of what is visible, rebuild the list state
         if changed {
-            self.rebuild_select_state();
+            self.rebuild_select();
         }
 
         changed
     }
 
     /// Rebuild the select list based on current filter/collapsed state
-    fn rebuild_select_state(&mut self) {
-        let mut new_select_state = self.collapsed.build_select_state(
+    fn rebuild_select(&mut self) {
+        let mut new_select = self.collapsed.build_select(
             &ViewContext::collection().recipes,
             &self.filter.text().trim().to_lowercase(),
         );
 
         // Carry over the selection
         if let Some(selected) = self.select.selected() {
-            new_select_state.select(selected.id());
+            new_select.select(selected.id());
         }
-        *self.select.get_mut() = new_select_state;
+        *self.select.get_mut() = new_select;
     }
 }
 
@@ -181,20 +180,20 @@ impl Component for RecipeListPane {
                 _ => propagate.set(),
             })
             .emitted(self.select.to_emitter(), |event| match event {
-                SelectStateEvent::Select(_) => {
+                SelectEvent::Select(_) => {
                     // When highlighting a new recipe, load its most recent
                     // request from the DB. If a recipe isn't selected, this
                     // will do nothing
                     ViewContext::push_event(Event::HttpSelectRequest(None));
                 }
-                SelectStateEvent::Submit(_) => {}
-                SelectStateEvent::Toggle(_) => {
+                SelectEvent::Submit(_) => {}
+                SelectEvent::Toggle(_) => {
                     self.set_selected_collapsed(CollapseState::Toggle);
                 }
             })
             .emitted(self.filter.to_emitter(), |event| match event {
                 TextBoxEvent::Focus => self.filter_focused = true,
-                TextBoxEvent::Change => self.rebuild_select_state(),
+                TextBoxEvent::Change => self.rebuild_select(),
                 TextBoxEvent::Cancel | TextBoxEvent::Submit => {
                     self.filter_focused = false;
                 }
@@ -237,7 +236,7 @@ impl Draw for RecipeListPane {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(area);
-        canvas.draw(&*self.select, SelectStateListProps, select_area, true);
+        canvas.draw(&*self.select, SelectListProps, select_area, true);
 
         canvas.draw(
             &self.filter,
@@ -380,11 +379,11 @@ impl Collapsed {
     }
 
     /// Construct select list based on which nodes are currently visible
-    fn build_select_state(
+    fn build_select(
         &self,
         recipes: &RecipeTree,
         filter: &str,
-    ) -> SelectState<RecipeListItem> {
+    ) -> Select<RecipeListItem> {
         let items = if filter.is_empty() {
             // No filter - calculate visible nodes based on collapsed state
             recipes
@@ -419,11 +418,8 @@ impl Collapsed {
                 .collect()
         };
 
-        SelectState::builder(items)
-            .subscribe([
-                SelectStateEventType::Select,
-                SelectStateEventType::Toggle,
-            ])
+        Select::builder(items)
+            .subscribe([SelectEventType::Select, SelectEventType::Toggle])
             .build()
     }
 }

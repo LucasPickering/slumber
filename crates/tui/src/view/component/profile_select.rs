@@ -110,15 +110,14 @@ impl Component for ProfilePane {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event.m().click(|_, _| self.open_modal()).emitted(
-            self.select_emitter,
-            |SelectProfile(profile_id)| {
+        event
+            .m()
+            .emitted(self.select_emitter, |SelectProfile(profile_id)| {
                 // Handle message from the modal
                 *self.selected_profile_id.get_mut() = Some(profile_id);
                 // Refresh template previews
                 ViewContext::push_event(Event::HttpSelectRequest(None));
-            },
-        )
+            })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {

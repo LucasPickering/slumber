@@ -235,6 +235,13 @@ impl Component for QueryableBody {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
+            .click(|position, _| {
+                // Focus the query text box when clicked. No need to check for
+                // clicks on the export box since it isn't drawn unless focused
+                if self.query_text_box.contains(position) {
+                    self.focus(CommandFocus::Query);
+                }
+            })
             .action(|action, propagate| match action {
                 Action::Search => self.focus(CommandFocus::Query),
                 Action::Export => self.focus(CommandFocus::Export),
@@ -256,7 +263,6 @@ impl Component for QueryableBody {
                 Err(error) => self.query_state = CommandState::Error(error),
             })
             .emitted(self.query_text_box.to_emitter(), |event| match event {
-                CommandTextBoxEvent::Focus => self.focus(CommandFocus::Query),
                 CommandTextBoxEvent::Cancel => {
                     // Reset text to whatever was submitted last
                     self.query_text_box.set_text(
@@ -270,7 +276,6 @@ impl Component for QueryableBody {
                 }
             })
             .emitted(self.export_text_box.to_emitter(), |event| match event {
-                CommandTextBoxEvent::Focus => self.focus(CommandFocus::Export),
                 CommandTextBoxEvent::Cancel => {
                     self.export_text_box.clear();
                     self.focus(CommandFocus::None);

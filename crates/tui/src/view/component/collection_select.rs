@@ -75,9 +75,7 @@ impl Component for CollectionSelect {
                     // Rebuild the list with the filter applied
                     self.select = build_select(self.filter.text());
                 }
-                TextBoxEvent::Cancel
-                | TextBoxEvent::Focus
-                | TextBoxEvent::Submit => {}
+                TextBoxEvent::Cancel | TextBoxEvent::Submit => {}
             })
     }
 

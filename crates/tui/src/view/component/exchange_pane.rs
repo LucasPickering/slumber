@@ -12,7 +12,7 @@ use crate::{
             response_view::{ResponseBodyView, ResponseHeadersView},
         },
         context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
+        event::{Emitter, Event, EventMatch},
         util::{format_byte_size, persistence::PersistedLazy},
     },
 };
@@ -36,7 +36,6 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug, Default)]
 pub struct ExchangePane {
     id: ComponentId,
-    emitter: Emitter<ExchangePaneEvent>,
     state: State,
 }
 
@@ -47,7 +46,6 @@ impl ExchangePane {
     ) -> Self {
         Self {
             id: Default::default(),
-            emitter: Default::default(),
             state: State::new(selected_request, selected_recipe_kind),
         }
     }
@@ -56,12 +54,6 @@ impl ExchangePane {
 impl Component for ExchangePane {
     fn id(&self) -> ComponentId {
         self.id
-    }
-
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event
-            .m()
-            .click(|_, _| self.emitter.emit(ExchangePaneEvent::Click))
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -119,19 +111,6 @@ impl Draw for ExchangePane {
             }
         }
     }
-}
-
-/// Notify parent when this pane is clicked
-impl ToEmitter<ExchangePaneEvent> for ExchangePane {
-    fn to_emitter(&self) -> Emitter<ExchangePaneEvent> {
-        self.emitter
-    }
-}
-
-/// Emitted event for the exchange pane component
-#[derive(Debug)]
-pub enum ExchangePaneEvent {
-    Click,
 }
 
 /// Inner state for the exchange pane. This contains all the empty states, as

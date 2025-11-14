@@ -385,7 +385,14 @@ impl Draw for ActionMenuContent {
             offset_x += width + 1;
             offset_y += layer.selected_index().unwrap_or(0) as u16;
 
-            canvas.draw(layer, SelectListProps, area, i == self.active_layer);
+            canvas.draw(
+                layer,
+                SelectListProps {
+                    scrollbar_margin: 0,
+                },
+                area,
+                i == self.active_layer,
+            );
         }
     }
 }

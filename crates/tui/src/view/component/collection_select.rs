@@ -12,8 +12,7 @@ use crate::{
         },
         event::{Event, EventMatch, ToEmitter},
         state::select::{
-            SelectState, SelectStateEvent, SelectStateEventType,
-            SelectStateListProps,
+            Select, SelectEvent, SelectEventType, SelectListProps,
         },
     },
 };
@@ -27,7 +26,7 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub struct CollectionSelect {
     id: ComponentId,
-    select: SelectState<CollectionSelectItem>,
+    select: Select<CollectionSelectItem>,
     /// Text box to filter contents. Always in focus
     filter: TextBox,
 }
@@ -36,7 +35,7 @@ impl CollectionSelect {
     pub fn new() -> Self {
         Self {
             id: ComponentId::default(),
-            select: build_select_state(""),
+            select: build_select(""),
             filter: TextBox::default().subscribe([TextBoxEvent::Change]),
         }
     }
@@ -64,7 +63,7 @@ impl Component for CollectionSelect {
             .m()
             .emitted(self.select.to_emitter(), |event| {
                 // The ol' Tennessee Switcharoo
-                if let SelectStateEvent::Submit(index) = event {
+                if let SelectEvent::Submit(index) = event {
                     let item = &self.select[index];
                     ViewContext::send_message(Message::CollectionSelect(
                         item.path.clone(),
@@ -74,7 +73,7 @@ impl Component for CollectionSelect {
             .emitted(self.filter.to_emitter(), |event| match event {
                 TextBoxEvent::Change => {
                     // Rebuild the list with the filter applied
-                    self.select = build_select_state(self.filter.text());
+                    self.select = build_select(self.filter.text());
                 }
                 TextBoxEvent::Cancel
                 | TextBoxEvent::Focus
@@ -93,7 +92,7 @@ impl Draw for CollectionSelect {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
-        canvas.draw(&self.select, SelectStateListProps, select_area, true);
+        canvas.draw(&self.select, SelectListProps, select_area, true);
         canvas.draw(&self.filter, TextBoxProps::default(), filter_area, true);
     }
 }
@@ -115,7 +114,7 @@ impl PartialEq<CollectionSelectItem> for CollectionId {
 impl ToStringGenerate for CollectionSelectItem {}
 
 /// Build/rebuild the list selection
-fn build_select_state(filter: &str) -> SelectState<CollectionSelectItem> {
+fn build_select(filter: &str) -> Select<CollectionSelectItem> {
     // Build the collection list from the DB's collections table. Preselect
     // the current collection. Current collection ID is only None if the query
     // fails , which would be... odd.
@@ -128,10 +127,10 @@ fn build_select_state(filter: &str) -> SelectState<CollectionSelectItem> {
         .reported(&ViewContext::messages_tx())
     else {
         // If we fail to load anything from the DB, we can't show anything
-        return SelectState::default();
+        return Select::default();
     };
 
-    SelectState::builder(
+    Select::builder(
         collections
             .into_iter()
             .map(|collection| CollectionSelectItem {
@@ -145,6 +144,6 @@ fn build_select_state(filter: &str) -> SelectState<CollectionSelectItem> {
     // disappear
     .filter(filter)
     .preselect(&current_collection_id)
-    .subscribe([SelectStateEventType::Submit])
+    .subscribe([SelectEventType::Submit])
     .build()
 }

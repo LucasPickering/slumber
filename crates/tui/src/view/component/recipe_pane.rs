@@ -78,12 +78,9 @@ impl Component for RecipePane {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event
-            .m()
-            .click(|_, _| self.emitter.emit(RecipePaneEvent::Click))
-            .emitted(self.actions_emitter, |menu_action| {
-                self.emitter.emit(RecipePaneEvent::Action(menu_action));
-            })
+        event.m().emitted(self.actions_emitter, |menu_action| {
+            self.emitter.emit(RecipePaneEvent::Action(menu_action));
+        })
     }
 
     fn menu(&self) -> Vec<MenuItem> {
@@ -182,8 +179,6 @@ impl ToEmitter<RecipePaneEvent> for RecipePane {
 /// Emitted event for the recipe pane component
 #[derive(Debug)]
 pub enum RecipePaneEvent {
-    /// Pane was clicked; focus it
-    Click,
     /// Forward menu actions to the parent because it has the needed context
     Action(RecipeMenuAction),
 }

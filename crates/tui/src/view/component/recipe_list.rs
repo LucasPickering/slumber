@@ -83,7 +83,6 @@ impl RecipeListPane {
             .subscribe([
                 TextBoxEvent::Cancel,
                 TextBoxEvent::Change,
-                TextBoxEvent::Focus,
                 TextBoxEvent::Submit,
             ]);
         Self {
@@ -168,7 +167,11 @@ impl Component for RecipeListPane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .click(|_, _| self.emitter.emit(RecipeListPaneEvent::Click))
+            .click(|position, _| {
+                if self.filter.contains(position) {
+                    self.filter_focused = true;
+                }
+            })
             .action(|action, propagate| match action {
                 Action::Left => {
                     self.set_selected_collapsed(CollapseState::Collapse);
@@ -192,7 +195,6 @@ impl Component for RecipeListPane {
                 }
             })
             .emitted(self.filter.to_emitter(), |event| match event {
-                TextBoxEvent::Focus => self.filter_focused = true,
                 TextBoxEvent::Change => self.rebuild_select(),
                 TextBoxEvent::Cancel | TextBoxEvent::Submit => {
                     self.filter_focused = false;
@@ -262,8 +264,6 @@ struct SelectedRecipeKey;
 /// Emitted event type for the recipe list pane
 #[derive(Debug)]
 pub enum RecipeListPaneEvent {
-    /// Pane was clicked; focus it
-    Click,
     /// Forward menu actions to the parent because it has the needed context
     Action(RecipeMenuAction),
 }

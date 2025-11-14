@@ -4,7 +4,6 @@
 pub mod actions;
 pub mod button;
 pub mod header_table;
-pub mod list;
 pub mod modal;
 pub mod scrollbar;
 pub mod table;

@@ -11,7 +11,9 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        state::fixed_select::FixedSelectState,
+        state::{
+            fixed_select::FixedSelectState, select::SelectStateTableProps,
+        },
     },
 };
 use derive_more::derive::Display;
@@ -216,7 +218,7 @@ impl Draw for AuthenticationDisplay {
                 };
                 canvas.draw(
                     selected_field,
-                    table.generate(),
+                    SelectStateTableProps { table },
                     content_area,
                     true,
                 );

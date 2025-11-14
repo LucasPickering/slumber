@@ -5,7 +5,6 @@ use crate::{
         common::{
             Pane,
             actions::MenuItem,
-            list::List,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
@@ -14,7 +13,10 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
+        state::select::{
+            SelectState, SelectStateEvent, SelectStateEventType,
+            SelectStateListProps,
+        },
         util::persistence::{Persisted, PersistedLazy},
     },
 };
@@ -22,7 +24,7 @@ use derive_more::{Deref, DerefMut};
 use persisted::PersistedKey;
 use ratatui::{
     layout::{Constraint, Layout},
-    text::Text,
+    text::Span,
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
@@ -235,12 +237,7 @@ impl Draw for RecipeListPane {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(area);
-        canvas.draw(
-            &*self.select,
-            List::from(&*self.select),
-            select_area,
-            true,
-        );
+        canvas.draw(&*self.select, SelectStateListProps, select_area, true);
 
         canvas.draw(
             &self.filter,
@@ -323,7 +320,7 @@ impl PartialEq<RecipeListItem> for RecipeId {
 
 impl Generate for &RecipeListItem {
     type Output<'this>
-        = Text<'this>
+        = Span<'this>
     where
         Self: 'this;
 

@@ -13,7 +13,10 @@ use crate::view::{
     },
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
-    state::select::{SelectState, SelectStateEvent, SelectStateEventType},
+    state::select::{
+        SelectState, SelectStateEvent, SelectStateEventType,
+        SelectStateTableProps,
+    },
     util::persistence::{Persisted, PersistedKey, PersistedLazy},
 };
 use itertools::Itertools;
@@ -232,7 +235,12 @@ where
             ],
             ..Default::default()
         };
-        canvas.draw(&*self.select, table.generate(), metadata.area(), true);
+        canvas.draw(
+            &*self.select,
+            SelectStateTableProps { table },
+            metadata.area(),
+            true,
+        );
         canvas.draw_portal(&self.edit_modal, (), true);
     }
 }

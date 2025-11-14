@@ -2,7 +2,7 @@ use crate::{
     context::TuiContext,
     message::Message,
     view::{
-        Component, Generate, ViewContext,
+        Component, ViewContext,
         common::{
             header_table::HeaderTable,
             text_window::{TextWindow, TextWindowProps},
@@ -117,8 +117,7 @@ impl Draw for RequestView {
         canvas.render_widget(
             HeaderTable {
                 headers: &request.headers,
-            }
-            .generate(),
+            },
             headers_area,
         );
         if let Some(body) = &self.body {

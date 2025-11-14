@@ -4,7 +4,7 @@ use crate::{
     context::TuiContext,
     message::Message,
     view::{
-        Component, Generate, ViewContext,
+        Component, ViewContext,
         common::header_table::HeaderTable,
         component::{
             Canvas, ComponentId, Draw, DrawMetadata, ToChild, internal::Child,
@@ -148,8 +148,7 @@ impl Draw for ResponseHeadersView {
         canvas.render_widget(
             HeaderTable {
                 headers: &self.response.headers,
-            }
-            .generate(),
+            },
             metadata.area(),
         );
     }

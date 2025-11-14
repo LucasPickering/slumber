@@ -1,6 +1,7 @@
 use crate::{
     context::TuiContext,
     view::{
+        Generate,
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, Portal,
             ToChild,
@@ -8,18 +9,16 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
         state::select::{
-            SelectItem, SelectState, SelectStateEvent, SelectStateEventType,
+            SelectState, SelectStateEvent, SelectStateEventType,
+            SelectStateListProps,
         },
     },
 };
 use itertools::Itertools;
 use ratatui::{
-    buffer::Buffer,
     layout::{Constraint, Position},
     prelude::Rect,
-    style::Style,
     text::Span,
-    widgets::{List, ListItem, ListState, StatefulWidget},
 };
 use slumber_config::Action;
 use std::fmt::{self, Display};
@@ -387,66 +386,13 @@ impl Draw for ActionMenuContent {
             offset_x += width + 1;
             offset_y += layer.selected_index().unwrap_or(0) as u16;
 
-            let active = i == self.active_layer;
-            let widget = MenuLayer {
-                select: layer,
-                active,
-            };
-            canvas.draw(layer, widget, area, active);
+            canvas.draw(
+                layer,
+                SelectStateListProps,
+                area,
+                i == self.active_layer,
+            );
         }
-    }
-}
-
-struct MenuLayer<'a> {
-    select: &'a SelectState<MenuItemDisplay>,
-    /// Should we use active or inactive styling?
-    active: bool,
-}
-
-impl StatefulWidget for MenuLayer<'_> {
-    type State = ListState;
-
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut ListState) {
-        fn render_item(item: &SelectItem<MenuItemDisplay>) -> ListItem {
-            let styles = &TuiContext::get().styles.menu;
-
-            let span: Span = match &item.value {
-                MenuItemDisplay::Action { name, shortcut, .. } => {
-                    // If a shortcut is given, include the binding in the text
-                    shortcut
-                        .map(|shortcut| {
-                            TuiContext::get()
-                                .input_engine
-                                .add_hint(name, shortcut)
-                                .into()
-                        })
-                        .unwrap_or_else(|| name.as_str().into())
-                }
-                MenuItemDisplay::Group { name, .. } => {
-                    format!("{name} ▶").into()
-                }
-            };
-
-            let style = if item.enabled() {
-                Style::default()
-            } else {
-                styles.disabled
-            };
-
-            ListItem::new(span).style(style)
-        }
-
-        let styles = &TuiContext::get().styles.menu;
-
-        // Build the list
-        let items = self.select.items_with_metadata().map(render_item);
-        let highlight_style = if self.active {
-            styles.highlight
-        } else {
-            styles.highlight_inactive
-        };
-        let list = List::new(items).highlight_style(highlight_style);
-        StatefulWidget::render(list, area, buf, state);
     }
 }
 
@@ -562,6 +508,33 @@ impl Display for MenuItemDisplay {
             Self::Group { name, .. } => {
                 write!(fmt, "{name} ▶")
             }
+        }
+    }
+}
+
+impl Generate for &MenuItemDisplay {
+    type Output<'this>
+        = Span<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        match &self {
+            MenuItemDisplay::Action { name, shortcut, .. } => {
+                // If a shortcut is given, include the binding in the text
+                shortcut
+                    .map(|shortcut| {
+                        TuiContext::get()
+                            .input_engine
+                            .add_hint(name, shortcut)
+                            .into()
+                    })
+                    .unwrap_or_else(|| name.as_str().into())
+            }
+            MenuItemDisplay::Group { name, .. } => format!("{name} ▶").into(),
         }
     }
 }

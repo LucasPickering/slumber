@@ -4,7 +4,6 @@ use crate::{
     view::{
         ToStringGenerate, UpdateContext, ViewContext,
         common::{
-            list::List,
             modal::Modal,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
@@ -12,7 +11,10 @@ use crate::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         event::{Event, EventMatch, ToEmitter},
-        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
+        state::select::{
+            SelectState, SelectStateEvent, SelectStateEventType,
+            SelectStateListProps,
+        },
     },
 };
 use derive_more::Display;
@@ -91,7 +93,7 @@ impl Draw for CollectionSelect {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
-        canvas.draw(&self.select, List::from(&self.select), select_area, true);
+        canvas.draw(&self.select, SelectStateListProps, select_area, true);
         canvas.draw(&self.filter, TextBoxProps::default(), filter_area, true);
     }
 }

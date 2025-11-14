@@ -9,7 +9,7 @@ use crate::view::{
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
-use ratatui::widgets::{ListState, StatefulWidget};
+use ratatui::widgets::ListState;
 use std::{
     fmt::{Debug, Display},
     ops::{Index, IndexMut},
@@ -169,13 +169,13 @@ where
 }
 
 /// See equivalent impl on [SelectState] for description
-impl<Item, State, W> Draw<W> for FixedSelectState<Item, State>
+impl<Item, State, Props> Draw<Props> for FixedSelectState<Item, State>
 where
     Item: FixedSelect,
     State: SelectStateData,
-    W: StatefulWidget<State = State>,
+    SelectState<Item, State>: Draw<Props>,
 {
-    fn draw(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
+    fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata) {
         // This is a transparent wrapper so we should defer directly
         self.inner.draw(canvas, props, metadata);
     }

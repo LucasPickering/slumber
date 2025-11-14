@@ -7,7 +7,6 @@ use crate::{
         Component, Generate, ViewContext,
         common::{
             Pane,
-            list::List,
             modal::{Modal, ModalQueue},
             table::Table,
             template_preview::TemplatePreview,
@@ -15,7 +14,10 @@ use crate::{
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        state::{StateCell, select::SelectState},
+        state::{
+            StateCell,
+            select::{SelectState, SelectStateListProps},
+        },
         util::persistence::Persisted,
     },
 };
@@ -24,7 +26,7 @@ use itertools::Itertools;
 use persisted::PersistedKey;
 use ratatui::{
     layout::{Constraint, Layout},
-    text::{Line, Text},
+    text::{Line, Span, Text},
 };
 use serde::Serialize;
 use slumber_config::Action;
@@ -236,7 +238,7 @@ impl Draw for ProfileListModal {
             Constraint::Min(0),
         ])
         .areas(area);
-        canvas.draw(&self.select, List::from(&self.select), list_area, true);
+        canvas.draw(&self.select, SelectStateListProps, list_area, true);
         if let Some(profile) = self.select.selected() {
             canvas.draw(
                 &self.detail,
@@ -297,7 +299,7 @@ impl From<&Profile> for ProfileListItem {
 
 impl Generate for &ProfileListItem {
     type Output<'this>
-        = Text<'this>
+        = Span<'this>
     where
         Self: 'this;
 
@@ -376,7 +378,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             alternate_row_style: true,
             ..Default::default()
         };
-        canvas.render_widget(table.generate(), metadata.area());
+        canvas.render_widget(table, metadata.area());
     }
 }
 

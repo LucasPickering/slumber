@@ -4,10 +4,10 @@ use crate::{
 };
 use itertools::Itertools;
 use ratatui::{
-    prelude::Constraint,
+    prelude::{Buffer, Constraint, Rect},
     style::Styled,
     text::Text,
-    widgets::{Block, Cell, Row},
+    widgets::{Block, Cell, Row, StatefulWidget, TableState, Widget},
 };
 use std::{iter, marker::PhantomData};
 
@@ -17,6 +17,9 @@ use std::{iter, marker::PhantomData};
 /// cell types (e.g. `[Text; 3]`) or [ratatui::widgets::Row]. If using an array,
 /// the length should match `COLS`. Allowing `Row` makes it possible to override
 /// styling on a row-by-row basis.
+///
+/// This is a thing wrapper around [ratatui::widgets::Table] that handles a lot
+/// of the boilerplate we need for our specific applications.
 #[derive(Debug)]
 pub struct Table<'a, const COLS: usize, R> {
     pub title: Option<&'a str>,
@@ -43,19 +46,12 @@ impl<const COLS: usize, Rows: Default> Default for Table<'_, COLS, Rows> {
     }
 }
 
-impl<'a, const COLS: usize, Cll> Generate for Table<'a, COLS, [Cll; COLS]>
+/// Render a table with fixed columns and no selection state
+impl<'a, const COLS: usize, Cll> Widget for Table<'a, COLS, [Cll; COLS]>
 where
     Cll: Into<Cell<'a>>,
 {
-    type Output<'this>
-        = ratatui::widgets::Table<'this>
-    where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let table = Table {
             title: self.title,
             alternate_row_style: self.alternate_row_style,
@@ -63,20 +59,34 @@ where
             column_widths: self.column_widths,
             rows: self.rows.into_iter().map(Row::new).collect_vec(),
         };
-        table.generate()
+        table.render(area, buf, &mut TableState::default());
     }
 }
 
-impl<'a, const COLS: usize> Generate for Table<'a, COLS, Row<'a>> {
-    type Output<'this>
-        = ratatui::widgets::Table<'this>
-    where
-        Self: 'this;
+/// Render a table with fixed columns and selection state
+impl<'a, const COLS: usize, Cll> StatefulWidget for Table<'a, COLS, [Cll; COLS]>
+where
+    Cll: Into<Cell<'a>>,
+{
+    type State = TableState;
 
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let table = Table {
+            title: self.title,
+            alternate_row_style: self.alternate_row_style,
+            header: self.header,
+            column_widths: self.column_widths,
+            rows: self.rows.into_iter().map(Row::new).collect_vec(),
+        };
+        table.render(area, buf, state);
+    }
+}
+
+/// Render a table with dynamic columns and selection state
+impl<'a, const COLS: usize> StatefulWidget for Table<'a, COLS, Row<'a>> {
+    type State = TableState;
+
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let styles = &TuiContext::get().styles;
         let rows = self.rows.into_iter().enumerate().map(|(i, row)| {
             // Apply theme styles, but let the row's individual styles override
@@ -105,7 +115,8 @@ impl<'a, const COLS: usize> Generate for Table<'a, COLS, Row<'a>> {
             table = table.header(Row::new(header).style(styles.table.header));
         }
 
-        table
+        // Defer to Ratatui's impl for the actual render
+        StatefulWidget::render(table, area, buf, state);
     }
 }
 

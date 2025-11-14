@@ -7,7 +7,6 @@ use crate::{
         Generate, ViewContext,
         common::{
             button::ButtonGroup,
-            list::List,
             modal::Modal,
             text_box::{TextBox, TextBoxProps},
         },
@@ -17,13 +16,13 @@ use crate::{
         },
         context::UpdateContext,
         event::Event,
-        state::select::SelectState,
+        state::select::{SelectState, SelectStateListProps},
     },
 };
 use derive_more::Display;
 use ratatui::{
     prelude::Constraint,
-    text::{Line, Text},
+    text::{Line, Span, Text},
 };
 use slumber_core::{
     collection::{ProfileId, RecipeId},
@@ -221,22 +220,26 @@ impl Component for SelectListModal {
 impl Draw for SelectListModal {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Empty state
-        let options = &self.options;
-        if options.is_empty() {
+        if self.options.is_empty() {
             canvas.render_widget(
                 Text::from(vec!["No options defined!".into()]),
                 metadata.area(),
             );
-            return;
+        } else {
+            canvas.draw(
+                &self.options,
+                SelectStateListProps,
+                metadata.area(),
+                true,
+            );
         }
-        canvas.draw(&self.options, List::from(options), metadata.area(), true);
     }
 }
 
 /// Render a select option via its label
 impl Generate for &SelectOption {
     type Output<'this>
-        = Text<'this>
+        = Span<'this>
     where
         Self: 'this;
 

@@ -16,7 +16,7 @@ use crate::{
         },
         context::UpdateContext,
         event::Event,
-        state::select::{SelectState, SelectStateListProps},
+        state::select::{Select, SelectListProps},
     },
 };
 use derive_more::Display;
@@ -152,7 +152,7 @@ pub struct SelectListModal {
     /// Modal title, from the select message
     title: String,
     /// List of options to present to the user
-    options: SelectState<SelectOption>,
+    options: Select<SelectOption>,
     #[debug(skip)]
     on_submit: Box<dyn 'static + FnOnce(Value)>,
 }
@@ -167,7 +167,7 @@ impl SelectListModal {
         Self {
             id: ComponentId::default(),
             title,
-            options: SelectState::builder(options).build(),
+            options: Select::builder(options).build(),
             on_submit: Box::new(on_submit),
         }
     }
@@ -226,12 +226,7 @@ impl Draw for SelectListModal {
                 metadata.area(),
             );
         } else {
-            canvas.draw(
-                &self.options,
-                SelectStateListProps,
-                metadata.area(),
-                true,
-            );
+            canvas.draw(&self.options, SelectListProps, metadata.area(), true);
         }
     }
 }

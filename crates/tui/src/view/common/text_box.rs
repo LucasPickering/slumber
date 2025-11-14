@@ -285,6 +285,7 @@ impl Draw<TextBoxProps> for TextBox {
                         offset: scroll_x as usize,
                         margin: 1,
                         orientation: ScrollbarOrientation::HorizontalBottom,
+                        invert: false,
                     },
                     area,
                 );

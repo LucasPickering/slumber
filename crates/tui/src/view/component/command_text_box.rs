@@ -4,8 +4,13 @@ use crate::view::{
     component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
+    state::select::{Select, SelectEvent, SelectEventType, SelectListProps},
 };
 use persisted::PersistedContainer;
+use ratatui::{
+    layout::{Offset, Rect},
+    widgets::{Clear, ListDirection},
+};
 use slumber_config::Action;
 use std::mem;
 
@@ -17,6 +22,9 @@ pub struct CommandTextBox {
     text_box: TextBox,
     /// Access previous commands with up/down arrow keys
     scrollback: Scrollback,
+    /// Results from ctrl-r search. `Some` only when the search is visible and
+    /// navigable
+    search: Option<Select<String>>,
 }
 
 impl CommandTextBox {
@@ -31,6 +39,7 @@ impl CommandTextBox {
                 TextBoxEvent::Submit,
             ]),
             scrollback: Scrollback::Inactive,
+            search: None,
         }
     }
 
@@ -70,6 +79,45 @@ impl CommandTextBox {
     fn reset_scrollback(&mut self) {
         self.scrollback = Scrollback::Inactive;
     }
+
+    /// Search for commands matching the current text. If there are any results,
+    /// open them in a list
+    fn update_search(&mut self) {
+        let query = self.text();
+        let commands = ViewContext::with_database(|db| db.get_commands(query))
+            .unwrap_or_default(); // Error should be logged by the DB
+        if commands.is_empty() {
+            self.search = None;
+        } else {
+            // Load ALL the results into a select. draw() is responsible for
+            // limiting what's visible at a time. The DB caps the history
+            // length so this is bounded.
+            self.search = Some(
+                Select::builder(commands)
+                    // Most recent command is closest to the text box
+                    .direction(ListDirection::BottomToTop)
+                    .subscribe([SelectEventType::Submit])
+                    .build(),
+            );
+        }
+    }
+
+    /// Cancel the search without taking its selection
+    fn close_search(&mut self) {
+        self.search = None;
+    }
+
+    /// Close the search and submit the currently selected item as a command
+    fn submit_search(&mut self) {
+        // *should* always be true, as this is only called when the select is
+        // defined and has something selected
+        if let Some(command) =
+            self.search.take().and_then(Select::into_selected)
+        {
+            self.set_text(command);
+            self.emitter.emit(CommandTextBoxEvent::Submit);
+        }
+    }
 }
 
 impl Component for CommandTextBox {
@@ -83,15 +131,29 @@ impl Component for CommandTextBox {
             .action(|action, propagate| match action {
                 Action::Up => self.scrollback_back(),
                 Action::Down => self.scrollback_forward(),
+                Action::SearchHistory => self.update_search(),
                 _ => propagate.set(),
             })
+            .emitted_opt(
+                self.search.as_ref().map(ToEmitter::to_emitter),
+                |event| match event {
+                    SelectEvent::Submit(_) => self.submit_search(),
+                    SelectEvent::Select(_) | SelectEvent::Toggle(_) => {}
+                },
+            )
             .emitted(self.text_box.to_emitter(), |event| match event {
                 TextBoxEvent::Focus => {
                     self.emitter.emit(CommandTextBoxEvent::Focus);
                 }
-                TextBoxEvent::Change => {}
+                TextBoxEvent::Change => {
+                    // If searching, update the search results
+                    if self.search.is_some() {
+                        self.update_search();
+                    }
+                }
                 TextBoxEvent::Cancel => {
                     self.reset_scrollback();
+                    self.close_search();
                     self.emitter.emit(CommandTextBoxEvent::Cancel);
                 }
                 TextBoxEvent::Submit => {
@@ -104,7 +166,7 @@ impl Component for CommandTextBox {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.text_box.to_child_mut()]
+        vec![self.search.to_child_mut(), self.text_box.to_child_mut()]
     }
 }
 
@@ -115,12 +177,32 @@ impl Draw<TextBoxProps> for CommandTextBox {
         props: TextBoxProps,
         metadata: DrawMetadata,
     ) {
-        canvas.draw(
-            &self.text_box,
-            props,
-            metadata.area(),
-            metadata.has_focus(),
-        );
+        let area = metadata.area();
+        canvas.draw(&self.text_box, props, area, metadata.has_focus());
+
+        if let Some(search) = &self.search {
+            let height = search.len().min(10) as u16;
+            // We're intentionally blowing out our area here to render on top
+            // of the pane above
+            let search_area = Rect {
+                height,
+                // Shift up from the text box to account for the height
+                ..area.offset(Offset {
+                    x: 0,
+                    y: -i32::from(height),
+                })
+            }
+            .intersection(canvas.area()); // Don't go outside terminal
+            canvas.render_widget(Clear, search_area); // Clear styling
+            canvas.draw(
+                search,
+                SelectListProps {
+                    scrollbar_margin: 0,
+                },
+                search_area,
+                true,
+            );
+        }
     }
 }
 
@@ -234,11 +316,13 @@ impl Scrollback {
 mod tests {
     use super::*;
     use crate::{
+        context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
+    use ratatui::{style::Styled, text::Line};
     use rstest::{fixture, rstest};
-    use terminput::KeyCode;
+    use terminput::{KeyCode, KeyModifiers};
 
     impl Scrollback {
         fn active(original: &str, offset: usize) -> Self {
@@ -249,27 +333,13 @@ mod tests {
         }
     }
 
-    /// Initialize the DB with some command history
-    #[fixture]
-    fn scrollback_db(_harness: TestHarness) {
-        ViewContext::with_database(|db| {
-            // These are served in reverse order: 0 => three, 1 => two, 2 => one
-            db.insert_command("one").unwrap();
-            db.insert_command("two").unwrap();
-            db.insert_command("three").unwrap();
-        });
-    }
-
     /// Scroll back/forth through command history
     #[rstest]
-    fn test_component_scrollback(harness: TestHarness, terminal: TestTerminal) {
-        ViewContext::with_database(|db| {
-            // These are served in reverse order: 0 => three, 1 => two, 2 => one
-            db.insert_command("one").unwrap();
-            db.insert_command("two").unwrap();
-            db.insert_command("three").unwrap();
-        });
-
+    fn test_component_scrollback(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        _history_db: (),
+    ) {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -303,6 +373,112 @@ mod tests {
         assert_eq!(component.text(), "one");
     }
 
+    /// Search history with ctrl+r
+    #[rstest]
+    fn test_component_search(
+        harness: TestHarness,
+        #[with(6, 3)] terminal: TestTerminal,
+        _history_db: (),
+    ) {
+        let styles = &TuiContext::get().styles;
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            CommandTextBox::new(TextBox::default()),
+        );
+        // The search box blows up out of the given area, so use the bottom
+        // line for the text box
+        component.set_area(bottom_row_area(&terminal));
+
+        // Initial text should be used for the query
+        component
+            .int()
+            .send_text("t")
+            .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
+            .assert_empty();
+        assert_eq!(component.text(), "t");
+        assert_eq!(get_search_items(&component).unwrap(), &["three", "two"]);
+        terminal.assert_buffer_lines([
+            // Most recent last!!
+            Line::from("two   "),
+            Line::from("three ".set_style(styles.list.highlight)),
+            // Text box line needs specific styling
+            Line::from_iter([
+                "t".set_style(styles.text_box.text),
+                " ".set_style(styles.text_box.cursor),
+                "    ".set_style(styles.text_box.text),
+            ]),
+        ]);
+
+        // Modifying while in search mode should update what's visible
+        component.int().send_text("h").assert_empty();
+        assert_eq!(component.text(), "th");
+        assert_eq!(get_search_items(&component).unwrap(), &["three"]);
+
+        // Enter closes the search AND submits
+        component
+            .int()
+            .send_key(KeyCode::Enter)
+            .assert_emitted([CommandTextBoxEvent::Submit]);
+        assert_eq!(component.text(), "three");
+    }
+
+    /// Search history with ctrl+r. Escape exits the query *without* taking the
+    /// selected item
+    #[rstest]
+    fn test_component_search_cancel(
+        harness: TestHarness,
+        #[with(6, 3)] terminal: TestTerminal,
+        _history_db: (),
+    ) {
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            CommandTextBox::new(TextBox::default()),
+        );
+        component.set_area(bottom_row_area(&terminal));
+
+        component
+            .int()
+            .send_text("t")
+            .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
+            .assert_empty();
+        assert_eq!(get_search_items(&component).unwrap(), &["three", "two"]);
+
+        // Escape exits without modifying the text. This exits both the search
+        // list *and* the text box.
+        component
+            .int()
+            .send_key(KeyCode::Esc)
+            .assert_emitted([CommandTextBoxEvent::Cancel]);
+        assert_eq!(component.text(), "t");
+    }
+
+    /// Search history with ctrl+r. When there are no matches, we do *not*
+    /// enter search mode
+    #[rstest]
+    fn test_component_search_no_match(
+        harness: TestHarness,
+        #[with(6, 3)] terminal: TestTerminal,
+        _history_db: (),
+    ) {
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            CommandTextBox::new(TextBox::default()),
+        );
+        component.set_area(bottom_row_area(&terminal));
+
+        // Initial text should be used for the query
+        component
+            .int()
+            .send_text("teefs")
+            .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
+            .assert_empty();
+        assert_eq!(component.text(), "teefs");
+        assert_eq!(get_search_items(&component), None);
+    }
+
     /// Various scenarios scrolling back in history
     #[rstest]
     // While scrollback is inactive, enter scrollback
@@ -324,7 +500,8 @@ mod tests {
         Scrollback::active("orig", 2)
     )]
     fn test_scrollback_back(
-        _scrollback_db: (),
+        _harness: TestHarness, // Needed for ViewContext
+        _history_db: (),
         #[case] mut initial: Scrollback,
         #[case] expected_output: Option<&str>,
         #[case] expected_scrollback: Scrollback,
@@ -350,7 +527,8 @@ mod tests {
         Scrollback::Inactive
     )]
     fn test_scrollback_forward(
-        _scrollback_db: (),
+        _harness: TestHarness, // Needed for ViewContext
+        _history_db: (),
         #[case] mut initial: Scrollback,
         #[case] expected_output: Option<&str>,
         #[case] expected_scrollback: Scrollback,
@@ -361,11 +539,41 @@ mod tests {
 
     /// Original command should be excluded from all scrollback suggestions
     #[rstest]
-    fn test_scrollback_exclude_original(_scrollback_db: ()) {
+    fn test_scrollback_exclude_original(
+        _harness: TestHarness, // Needed for ViewContext,
+        _history_db: (),
+    ) {
         let mut scrollback = Scrollback::Inactive;
         // "three" is excluded entirely from the history list, so the offset is
         // still 0 but it points to "two"
         assert_eq!(scrollback.back("three"), Some("two".into()));
         assert_eq!(scrollback, Scrollback::active("three", 0));
+    }
+
+    /// Initialize the DB with some command history. This needs to be pulled in
+    /// *after* the `harness` fixture, because that one initializes
+    /// `ViewContext`. We can't pull the fixture in here because then it gets
+    /// initialized twice.
+    #[fixture]
+    fn history_db() {
+        ViewContext::with_database(|db| {
+            // These are served in reverse order: 0 => three, 1 => two, 2 => one
+            db.insert_command("one").unwrap();
+            db.insert_command("two").unwrap();
+            db.insert_command("three").unwrap();
+        });
+    }
+
+    /// Helper to get the visible search results
+    fn get_search_items(component: &CommandTextBox) -> Option<Vec<&str>> {
+        component.search.as_ref().map(|select| {
+            select.items().map(String::as_str).collect::<Vec<_>>()
+        })
+    }
+
+    /// Get the area of the bottom row of the terminal. This is where we render
+    /// the text box to, so the history search can appear above it
+    fn bottom_row_area(terminal: &TestTerminal) -> Rect {
+        terminal.area().rows().next_back().unwrap()
     }
 }

@@ -593,6 +593,10 @@ where
                 offset: state.offset(),
                 margin: props.scrollbar_margin,
                 orientation: ScrollbarOrientation::VerticalRight,
+                invert: match self.direction {
+                    ListDirection::TopToBottom => false,
+                    ListDirection::BottomToTop => true,
+                },
             },
             metadata.area(),
         );

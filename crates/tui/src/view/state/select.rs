@@ -15,7 +15,9 @@ use persisted::PersistedContainer;
 use ratatui::{
     style::Styled,
     text::Text,
-    widgets::{List, ListItem, ListState, StatefulWidget, TableState},
+    widgets::{
+        List, ListDirection, ListItem, ListState, StatefulWidget, TableState,
+    },
 };
 use slumber_config::Action;
 use slumber_core::collection::HasId;
@@ -55,6 +57,11 @@ where
 {
     id: ComponentId,
     emitter: Emitter<SelectStateEvent>,
+    /// Direction of items, for both display and interaction. In top-to-bottom,
+    /// index 0 is at the top, Up decrements the index, and Down increments it.
+    /// In bottom-to-top, index 0 is at the bottom, Up increments the index,
+    /// and Down decrements it.
+    direction: ListDirection,
     /// Which event types to emit
     subscribed_events: HashSet<SelectStateEventType>,
     /// Use interior mutability because this needs to be modified during the
@@ -87,6 +94,7 @@ pub struct SelectStateBuilder<Item, State> {
     /// type of the value. Defaults to 0. If a filter is give, this will be
     /// the index *after* the filter is applied.
     preselect_index: usize,
+    direction: ListDirection,
     subscribed_events: HashSet<SelectStateEventType>,
     _state: PhantomData<State>,
 }
@@ -107,6 +115,12 @@ impl<Item, State> SelectStateBuilder<Item, State> {
                 error!("Disabled index {index} out of bounds");
             }
         }
+        self
+    }
+
+    /// Set list display direction
+    pub fn direction(mut self, direction: ListDirection) -> Self {
+        self.direction = direction;
         self
     }
 
@@ -172,6 +186,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         let mut select = SelectState {
             id: ComponentId::default(),
             emitter: Default::default(),
+            direction: self.direction,
             subscribed_events: self.subscribed_events,
             state: RefCell::default(),
             items: self.items,
@@ -206,6 +221,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
                     enabled: true,
                 })
                 .collect(),
+            direction: ListDirection::TopToBottom,
             preselect_index: 0,
             subscribed_events: HashSet::new(),
             _state: PhantomData,
@@ -288,14 +304,24 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         }
     }
 
-    /// Select the previous item in the list
-    pub fn previous(&mut self) {
-        self.select_delta(-1);
+    /// Select the item above the selected item. For top-to-bottom lists, this
+    /// is the previous item. For bottom-to-top, it's the next.
+    pub fn up(&mut self) {
+        let delta = match self.direction {
+            ListDirection::TopToBottom => -1,
+            ListDirection::BottomToTop => 1,
+        };
+        self.select_delta(delta);
     }
 
-    /// Select the next item in the list
-    pub fn next(&mut self) {
-        self.select_delta(1);
+    /// Select the item below the selected item. For top-to-bottom lists, this
+    /// is the next item. For bottom-to-top, it's the previous.
+    pub fn down(&mut self) {
+        let delta = match self.direction {
+            ListDirection::TopToBottom => 1,
+            ListDirection::BottomToTop => -1,
+        };
+        self.select_delta(delta);
     }
 
     /// Remove the selected item from the list. This will slide everything after
@@ -432,15 +458,15 @@ where
                 propagate.set();
             })
             .scroll(|direction| match direction {
-                ScrollDirection::Up => self.previous(),
-                ScrollDirection::Down => self.next(),
+                ScrollDirection::Up => self.up(),
+                ScrollDirection::Down => self.down(),
                 ScrollDirection::Left | ScrollDirection::Right => {}
             })
             .action(|action, propagate| match action {
                 // Up/down keys and scrolling. Scrolling will only work if
                 // .set_area() is called on the wrapping Component by our parent
-                Action::Up | Action::ScrollUp => self.previous(),
-                Action::Down | Action::ScrollDown => self.next(),
+                Action::Up | Action::ScrollUp => self.up(),
+                Action::Down | Action::ScrollDown => self.down(),
                 // Don't eat these events unless the user has subscribed
                 Action::Toggle
                     if self.is_subscribed(SelectStateEventType::Toggle) =>
@@ -532,7 +558,9 @@ where
         } else {
             styles.highlight_inactive
         };
-        let list = List::new(items).highlight_style(highlight_style);
+        let list = List::new(items)
+            .highlight_style(highlight_style)
+            .direction(self.direction);
         let area = metadata.area();
         let state = &mut self.state.borrow_mut();
         canvas.render_stateful_widget(list, area, state);
@@ -648,12 +676,14 @@ mod tests {
         input::InputEvent,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
+            Generate,
             test_util::{PersistedComponent, TestComponent},
             util::persistence::DatabasePersistedStore,
         },
     };
     use persisted::{PersistedKey, PersistedStore};
     use proptest::{collection, sample, test_runner::TestRunner};
+    use ratatui::text::Span;
     use rstest::rstest;
     use serde::Serialize;
     use slumber_core::collection::ProfileId;
@@ -690,6 +720,47 @@ mod tests {
                 .preselect_opt(preselect.as_ref())
                 .build();
         assert_eq!(select.selected_index(), expected_selected);
+    }
+
+    /// Bottom-to-top inverts both the display direction and controls/selection
+    #[rstest]
+    fn test_bottom_to_top(
+        harness: TestHarness,
+        #[with(5, 3)] terminal: TestTerminal,
+    ) {
+        let styles = &TuiContext::get().styles.list;
+        let items = vec!["one", "two", "three"];
+        let select: SelectState<&str, ListState> = SelectState::builder(items)
+            .direction(ListDirection::BottomToTop)
+            .build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
+
+        // Initial state - first item is at the bottom
+        component.int().drain_draw().assert_empty();
+        assert_eq!(component.selected(), Some(&"one"));
+        terminal.assert_buffer_lines([
+            "three".into(),
+            "two  ".into(),
+            "one  ".set_style(styles.highlight),
+        ]);
+
+        // Up -> next
+        component.int().send_key(KeyCode::Up).assert_empty();
+        assert_eq!(component.selected(), Some(&"two"));
+        terminal.assert_buffer_lines([
+            "three".into(),
+            "two  ".set_style(styles.highlight),
+            "one  ".into(),
+        ]);
+
+        // Down -> previous
+        component.int().send_key(KeyCode::Down).assert_empty();
+        assert_eq!(component.selected(), Some(&"one"));
+        terminal.assert_buffer_lines([
+            "three".into(),
+            "two  ".into(),
+            "one  ".set_style(styles.highlight),
+        ]);
     }
 
     /// Apply a filter during build
@@ -1040,8 +1111,6 @@ mod tests {
         // Which items emit Select events?
         #[case] expected_event_indexes: &[usize],
     ) {
-        use ratatui::text::Span;
-
         #[derive(Debug, PersistedKey, Serialize)]
         #[persisted(Option<ProfileId>)]
         struct Key;

@@ -37,15 +37,16 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Add `slumber config` command (replaces `slumber show config`)
 - Add `slumber collection` command (replaces `slumber show collection`)
 - Add `slumber db --path` flag (replaces `slumber show paths db`)
+- You can now search command history in the query/export command text box
+  - Up/down to cycle through past commands
+  - Ctrl-r to search
+  - Command history is specific to each collection and capped at 100 commands per collection
 
 ### Changed
 
 - Some menu actions have been moved into nested sections for better organization
 - Refactor significant portions of the TUI logic. There should be no user-facing changes, but if you notice any bugs [please report them!](https://github.com/LucasPickering/slumber/issues/new/choose)
 - List items can now be selected by click
-- You can now scroll through command history in the query/export command text box
-  - Up/down to navigate past commands
-  - Command history is specific to each collection and capped at 100 commands per collection
 
 ## [4.2.0] - 2025-10-14
 

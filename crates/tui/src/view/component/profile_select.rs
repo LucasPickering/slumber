@@ -238,7 +238,7 @@ impl Draw for ProfileListModal {
             Constraint::Min(0),
         ])
         .areas(area);
-        canvas.draw(&self.select, SelectListProps, list_area, true);
+        canvas.draw(&self.select, SelectListProps::modal(), list_area, true);
         if let Some(profile) = self.select.selected() {
             canvas.draw(
                 &self.detail,

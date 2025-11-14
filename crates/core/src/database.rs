@@ -797,7 +797,6 @@ impl CollectionDatabase {
 
         if deleted > 0 {
             debug!("Evicted {deleted} rows from `commands` table");
-            dbg!(deleted);
         }
 
         Ok(())

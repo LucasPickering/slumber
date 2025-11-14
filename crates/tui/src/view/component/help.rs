@@ -124,7 +124,7 @@ impl Draw for HelpModal {
             column_widths: &[Constraint::Length(13), Constraint::Max(1000)],
             ..Default::default()
         };
-        canvas.render_widget(collection_metadata.generate(), collection_area);
+        canvas.render_widget(collection_metadata, collection_area);
 
         // Keybindings
         let keybindings = Table {
@@ -138,6 +138,6 @@ impl Draw for HelpModal {
                 .collect_vec(),
             ..Default::default()
         };
-        canvas.render_widget(keybindings.generate(), keybindings_area);
+        canvas.render_widget(keybindings, keybindings_area);
     }
 }

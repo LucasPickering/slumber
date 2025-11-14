@@ -92,7 +92,7 @@ impl Draw for CollectionSelect {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
-        canvas.draw(&self.select, SelectListProps, select_area, true);
+        canvas.draw(&self.select, SelectListProps::modal(), select_area, true);
         canvas.draw(&self.filter, TextBoxProps::default(), filter_area, true);
     }
 }

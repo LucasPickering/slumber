@@ -181,15 +181,12 @@ impl Component for TextWindow {
                 ScrollDirection::Right => self.scroll_right(1),
             })
             .action(|action, propagate| match action {
-                // Accept regular OR scroll directional actions. Arrow keys have
-                // no potential meaning in this component, so we might as well
-                // accept them for scrolling. If the parent wants to use arrow
-                // keys for something else, then it has to arrange its children
-                // to give the other consumer priority.
+                // Accept regular OR scroll directional actions
                 Action::Up | Action::ScrollUp => self.scroll_up(1),
                 Action::Down | Action::ScrollDown => self.scroll_down(1),
-                Action::Left | Action::ScrollLeft => self.scroll_left(1),
-                Action::Right | Action::ScrollRight => self.scroll_right(1),
+                // Don't eat Left/Right arrows because those control tabs
+                Action::ScrollLeft => self.scroll_left(1),
+                Action::ScrollRight => self.scroll_right(1),
                 Action::PageUp => self.scroll_up(self.window_height.get()),
                 Action::PageDown => self.scroll_down(self.window_height.get()),
                 Action::Home => self.scroll_to(0),

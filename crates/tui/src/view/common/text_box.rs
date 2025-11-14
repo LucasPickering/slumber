@@ -196,7 +196,6 @@ impl Component for TextBox {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .click(|_, _| self.emitter.emit(TextBoxEvent::Focus))
             .action(|action, propagate| match action {
                 // Don't consume the input event if the caller isn't subscribed
                 Action::Submit if self.is_subscribed(TextBoxEvent::Submit) => {
@@ -463,7 +462,6 @@ impl ToEmitter<TextBoxEvent> for TextBox {
 /// Emitted event for [TextBox]
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub enum TextBoxEvent {
-    Focus,
     Change,
     Cancel,
     Submit,
@@ -523,7 +521,6 @@ mod tests {
             TextBox::default().subscribe([
                 TextBoxEvent::Cancel,
                 TextBoxEvent::Change,
-                TextBoxEvent::Focus,
                 TextBoxEvent::Submit,
             ]),
         );
@@ -546,7 +543,6 @@ mod tests {
         ]]);
 
         // Sending with a modifier applied should do nothing, unless it's shift
-
         component
             .int()
             .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
@@ -566,12 +562,6 @@ mod tests {
         assert_state(&component.state, "hi!W", 4);
 
         // Test emitted events
-
-        component
-            .int()
-            .click(0, 0)
-            .assert_emitted([TextBoxEvent::Focus]);
-
         component
             .int()
             .send_key(KeyCode::Enter)

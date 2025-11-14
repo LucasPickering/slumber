@@ -16,7 +16,8 @@ use ratatui::{
     style::Styled,
     text::Text,
     widgets::{
-        List, ListDirection, ListItem, ListState, StatefulWidget, TableState,
+        List, ListDirection, ListItem, ListState, ScrollbarOrientation,
+        StatefulWidget, TableState,
     },
 };
 use slumber_config::Action;
@@ -517,12 +518,30 @@ where
 }
 
 /// Props for rendering [Select] as a list
-///
-/// Currently this is empty, but it serves as a type parameter so callers can
-/// easily specify which impl of [Draw] they want.
-#[derive(Default)]
 pub struct SelectListProps {
-    scrollbar_margin: i32,
+    /// Horizontal offset for the scrollbar, relative to the rightmost column
+    /// in the draw area
+    pub scrollbar_margin: i32,
+}
+
+impl SelectListProps {
+    /// Create props that will locate the scrollbar appropriately in a modal.
+    /// Modal use an extra column of horizontal padding between content and
+    /// border, so we need additional scrollbar margin to place the scrollbar
+    /// in the border.
+    pub fn modal() -> Self {
+        Self {
+            scrollbar_margin: 2,
+        }
+    }
+
+    /// Create props that will locate the scrollbar appropriately in a top-level
+    /// pane. This will place the scrollbar in the border of the pane.
+    pub fn pane() -> Self {
+        Self {
+            scrollbar_margin: 1,
+        }
+    }
 }
 
 /// Render as a list
@@ -536,7 +555,7 @@ where
     fn draw(
         &self,
         canvas: &mut Canvas,
-        _: SelectListProps,
+        props: SelectListProps,
         metadata: DrawMetadata,
     ) {
         let styles = &TuiContext::get().styles.list;
@@ -572,7 +591,8 @@ where
             Scrollbar {
                 content_length: num_items,
                 offset: state.offset(),
-                ..Default::default()
+                margin: props.scrollbar_margin,
+                orientation: ScrollbarOrientation::VerticalRight,
             },
             metadata.area(),
         );
@@ -692,6 +712,17 @@ mod tests {
     use slumber_util::assert_matches;
     use std::{collections::HashSet, ops::Deref};
     use terminput::KeyCode;
+
+    // Rendering in tests is much simpler if Props implements Default. Outside
+    // tests though we want to force consumers to make a choice about props.
+    #[expect(clippy::derivable_impls)]
+    impl Default for SelectListProps {
+        fn default() -> Self {
+            Self {
+                scrollbar_margin: 0,
+            }
+        }
+    }
 
     /// Test preselection, where the initial selected state is modified at
     /// build time. There are various cases to test related to the list being

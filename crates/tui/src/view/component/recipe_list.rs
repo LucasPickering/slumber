@@ -236,7 +236,7 @@ impl Draw for RecipeListPane {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(area);
-        canvas.draw(&*self.select, SelectListProps, select_area, true);
+        canvas.draw(&*self.select, SelectListProps::pane(), select_area, true);
 
         canvas.draw(
             &self.filter,

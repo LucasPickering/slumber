@@ -163,7 +163,7 @@ impl Draw for History {
         if self.deleting {
             canvas.draw(&self.delete_confirm_buttons, (), area, true);
         } else {
-            canvas.draw(&self.select, SelectListProps, area, true);
+            canvas.draw(&self.select, SelectListProps::modal(), area, true);
         }
     }
 }

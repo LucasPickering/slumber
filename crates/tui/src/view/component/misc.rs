@@ -226,7 +226,12 @@ impl Draw for SelectListModal {
                 metadata.area(),
             );
         } else {
-            canvas.draw(&self.options, SelectListProps, metadata.area(), true);
+            canvas.draw(
+                &self.options,
+                SelectListProps::modal(),
+                metadata.area(),
+                true,
+            );
         }
     }
 }

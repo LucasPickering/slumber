@@ -85,7 +85,7 @@ pub trait Component: ToChild {
     /// for this position. This should typically not be overridden. The default
     /// implementation checks if the component's last draw area contains the
     /// point.
-    fn contains_cursor(&self, position: Position) -> bool {
+    fn contains(&self, position: Position) -> bool {
         // By default, we want to receive any mouse event in our draw area
         self.area().is_some_and(|area| area.contains(position))
     }
@@ -552,7 +552,7 @@ fn update_all(
         Event::Input(
             InputEvent::Click { position, .. }
             | InputEvent::Scroll { position, .. },
-        ) => component.contains_cursor(*position),
+        ) => component.contains(*position),
         _ => true,
     };
     if should_receive {

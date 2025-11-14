@@ -10,6 +10,10 @@ _Example of querying with jq_
 
 _Example of using pipes in a query command_
 
+![Navigating query history](../../images/query_history.gif)
+
+_You can search query history with `ctrl r`_
+
 ## Exporting data
 
 Keep in mind that your queries are being executed as shell commands on your system. You should avoid running any commands that interact with the file system, such as using `>` or `<` to pipe to/from files. However, if you want to export response data from Slumber, you can do so with the export command palette. To open the export palette, select the Response pane and press the `export` key binding (`:` by default). Then enter any shell command, which will receive the response body as stdin.

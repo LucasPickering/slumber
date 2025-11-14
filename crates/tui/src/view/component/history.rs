@@ -159,15 +159,11 @@ impl Component for History {
 
 impl Draw for History {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let area = metadata.area();
         if self.deleting {
-            canvas.draw(
-                &self.delete_confirm_buttons,
-                (),
-                metadata.area(),
-                true,
-            );
+            canvas.draw(&self.delete_confirm_buttons, (), area, true);
         } else {
-            canvas.draw(&self.select, SelectListProps, metadata.area(), true);
+            canvas.draw(&self.select, SelectListProps, area, true);
         }
     }
 }

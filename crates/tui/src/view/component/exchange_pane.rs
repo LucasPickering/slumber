@@ -457,33 +457,33 @@ impl Component for ExchangePaneContent {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        let mut children = vec![
-            self.delete_request_modal.to_child_mut(),
-            // Tabs before content so text window can't eat left/right actions
-            self.tabs.to_child_mut(),
-        ];
-
         // Add tab content
-        match &mut self.state {
+        let content = match &mut self.state {
             ExchangePaneContentState::Building
             | ExchangePaneContentState::BuildError { .. }
-            | ExchangePaneContentState::Cancelled => {}
+            | ExchangePaneContentState::Cancelled => vec![],
             ExchangePaneContentState::Loading { request } => {
-                children.extend([request.to_child_mut()]);
+                vec![request.to_child_mut()]
             }
             ExchangePaneContentState::Response {
                 request,
                 response_headers,
                 response_body,
-            } => children.extend([
+            } => vec![
                 request.to_child_mut(),
                 response_headers.to_child_mut(),
                 response_body.to_child_mut(),
-            ]),
+            ],
             ExchangePaneContentState::RequestError { request, .. } => {
-                children.extend([request.to_child_mut()]);
+                vec![request.to_child_mut()]
             }
-        }
+        };
+
+        let mut children = vec![self.delete_request_modal.to_child_mut()];
+        // Content before tabs so the query text box gets priority on left/right
+        // arrow keys
+        children.extend(content);
+        children.push(self.tabs.to_child_mut());
 
         children
     }

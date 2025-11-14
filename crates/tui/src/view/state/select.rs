@@ -521,7 +521,9 @@ where
 /// Currently this is empty, but it serves as a type parameter so callers can
 /// easily specify which impl of [Draw] they want.
 #[derive(Default)]
-pub struct SelectListProps;
+pub struct SelectListProps {
+    scrollbar_margin: i32,
+}
 
 /// Render as a list
 ///

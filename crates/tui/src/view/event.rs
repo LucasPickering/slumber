@@ -182,6 +182,23 @@ impl EventMatch {
             Err(event) => Some(event).into(),
         }
     }
+
+    /// [Self::emitted], but the emitter is optional. If `None`, event is not
+    /// consumed
+    pub fn emitted_opt<E>(
+        self,
+        emitter: Option<Emitter<E>>,
+        f: impl FnOnce(E),
+    ) -> Self
+    where
+        E: LocalEvent,
+    {
+        if let Some(emitter) = emitter {
+            self.emitted(emitter, f)
+        } else {
+            self
+        }
+    }
 }
 
 impl From<EventMatch> for Option<Event> {

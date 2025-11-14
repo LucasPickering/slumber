@@ -63,6 +63,7 @@ input_bindings:
 | `fullscreen`          | `f`             | Fullscreen current pane                               |
 | `open_actions`        | `x`             | Open actions menu                                     |
 | `open_help`           | `?`             | Open help dialog                                      |
+| `search_history`      | `ctrl r`        | Search command history in query/export text box       |
 | `select_collection`   | `f3`            | Open collection select dialog                         |
 | `select_profile_list` | `p`             | Open Profile List dialog                              |
 | `select_recipe_list`  | `l`             | Select Recipe List pane                               |

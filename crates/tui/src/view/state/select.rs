@@ -1,13 +1,22 @@
-use crate::view::{
-    component::{
-        Canvas, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+use crate::{
+    context::TuiContext,
+    view::{
+        Generate,
+        common::{scrollbar::Scrollbar, table::Table},
+        component::{
+            Canvas, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
+        },
+        context::UpdateContext,
+        event::{Emitter, Event, EventMatch, ToEmitter},
     },
-    context::UpdateContext,
-    event::{Emitter, Event, EventMatch, ToEmitter},
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
-use ratatui::widgets::{ListState, StatefulWidget, TableState};
+use ratatui::{
+    style::Styled,
+    text::Text,
+    widgets::{List, ListItem, ListState, StatefulWidget, TableState},
+};
 use slumber_config::Action;
 use slumber_core::collection::HasId;
 use std::{
@@ -26,6 +35,19 @@ use tracing::error;
 /// This supports a generic type for the state "backend", which is the ratatui
 /// type that stores the selection state. Typically you want `ListState` or
 /// `TableState`.
+///
+/// ## Drawing
+///
+/// As this supports multiple semantic meanings with different state backends,
+/// it has multiple [Draw] implementations. Each implementation has an explicit
+/// prop type to make it easy to specify which implementation you want.
+///
+/// - List: [SelectStateListProps]
+/// - Table: [SelectStateTableProps]
+///
+/// Drawing has to be done through these implementations, rather than adhoc
+/// `render_widget` calls, because this is a [Component]. It must be drawn to
+/// the canvas into order to receive events.
 #[derive(derive_more::Debug)]
 pub struct SelectState<Item, State = ListState>
 where
@@ -435,24 +457,6 @@ where
     }
 }
 
-/// Support rendering if the parent tells us exactly what to draw. This makes it
-/// easy to track the area that a select is drawn to, so we always receive
-/// the appropriate cursor events. It's impossible to draw the select component
-/// in another way because of the restricted access to the inner state.
-impl<Item, State, W> Draw<W> for SelectState<Item, State>
-where
-    State: SelectStateData,
-    W: StatefulWidget<State = State>,
-{
-    fn draw(&self, canvas: &mut Canvas, props: W, metadata: DrawMetadata) {
-        canvas.render_stateful_widget(
-            props,
-            metadata.area(),
-            &mut self.state.borrow_mut(),
-        );
-    }
-}
-
 impl<Item, State> PersistedContainer for SelectState<Item, State>
 where
     Item: HasId,
@@ -483,6 +487,93 @@ where
 {
     fn to_emitter(&self) -> Emitter<SelectStateEvent> {
         self.emitter
+    }
+}
+
+/// Props for rendering [SelectState] as a list
+///
+/// Currently this is empty, but it serves as a type parameter so callers can
+/// easily specify which impl of [Draw] they want.
+#[derive(Default)]
+pub struct SelectStateListProps;
+
+/// Render as a list
+///
+/// Item has to generate() to something that converts to Text
+impl<Item> Draw<SelectStateListProps> for SelectState<Item, ListState>
+where
+    for<'a> &'a Item: Generate,
+    for<'a> <&'a Item as Generate>::Output<'a>: Into<Text<'a>>,
+{
+    fn draw(
+        &self,
+        canvas: &mut Canvas,
+        _: SelectStateListProps,
+        metadata: DrawMetadata,
+    ) {
+        let styles = &TuiContext::get().styles.list;
+
+        // Draw list
+        let items: Vec<ListItem<'_>> = self
+            .items
+            .iter()
+            .map(|item| {
+                let mut list_item = ListItem::new(item.value.generate());
+                if !item.enabled {
+                    list_item = list_item.set_style(styles.disabled);
+                }
+                list_item
+            })
+            .collect();
+        let num_items = items.len();
+        // Highlight styling is based on focus. Useful for layered action menus
+        let highlight_style = if metadata.has_focus() {
+            styles.highlight
+        } else {
+            styles.highlight_inactive
+        };
+        let list = List::new(items).highlight_style(highlight_style);
+        let area = metadata.area();
+        let state = &mut self.state.borrow_mut();
+        canvas.render_stateful_widget(list, area, state);
+
+        // Draw scrollbar
+        canvas.render_widget(
+            Scrollbar {
+                content_length: num_items,
+                offset: state.offset(),
+                ..Default::default()
+            },
+            metadata.area(),
+        );
+    }
+}
+
+/// Props for rendering [SelectState] as a table
+pub struct SelectStateTableProps<'a, const COLS: usize, R> {
+    /// Format to render as. This allows the parent to determine the columns
+    /// and rows of the table; the [SelectState] just provides the selected row
+    /// state.
+    pub table: Table<'a, COLS, R>,
+}
+
+/// Render as a table
+impl<'a, const COLS: usize, R, Item> Draw<SelectStateTableProps<'a, COLS, R>>
+    for SelectState<Item, TableState>
+where
+    Table<'a, COLS, R>: StatefulWidget<State = TableState>,
+{
+    fn draw(
+        &self,
+        canvas: &mut Canvas,
+        props: SelectStateTableProps<'a, COLS, R>,
+        metadata: DrawMetadata,
+    ) {
+        canvas.render_stateful_widget(
+            props.table,
+            metadata.area(),
+            &mut self.state.borrow_mut(),
+        );
     }
 }
 
@@ -563,7 +654,6 @@ mod tests {
     };
     use persisted::{PersistedKey, PersistedStore};
     use proptest::{collection, sample, test_runner::TestRunner};
-    use ratatui::widgets::List;
     use rstest::rstest;
     use serde::Serialize;
     use slumber_core::collection::ProfileId;
@@ -631,23 +721,15 @@ mod tests {
     #[rstest]
     fn test_navigation(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let props_fn = props_fn(&items);
-        let select = SelectState::builder(items).build();
-        let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props_fn())
-            .build();
-        component.int_props(&props_fn).drain_draw().assert_empty();
+        let select: SelectState<&str, ListState> =
+            SelectState::builder(items).build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
+        component.int().drain_draw().assert_empty();
         assert_eq!(component.selected(), Some(&"a"));
-        component
-            .int_props(&props_fn)
-            .send_key(KeyCode::Down)
-            .assert_empty();
+        component.int().send_key(KeyCode::Down).assert_empty();
         assert_eq!(component.selected(), Some(&"b"));
 
-        component
-            .int_props(&props_fn)
-            .send_key(KeyCode::Up)
-            .assert_empty();
+        component.int().send_key(KeyCode::Up).assert_empty();
         assert_eq!(component.selected(), Some(&"a"));
     }
 
@@ -655,19 +737,16 @@ mod tests {
     #[rstest]
     fn test_delete(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let props_fn = props_fn(&items);
-        let select = SelectState::builder(items)
+        let select: SelectState<&str, ListState> = SelectState::builder(items)
             .subscribe([SelectStateEventType::Select])
             .build();
-        let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props_fn())
-            .build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
 
         // Start by selecting the second item, so we can assert that we select
         // the one after it when possible
         component
-            .int_props(&props_fn)
-            .drain_draw() // Handle  initial state
+            .int()
+            .drain_draw() // Handle initial state
             .send_key(KeyCode::Down)
             .assert_emitted([
                 SelectStateEvent::Select(0),
@@ -679,7 +758,7 @@ mod tests {
         component.delete_selected();
         assert_eq!(component.selected(), Some(&"c"));
         component
-            .int_props(&props_fn)
+            .int()
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(1)]);
 
@@ -687,48 +766,39 @@ mod tests {
         component.delete_selected();
         assert_eq!(component.selected(), Some(&"a"));
         component
-            .int_props(&props_fn)
+            .int()
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
         // Delete `a`, nothing left to select
         component.delete_selected();
         assert_eq!(component.selected(), None);
-        component
-            .int_props(&props_fn)
-            .drain_draw()
-            .assert_emitted([]);
+        component.int().drain_draw().assert_emitted([]);
 
         // Delete nothing; nothing should happen
         component.delete_selected();
-        component
-            .int_props(&props_fn)
-            .drain_draw()
-            .assert_emitted([]);
+        component.int().drain_draw().assert_emitted([]);
     }
 
     /// Test select emitted event
     #[rstest]
     fn test_select(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let props_fn = props_fn(&items);
-        let select = SelectState::builder(items)
+        let select: SelectState<&str, ListState> = SelectState::builder(items)
             .subscribe([SelectStateEventType::Select])
             .build();
-        let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props_fn())
-            .build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
 
         // Initial selection
         assert_eq!(component.selected(), Some(&"a"));
         component
-            .int_props(&props_fn)
+            .int()
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
         // Select another one
         component
-            .int_props(&props_fn)
+            .int()
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(1)]);
     }
@@ -737,17 +807,14 @@ mod tests {
     #[rstest]
     fn test_submit(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let props_fn = props_fn(&items);
-        let select = SelectState::builder(items)
+        let select: SelectState<&str, ListState> = SelectState::builder(items)
             .subscribe([SelectStateEventType::Submit])
             .build();
-        let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props_fn())
-            .build();
-        component.int_props(&props_fn).drain_draw().assert_empty();
+        let mut component = TestComponent::new(&harness, &terminal, select);
+        component.int().drain_draw().assert_empty();
 
         component
-            .int_props(&props_fn)
+            .int()
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_emitted([SelectStateEvent::Submit(1)]);
     }
@@ -756,22 +823,20 @@ mod tests {
     #[rstest]
     fn test_click(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let props_fn = props_fn(&items);
-        let select = SelectState::builder(items).build();
-        let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props_fn())
-            .build();
+        let select: SelectState<&str, ListState> =
+            SelectState::builder(items).build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
 
         // Select item by click. Click is always propagated
         assert_matches!(
-            component.int_props(&props_fn).click(0, 1).propagated(),
+            component.int().click(0, 1).propagated(),
             &[Event::Input(InputEvent::Click { .. })]
         );
         assert_eq!(component.selected_index(), Some(1));
 
         // Click outside the select - does nothing
         assert_matches!(
-            component.int_props(&props_fn).click(0, 3).propagated(),
+            component.int().click(0, 3).propagated(),
             &[Event::Input(InputEvent::Click { .. })]
         );
         assert_eq!(component.selected_index(), Some(1));
@@ -782,27 +847,19 @@ mod tests {
     #[rstest]
     fn test_propagate(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let props_fn = props_fn(&items);
-        let select = SelectState::builder(items).build();
-        let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(props_fn())
-            .build();
+        let select: SelectState<&str, ListState> =
+            SelectState::builder(items).build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
 
         assert_matches!(
-            component
-                .int_props(&props_fn)
-                .send_key(KeyCode::Enter)
-                .propagated(),
+            component.int().send_key(KeyCode::Enter).propagated(),
             &[Event::Input(InputEvent::Key {
                 action: Some(Action::Submit),
                 ..
             })]
         );
         assert_matches!(
-            component
-                .int_props(&props_fn)
-                .send_key(KeyCode::Char(' '))
-                .propagated(),
+            component.int().send_key(KeyCode::Char(' ')).propagated(),
             &[Event::Input(InputEvent::Key {
                 action: Some(Action::Toggle),
                 ..
@@ -816,7 +873,6 @@ mod tests {
     #[rstest]
     fn test_disabled(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c", "d", "e"];
-        let props_fn = props_fn(&items);
         let select = SelectState::builder(items)
             .disabled_indexes([1, 3])
             // For simplicity, we're only looking for select events. Seems like
@@ -825,33 +881,31 @@ mod tests {
             .subscribe([SelectStateEventType::Select])
             .build();
         let mut component: TestComponent<'_, SelectState<&'static str>> =
-            TestComponent::builder(&harness, &terminal, select)
-                .with_props(props_fn())
-                .build();
+            TestComponent::new(&harness, &terminal, select);
 
         assert_eq!(component.selected(), Some(&"a"));
         component
-            .int_props(&props_fn)
+            .int()
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
         // Move down - skips over the disabled item
         component
-            .int_props(&props_fn)
+            .int()
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(2)]);
         assert_eq!(component.selected(), Some(&"c"));
 
         // Move down again - skips over the disabled item
         component
-            .int_props(&props_fn)
+            .int()
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(4)]);
         assert_eq!(component.selected(), Some(&"e"));
 
         // Move up - skips over the disabled item
         component
-            .int_props(&props_fn)
+            .int()
             .send_key(KeyCode::Up)
             .assert_emitted([SelectStateEvent::Select(2)]);
         assert_eq!(component.selected(), Some(&"c"));
@@ -880,7 +934,6 @@ mod tests {
     #[rstest]
     fn test_disabled_prop(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c", "d"];
-        let props_fn = props_fn(&items);
 
         // I think the proptest! macro is annoying so I prefer manual
         let test = |(disabled_indexes, inputs): (
@@ -891,26 +944,24 @@ mod tests {
             // For simplicity, we're only looking for select events.
             // Seems like a safe assumption that if it doesn't emit
             // Select, it won't emit anything else.
-            let select = SelectState::builder(items.clone())
-                .disabled_indexes(disabled_indexes)
-                .subscribe([SelectStateEventType::Select])
-                .build();
-            let mut component =
-                TestComponent::builder(&harness, &terminal, select)
-                    .with_props(props_fn())
+            let select: SelectState<&str, ListState> =
+                SelectState::builder(items.clone())
+                    .disabled_indexes(disabled_indexes)
+                    .subscribe([SelectStateEventType::Select])
                     .build();
+            let mut component = TestComponent::new(&harness, &terminal, select);
 
             // Drain inital events and check state
             let first_enabled = component.first_enabled_index();
             component
-                .int_props(&props_fn)
+                .int()
                 .drain_draw()
                 // Event should be emitted iff there is 1+ enabled items
                 .assert_emitted(first_enabled.map(SelectStateEvent::Select));
             assert_eq!(component.selected_index(), first_enabled);
 
             for input in inputs {
-                let interact = component.int_props(&props_fn).send_key(input);
+                let interact = component.int().send_key(input);
                 let select = interact.component_data();
                 let selected_index = select.selected_index();
                 match num_enabled {
@@ -989,6 +1040,8 @@ mod tests {
         // Which items emit Select events?
         #[case] expected_event_indexes: &[usize],
     ) {
+        use ratatui::text::Span;
+
         #[derive(Debug, PersistedKey, Serialize)]
         #[persisted(Option<ProfileId>)]
         struct Key;
@@ -1020,6 +1073,20 @@ mod tests {
             }
         }
 
+        impl Generate for &ProfileItem {
+            type Output<'this>
+                = Span<'this>
+            where
+                Self: 'this;
+
+            fn generate<'this>(self) -> Self::Output<'this>
+            where
+                Self: 'this,
+            {
+                self.0.deref().into()
+            }
+        }
+
         DatabasePersistedStore::store_persisted(
             &Key,
             &Some(persisted_id.into()),
@@ -1034,44 +1101,20 @@ mod tests {
         .disabled_indexes([2])
         .subscribe([SelectStateEventType::Select])
         .build();
-        let list = select
-            .items()
-            .map(|item| item.0.to_string())
-            .collect::<List>();
-        let mut component = TestComponent::builder(
+        let mut component = TestComponent::new(
             &harness,
             &terminal,
             PersistedComponent::new(Key, select),
-        )
-        .with_props(list.clone())
-        .build();
+        );
         assert_eq!(
             component.selected().map(|item| item.0.deref()),
             Some(expected_selected)
         );
-        component
-            .int_props(|| list.clone())
-            .drain_draw()
-            .assert_emitted(
-                expected_event_indexes
-                    .iter()
-                    .copied()
-                    .map(SelectStateEvent::Select),
-            );
-    }
-
-    /// Generate a function that returns props for a `SelectState` render. The
-    /// props are a `List` widget.
-    ///
-    /// This is needed to test event interactions even though nothing is
-    /// rendered, because the selected index state is passed into the widget
-    /// during the draw. If we use the default `List` value (empty list) for
-    /// this draw, then the selected index always gets clamped to 0 and copied
-    /// back into the `SelectState`.
-    fn props_fn(
-        items: &[&'static str],
-    ) -> impl 'static + Fn() -> List<'static> {
-        let items = items.to_owned();
-        move || List::from_iter(items.clone())
+        component.int().drain_draw().assert_emitted(
+            expected_event_indexes
+                .iter()
+                .copied()
+                .map(SelectStateEvent::Select),
+        );
     }
 }

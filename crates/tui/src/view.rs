@@ -250,6 +250,8 @@ pub trait Generate {
 /// [ToString::to_string] on the value to create a [ratatui::text::Span].
 pub trait ToStringGenerate: Display {}
 
+impl ToStringGenerate for &str {}
+
 impl<T> Generate for &T
 where
     T: ToStringGenerate,

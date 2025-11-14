@@ -35,7 +35,6 @@ impl CommandTextBox {
             text_box: text_box.subscribe([
                 TextBoxEvent::Cancel,
                 TextBoxEvent::Change,
-                TextBoxEvent::Focus,
                 TextBoxEvent::Submit,
             ]),
             scrollback: Scrollback::Inactive,
@@ -142,9 +141,6 @@ impl Component for CommandTextBox {
                 },
             )
             .emitted(self.text_box.to_emitter(), |event| match event {
-                TextBoxEvent::Focus => {
-                    self.emitter.emit(CommandTextBoxEvent::Focus);
-                }
                 TextBoxEvent::Change => {
                     // If searching, update the search results
                     if self.search.is_some() {
@@ -227,7 +223,6 @@ impl PersistedContainer for CommandTextBox {
 /// Emitted event for [CommandTextBox]
 #[derive(Debug, PartialEq)]
 pub enum CommandTextBoxEvent {
-    Focus,
     Cancel,
     Submit,
 }

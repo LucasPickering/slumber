@@ -9,8 +9,7 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
         state::select::{
-            SelectState, SelectStateEvent, SelectStateEventType,
-            SelectStateListProps,
+            Select, SelectEvent, SelectEventType, SelectListProps,
         },
     },
 };
@@ -165,7 +164,7 @@ struct ActionMenuContent {
     /// this in a stack. The original item tree doesn't allow that, and we
     /// can't use references to the tree because it would be self-referential.
     /// INVARIANT: len >= 1
-    stack: Vec<SelectState<MenuItemDisplay>>,
+    stack: Vec<Select<MenuItemDisplay>>,
     /// The index of the layer in the stack that the user is controlling. This
     /// index is always valid because the stack is never empty
     /// INVARIANT: selected_layer < self.stack.len()
@@ -272,7 +271,7 @@ impl ActionMenuContent {
     }
 
     /// Get the pixel width of a particular layer
-    fn layer_width(&self, layer: &SelectState<MenuItemDisplay>) -> u16 {
+    fn layer_width(&self, layer: &Select<MenuItemDisplay>) -> u16 {
         // Get the longest item
         layer
             .items()
@@ -315,7 +314,7 @@ impl Component for ActionMenuContent {
         while layer < self.stack.len() {
             let emitter = self.stack[layer].to_emitter();
             propagated = propagated.emitted(emitter, |event| match event {
-                SelectStateEvent::Select(index) => {
+                SelectEvent::Select(index) => {
                     // When changing selection, any existing child menus are no
                     // longer relevant so close them
                     self.clear_children(layer);
@@ -325,7 +324,7 @@ impl Component for ActionMenuContent {
                         self.open_group(children.clone());
                     }
                 }
-                SelectStateEvent::Submit(index) => {
+                SelectEvent::Submit(index) => {
                     // Submitting on an action closes the menu and emits the
                     // action. Submitting on a group moves to the children
                     //
@@ -345,7 +344,7 @@ impl Component for ActionMenuContent {
                         MenuItemDisplay::Group { .. } => self.next_layer(),
                     }
                 }
-                SelectStateEvent::Toggle(_) => {}
+                SelectEvent::Toggle(_) => {}
             });
             layer += 1;
         }
@@ -386,12 +385,7 @@ impl Draw for ActionMenuContent {
             offset_x += width + 1;
             offset_y += layer.selected_index().unwrap_or(0) as u16;
 
-            canvas.draw(
-                layer,
-                SelectStateListProps,
-                area,
-                i == self.active_layer,
-            );
+            canvas.draw(layer, SelectListProps, area, i == self.active_layer);
         }
     }
 }
@@ -475,7 +469,7 @@ impl MenuAction {
 }
 
 /// Minimal version of [MenuItem] that can be cloned repeatedly to build
-/// [SelectState]s
+/// [Select]s
 #[derive(Clone, Debug)]
 enum MenuItemDisplay {
     Action {
@@ -559,7 +553,7 @@ fn map_items(items: &[MenuItem]) -> Vec<MenuItemDisplay> {
 }
 
 /// Build a select state from a list of menu items
-fn build_select(items: Vec<MenuItemDisplay>) -> SelectState<MenuItemDisplay> {
+fn build_select(items: Vec<MenuItemDisplay>) -> Select<MenuItemDisplay> {
     let disabled_indexes = items
         .iter()
         .enumerate()
@@ -569,9 +563,9 @@ fn build_select(items: Vec<MenuItemDisplay>) -> SelectState<MenuItemDisplay> {
         .map(|(i, _)| i)
         .collect_vec();
 
-    SelectState::builder(items)
+    Select::builder(items)
         .disabled_indexes(disabled_indexes)
-        .subscribe([SelectStateEventType::Select, SelectStateEventType::Submit])
+        .subscribe([SelectEventType::Select, SelectEventType::Submit])
         .build()
 }
 

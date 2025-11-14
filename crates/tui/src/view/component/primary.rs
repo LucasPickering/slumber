@@ -23,8 +23,8 @@ use crate::{
         event::{Emitter, Event, EventMatch, ToEmitter},
         state::{
             StateCell,
-            fixed_select::FixedSelectState,
-            select::{SelectStateEvent, SelectStateEventType},
+            fixed_select::FixedSelect,
+            select::{SelectEvent, SelectEventType},
         },
         util::persistence::{Persisted, PersistedLazy},
     },
@@ -47,7 +47,7 @@ use strum::{EnumCount, EnumIter};
 pub struct PrimaryView {
     id: ComponentId,
     // Own state
-    selected_pane: PersistedLazy<PrimaryPaneKey, FixedSelectState<PrimaryPane>>,
+    selected_pane: PersistedLazy<PrimaryPaneKey, FixedSelect<PrimaryPane>>,
     fullscreen_mode: Persisted<FullscreenModeKey>,
 
     // Children
@@ -77,8 +77,8 @@ impl PrimaryView {
             id: ComponentId::default(),
             selected_pane: PersistedLazy::new(
                 Default::default(),
-                FixedSelectState::builder()
-                    .subscribe([SelectStateEventType::Select])
+                FixedSelect::builder()
+                    .subscribe([SelectEventType::Select])
                     .build(),
             ),
             fullscreen_mode: Default::default(),
@@ -316,7 +316,7 @@ impl Component for PrimaryView {
                 _ => propagate.set(),
             })
             .emitted(self.selected_pane.to_emitter(), |event| {
-                if let SelectStateEvent::Select(_) = event {
+                if let SelectEvent::Select(_) = event {
                     // Exit fullscreen when pane changes
                     self.maybe_exit_fullscreen();
                 }

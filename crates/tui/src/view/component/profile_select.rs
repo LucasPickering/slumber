@@ -16,7 +16,7 @@ use crate::{
         event::{Emitter, Event, EventMatch, ToEmitter},
         state::{
             StateCell,
-            select::{SelectState, SelectStateListProps},
+            select::{Select, SelectListProps},
         },
         util::persistence::Persisted,
     },
@@ -164,7 +164,7 @@ impl Draw for ProfilePane {
 struct ProfileListModal {
     id: ComponentId,
     emitter: Emitter<SelectProfile>,
-    select: SelectState<ProfileListItem>,
+    select: Select<ProfileListItem>,
     detail: ProfileDetail,
 }
 
@@ -179,7 +179,7 @@ impl ProfileListModal {
             .map(ProfileListItem::from)
             .collect();
 
-        let select = SelectState::builder(profiles)
+        let select = Select::builder(profiles)
             .preselect_opt(selected_profile_id)
             .build();
         Self {
@@ -238,7 +238,7 @@ impl Draw for ProfileListModal {
             Constraint::Min(0),
         ])
         .areas(area);
-        canvas.draw(&self.select, SelectStateListProps, list_area, true);
+        canvas.draw(&self.select, SelectListProps, list_area, true);
         if let Some(profile) = self.select.selected() {
             canvas.draw(
                 &self.detail,

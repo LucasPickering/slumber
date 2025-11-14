@@ -238,7 +238,7 @@ impl<T: Component + ?Sized> ComponentExt for T {
 /// to render. Useful for passing down state values that are managed by
 /// the parent to avoid duplicating that state in the child. In most
 /// cases, `Props` would make more sense as an associated type, but there are
-/// some component types (e.g. `SelectState`) that have multiple `Draw` impls.
+/// some component types (e.g. `Select`) that have multiple `Draw` impls.
 /// Using an associated type also makes prop types with lifetimes much less
 /// ergonomic.
 pub trait Draw<Props = ()> {

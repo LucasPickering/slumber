@@ -12,8 +12,7 @@ use crate::{
         },
         event::{Event, EventMatch, ToEmitter},
         state::select::{
-            SelectState, SelectStateEvent, SelectStateEventType,
-            SelectStateListProps,
+            Select, SelectEvent, SelectEventType, SelectListProps,
         },
     },
 };
@@ -29,7 +28,7 @@ use slumber_core::{collection::RecipeId, http::RequestId};
 pub struct History {
     id: ComponentId,
     recipe_name: String,
-    select: SelectState<RequestStateSummary>,
+    select: Select<RequestStateSummary>,
     /// Are we in the process of deleting the selected request? If so, we'll
     /// show a delete confirmation instead of the normal list.
     deleting: bool,
@@ -52,8 +51,8 @@ impl History {
             .reported(&ViewContext::messages_tx())
             .map(|recipe| recipe.name().to_owned())
             .unwrap_or_else(|| recipe_id.to_string());
-        let select = SelectState::builder(requests)
-            .subscribe([SelectStateEventType::Select])
+        let select = Select::builder(requests)
+            .subscribe([SelectEventType::Select])
             .preselect_opt(selected_request_id.as_ref())
             .build();
 
@@ -141,7 +140,7 @@ impl Component for History {
                 _ => propagate.set(),
             })
             .emitted(self.select.to_emitter(), |event| {
-                if let SelectStateEvent::Select(index) = event {
+                if let SelectEvent::Select(index) = event {
                     ViewContext::push_event(Event::HttpSelectRequest(Some(
                         self.select[index].id(),
                     )));
@@ -168,12 +167,7 @@ impl Draw for History {
                 true,
             );
         } else {
-            canvas.draw(
-                &self.select,
-                SelectStateListProps,
-                metadata.area(),
-                true,
-            );
+            canvas.draw(&self.select, SelectListProps, metadata.area(), true);
         }
     }
 }

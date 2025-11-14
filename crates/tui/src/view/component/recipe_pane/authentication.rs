@@ -11,9 +11,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        state::{
-            fixed_select::FixedSelectState, select::SelectStateTableProps,
-        },
+        state::{fixed_select::FixedSelect, select::SelectTableProps},
     },
 };
 use derive_more::derive::Display;
@@ -218,7 +216,7 @@ impl Draw for AuthenticationDisplay {
                 };
                 canvas.draw(
                     selected_field,
-                    SelectStateTableProps { table },
+                    SelectTableProps { table },
                     content_area,
                     true,
                 );
@@ -254,7 +252,7 @@ enum State {
         /// equivalent when building the request.
         password: RecipeTemplate,
         /// Track which field is selected, for editability
-        selected_field: FixedSelectState<BasicFields, TableState>,
+        selected_field: FixedSelect<BasicFields, TableState>,
     },
     Bearer {
         token: RecipeTemplate,

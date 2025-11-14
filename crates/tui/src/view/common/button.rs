@@ -7,7 +7,7 @@ use crate::{
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, EventMatch},
-        state::fixed_select::{FixedSelect, FixedSelectState},
+        state::fixed_select::{FixedSelect, FixedSelectItem},
     },
 };
 use ratatui::{
@@ -53,18 +53,18 @@ impl Generate for Button<'_> {
 /// listening and checking which button is selected at that time. This makes it
 /// easier to use in modals, where the modal queue listens for submission.
 #[derive(Debug, Default)]
-pub struct ButtonGroup<T: FixedSelect> {
+pub struct ButtonGroup<T: FixedSelectItem> {
     id: ComponentId,
-    select: FixedSelectState<T>,
+    select: FixedSelect<T>,
 }
 
-impl<T: FixedSelect> ButtonGroup<T> {
+impl<T: FixedSelectItem> ButtonGroup<T> {
     pub fn selected(&self) -> T {
         self.select.selected()
     }
 }
 
-impl<T: FixedSelect> Component for ButtonGroup<T> {
+impl<T: FixedSelectItem> Component for ButtonGroup<T> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -81,7 +81,7 @@ impl<T: FixedSelect> Component for ButtonGroup<T> {
     // action bindings aren't intuitive for this component
 }
 
-impl<T: FixedSelect> Draw for ButtonGroup<T> {
+impl<T: FixedSelectItem> Draw for ButtonGroup<T> {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let (areas, _) =
             Layout::horizontal(self.select.items().map(|button| {

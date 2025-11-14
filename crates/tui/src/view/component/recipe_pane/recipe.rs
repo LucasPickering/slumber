@@ -12,7 +12,7 @@ use crate::view::{
             url::UrlDisplay,
         },
     },
-    state::fixed_select::FixedSelectState,
+    state::fixed_select::FixedSelect,
     util::persistence::PersistedLazy,
 };
 use derive_more::Display;
@@ -55,9 +55,7 @@ impl RecipeDisplay {
             );
         let tabs = PersistedLazy::new(
             RecipeTabKey,
-            Tabs::new(
-                FixedSelectState::builder().disabled(disabled_tabs).build(),
-            ),
+            Tabs::new(FixedSelect::builder().disabled(disabled_tabs).build()),
         );
 
         Self {

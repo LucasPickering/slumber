@@ -147,6 +147,9 @@
         "view": [
           "v"
         ],
+        "search_history": [
+          "ctrl r"
+        ],
         "select_collection": [
           "f3"
         ],
@@ -286,6 +289,9 @@
         ],
         "view": [
           "v"
+        ],
+        "search_history": [
+          "ctrl r"
         ],
         "select_collection": [
           "f3"

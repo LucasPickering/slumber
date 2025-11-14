@@ -271,8 +271,6 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
                 Scrollbar {
                     content_length: text_state.height,
                     offset: self.offset_y.get(),
-                    // We subtracted the margin from the text area before, so
-                    // we have to add that back now
                     margin: props.margins.right,
                     ..Default::default()
                 },
@@ -285,8 +283,8 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
                     content_length: text_state.width,
                     offset: self.offset_x.get(),
                     orientation: ScrollbarOrientation::HorizontalBottom,
-                    // See note on other scrollbar for +1
                     margin: props.margins.bottom,
+                    invert: false,
                 },
                 text_area,
             );

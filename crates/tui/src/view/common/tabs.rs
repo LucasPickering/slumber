@@ -4,7 +4,7 @@ use crate::{
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, EventMatch},
-        state::fixed_select::{FixedSelect, FixedSelectState},
+        state::fixed_select::{FixedSelect, FixedSelectItem},
     },
 };
 use persisted::PersistedContainer;
@@ -14,13 +14,13 @@ use std::fmt::Debug;
 
 /// Multi-tab display. Generic parameter defines the available tabs.
 #[derive(Debug, Default)]
-pub struct Tabs<T: FixedSelect> {
+pub struct Tabs<T: FixedSelectItem> {
     id: ComponentId,
-    tabs: FixedSelectState<T, usize>,
+    tabs: FixedSelect<T, usize>,
 }
 
-impl<T: FixedSelect> Tabs<T> {
-    pub fn new(tabs: FixedSelectState<T, usize>) -> Self {
+impl<T: FixedSelectItem> Tabs<T> {
+    pub fn new(tabs: FixedSelect<T, usize>) -> Self {
         Self {
             id: ComponentId::default(),
             tabs,
@@ -32,7 +32,7 @@ impl<T: FixedSelect> Tabs<T> {
     }
 }
 
-impl<T: FixedSelect> Component for Tabs<T> {
+impl<T: FixedSelectItem> Component for Tabs<T> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -46,7 +46,7 @@ impl<T: FixedSelect> Component for Tabs<T> {
     }
 }
 
-impl<T: FixedSelect> Draw for Tabs<T> {
+impl<T: FixedSelectItem> Draw for Tabs<T> {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles.tab;
         let titles = self.tabs.items_with_metadata().map(|item| {
@@ -69,7 +69,7 @@ impl<T: FixedSelect> Draw for Tabs<T> {
 /// Persist selected tab
 impl<T> PersistedContainer for Tabs<T>
 where
-    T: FixedSelect,
+    T: FixedSelectItem,
 {
     type Value = T;
 

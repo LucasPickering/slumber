@@ -108,8 +108,10 @@ impl EventMatch {
     }
 
     /// Handle a left click event. Given position is the absolute position of
-    /// the cursor. If the action is unhandled and the event should continue
-    /// to be propagated, set the given flag.
+    /// the cursor. By default, click events are **always propagated,** even if
+    /// handled by a child. This is to make it easy for parent and child to both
+    /// grab focus when clicked (e.g. text box within a parent pane). If the
+    /// action should *not* be propagated, call `propagate.unset()`.
     pub fn click(self, f: impl FnOnce(Position, &mut Flag)) -> Self {
         let Some(event) = self.event else {
             return self;
@@ -118,6 +120,7 @@ impl EventMatch {
         // receives a mouse event that's over the component
         if let Event::Input(InputEvent::Click { position }) = event {
             let mut propagate = Flag::default();
+            propagate.set(); // Set by default!!
             f(position, &mut propagate);
             if *propagate { Some(event) } else { None }.into()
         } else {

@@ -132,7 +132,7 @@ impl Component for ActionMenu {
             })
     }
 
-    fn contains_cursor(&self, _position: Position) -> bool {
+    fn contains(&self, _position: Position) -> bool {
         // We want to receive clicks in the background, but we can't draw to
         // that space or it would actually cover everything up
         true
@@ -288,8 +288,19 @@ impl Component for ActionMenuContent {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        let mut propagated =
-            event.m().action(|action, propagate| match action {
+        let mut propagated = event
+            .m()
+            .click(|position, propagate| {
+                // Select clicked layer
+                for (i, layer) in self.stack.iter().enumerate() {
+                    if layer.contains(position) {
+                        self.active_layer = i;
+                    }
+                }
+                // Clicks are propagated by default, but we want to EAT THEM ALL
+                propagate.unset();
+            })
+            .action(|action, propagate| match action {
                 // Navigate between layers with left/right
                 Action::Left => self.previous_layer(),
                 Action::Right => self.next_layer(),

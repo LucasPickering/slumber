@@ -123,7 +123,7 @@ impl<T: Component + Modal> Component for ModalQueue<T> {
             })
     }
 
-    fn contains_cursor(&self, _position: Position) -> bool {
+    fn contains(&self, _position: Position) -> bool {
         // We want to receive clicks in the background, but we can't draw to
         // that space or it would actually cover everything up
         true

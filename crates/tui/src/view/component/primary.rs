@@ -10,7 +10,7 @@ use crate::{
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
-            exchange_pane::{ExchangePane, ExchangePaneEvent},
+            exchange_pane::ExchangePane,
             help::HelpModal,
             misc::DeleteRecipeRequestsModal,
             profile_select::ProfilePane,
@@ -270,6 +270,19 @@ impl Component for PrimaryView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
+            .click(|position, _| {
+                // Select clicked pane
+                let mut selected_pane = self.selected_pane.get_mut();
+                if self.profile_pane.contains(position) {
+                    self.profile_pane.open_modal();
+                } else if self.recipe_list_pane.contains(position) {
+                    selected_pane.select(&PrimaryPane::RecipeList);
+                } else if self.recipe_pane.contains(position) {
+                    selected_pane.select(&PrimaryPane::Recipe);
+                } else if self.exchange_pane.get_mut().contains(position) {
+                    selected_pane.select(&PrimaryPane::Exchange);
+                }
+            })
             .action(|action, propagate| match action {
                 Action::PreviousPane => self.selected_pane.get_mut().previous(),
                 Action::NextPane => self.selected_pane.get_mut().next(),
@@ -322,30 +335,14 @@ impl Component for PrimaryView {
                 }
             })
             .emitted(self.recipe_list_pane.to_emitter(), |event| match event {
-                RecipeListPaneEvent::Click => {
-                    self.selected_pane
-                        .get_mut()
-                        .select(&PrimaryPane::RecipeList);
-                }
                 // Menu action forwarded up
                 RecipeListPaneEvent::Action(action) => {
                     self.handle_recipe_menu_action(action);
                 }
             })
             .emitted(self.recipe_pane.to_emitter(), |event| match event {
-                RecipePaneEvent::Click => {
-                    self.selected_pane.get_mut().select(&PrimaryPane::Recipe);
-                }
                 RecipePaneEvent::Action(action) => {
                     self.handle_recipe_menu_action(action);
-                }
-            })
-            .emitted(self.exchange_pane.borrow().to_emitter(), |event| {
-                match event {
-                    ExchangePaneEvent::Click => self
-                        .selected_pane
-                        .get_mut()
-                        .select(&PrimaryPane::Exchange),
                 }
             })
             // Handle our own menu action type

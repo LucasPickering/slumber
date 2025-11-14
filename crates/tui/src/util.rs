@@ -72,6 +72,11 @@ impl Flag {
     pub fn set(&mut self) {
         self.0 = true;
     }
+
+    /// Disable the flag
+    pub fn unset(&mut self) {
+        self.0 = false;
+    }
 }
 
 /// A temporary file. The file is created with a random name when the struct is

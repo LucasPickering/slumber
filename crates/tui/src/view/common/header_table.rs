@@ -1,6 +1,10 @@
 use crate::view::{Generate, common::table::Table};
 use itertools::Itertools;
-use ratatui::text::Text;
+use ratatui::{
+    prelude::{Buffer, Rect},
+    text::Text,
+    widgets::Widget,
+};
 use reqwest::header::HeaderMap;
 
 /// Render HTTP request/response headers in a table
@@ -8,15 +12,10 @@ pub struct HeaderTable<'a> {
     pub headers: &'a HeaderMap,
 }
 
-impl Generate for HeaderTable<'_> {
-    type Output<'this>
-        = ratatui::widgets::Table<'this>
+impl Widget for HeaderTable<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
+        Self: Sized,
     {
         Table {
             rows: self
@@ -28,6 +27,6 @@ impl Generate for HeaderTable<'_> {
             alternate_row_style: true,
             ..Default::default()
         }
-        .generate()
+        .render(area, buf);
     }
 }

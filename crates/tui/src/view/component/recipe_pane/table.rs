@@ -13,10 +13,7 @@ use crate::view::{
     },
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
-    state::select::{
-        SelectState, SelectStateEvent, SelectStateEventType,
-        SelectStateTableProps,
-    },
+    state::select::{Select, SelectEvent, SelectEventType, SelectTableProps},
     util::persistence::{Persisted, PersistedKey, PersistedLazy},
 };
 use itertools::Itertools;
@@ -52,10 +49,8 @@ where
     override_emitter: Emitter<SaveRecipeTableOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeTableMenuAction>,
-    select: PersistedLazy<
-        RowSelectKey,
-        SelectState<RowState<RowToggleKey>, TableState>,
-    >,
+    select:
+        PersistedLazy<RowSelectKey, Select<RowState<RowToggleKey>, TableState>>,
     /// Modal to edit template overrides. One modal is used for all rows,
     /// because we only ever need one at a time and it makes the state
     /// management simpler. Otherwise each row would need to be its own
@@ -91,8 +86,8 @@ where
                 enabled: Persisted::new(toggle_key, true),
             })
             .collect();
-        let select = SelectState::builder(items)
-            .subscribe([SelectStateEventType::Toggle])
+        let select = Select::builder(items)
+            .subscribe([SelectEventType::Toggle])
             .build();
         Self {
             id: Default::default(),
@@ -159,7 +154,7 @@ where
                 _ => propagate.set(),
             })
             .emitted(self.select.to_emitter(), |event| {
-                if let SelectStateEvent::Toggle(index) = event {
+                if let SelectEvent::Toggle(index) = event {
                     self.select.get_mut()[index].toggle();
                 }
             })
@@ -237,7 +232,7 @@ where
         };
         canvas.draw(
             &*self.select,
-            SelectStateTableProps { table },
+            SelectTableProps { table },
             metadata.area(),
             true,
         );
@@ -326,7 +321,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 }
 
-/// Needed for SelectState persistence
+// Needed for `Select` persistence
 impl<K: PersistedKey<Value = bool>> HasId for RowState<K> {
     type Id = String;
 
@@ -339,7 +334,7 @@ impl<K: PersistedKey<Value = bool>> HasId for RowState<K> {
     }
 }
 
-/// Needed for SelectState persistence
+// Needed for `Select` persistence
 impl<K> PartialEq<RowState<K>> for String
 where
     K: PersistedKey<Value = bool>,

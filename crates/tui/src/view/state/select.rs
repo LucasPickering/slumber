@@ -32,7 +32,7 @@ use strum::EnumDiscriminants;
 use terminput::ScrollDirection;
 use tracing::error;
 
-/// State manager for a dynamic list of items.
+/// A dynamic list of items
 ///
 /// This supports a generic type for the state "backend", which is the ratatui
 /// type that stores the selection state. Typically you want `ListState` or
@@ -44,26 +44,26 @@ use tracing::error;
 /// it has multiple [Draw] implementations. Each implementation has an explicit
 /// prop type to make it easy to specify which implementation you want.
 ///
-/// - List: [SelectStateListProps]
-/// - Table: [SelectStateTableProps]
+/// - List: [SelectListProps]
+/// - Table: [SelectTableProps]
 ///
 /// Drawing has to be done through these implementations, rather than adhoc
 /// `render_widget` calls, because this is a [Component]. It must be drawn to
 /// the canvas into order to receive events.
 #[derive(derive_more::Debug)]
-pub struct SelectState<Item, State = ListState>
+pub struct Select<Item, State = ListState>
 where
-    State: SelectStateData,
+    State: SelectData,
 {
     id: ComponentId,
-    emitter: Emitter<SelectStateEvent>,
+    emitter: Emitter<SelectEvent>,
     /// Direction of items, for both display and interaction. In top-to-bottom,
     /// index 0 is at the top, Up decrements the index, and Down increments it.
     /// In bottom-to-top, index 0 is at the bottom, Up increments the index,
     /// and Down decrements it.
     direction: ListDirection,
     /// Which event types to emit
-    subscribed_events: HashSet<SelectStateEventType>,
+    subscribed_events: HashSet<SelectEventType>,
     /// Use interior mutability because this needs to be modified during the
     /// draw phase, by [ratatui::Frame::render_stateful_widget]. This allows
     /// rendering without a mutable reference.
@@ -85,21 +85,21 @@ impl<T> SelectItem<T> {
     }
 }
 
-/// Builder for [SelectState]. The main reason for the builder is to allow
+/// Builder for [Select]. The main reason for the builder is to allow
 /// setting the preselect index, so the wrong index doesn't get an event emitted
 /// for it
-pub struct SelectStateBuilder<Item, State> {
+pub struct SelectBuilder<Item, State> {
     items: Vec<SelectItem<Item>>,
     /// Store preselected value as an index, so we don't need to care about the
     /// type of the value. Defaults to 0. If a filter is give, this will be
     /// the index *after* the filter is applied.
     preselect_index: usize,
     direction: ListDirection,
-    subscribed_events: HashSet<SelectStateEventType>,
+    subscribed_events: HashSet<SelectEventType>,
     _state: PhantomData<State>,
 }
 
-impl<Item, State> SelectStateBuilder<Item, State> {
+impl<Item, State> SelectBuilder<Item, State> {
     /// Disable certain items in the list by index. Disabled items can still be
     /// selected, but do not emit events.
     pub fn disabled_indexes(
@@ -127,7 +127,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
     /// Which types of events should this emit?
     pub fn subscribe(
         mut self,
-        event_types: impl IntoIterator<Item = SelectStateEventType>,
+        event_types: impl IntoIterator<Item = SelectEventType>,
     ) -> Self {
         self.subscribed_events.extend(event_types);
         self
@@ -179,11 +179,11 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         self
     }
 
-    pub fn build(self) -> SelectState<Item, State>
+    pub fn build(self) -> Select<Item, State>
     where
-        State: SelectStateData,
+        State: SelectData,
     {
-        let mut select = SelectState {
+        let mut select = Select {
             id: ComponentId::default(),
             emitter: Default::default(),
             direction: self.direction,
@@ -210,10 +210,10 @@ impl<Item, State> SelectStateBuilder<Item, State> {
     }
 }
 
-impl<Item, State: SelectStateData> SelectState<Item, State> {
+impl<Item, State: SelectData> Select<Item, State> {
     /// Start a new builder
-    pub fn builder(items: Vec<Item>) -> SelectStateBuilder<Item, State> {
-        SelectStateBuilder {
+    pub fn builder(items: Vec<Item>) -> SelectBuilder<Item, State> {
+        SelectBuilder {
             items: items
                 .into_iter()
                 .map(|item| SelectItem {
@@ -300,7 +300,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
 
         // If the selection changed, send an event
         if current != new {
-            self.emit_for_selected(SelectStateEvent::Select);
+            self.emit_for_selected(SelectEvent::Select);
         }
     }
 
@@ -347,7 +347,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
             }
 
             // This will do nothing if the selection is now empty
-            self.emit_for_selected(SelectStateEvent::Select);
+            self.emit_for_selected(SelectEvent::Select);
         }
     }
 
@@ -382,35 +382,35 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Helper to generate an emit an event for the currentl selected item. The
     /// event will *not* be emitted if no item is select, or the selected item
     /// is disabled.
-    fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectStateEvent) {
+    fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectEvent) {
         if let Some(selected) = self.selected_index() {
             let event = event_fn(selected);
             // Check if the parent subscribed to this event type
-            if self.is_subscribed(SelectStateEventType::from(&event)) {
+            if self.is_subscribed(SelectEventType::from(&event)) {
                 self.emitter.emit(event);
             }
         }
     }
 
-    fn is_subscribed(&self, event_type: SelectStateEventType) -> bool {
+    fn is_subscribed(&self, event_type: SelectEventType) -> bool {
         self.subscribed_events.contains(&event_type)
     }
 }
 
-impl<Item, State> Default for SelectState<Item, State>
+impl<Item, State> Default for Select<Item, State>
 where
-    State: SelectStateData,
+    State: SelectData,
 {
     fn default() -> Self {
-        SelectState::<Item, State>::builder(Vec::new()).build()
+        Select::<Item, State>::builder(Vec::new()).build()
     }
 }
 
 /// Get an item by index, and panic if out of bounds. Useful with emitted
 /// events, when we know the index will be valid
-impl<Item, State> Index<usize> for SelectState<Item, State>
+impl<Item, State> Index<usize> for Select<Item, State>
 where
-    State: SelectStateData,
+    State: SelectData,
 {
     type Output = Item;
 
@@ -419,18 +419,18 @@ where
     }
 }
 
-impl<Item, State> IndexMut<usize> for SelectState<Item, State>
+impl<Item, State> IndexMut<usize> for Select<Item, State>
 where
-    State: SelectStateData,
+    State: SelectData,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.items[index].value
     }
 }
 
-impl<Item, State> Component for SelectState<Item, State>
+impl<Item, State> Component for Select<Item, State>
 where
-    State: SelectStateData,
+    State: SelectData,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -469,26 +469,26 @@ where
                 Action::Down | Action::ScrollDown => self.down(),
                 // Don't eat these events unless the user has subscribed
                 Action::Toggle
-                    if self.is_subscribed(SelectStateEventType::Toggle) =>
+                    if self.is_subscribed(SelectEventType::Toggle) =>
                 {
-                    self.emit_for_selected(SelectStateEvent::Toggle);
+                    self.emit_for_selected(SelectEvent::Toggle);
                 }
                 Action::Submit
-                    if self.is_subscribed(SelectStateEventType::Submit) =>
+                    if self.is_subscribed(SelectEventType::Submit) =>
                 {
-                    self.emit_for_selected(SelectStateEvent::Submit);
+                    self.emit_for_selected(SelectEvent::Submit);
                 }
                 _ => propagate.set(),
             })
     }
 }
 
-impl<Item, State> PersistedContainer for SelectState<Item, State>
+impl<Item, State> PersistedContainer for Select<Item, State>
 where
     Item: HasId,
     // PartialEq needed so we can select items by ID
     Item::Id: Clone + PartialEq<Item>,
-    State: SelectStateData,
+    State: SelectData,
 {
     type Value = Option<Item::Id>;
 
@@ -507,26 +507,26 @@ where
     }
 }
 
-impl<Item, State> ToEmitter<SelectStateEvent> for SelectState<Item, State>
+impl<Item, State> ToEmitter<SelectEvent> for Select<Item, State>
 where
-    State: SelectStateData,
+    State: SelectData,
 {
-    fn to_emitter(&self) -> Emitter<SelectStateEvent> {
+    fn to_emitter(&self) -> Emitter<SelectEvent> {
         self.emitter
     }
 }
 
-/// Props for rendering [SelectState] as a list
+/// Props for rendering [Select] as a list
 ///
 /// Currently this is empty, but it serves as a type parameter so callers can
 /// easily specify which impl of [Draw] they want.
 #[derive(Default)]
-pub struct SelectStateListProps;
+pub struct SelectListProps;
 
 /// Render as a list
 ///
 /// Item has to generate() to something that converts to Text
-impl<Item> Draw<SelectStateListProps> for SelectState<Item, ListState>
+impl<Item> Draw<SelectListProps> for Select<Item, ListState>
 where
     for<'a> &'a Item: Generate,
     for<'a> <&'a Item as Generate>::Output<'a>: Into<Text<'a>>,
@@ -534,7 +534,7 @@ where
     fn draw(
         &self,
         canvas: &mut Canvas,
-        _: SelectStateListProps,
+        _: SelectListProps,
         metadata: DrawMetadata,
     ) {
         let styles = &TuiContext::get().styles.list;
@@ -577,24 +577,24 @@ where
     }
 }
 
-/// Props for rendering [SelectState] as a table
-pub struct SelectStateTableProps<'a, const COLS: usize, R> {
+/// Props for rendering [Select] as a table
+pub struct SelectTableProps<'a, const COLS: usize, R> {
     /// Format to render as. This allows the parent to determine the columns
-    /// and rows of the table; the [SelectState] just provides the selected row
+    /// and rows of the table; the [Select] just provides the selected row
     /// state.
     pub table: Table<'a, COLS, R>,
 }
 
 /// Render as a table
-impl<'a, const COLS: usize, R, Item> Draw<SelectStateTableProps<'a, COLS, R>>
-    for SelectState<Item, TableState>
+impl<'a, const COLS: usize, R, Item> Draw<SelectTableProps<'a, COLS, R>>
+    for Select<Item, TableState>
 where
     Table<'a, COLS, R>: StatefulWidget<State = TableState>,
 {
     fn draw(
         &self,
         canvas: &mut Canvas,
-        props: SelectStateTableProps<'a, COLS, R>,
+        props: SelectTableProps<'a, COLS, R>,
         metadata: DrawMetadata,
     ) {
         canvas.render_stateful_widget(
@@ -605,10 +605,10 @@ where
     }
 }
 
-/// Inner state for [SelectState]. This is an abstraction to allow it to support
+/// Inner state for [Select]. This is an abstraction to allow it to support
 /// multiple state "backends" from Ratatui, to enable usage with different
 /// stateful widgets.
-pub trait SelectStateData: Default {
+pub trait SelectData: Default {
     /// Index of the selected element
     fn selected(&self) -> Option<usize>;
 
@@ -616,7 +616,7 @@ pub trait SelectStateData: Default {
     fn select(&mut self, index: Option<usize>);
 }
 
-impl SelectStateData for ListState {
+impl SelectData for ListState {
     fn selected(&self) -> Option<usize> {
         self.selected()
     }
@@ -626,7 +626,7 @@ impl SelectStateData for ListState {
     }
 }
 
-impl SelectStateData for TableState {
+impl SelectData for TableState {
     fn selected(&self) -> Option<usize> {
         self.selected()
     }
@@ -638,7 +638,7 @@ impl SelectStateData for TableState {
 
 /// Selection state is just a number. This is useful for tabs and other
 /// fixed-size elements that can never be empty.
-impl SelectStateData for usize {
+impl SelectData for usize {
     fn selected(&self) -> Option<usize> {
         Some(*self)
     }
@@ -648,11 +648,11 @@ impl SelectStateData for usize {
     }
 }
 
-/// Emitted event for select list
+/// Emitted event for [Select]
 #[derive(Debug, EnumDiscriminants)]
-#[strum_discriminants(name(SelectStateEventType), derive(Hash))]
+#[strum_discriminants(name(SelectEventType), derive(Hash))]
 #[cfg_attr(test, derive(PartialEq))]
-pub enum SelectStateEvent {
+pub enum SelectEvent {
     /// User highlight a new item in the list
     Select(usize),
     /// User hit submit button (Enter by default) on an item
@@ -714,8 +714,8 @@ mod tests {
         #[case] preselect: Option<usize>,
         #[case] expected_selected: Option<usize>,
     ) {
-        let select: SelectState<usize, ListState> =
-            SelectState::builder(items.to_owned())
+        let select: Select<usize, ListState> =
+            Select::builder(items.to_owned())
                 .disabled_indexes(disabled.to_owned())
                 .preselect_opt(preselect.as_ref())
                 .build();
@@ -730,7 +730,7 @@ mod tests {
     ) {
         let styles = &TuiContext::get().styles.list;
         let items = vec!["one", "two", "three"];
-        let select: SelectState<&str, ListState> = SelectState::builder(items)
+        let select: Select<&str, ListState> = Select::builder(items)
             .direction(ListDirection::BottomToTop)
             .build();
         let mut component = TestComponent::new(&harness, &terminal, select);
@@ -776,8 +776,8 @@ mod tests {
         #[case] expected_selected: Option<usize>,
     ) {
         let items = ["apple", "APPLE", "banana"];
-        let select: SelectState<&str, ListState> =
-            SelectState::builder(items.into_iter().collect())
+        let select: Select<&str, ListState> =
+            Select::builder(items.into_iter().collect())
                 .filter(filter)
                 .preselect_opt(preselect.as_ref())
                 .build();
@@ -792,8 +792,7 @@ mod tests {
     #[rstest]
     fn test_navigation(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let select: SelectState<&str, ListState> =
-            SelectState::builder(items).build();
+        let select: Select<&str, ListState> = Select::builder(items).build();
         let mut component = TestComponent::new(&harness, &terminal, select);
         component.int().drain_draw().assert_empty();
         assert_eq!(component.selected(), Some(&"a"));
@@ -808,8 +807,8 @@ mod tests {
     #[rstest]
     fn test_delete(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let select: SelectState<&str, ListState> = SelectState::builder(items)
-            .subscribe([SelectStateEventType::Select])
+        let select: Select<&str, ListState> = Select::builder(items)
+            .subscribe([SelectEventType::Select])
             .build();
         let mut component = TestComponent::new(&harness, &terminal, select);
 
@@ -819,10 +818,7 @@ mod tests {
             .int()
             .drain_draw() // Handle initial state
             .send_key(KeyCode::Down)
-            .assert_emitted([
-                SelectStateEvent::Select(0),
-                SelectStateEvent::Select(1),
-            ]);
+            .assert_emitted([SelectEvent::Select(0), SelectEvent::Select(1)]);
         assert_eq!(component.selected(), Some(&"b"));
 
         // Delete `b`, `c` should get selected because it's below
@@ -831,7 +827,7 @@ mod tests {
         component
             .int()
             .drain_draw()
-            .assert_emitted([SelectStateEvent::Select(1)]);
+            .assert_emitted([SelectEvent::Select(1)]);
 
         // Delete `c`; there's nothing left below so select above
         component.delete_selected();
@@ -839,7 +835,7 @@ mod tests {
         component
             .int()
             .drain_draw()
-            .assert_emitted([SelectStateEvent::Select(0)]);
+            .assert_emitted([SelectEvent::Select(0)]);
 
         // Delete `a`, nothing left to select
         component.delete_selected();
@@ -855,8 +851,8 @@ mod tests {
     #[rstest]
     fn test_select(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let select: SelectState<&str, ListState> = SelectState::builder(items)
-            .subscribe([SelectStateEventType::Select])
+        let select: Select<&str, ListState> = Select::builder(items)
+            .subscribe([SelectEventType::Select])
             .build();
         let mut component = TestComponent::new(&harness, &terminal, select);
 
@@ -865,21 +861,21 @@ mod tests {
         component
             .int()
             .drain_draw()
-            .assert_emitted([SelectStateEvent::Select(0)]);
+            .assert_emitted([SelectEvent::Select(0)]);
 
         // Select another one
         component
             .int()
             .send_key(KeyCode::Down)
-            .assert_emitted([SelectStateEvent::Select(1)]);
+            .assert_emitted([SelectEvent::Select(1)]);
     }
 
     /// Test submit emitted event
     #[rstest]
     fn test_submit(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let select: SelectState<&str, ListState> = SelectState::builder(items)
-            .subscribe([SelectStateEventType::Submit])
+        let select: Select<&str, ListState> = Select::builder(items)
+            .subscribe([SelectEventType::Submit])
             .build();
         let mut component = TestComponent::new(&harness, &terminal, select);
         component.int().drain_draw().assert_empty();
@@ -887,15 +883,14 @@ mod tests {
         component
             .int()
             .send_keys([KeyCode::Down, KeyCode::Enter])
-            .assert_emitted([SelectStateEvent::Submit(1)]);
+            .assert_emitted([SelectEvent::Submit(1)]);
     }
 
     /// Test that the clicked item is selected
     #[rstest]
     fn test_click(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let select: SelectState<&str, ListState> =
-            SelectState::builder(items).build();
+        let select: Select<&str, ListState> = Select::builder(items).build();
         let mut component = TestComponent::new(&harness, &terminal, select);
 
         // Select item by click. Click is always propagated
@@ -918,8 +913,7 @@ mod tests {
     #[rstest]
     fn test_propagate(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
-        let select: SelectState<&str, ListState> =
-            SelectState::builder(items).build();
+        let select: Select<&str, ListState> = Select::builder(items).build();
         let mut component = TestComponent::new(&harness, &terminal, select);
 
         assert_matches!(
@@ -944,41 +938,41 @@ mod tests {
     #[rstest]
     fn test_disabled(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c", "d", "e"];
-        let select = SelectState::builder(items)
+        let select = Select::builder(items)
             .disabled_indexes([1, 3])
             // For simplicity, we're only looking for select events. Seems like
             // a safe assumption that if it doesn't emit Select, it won't emit
             // anything else.
-            .subscribe([SelectStateEventType::Select])
+            .subscribe([SelectEventType::Select])
             .build();
-        let mut component: TestComponent<'_, SelectState<&'static str>> =
+        let mut component: TestComponent<'_, Select<&'static str>> =
             TestComponent::new(&harness, &terminal, select);
 
         assert_eq!(component.selected(), Some(&"a"));
         component
             .int()
             .drain_draw()
-            .assert_emitted([SelectStateEvent::Select(0)]);
+            .assert_emitted([SelectEvent::Select(0)]);
 
         // Move down - skips over the disabled item
         component
             .int()
             .send_key(KeyCode::Down)
-            .assert_emitted([SelectStateEvent::Select(2)]);
+            .assert_emitted([SelectEvent::Select(2)]);
         assert_eq!(component.selected(), Some(&"c"));
 
         // Move down again - skips over the disabled item
         component
             .int()
             .send_key(KeyCode::Down)
-            .assert_emitted([SelectStateEvent::Select(4)]);
+            .assert_emitted([SelectEvent::Select(4)]);
         assert_eq!(component.selected(), Some(&"e"));
 
         // Move up - skips over the disabled item
         component
             .int()
             .send_key(KeyCode::Up)
-            .assert_emitted([SelectStateEvent::Select(2)]);
+            .assert_emitted([SelectEvent::Select(2)]);
         assert_eq!(component.selected(), Some(&"c"));
 
         // Select by value/index should do nothing if it's disabled
@@ -1015,10 +1009,10 @@ mod tests {
             // For simplicity, we're only looking for select events.
             // Seems like a safe assumption that if it doesn't emit
             // Select, it won't emit anything else.
-            let select: SelectState<&str, ListState> =
-                SelectState::builder(items.clone())
+            let select: Select<&str, ListState> =
+                Select::builder(items.clone())
                     .disabled_indexes(disabled_indexes)
-                    .subscribe([SelectStateEventType::Select])
+                    .subscribe([SelectEventType::Select])
                     .build();
             let mut component = TestComponent::new(&harness, &terminal, select);
 
@@ -1028,7 +1022,7 @@ mod tests {
                 .int()
                 .drain_draw()
                 // Event should be emitted iff there is 1+ enabled items
-                .assert_emitted(first_enabled.map(SelectStateEvent::Select));
+                .assert_emitted(first_enabled.map(SelectEvent::Select));
             assert_eq!(component.selected_index(), first_enabled);
 
             for input in inputs {
@@ -1072,7 +1066,7 @@ mod tests {
                         // and *not* for any disabled items that may have been
                         // skipped over
                         let event =
-                            SelectStateEvent::Select(selected_index.unwrap());
+                            SelectEvent::Select(selected_index.unwrap());
                         interact.assert_emitted([event]);
                     }
                 }
@@ -1162,13 +1156,13 @@ mod tests {
         );
 
         // Second profile should be pre-selected because of persistence
-        let select: SelectState<ProfileItem> = SelectState::builder(vec![
+        let select: Select<ProfileItem> = Select::builder(vec![
             "default".into(),
             "persisted".into(),
             "disabled".into(),
         ])
         .disabled_indexes([2])
-        .subscribe([SelectStateEventType::Select])
+        .subscribe([SelectEventType::Select])
         .build();
         let mut component = TestComponent::new(
             &harness,
@@ -1183,7 +1177,7 @@ mod tests {
             expected_event_indexes
                 .iter()
                 .copied()
-                .map(SelectStateEvent::Select),
+                .map(SelectEvent::Select),
         );
     }
 }

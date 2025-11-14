@@ -106,12 +106,14 @@ where
 
     /// Select the previous item in the list
     pub fn previous(&mut self) {
-        self.inner.previous();
+        // We only support top-to-bottom, so up is previous
+        self.inner.up();
     }
 
     /// Select the next item in the list
     pub fn next(&mut self) {
-        self.inner.next();
+        // We only support top-to-bottom, so down is next
+        self.inner.down();
     }
 }
 

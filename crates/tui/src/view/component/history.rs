@@ -4,14 +4,17 @@ use crate::{
     util::ResultReported,
     view::{
         Generate, UpdateContext, ViewContext,
-        common::{button::ButtonGroup, list::List, modal::Modal},
+        common::{button::ButtonGroup, modal::Modal},
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             misc::ConfirmButton,
         },
         event::{Event, EventMatch, ToEmitter},
-        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
+        state::select::{
+            SelectState, SelectStateEvent, SelectStateEventType,
+            SelectStateListProps,
+        },
     },
 };
 use ratatui::{
@@ -167,7 +170,7 @@ impl Draw for History {
         } else {
             canvas.draw(
                 &self.select,
-                List::from(&self.select),
+                SelectStateListProps,
                 metadata.area(),
                 true,
             );

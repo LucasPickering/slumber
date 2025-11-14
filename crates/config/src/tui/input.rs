@@ -173,6 +173,8 @@ pub enum Action {
     #[display("Help")]
     /// Open the help modal
     OpenHelp,
+    /// Search command history in query text box
+    SearchHistory,
     /// Open collection selection modal (unbound by default)
     #[display("Select Collection")]
     SelectCollection,
@@ -504,6 +506,10 @@ impl Default for InputMap {
             Action::Edit => KeyCode::Char('e').into(),
             Action::Reset => KeyCode::Char('z').into(),
             Action::View => KeyCode::Char('v').into(),
+            Action::SearchHistory => KeyCombination {
+                code: KeyCode::Char('r'),
+                modifiers: KeyModifiers::CTRL,
+            }.into(),
             Action::SelectCollection => KeyCode::F(3).into(),
             Action::SelectProfileList => KeyCode::Char('p').into(),
             Action::SelectRecipeList => KeyCode::Char('l').into(),

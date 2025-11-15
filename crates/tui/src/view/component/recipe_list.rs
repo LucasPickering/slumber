@@ -5,6 +5,7 @@ use crate::{
         common::{
             Pane,
             actions::MenuItem,
+            select::{Select, SelectEvent, SelectEventType, SelectListProps},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
@@ -13,9 +14,6 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        state::select::{
-            Select, SelectEvent, SelectEventType, SelectListProps,
-        },
         util::persistence::{Persisted, PersistedLazy},
     },
 };

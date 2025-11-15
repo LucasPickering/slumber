@@ -3,9 +3,11 @@
 
 pub mod actions;
 pub mod button;
+pub mod fixed_select;
 pub mod header_table;
 pub mod modal;
 pub mod scrollbar;
+pub mod select;
 pub mod table;
 pub mod tabs;
 pub mod template_preview;

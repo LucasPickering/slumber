@@ -4,16 +4,17 @@ use crate::{
     util::ResultReported,
     view::{
         Generate, UpdateContext, ViewContext,
-        common::{button::ButtonGroup, modal::Modal},
+        common::{
+            button::ButtonGroup,
+            modal::Modal,
+            select::{Select, SelectEvent, SelectEventType, SelectListProps},
+        },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             misc::ConfirmButton,
         },
         event::{Event, EventMatch, ToEmitter},
-        state::select::{
-            Select, SelectEvent, SelectEventType, SelectListProps,
-        },
     },
 };
 use ratatui::{

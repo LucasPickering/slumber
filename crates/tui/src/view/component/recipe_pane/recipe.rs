@@ -1,6 +1,6 @@
 use crate::view::{
     Component,
-    common::tabs::Tabs,
+    common::{fixed_select::FixedSelect, tabs::Tabs},
     component::{
         Canvas, ComponentId, Draw, DrawMetadata,
         internal::{Child, ToChild},
@@ -12,7 +12,6 @@ use crate::view::{
             url::UrlDisplay,
         },
     },
-    state::fixed_select::FixedSelect,
     util::persistence::PersistedLazy,
 };
 use derive_more::Display;

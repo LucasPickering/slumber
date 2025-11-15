@@ -8,6 +8,7 @@ use crate::{
         common::{
             button::ButtonGroup,
             modal::Modal,
+            select::{Select, SelectListProps},
             text_box::{TextBox, TextBoxProps},
         },
         component::{
@@ -16,7 +17,6 @@ use crate::{
         },
         context::UpdateContext,
         event::Event,
-        state::select::{Select, SelectListProps},
     },
 };
 use derive_more::Display;

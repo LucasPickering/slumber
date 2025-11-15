@@ -1,11 +1,11 @@
 use crate::view::{
-    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-    context::UpdateContext,
-    event::{Emitter, Event, EventMatch, ToEmitter},
-    state::select::{
+    common::select::{
         Select, SelectBuilder, SelectData, SelectEvent, SelectEventType,
         SelectItem,
     },
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+    context::UpdateContext,
+    event::{Emitter, Event, EventMatch, ToEmitter},
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;

@@ -5,15 +5,13 @@ use crate::{
         ToStringGenerate, UpdateContext, ViewContext,
         common::{
             modal::Modal,
+            select::{Select, SelectEvent, SelectEventType, SelectListProps},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         event::{Event, EventMatch, ToEmitter},
-        state::select::{
-            Select, SelectEvent, SelectEventType, SelectListProps,
-        },
     },
 };
 use derive_more::Display;

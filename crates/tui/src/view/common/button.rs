@@ -4,10 +4,10 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
+        common::fixed_select::{FixedSelect, FixedSelectItem},
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, EventMatch},
-        state::fixed_select::{FixedSelect, FixedSelectItem},
     },
 };
 use ratatui::{

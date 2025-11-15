@@ -2,15 +2,15 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
+        common::select::{
+            Select, SelectEvent, SelectEventType, SelectListProps,
+        },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, Portal,
             ToChild,
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
-        state::select::{
-            Select, SelectEvent, SelectEventType, SelectListProps,
-        },
     },
 };
 use itertools::Itertools;

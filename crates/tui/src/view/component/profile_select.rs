@@ -8,16 +8,14 @@ use crate::{
         common::{
             Pane,
             modal::{Modal, ModalQueue},
+            select::{Select, SelectListProps},
             table::Table,
             template_preview::TemplatePreview,
         },
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        state::{
-            StateCell,
-            select::{Select, SelectListProps},
-        },
+        state::StateCell,
         util::persistence::Persisted,
     },
 };

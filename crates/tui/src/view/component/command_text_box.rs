@@ -1,10 +1,12 @@
 use crate::view::{
     Component, ViewContext,
-    common::text_box::{TextBox, TextBoxEvent, TextBoxProps},
+    common::{
+        select::{Select, SelectEvent, SelectEventType, SelectListProps},
+        text_box::{TextBox, TextBoxEvent, TextBoxProps},
+    },
     component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
-    state::select::{Select, SelectEvent, SelectEventType, SelectListProps},
 };
 use persisted::PersistedContainer;
 use ratatui::{

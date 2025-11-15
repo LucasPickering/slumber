@@ -6,7 +6,12 @@ use crate::{
     util::ResultReported,
     view::{
         Component, ViewContext,
-        common::{actions::MenuItem, modal::ModalQueue},
+        common::{
+            actions::MenuItem,
+            fixed_select::FixedSelect,
+            modal::ModalQueue,
+            select::{SelectEvent, SelectEventType},
+        },
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
@@ -21,11 +26,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        state::{
-            StateCell,
-            fixed_select::FixedSelect,
-            select::{SelectEvent, SelectEventType},
-        },
+        state::StateCell,
         util::persistence::{Persisted, PersistedLazy},
     },
 };

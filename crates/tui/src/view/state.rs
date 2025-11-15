@@ -1,8 +1,5 @@
 //! State types for the view.
 
-pub mod fixed_select;
-pub mod select;
-
 use derive_more::Deref;
 use std::{
     cell::{Ref, RefCell},

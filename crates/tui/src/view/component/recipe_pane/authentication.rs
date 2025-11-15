@@ -2,7 +2,10 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
-        common::{actions::MenuItem, modal::ModalQueue, table::Table},
+        common::{
+            actions::MenuItem, fixed_select::FixedSelect, modal::ModalQueue,
+            select::SelectTableProps, table::Table,
+        },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
@@ -11,7 +14,6 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        state::{fixed_select::FixedSelect, select::SelectTableProps},
     },
 };
 use derive_more::derive::Display;

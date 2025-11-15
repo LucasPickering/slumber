@@ -3,6 +3,7 @@ use crate::view::{
     common::{
         actions::MenuItem,
         modal::ModalQueue,
+        select::{Select, SelectEvent, SelectEventType, SelectTableProps},
         table::{Table, ToggleRow},
     },
     component::{
@@ -13,7 +14,6 @@ use crate::view::{
     },
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
-    state::select::{Select, SelectEvent, SelectEventType, SelectTableProps},
     util::persistence::{Persisted, PersistedKey, PersistedLazy},
 };
 use itertools::Itertools;

@@ -8,7 +8,6 @@ use crate::view::{
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
 };
-use persisted::PersistedContainer;
 use ratatui::{
     layout::{Offset, Rect},
     widgets::{Clear, ListDirection},
@@ -207,18 +206,6 @@ impl Draw<TextBoxProps> for CommandTextBox {
 impl ToEmitter<CommandTextBoxEvent> for CommandTextBox {
     fn to_emitter(&self) -> Emitter<CommandTextBoxEvent> {
         self.emitter
-    }
-}
-
-impl PersistedContainer for CommandTextBox {
-    type Value = String;
-
-    fn get_to_persist(&self) -> Self::Value {
-        self.text_box.get_to_persist()
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        self.text_box.restore_persisted(value);
     }
 }
 

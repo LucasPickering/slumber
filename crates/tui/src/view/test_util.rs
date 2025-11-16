@@ -4,6 +4,7 @@ use crate::{
     context::TuiContext,
     http::RequestStore,
     test_util::{TestHarness, TestTerminal},
+    util::PersistentStore,
     view::{
         UpdateContext,
         common::actions::{ActionMenu, MenuItem},
@@ -13,14 +14,10 @@ use crate::{
         },
         context::ViewContext,
         event::{Event, EventMatch, LocalEvent, ToEmitter},
-        util::persistence::{PersistedKey, PersistedLazy},
     },
 };
-use derive_more::derive::{Deref, DerefMut};
 use itertools::Itertools;
-use persisted::PersistedContainer;
 use ratatui::layout::Rect;
-use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use std::{
     cell::RefCell,
@@ -273,6 +270,11 @@ where
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(mut self) -> Self {
         let propagated = self.component.drain_events();
+        // Persist values in the store after the update. This mimics what the
+        // event loop does
+        ViewContext::with_database(|db| {
+            self.component.persist(&mut PersistentStore::new(db));
+        });
         self.component.draw((self.props_factory)());
         self.propagated.extend(propagated);
         self
@@ -481,61 +483,6 @@ where
     /// Get propagated events as a slice
     pub fn propagated(&self) -> &[Event] {
         &self.propagated
-    }
-}
-
-/// A wrapper for testing persistence on components. Wrap the component in this
-/// to test that a component's internal values are persisted and restored
-/// correctly.
-///
-/// This is a wrapper instead of putting blanket impls on `PersistedLazy` to
-/// reduce impl clutter. Since this is test-only code, it's not worth cluttering
-/// the impl space.
-#[derive(Debug, Deref, DerefMut)]
-pub struct PersistedComponent<K, C>(
-    #[deref(forward)]
-    #[deref_mut(forward)]
-    PersistedLazy<K, C>,
-)
-where
-    K: Debug + PersistedKey,
-    K::Value: Debug,
-    C: Debug + persisted::PersistedContainer<Value = K::Value>;
-
-impl<K, C> PersistedComponent<K, C>
-where
-    K: PersistedKey + Debug,
-    K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
-    C: PersistedContainer<Value = K::Value> + Debug,
-{
-    pub fn new(key: K, component: C) -> Self {
-        Self(PersistedLazy::new(key, component))
-    }
-}
-
-impl<K, C> Component for PersistedComponent<K, C>
-where
-    K: PersistedKey + Debug,
-    K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
-    C: Component + PersistedContainer<Value = K::Value> + Debug,
-{
-    fn id(&self) -> ComponentId {
-        self.0.id()
-    }
-
-    fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.0.to_child_mut()]
-    }
-}
-
-impl<K, C, Props> Draw<Props> for PersistedComponent<K, C>
-where
-    K: PersistedKey + Debug,
-    K::Value: Serialize + for<'de> Deserialize<'de> + Debug + PartialEq,
-    C: Component + Draw<Props> + PersistedContainer<Value = K::Value> + Debug,
-{
-    fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata) {
-        canvas.draw(&*self.0, props, metadata.area(), true);
     }
 }
 

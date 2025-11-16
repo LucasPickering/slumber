@@ -19,6 +19,6 @@ pub use internal::{
     Canvas, Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
     Portal, ToChild,
 };
-pub use root::{Root, RootProps};
-// Exported for the view context
+#[cfg(test)]
 pub use recipe_pane::RecipeOverrideStore;
+pub use root::{Root, RootProps};

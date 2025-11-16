@@ -10,7 +10,6 @@ use crate::{
         event::{Emitter, Event, EventMatch, ToEmitter},
     },
 };
-use persisted::PersistedContainer;
 use ratatui::{
     layout::Rect,
     text::{Line, Masked, Text},
@@ -438,18 +437,6 @@ impl TextState {
             text_width,
             cursor_offset,
         }
-    }
-}
-
-impl PersistedContainer for TextBox {
-    type Value = String;
-
-    fn get_to_persist(&self) -> Self::Value {
-        self.state.text.clone()
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        self.set_text(value);
     }
 }
 

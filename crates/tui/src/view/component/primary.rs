@@ -3,7 +3,7 @@
 use crate::{
     http::{RequestConfig, RequestState, RequestStateType},
     message::{Message, RecipeCopyTarget},
-    util::ResultReported,
+    util::{PersistentKey, PersistentStore, ResultReported},
     view::{
         Component, ViewContext,
         common::{
@@ -27,7 +27,6 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         state::StateCell,
-        util::persistence::{Persisted, PersistedLazy},
     },
 };
 use derive_more::Display;
@@ -48,8 +47,8 @@ use strum::{EnumCount, EnumIter};
 pub struct PrimaryView {
     id: ComponentId,
     // Own state
-    selected_pane: PersistedLazy<PrimaryPaneKey, FixedSelect<PrimaryPane>>,
-    fullscreen_mode: Persisted<FullscreenModeKey>,
+    selected_pane: FixedSelect<PrimaryPane>,
+    fullscreen_mode: Option<FullscreenMode>,
 
     // Children
     profile_pane: ProfilePane,
@@ -71,18 +70,18 @@ pub struct PrimaryView {
 
 impl PrimaryView {
     pub fn new(collection: &Collection) -> Self {
+        let selected_pane = FixedSelect::builder()
+            .persisted(&PrimaryPaneKey)
+            .subscribe([SelectEventType::Select])
+            .build();
+        let fullscreen_mode = PersistentStore::get(&FullscreenModeKey);
         let profile_pane = ProfilePane::new(collection);
         let recipe_list_pane = RecipeListPane::new(&collection.recipes);
 
         Self {
             id: ComponentId::default(),
-            selected_pane: PersistedLazy::new(
-                Default::default(),
-                FixedSelect::builder()
-                    .subscribe([SelectEventType::Select])
-                    .build(),
-            ),
-            fullscreen_mode: Default::default(),
+            selected_pane,
+            fullscreen_mode,
 
             recipe_list_pane,
             profile_pane,
@@ -130,8 +129,7 @@ impl PrimaryView {
 
     fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
         // If we're already in the given mode, exit
-        *self.fullscreen_mode.get_mut() = if Some(mode) == *self.fullscreen_mode
-        {
+        self.fullscreen_mode = if Some(mode) == self.fullscreen_mode {
             None
         } else {
             Some(mode)
@@ -142,10 +140,10 @@ impl PrimaryView {
     /// called when the pane changes, but it's possible they match when we're
     /// loading from persistence. In those cases, stay in fullscreen.
     fn maybe_exit_fullscreen(&mut self) {
-        match (self.selected_pane.selected(), *self.fullscreen_mode) {
+        match (self.selected_pane.selected(), self.fullscreen_mode) {
             (PrimaryPane::Recipe, Some(FullscreenMode::Recipe))
             | (PrimaryPane::Exchange, Some(FullscreenMode::Exchange)) => {}
-            _ => *self.fullscreen_mode.get_mut() = None,
+            _ => self.fullscreen_mode = None,
         }
     }
 
@@ -154,49 +152,52 @@ impl PrimaryView {
     /// perform their state updates. To hide them we just render to an empty
     /// rect.
     fn panes(&self, area: Rect) -> Panes {
-        if let Some(fullscreen_mode) = *self.fullscreen_mode {
-            match fullscreen_mode {
-                FullscreenMode::Recipe => Panes {
-                    profile: PaneState::default(),
-                    recipe_list: PaneState::default(),
-                    recipe: PaneState { area, focus: true },
-                    exchange: PaneState::default(),
-                },
-                FullscreenMode::Exchange => Panes {
-                    profile: PaneState::default(),
-                    recipe_list: PaneState::default(),
-                    recipe: PaneState::default(),
-                    exchange: PaneState { area, focus: true },
-                },
-            }
-        } else {
-            // Split the main pane horizontally
-            let [left_area, right_area] =
-                Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
-                    .areas(area);
+        match self.fullscreen_mode {
+            Some(FullscreenMode::Recipe) => Panes {
+                profile: PaneState::default(),
+                recipe_list: PaneState::default(),
+                recipe: PaneState { area, focus: true },
+                exchange: PaneState::default(),
+            },
+            Some(FullscreenMode::Exchange) => Panes {
+                profile: PaneState::default(),
+                recipe_list: PaneState::default(),
+                recipe: PaneState::default(),
+                exchange: PaneState { area, focus: true },
+            },
+            None => {
+                // Split the main pane horizontally
+                let [left_area, right_area] = Layout::horizontal([
+                    Constraint::Max(40),
+                    Constraint::Min(40),
+                ])
+                .areas(area);
 
-            let [profile_area, recipe_list_area] =
-                Layout::vertical([Constraint::Length(3), Constraint::Min(0)])
-                    .areas(left_area);
-            let [recipe_area, exchange_area] =
-                self.get_right_column_layout(right_area);
-            Panes {
-                profile: PaneState {
-                    area: profile_area,
-                    focus: true,
-                },
-                recipe_list: PaneState {
-                    area: recipe_list_area,
-                    focus: self.is_selected(PrimaryPane::RecipeList),
-                },
-                recipe: PaneState {
-                    area: recipe_area,
-                    focus: self.is_selected(PrimaryPane::Recipe),
-                },
-                exchange: PaneState {
-                    area: exchange_area,
-                    focus: self.is_selected(PrimaryPane::Exchange),
-                },
+                let [profile_area, recipe_list_area] = Layout::vertical([
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                ])
+                .areas(left_area);
+                let [recipe_area, exchange_area] =
+                    self.get_right_column_layout(right_area);
+                Panes {
+                    profile: PaneState {
+                        area: profile_area,
+                        focus: true,
+                    },
+                    recipe_list: PaneState {
+                        area: recipe_list_area,
+                        focus: self.is_selected(PrimaryPane::RecipeList),
+                    },
+                    recipe: PaneState {
+                        area: recipe_area,
+                        focus: self.is_selected(PrimaryPane::Recipe),
+                    },
+                    exchange: PaneState {
+                        area: exchange_area,
+                        focus: self.is_selected(PrimaryPane::Exchange),
+                    },
+                }
             }
         }
     }
@@ -273,20 +274,19 @@ impl Component for PrimaryView {
             .m()
             .click(|position, _| {
                 // Select clicked pane
-                let mut selected_pane = self.selected_pane.get_mut();
                 if self.profile_pane.contains(position) {
                     self.profile_pane.open_modal();
                 } else if self.recipe_list_pane.contains(position) {
-                    selected_pane.select(&PrimaryPane::RecipeList);
+                    self.selected_pane.select(&PrimaryPane::RecipeList);
                 } else if self.recipe_pane.contains(position) {
-                    selected_pane.select(&PrimaryPane::Recipe);
+                    self.selected_pane.select(&PrimaryPane::Recipe);
                 } else if self.exchange_pane.get_mut().contains(position) {
-                    selected_pane.select(&PrimaryPane::Exchange);
+                    self.selected_pane.select(&PrimaryPane::Exchange);
                 }
             })
             .action(|action, propagate| match action {
-                Action::PreviousPane => self.selected_pane.get_mut().previous(),
-                Action::NextPane => self.selected_pane.get_mut().next(),
+                Action::PreviousPane => self.selected_pane.previous(),
+                Action::NextPane => self.selected_pane.next(),
                 // Send a request from anywhere
                 Action::Submit => self.send_request(),
                 Action::OpenHelp => self.help_modal.open(HelpModal::default()),
@@ -295,15 +295,14 @@ impl Component for PrimaryView {
                 Action::SelectProfileList => {
                     self.profile_pane.open_modal();
                 }
-                Action::SelectRecipeList => self
-                    .selected_pane
-                    .get_mut()
-                    .select(&PrimaryPane::RecipeList),
+                Action::SelectRecipeList => {
+                    self.selected_pane.select(&PrimaryPane::RecipeList);
+                }
                 Action::SelectRecipe => {
-                    self.selected_pane.get_mut().select(&PrimaryPane::Recipe);
+                    self.selected_pane.select(&PrimaryPane::Recipe);
                 }
                 Action::SelectResponse => {
-                    self.selected_pane.get_mut().select(&PrimaryPane::Exchange);
+                    self.selected_pane.select(&PrimaryPane::Exchange);
                 }
                 Action::SelectCollection => {
                     self.collection_select.open(CollectionSelect::new());
@@ -325,7 +324,7 @@ impl Component for PrimaryView {
                 }
                 // Exit fullscreen
                 Action::Cancel if self.fullscreen_mode.is_some() => {
-                    *self.fullscreen_mode.get_mut() = None;
+                    self.fullscreen_mode = None;
                 }
                 _ => propagate.set(),
             })
@@ -368,6 +367,11 @@ impl Component for PrimaryView {
                 .menu(PrimaryMenuAction::EditCollection, edit_collection_name)
                 .into(),
         ]
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set(&PrimaryPaneKey, &self.selected_pane.selected());
+        store.set_opt(&FullscreenModeKey, self.fullscreen_mode.as_ref());
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -461,9 +465,12 @@ pub struct PrimaryViewProps<'a> {
 }
 
 /// Persistence key for selected pane
-#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(PrimaryPane)]
+#[derive(Debug, Default, Serialize)]
 struct PrimaryPaneKey;
+
+impl PersistentKey for PrimaryPaneKey {
+    type Value = PrimaryPane;
+}
 
 /// Selectable panes in the primary view mode
 #[derive(
@@ -486,9 +493,12 @@ enum PrimaryPane {
 }
 
 /// Persistence key for fullscreen mode
-#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(Option<FullscreenMode>)]
+#[derive(Debug, Default, Serialize)]
 struct FullscreenModeKey;
+
+impl PersistentKey for FullscreenModeKey {
+    type Value = FullscreenMode;
+}
 
 /// Panes that can be fullscreened. This is separate from [PrimaryPane] because
 /// it makes it easy to check when we should exit fullscreen mode.
@@ -530,11 +540,8 @@ mod tests {
         http::RequestConfig,
         message::Message,
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            test_util::TestComponent, util::persistence::DatabasePersistedStore,
-        },
+        view::test_util::TestComponent,
     };
-    use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_core::http::BuildOptions;
     use slumber_util::assert_matches;
@@ -560,19 +567,13 @@ mod tests {
     /// Test selected pane and fullscreen mode loading from persistence
     #[rstest]
     fn test_pane_persistence(mut harness: TestHarness, terminal: TestTerminal) {
-        DatabasePersistedStore::store_persisted(
-            &PrimaryPaneKey,
-            &PrimaryPane::Exchange,
-        );
-        DatabasePersistedStore::store_persisted(
-            &FullscreenModeKey,
-            &Some(FullscreenMode::Exchange),
-        );
+        harness.set_persisted(&PrimaryPaneKey, &PrimaryPane::Exchange);
+        harness.set_persisted(&FullscreenModeKey, &FullscreenMode::Exchange);
 
         let component = create_component(&mut harness, &terminal);
         assert_eq!(component.selected_pane.selected(), PrimaryPane::Exchange);
         assert_matches!(
-            *component.fullscreen_mode,
+            component.fullscreen_mode,
             Some(FullscreenMode::Exchange)
         );
     }

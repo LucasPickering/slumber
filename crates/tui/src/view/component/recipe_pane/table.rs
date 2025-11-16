@@ -1,20 +1,22 @@
-use crate::view::{
-    Generate,
-    common::{
-        actions::MenuItem,
-        modal::ModalQueue,
-        select::{Select, SelectEvent, SelectEventType, SelectTableProps},
-        table::{Table, ToggleRow},
+use crate::{
+    util::{PersistentKey, PersistentStore},
+    view::{
+        Generate,
+        common::{
+            actions::MenuItem,
+            modal::ModalQueue,
+            select::{Select, SelectEvent, SelectEventType, SelectTableProps},
+            table::{Table, ToggleRow},
+        },
+        component::{
+            Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
+            internal::Child,
+            misc::TextBoxModal,
+            recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+        },
+        context::UpdateContext,
+        event::{Emitter, Event, EventMatch, ToEmitter},
     },
-    component::{
-        Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        internal::Child,
-        misc::TextBoxModal,
-        recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
-    },
-    context::UpdateContext,
-    event::{Emitter, Event, EventMatch, ToEmitter},
-    util::persistence::{Persisted, PersistedKey, PersistedLazy},
 };
 use itertools::Itertools;
 use ratatui::{
@@ -22,10 +24,7 @@ use ratatui::{
     widgets::{Row, TableState},
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::HasId,
-    http::{BuildFieldOverride, BuildFieldOverrides},
-};
+use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
 use slumber_template::Template;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
@@ -37,11 +36,7 @@ use slumber_template::Template;
 ///
 /// Generic params define the keys to use for persisting state
 #[derive(Debug)]
-pub struct RecipeFieldTable<RowSelectKey, RowToggleKey>
-where
-    RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: PersistedKey<Value = bool>,
-{
+pub struct RecipeFieldTable<RowSelectKey, RowToggleKey> {
     id: ComponentId,
     /// What kind of data we we storing? e.g. "Header"
     noun: &'static str,
@@ -49,8 +44,9 @@ where
     override_emitter: Emitter<SaveRecipeTableOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeTableMenuAction>,
-    select:
-        PersistedLazy<RowSelectKey, Select<RowState<RowToggleKey>, TableState>>,
+    /// Persistence key to store which row is selected
+    select_persistent_key: RowSelectKey,
+    select: Select<RowState<RowToggleKey>, TableState>,
     /// Modal to edit template overrides. One modal is used for all rows,
     /// because we only ever need one at a time and it makes the state
     /// management simpler. Otherwise each row would need to be its own
@@ -60,8 +56,8 @@ where
 
 impl<RowSelectKey, RowToggleKey> RecipeFieldTable<RowSelectKey, RowToggleKey>
 where
-    RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: 'static + PersistedKey<Value = bool>,
+    RowSelectKey: PersistentKey<Value = String>,
+    RowToggleKey: 'static + PersistentKey<Value = bool>,
 {
     pub fn new(
         noun: &'static str,
@@ -83,10 +79,12 @@ where
                     None,
                     can_stream,
                 ),
-                enabled: Persisted::new(toggle_key, true),
+                enabled: PersistentStore::get(&toggle_key).unwrap_or(true),
+                persistent_key: toggle_key,
             })
             .collect();
         let select = Select::builder(items)
+            .persisted(&select_key)
             .subscribe([SelectEventType::Toggle])
             .build();
         Self {
@@ -94,7 +92,8 @@ where
             noun,
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
-            select: PersistedLazy::new(select_key, select),
+            select_persistent_key: select_key,
+            select,
             edit_modal: ModalQueue::default(),
         }
     }
@@ -128,7 +127,7 @@ where
     }
 
     fn reset_selected_row(&mut self) {
-        if let Some(selected_row) = self.select.get_mut().selected_mut() {
+        if let Some(selected_row) = self.select.selected_mut() {
             selected_row.value.reset_override();
         }
     }
@@ -137,8 +136,8 @@ where
 impl<RowSelectKey, RowToggleKey> Component
     for RecipeFieldTable<RowSelectKey, RowToggleKey>
 where
-    RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: 'static + PersistedKey<Value = bool>,
+    RowSelectKey: PersistentKey<Value = String>,
+    RowToggleKey: 'static + PersistentKey<Value = bool>,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -155,7 +154,7 @@ where
             })
             .emitted(self.select.to_emitter(), |event| {
                 if let SelectEvent::Toggle(index) = event {
-                    self.select.get_mut()[index].toggle();
+                    self.select[index].toggle();
                 }
             })
             .emitted(
@@ -169,7 +168,7 @@ where
                     // selection while the edit modal is open. It's safer to
                     // re-grab the modal by index though, just to be sure we've
                     // got the right one.
-                    self.select.get_mut().items_mut()[row_index]
+                    self.select.items_mut()[row_index]
                         .value
                         .value
                         .set_override(template);
@@ -203,6 +202,20 @@ where
         ]
     }
 
+    fn persist(&self, store: &mut PersistentStore) {
+        // Persist the selected row
+        store.set_opt(
+            &self.select_persistent_key,
+            self.select.selected().map(|row| &row.key),
+        );
+        for row in self.select.items() {
+            // For each row, persist the toggle state AND the override
+            store.set(&row.persistent_key, &row.enabled);
+            // Overrides are persisted in a separate single-session store
+            row.value.persist();
+        }
+    }
+
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.edit_modal.to_child_mut(), self.select.to_child_mut()]
     }
@@ -211,8 +224,8 @@ where
 impl<'a, RowSelectKey, RowToggleKey> Draw<RecipeFieldTableProps<'a>>
     for RecipeFieldTable<RowSelectKey, RowToggleKey>
 where
-    RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: 'static + PersistedKey<Value = bool>,
+    RowSelectKey: PersistentKey<Value = String>,
+    RowToggleKey: 'static + PersistentKey<Value = bool>,
 {
     fn draw(
         &self,
@@ -231,7 +244,7 @@ where
             ..Default::default()
         };
         canvas.draw(
-            &*self.select,
+            &self.select,
             SelectTableProps { table },
             metadata.area(),
             true,
@@ -265,28 +278,31 @@ pub struct RecipeFieldTableProps<'a> {
 /// One row in the query/header table. Generic param is the persistence key to
 /// use for toggle state
 #[derive(Debug)]
-struct RowState<K: PersistedKey<Value = bool>> {
+struct RowState<RowToggleKey> {
     /// Index of this row in the table. This is the unique ID for this row
     /// **in the context of a single session**. Rows can be added/removed
     /// during a collection reload, so we can't persist this.
     index: usize,
-    /// Persistent (but not unique) identifier for this row. Keys can be
-    /// duplicated within one table (e.g. query params), but this is how we
-    /// link instances of a row across collection reloads.
+    /// **Non-unique** identifier for this row. Keys can be duplicated within
+    /// one table (e.g. query params). This should be consistent across reloads
+    /// though because this is the *value* persisted to identify which row is
+    /// selected.
     key: String,
     /// Value template. This includes functionality to make it editable, and
     /// persist the edited value within the current session
     value: RecipeTemplate,
+    /// Persistence key to store the toggle state for this row
+    persistent_key: RowToggleKey,
     /// Is the row enabled/included? This is persisted by row *key* rather than
     /// index, which **may not be unique**. E.g. a query param could be
     /// duplicated. This means duplicated keys will all get the same persisted
     /// toggle state. This is a bug but it's hard to fix, because if we persist
     /// by index (the actual unique key), then adding/removing any field to the
     /// table will mess with persistence.
-    enabled: Persisted<K>,
+    enabled: bool,
 }
 
-impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
+impl<RowToggleKey> Generate for &RowState<RowToggleKey> {
     type Output<'this>
         = Row<'this>
     where
@@ -298,20 +314,20 @@ impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
     {
         ToggleRow::new(
             [self.key.as_str().into(), self.value.preview().generate()],
-            *self.enabled,
+            self.enabled,
         )
         .generate()
     }
 }
 
-impl<K: PersistedKey<Value = bool>> RowState<K> {
+impl<RowToggleKey> RowState<RowToggleKey> {
     fn toggle(&mut self) {
-        *self.enabled.get_mut() ^= true;
+        self.enabled ^= true;
     }
 
     /// Get the disabled/override state of this row
     fn to_build_override(&self) -> Option<BuildFieldOverride> {
-        if !*self.enabled {
+        if !self.enabled {
             Some(BuildFieldOverride::Omit)
         } else if self.value.is_overridden() {
             Some(BuildFieldOverride::Override(self.value.template().clone()))
@@ -321,26 +337,10 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 }
 
-// Needed for `Select` persistence
-impl<K: PersistedKey<Value = bool>> HasId for RowState<K> {
-    type Id = String;
-
-    fn id(&self) -> &Self::Id {
-        &self.key
-    }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.key = id;
-    }
-}
-
-// Needed for `Select` persistence
-impl<K> PartialEq<RowState<K>> for String
-where
-    K: PersistedKey<Value = bool>,
-{
-    fn eq(&self, row_state: &RowState<K>) -> bool {
-        self == &row_state.key
+// Key-based equality for persistence restoration
+impl<RowToggleKey> PartialEq<RowState<RowToggleKey>> for String {
+    fn eq(&self, other: &RowState<RowToggleKey>) -> bool {
+        self == &other.key
     }
 }
 
@@ -349,30 +349,29 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::{
-                RecipeOverrideStore,
-                recipe_pane::persistence::RecipeOverrideValue,
-            },
-            test_util::TestComponent,
-        },
+        view::{component::RecipeOverrideStore, test_util::TestComponent},
     };
-    use persisted::PersistedStore;
     use rstest::rstest;
     use serde::Serialize;
     use slumber_core::collection::RecipeId;
     use slumber_util::Factory;
     use terminput::KeyCode;
 
-    #[derive(Debug, Serialize, persisted::PersistedKey)]
-    #[persisted(Option<String>)]
+    #[derive(Debug, Serialize)]
     struct TestRowKey(RecipeId);
 
-    #[derive(Debug, Serialize, persisted::PersistedKey)]
-    #[persisted(bool)]
+    impl PersistentKey for TestRowKey {
+        type Value = String;
+    }
+
+    #[derive(Debug, Serialize)]
     struct TestRowToggleKey {
         recipe_id: RecipeId,
         key: String,
+    }
+
+    impl PersistentKey for TestRowToggleKey {
+        type Value = bool;
     }
 
     /// User can hide a row from the recipe
@@ -426,7 +425,7 @@ mod tests {
             .assert_empty();
         let selected_row = component.select.selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
-        assert!(!*selected_row.enabled);
+        assert!(!selected_row.enabled);
         assert_eq!(
             component.to_build_overrides(),
             [(1, BuildFieldOverride::Omit)].into_iter().collect(),
@@ -438,7 +437,7 @@ mod tests {
             .send_key(KeyCode::Char(' '))
             .assert_empty();
         let selected_row = component.select.selected().unwrap();
-        assert!(*selected_row.enabled);
+        assert!(selected_row.enabled);
         assert_eq!(
             component.to_build_overrides(),
             BuildFieldOverrides::default(),
@@ -559,13 +558,13 @@ mod tests {
     #[rstest]
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::store_persisted(
+        RecipeOverrideStore::set(
             &RecipeOverrideKey::query_param(recipe_id.clone(), 0),
-            &RecipeOverrideValue::Override("p0".into()),
+            &"p0".into(),
         );
-        RecipeOverrideStore::store_persisted(
+        RecipeOverrideStore::set(
             &RecipeOverrideKey::query_param(recipe_id.clone(), 1),
-            &RecipeOverrideValue::Override("p1".into()),
+            &"p1".into(),
         );
         let rows = [
             (

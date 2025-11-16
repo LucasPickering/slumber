@@ -1,7 +1,7 @@
 use crate::{
     http::{RequestConfig, RequestState, RequestStore},
     message::Message,
-    util::ResultReported,
+    util::{PersistentKey, PersistentStore, ResultReported},
     view::{
         Component, Confirm, ViewContext,
         common::{actions::ActionMenu, modal::ModalQueue, text_box::TextBox},
@@ -15,11 +15,8 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::persistence::PersistedLazy,
     },
 };
-use derive_more::From;
-use persisted::{PersistedContainer, PersistedKey};
 use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
@@ -36,7 +33,7 @@ pub struct Root {
     // ===== Own State =====
     id: ComponentId,
     /// Which request are we showing in the request/response panel?
-    selected_request_id: PersistedLazy<SelectedRequestKey, SelectedRequestId>,
+    selected_request_id: Option<RequestId>,
 
     // ==== Children =====
     primary_view: PrimaryView,
@@ -57,18 +54,23 @@ pub struct Root {
 
 impl Root {
     pub fn new(collection: &Collection) -> Self {
-        // Load the selected request *second*, so it will take precedence over
-        // the event that attempts to load the latest request for the recipe
-        let selected_request_id: PersistedLazy<_, SelectedRequestId> =
-            PersistedLazy::new_default(SelectedRequestKey);
-        let primary_view = PrimaryView::new(collection);
+        // Restore the selected request via an event. When selecting the
+        // request we need to load it into the request store as well, and we
+        // don't have access to that here
+        if let Some(selected_request_id) =
+            PersistentStore::get(&SelectedRequestKey)
+        {
+            ViewContext::push_event(Event::HttpSelectRequest(Some(
+                selected_request_id,
+            )));
+        }
+
         Self {
             id: ComponentId::default(),
-            // State
-            selected_request_id,
+            selected_request_id: None,
 
             // Children
-            primary_view,
+            primary_view: PrimaryView::new(collection),
             footer: Footer::default(),
             actions: ActionMenu::default(),
             cancel_request_confirm: ModalQueue::default(),
@@ -131,17 +133,12 @@ impl Root {
         self.primary_view.request_config()
     }
 
-    /// What request should be shown in the request/response pane right now?
-    fn selected_request_id(&self) -> Option<RequestId> {
-        self.selected_request_id.0
-    }
-
     /// Extract the currently selected request from the store
     fn selected_request<'a>(
         &self,
         request_store: &'a RequestStore,
     ) -> Option<&'a RequestState> {
-        self.selected_request_id()
+        self.selected_request_id
             .and_then(|id| request_store.get(id))
     }
 
@@ -182,8 +179,7 @@ impl Root {
             None
         };
 
-        *self.selected_request_id.get_mut() =
-            state.map(RequestState::id).into();
+        self.selected_request_id = state.map(RequestState::id);
         Ok(())
     }
 
@@ -203,14 +199,14 @@ impl Root {
             self.history.open(History::new(
                 recipe_id,
                 requests,
-                self.selected_request_id(),
+                self.selected_request_id,
             ));
         }
     }
 
     /// Cancel the active request
     fn cancel_request(&mut self, context: &mut UpdateContext<'_>) {
-        if let Some(request_id) = self.selected_request_id.0
+        if let Some(request_id) = self.selected_request_id
             && context.request_store.can_cancel(request_id)
         {
             self.cancel_request_confirm.open(ConfirmModal::new(
@@ -275,6 +271,10 @@ impl Component for Root {
             })
     }
 
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set_opt(&SelectedRequestKey, self.selected_request_id.as_ref());
+    }
+
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
             // Modals first. They won't eat events when closed
@@ -309,7 +309,6 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
         // Main content
         let selected_request = self
             .selected_request_id
-            .0
             .and_then(|id| props.request_store.get(id));
         canvas.draw(
             &self.primary_view,
@@ -341,28 +340,11 @@ pub struct RootProps<R: Deref<Target = RequestStore>> {
 }
 
 /// Persistence key for the selected request
-#[derive(Debug, Serialize, PersistedKey)]
-#[persisted(Option<RequestId>)]
+#[derive(Debug, Serialize)]
 struct SelectedRequestKey;
 
-/// A wrapper for the selected request ID. This is needed to customize
-/// persistence loading. We have to load the persisted value via an event so it
-/// can be loaded from the DB.
-#[derive(Debug, Default, From)]
-struct SelectedRequestId(Option<RequestId>);
-
-impl PersistedContainer for SelectedRequestId {
-    type Value = Option<RequestId>;
-
-    fn get_to_persist(&self) -> Self::Value {
-        self.0
-    }
-
-    fn restore_persisted(&mut self, request_id: Self::Value) {
-        // We can't just set the value directly, because then the request won't
-        // be loaded from the DB
-        ViewContext::push_event(Event::HttpSelectRequest(request_id));
-    }
+impl PersistentKey for SelectedRequestKey {
+    type Value = RequestId;
 }
 
 #[cfg(test)]
@@ -370,11 +352,8 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            test_util::TestComponent, util::persistence::DatabasePersistedStore,
-        },
+        view::test_util::TestComponent,
     };
-    use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_core::{
         collection::{Profile, Recipe},
@@ -414,7 +393,7 @@ mod tests {
         let primary_view = &component.primary_view;
         assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
         assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
-        assert_eq!(component.selected_request_id(), Some(exchange.id));
+        assert_eq!(component.selected_request_id, Some(exchange.id));
 
         // It'd be nice to assert on the view but it's just too complicated to
         // be worth mocking the whole thing out
@@ -436,10 +415,7 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
-        DatabasePersistedStore::store_persisted(
-            &SelectedRequestKey,
-            &Some(old_exchange.id),
-        );
+        harness.set_persisted(&SelectedRequestKey, &old_exchange.id);
 
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
@@ -465,7 +441,7 @@ mod tests {
             component.primary_view.selected_recipe_id(),
             Some(recipe_id)
         );
-        assert_eq!(component.selected_request_id(), Some(old_exchange.id));
+        assert_eq!(component.selected_request_id, Some(old_exchange.id));
     }
 
     /// Test that if the persisted request ID isn't in the DB, we'll fall back
@@ -483,14 +459,8 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
-        harness
-            .database
-            .set_ui(
-                SelectedRequestKey::type_name(),
-                &SelectedRequestKey,
-                RequestId::new(),
-            )
-            .unwrap();
+        // Put a random ID in the DB
+        harness.set_persisted(&SelectedRequestKey, &RequestId::new());
 
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
@@ -507,7 +477,7 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
+        assert_eq!(component.selected_request_id, Some(new_exchange.id));
     }
 
     /// Test that when the selected recipe changes, the selected request changes
@@ -546,14 +516,14 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(component.selected_request_id(), Some(exchange1.id));
+        assert_eq!(component.selected_request_id, Some(exchange1.id));
 
         // Select the second recipe
         component
             .int_props(props_factory)
             .send_keys([KeyCode::Char('l'), KeyCode::Down])
             .assert_empty();
-        assert_eq!(component.selected_request_id(), Some(exchange2.id));
+        assert_eq!(component.selected_request_id, Some(exchange2.id));
     }
 
     /// Test that when the selected profile changes, the selected request
@@ -592,14 +562,14 @@ mod tests {
             .drain_draw()
             .assert_empty();
 
-        assert_eq!(component.selected_request_id(), Some(exchange1.id));
+        assert_eq!(component.selected_request_id, Some(exchange1.id));
 
         // Select the second profile
         component
             .int_props(props_factory)
             .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
-        assert_eq!(component.selected_request_id(), Some(exchange2.id));
+        assert_eq!(component.selected_request_id, Some(exchange2.id));
     }
 
     /// Test "Delete Requests" action via both the recipe pane
@@ -635,7 +605,7 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
+        assert_eq!(component.selected_request_id, Some(new_exchange.id));
 
         // Select "Delete Requests" but decline the confirmation
         component
@@ -646,7 +616,7 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
+        assert_eq!(component.selected_request_id, Some(new_exchange.id));
 
         // Select "Delete Requests" and accept. I don't feel like testing Delete
         // for All Profiles
@@ -657,7 +627,7 @@ mod tests {
             .send_keys([KeyCode::Enter])
             .assert_empty();
 
-        assert_eq!(component.selected_request_id(), None);
+        assert_eq!(component.selected_request_id, None);
     }
 
     /// Test "Delete Request" action, which is available via the
@@ -691,7 +661,7 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
+        assert_eq!(component.selected_request_id, Some(new_exchange.id));
 
         // Select "Delete Request" but decline the confirmation
         component
@@ -702,7 +672,7 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
+        assert_eq!(component.selected_request_id, Some(new_exchange.id));
 
         component
             .int_props(props_factory)
@@ -713,7 +683,7 @@ mod tests {
             .assert_empty();
 
         // New exchange is gone
-        assert_eq!(component.selected_request_id(), Some(old_exchange.id));
+        assert_eq!(component.selected_request_id, Some(old_exchange.id));
         assert_eq!(harness.request_store.borrow().get(new_exchange.id), None);
     }
 }

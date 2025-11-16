@@ -1,5 +1,6 @@
 use crate::{
     context::TuiContext,
+    util::{PersistentKey, PersistentStore},
     view::{
         Generate,
         common::{scrollbar::Scrollbar, table::Table},
@@ -11,7 +12,6 @@ use crate::{
     },
 };
 use itertools::Itertools;
-use persisted::PersistedContainer;
 use ratatui::{
     style::Styled,
     text::Text,
@@ -21,7 +21,6 @@ use ratatui::{
     },
 };
 use slumber_config::Action;
-use slumber_core::collection::HasId;
 use std::{
     cell::RefCell,
     collections::HashSet,
@@ -160,6 +159,20 @@ impl<Item, State> SelectBuilder<Item, State> {
         } else {
             self
         }
+    }
+
+    /// Get the persisted item from the store and select it. The persisted value
+    /// doesn't need to be exactly what's in the list, it just needs to compare
+    /// to it with `PartialEq`. For example, you can persist an ID but store the
+    /// full object in the `Select`.
+    pub fn persisted<K>(self, key: &K) -> Self
+    where
+        K: PersistentKey,
+        // The persisted value doesn't have to be the ENTIRE item that we have
+        // in the list, it just needs to be comparable (e.g. ID for a recipe)
+        K::Value: PartialEq<Item>,
+    {
+        self.preselect_opt(PersistentStore::get(key).as_ref())
     }
 
     /// Apply a case-insensitive text filter to the list. Any item whose label
@@ -484,30 +497,6 @@ where
     }
 }
 
-impl<Item, State> PersistedContainer for Select<Item, State>
-where
-    Item: HasId,
-    // PartialEq needed so we can select items by ID
-    Item::Id: Clone + PartialEq<Item>,
-    State: SelectData,
-{
-    type Value = Option<Item::Id>;
-
-    fn get_to_persist(&self) -> Self::Value {
-        self.selected().map(Item::id).cloned()
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        // If we persisted `None`, we *don't* want to update state here. That
-        // means the list was empty before persisting and it may now have data,
-        // and we don't want to overwrite whatever was pre-selected
-        if let Some(value) = &value {
-            // This will emit a select event if the item is in the list
-            self.select(value);
-        }
-    }
-}
-
 impl<Item, State> ToEmitter<SelectEvent> for Select<Item, State>
 where
     State: SelectData,
@@ -701,18 +690,13 @@ mod tests {
     use crate::{
         input::InputEvent,
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            Generate,
-            test_util::{PersistedComponent, TestComponent},
-            util::persistence::DatabasePersistedStore,
-        },
+        view::{Generate, test_util::TestComponent},
     };
-    use persisted::{PersistedKey, PersistedStore};
     use proptest::{collection, sample, test_runner::TestRunner};
     use ratatui::text::Span;
     use rstest::rstest;
     use serde::Serialize;
-    use slumber_core::collection::ProfileId;
+    use slumber_core::collection::{HasId, ProfileId};
     use slumber_util::assert_matches;
     use std::{collections::HashSet, ops::Deref};
     use terminput::KeyCode;
@@ -1130,8 +1114,8 @@ mod tests {
 
     /// Test persisting selected item
     #[rstest]
-    // First item gets selected by preselection, second by persistence
-    #[case::persisted("persisted", "persisted", &[0, 1])]
+    // Preselected item (0) never emits an event, only the persisted one
+    #[case::persisted("persisted", "persisted", &[ 1])]
     // If the persisted item is disabled, we'll select the first item instead
     #[case::disabled("disabled", "default", &[0])]
     fn test_persistence(
@@ -1142,9 +1126,12 @@ mod tests {
         // Which items emit Select events?
         #[case] expected_event_indexes: &[usize],
     ) {
-        #[derive(Debug, PersistedKey, Serialize)]
-        #[persisted(Option<ProfileId>)]
+        #[derive(Debug, Serialize)]
         struct Key;
+
+        impl PersistentKey for Key {
+            type Value = ProfileId;
+        }
 
         #[derive(Debug)]
         struct ProfileItem(ProfileId);
@@ -1187,10 +1174,7 @@ mod tests {
             }
         }
 
-        DatabasePersistedStore::store_persisted(
-            &Key,
-            &Some(persisted_id.into()),
-        );
+        harness.set_persisted(&Key, &persisted_id.into());
 
         // Second profile should be pre-selected because of persistence
         let select: Select<ProfileItem> = Select::builder(vec![
@@ -1199,13 +1183,10 @@ mod tests {
             "disabled".into(),
         ])
         .disabled_indexes([2])
+        .persisted(&Key)
         .subscribe([SelectEventType::Select])
         .build();
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            PersistedComponent::new(Key, select),
-        );
+        let mut component = TestComponent::new(&harness, &terminal, select);
         assert_eq!(
             component.selected().map(|item| item.0.deref()),
             Some(expected_selected)

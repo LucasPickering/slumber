@@ -4,6 +4,7 @@
 
 use crate::{
     input::InputEvent,
+    util::PersistentStore,
     view::{
         common::actions::MenuItem,
         context::UpdateContext,
@@ -12,20 +13,13 @@ use crate::{
     },
 };
 use derive_more::Display;
-use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
 use ratatui::{
     Frame,
     buffer::Buffer,
     layout::{Position, Rect},
     widgets::{StatefulWidget, Widget},
 };
-use std::{
-    any,
-    cell::RefCell,
-    collections::HashMap,
-    mem,
-    ops::{Deref, DerefMut},
-};
+use std::{any, cell::RefCell, collections::HashMap, mem};
 use tracing::{instrument, trace, trace_span, warn};
 use uuid::Uuid;
 
@@ -75,7 +69,11 @@ pub trait Component: ToChild {
     ///
     /// Generally event matching should be done with [Event::m] and the
     /// matching methods defined by [EventMatch].
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
         event.m()
     }
 
@@ -99,6 +97,16 @@ pub trait Component: ToChild {
         Vec::new()
     }
 
+    /// Persist state to the persistence store. This is called at the end of
+    /// each update phase. The view will automatically call it for each
+    /// component in the tree, so implementors do **not** need to call it
+    /// recursively for their children.
+    ///
+    /// Components are responsible for restoring persisted values from the
+    /// store themselves, using [PersistentStore::get]. This should happen in
+    /// each component's constructor.
+    fn persist(&self, _store: &mut PersistentStore) {}
+
     /// Get **all** children of this component. This includes children that are
     /// not currently visible, and ones that are out of focus, meaning they
     /// shouldn't receive keyboard events. The event handling infrastructure is
@@ -116,36 +124,6 @@ pub trait Component: ToChild {
     ///   parent and try again.
     fn children(&mut self) -> Vec<Child<'_>> {
         Vec::new()
-    }
-}
-
-// This can't be a blanket impl on DerefMut because that causes a collision in
-// the blanket impls of ToChild
-impl<S, K, C> Component for PersistedLazyRefMut<'_, S, K, C>
-where
-    S: PersistedStore<K>,
-    K: persisted::PersistedKey,
-    K::Value: PartialEq,
-    C: Component + PersistedContainer<Value = K::Value>,
-{
-    fn id(&self) -> ComponentId {
-        self.deref().id()
-    }
-
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> EventMatch {
-        self.deref_mut().update(context, event)
-    }
-
-    fn menu(&self) -> Vec<MenuItem> {
-        self.deref().menu()
-    }
-
-    fn children(&mut self) -> Vec<Child<'_>> {
-        self.deref_mut().children()
     }
 }
 
@@ -406,11 +384,15 @@ impl DrawMetadata {
     }
 }
 
-/// A wrapper for a dynamically dispatched [Component]. This is used to
-/// return a collection of event handlers from [Component::children]. Almost
-/// all cases will use the [Borrowed](Self::Borrowed) variant, but
-/// [Owned](Self::Owned) is useful for types that need to wrap the mutable
-/// reference in some type of guard. See [ToChild].
+/// A wrapper for a dynamically dispatched [Component]
+///
+/// This is used to return a collection of event handlers from
+/// [Component::children]. This serves two main purposes:
+/// - Attach a static name to the component's trait object, for logging
+/// - Support null children for optional components
+///
+/// Those may sound unimportant, but they're *very* useful and justify the
+/// added abstraction. See [ToChild] as well.
 pub enum Child<'a> {
     /// A null child, produced by an optional component. This is an ergonomic
     /// feature that makes it possible to call to_child_mut() on optional
@@ -420,10 +402,6 @@ pub enum Child<'a> {
         name: &'static str,
         component: &'a mut dyn Component,
     },
-    Owned {
-        name: &'static str,
-        component: Box<dyn 'a + Component>,
-    },
 }
 
 impl<'a> Child<'a> {
@@ -432,7 +410,6 @@ impl<'a> Child<'a> {
         match self {
             Self::None => "None",
             Self::Borrowed { name, .. } => name,
-            Self::Owned { name, .. } => name,
         }
     }
 
@@ -446,7 +423,6 @@ impl<'a> Child<'a> {
         match self {
             Self::None => None,
             Self::Borrowed { component, .. } => Some(*component),
-            Self::Owned { component, .. } => Some(&mut **component),
         }
     }
 }
@@ -473,24 +449,6 @@ impl<T: Component + Sized> ToChild for Option<T> {
         match self {
             Some(component) => component.to_child_mut(),
             None => Child::None,
-        }
-    }
-}
-
-/// A mutable reference to the contents of [persisted::PersistedLazy] must be
-/// wrapped in [PersistedLazyRefMut], which requires us to return an owned child
-/// rather than a borrowed one.
-impl<S, K, C> ToChild for persisted::PersistedLazy<S, K, C>
-where
-    S: PersistedStore<K>,
-    K: persisted::PersistedKey,
-    K::Value: PartialEq,
-    C: Component + PersistedContainer<Value = K::Value>,
-{
-    fn to_child_mut(&mut self) -> Child<'_> {
-        Child::Owned {
-            name: any::type_name::<Self>(),
-            component: Box::new(self.get_mut()),
         }
     }
 }

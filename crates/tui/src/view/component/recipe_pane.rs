@@ -5,6 +5,7 @@ mod recipe;
 mod table;
 mod url;
 
+#[cfg(test)]
 pub use persistence::RecipeOverrideStore;
 
 use crate::{

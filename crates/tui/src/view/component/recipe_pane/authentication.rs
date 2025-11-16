@@ -332,15 +332,8 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::{
-                RecipeOverrideStore,
-                recipe_pane::persistence::RecipeOverrideValue,
-            },
-            test_util::TestComponent,
-        },
+        view::{component::RecipeOverrideStore, test_util::TestComponent},
     };
-    use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_util::Factory;
     use terminput::KeyCode;
@@ -501,13 +494,13 @@ mod tests {
     #[rstest]
     fn test_persisted_load_basic(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::store_persisted(
+        RecipeOverrideStore::set(
             &RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
-            &RecipeOverrideValue::Override("user".into()),
+            &"user".into(),
         );
-        RecipeOverrideStore::store_persisted(
+        RecipeOverrideStore::set(
             &RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
-            &RecipeOverrideValue::Override("hunter2".into()),
+            &"hunter2".into(),
         );
         let authentication = Authentication::Basic {
             username: "".into(),
@@ -535,9 +528,9 @@ mod tests {
         terminal: TestTerminal,
     ) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::store_persisted(
+        RecipeOverrideStore::set(
             &RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
-            &RecipeOverrideValue::Override("token".into()),
+            &"token".into(),
         );
         let authentication = Authentication::Bearer { token: "".into() };
         let component = TestComponent::new(

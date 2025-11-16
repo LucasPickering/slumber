@@ -1,7 +1,6 @@
 //! Helper structs and functions for building components
 
 pub mod highlight;
-pub mod persistence;
 
 use crate::{
     message::{Message, MessageSender},

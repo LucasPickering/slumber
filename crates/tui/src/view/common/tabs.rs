@@ -1,55 +1,73 @@
 use crate::{
     context::TuiContext,
+    util::{PersistentKey, PersistentStore},
     view::{
-        common::fixed_select::{FixedSelect, FixedSelectItem},
+        common::fixed_select::{
+            FixedSelect, FixedSelectBuilder, FixedSelectItem,
+        },
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, EventMatch},
     },
 };
-use persisted::PersistedContainer;
 use ratatui::{style::Style, text::Line};
 use slumber_config::Action;
 use std::fmt::Debug;
 
-/// Multi-tab display. Generic parameter defines the available tabs.
+/// Multi-tab display
+/// - `K` is the key under which the selected tab is persisted. All tabs selects
+///   persist their state!
+/// - `T` is the tab enum
+///
+/// We store the key in here to limit the boilerplate that parents need to
+/// restore and persist the state.
 #[derive(Debug, Default)]
-pub struct Tabs<T: FixedSelectItem> {
+pub struct Tabs<K, T: FixedSelectItem> {
     id: ComponentId,
-    tabs: FixedSelect<T, usize>,
+    persistent_key: K,
+    select: FixedSelect<T, usize>,
 }
 
-impl<T: FixedSelectItem> Tabs<T> {
-    pub fn new(tabs: FixedSelect<T, usize>) -> Self {
+impl<K: PersistentKey<Value = T>, T: FixedSelectItem> Tabs<K, T> {
+    pub fn new(
+        persistent_key: K,
+        tabs_builder: FixedSelectBuilder<T, usize>,
+    ) -> Self {
+        let tabs = tabs_builder.persisted(&persistent_key).build();
         Self {
             id: ComponentId::default(),
-            tabs,
+            persistent_key,
+            select: tabs,
         }
     }
 
     pub fn selected(&self) -> T {
-        self.tabs.selected()
+        self.select.selected()
     }
 }
 
-impl<T: FixedSelectItem> Component for Tabs<T> {
+impl<K: PersistentKey<Value = T>, T: FixedSelectItem> Component for Tabs<K, T> {
     fn id(&self) -> ComponentId {
         self.id
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event.m().action(|action, propagate| match action {
-            Action::Left => self.tabs.previous(),
-            Action::Right => self.tabs.next(),
+            Action::Left => self.select.previous(),
+            Action::Right => self.select.next(),
             _ => propagate.set(),
         })
     }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set(&self.persistent_key, &self.selected());
+    }
 }
 
-impl<T: FixedSelectItem> Draw for Tabs<T> {
+impl<K, T: FixedSelectItem> Draw for Tabs<K, T> {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles.tab;
-        let titles = self.tabs.items_with_metadata().map(|item| {
+        let titles = self.select.items_with_metadata().map(|item| {
             let style = if item.enabled() {
                 Style::default()
             } else {
@@ -59,25 +77,9 @@ impl<T: FixedSelectItem> Draw for Tabs<T> {
         });
         canvas.render_widget(
             ratatui::widgets::Tabs::new(titles)
-                .select(self.tabs.selected_index())
+                .select(self.select.selected_index())
                 .highlight_style(styles.highlight),
             metadata.area(),
         );
-    }
-}
-
-/// Persist selected tab
-impl<T> PersistedContainer for Tabs<T>
-where
-    T: FixedSelectItem,
-{
-    type Value = T;
-
-    fn get_to_persist(&self) -> Self::Value {
-        self.tabs.get_to_persist()
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        self.tabs.restore_persisted(value);
     }
 }

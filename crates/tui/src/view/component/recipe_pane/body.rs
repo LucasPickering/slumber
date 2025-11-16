@@ -1,6 +1,6 @@
 use crate::{
     message::{Message, RecipeCopyTarget},
-    util::{ResultReported, TempFile},
+    util::{PersistentKey, PersistentStore, ResultReported, TempFile},
     view::{
         Component, ViewContext,
         common::{
@@ -121,6 +121,16 @@ impl Component for RecipeBodyDisplay {
             RecipeBodyDisplay::Raw(text_body)
             | RecipeBodyDisplay::Json(text_body) => text_body.id(),
             RecipeBodyDisplay::Form(table) => table.id(),
+        }
+    }
+
+    fn persist(&self, _store: &mut PersistentStore) {
+        match self {
+            // RecipeTemplate isn't a component, so we have to propagate
+            // persistence manually
+            RecipeBodyDisplay::Raw(text_body)
+            | RecipeBodyDisplay::Json(text_body) => text_body.body.persist(),
+            RecipeBodyDisplay::Form(_) => {}
         }
     }
 
@@ -322,16 +332,22 @@ impl Draw for TextBody {
 }
 
 /// Persistence key for selected form field, per recipe. Value is the field name
-#[derive(Debug, Serialize, persisted::PersistedKey)]
-#[persisted(Option<String>)]
+#[derive(Debug, Serialize)]
 pub struct FormRowKey(RecipeId);
 
+impl PersistentKey for FormRowKey {
+    type Value = String;
+}
+
 /// Persistence key for toggle state for a single form field in the table
-#[derive(Debug, Serialize, persisted::PersistedKey)]
-#[persisted(bool)]
+#[derive(Debug, Serialize)]
 pub struct FormRowToggleKey {
     recipe_id: RecipeId,
     field: String,
+}
+
+impl PersistentKey for FormRowToggleKey {
+    type Value = bool;
 }
 
 /// Action menu items for a raw body
@@ -375,13 +391,10 @@ mod tests {
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            component::recipe_pane::persistence::{
-                RecipeOverrideStore, RecipeOverrideValue,
-            },
+            component::recipe_pane::persistence::RecipeOverrideStore,
             test_util::TestComponent,
         },
     };
-    use persisted::PersistedStore;
     use ratatui::{
         style::{Color, Styled},
         text::Span,
@@ -440,13 +453,10 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = RecipeOverrideStore::load_persisted(
-            &RecipeOverrideKey::body(recipe.id.clone()),
-        );
-        assert_eq!(
-            persisted,
-            Some(RecipeOverrideValue::Override("goodbye!".into()))
-        );
+        let persisted = RecipeOverrideStore::get(&RecipeOverrideKey::body(
+            recipe.id.clone(),
+        ));
+        assert_eq!(persisted, Some("goodbye!".into()));
 
         // Reset edited state
         component.int().send_key(KeyCode::Char('z')).assert_empty();
@@ -512,13 +522,10 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = RecipeOverrideStore::load_persisted(
-            &RecipeOverrideKey::body(recipe.id.clone()),
-        );
-        assert_eq!(
-            persisted,
-            Some(RecipeOverrideValue::Override(override_text.into()))
-        );
+        let persisted = RecipeOverrideStore::get(&RecipeOverrideKey::body(
+            recipe.id.clone(),
+        ));
+        assert_eq!(persisted, Some(override_text.into()));
 
         // Reset edited state
         component.int().send_key(KeyCode::Char('z')).assert_empty();
@@ -535,9 +542,9 @@ mod tests {
             body: Some(RecipeBody::Raw("".into())),
             ..Recipe::factory(())
         };
-        RecipeOverrideStore::store_persisted(
+        RecipeOverrideStore::set(
             &RecipeOverrideKey::body(recipe.id.clone()),
-            &RecipeOverrideValue::Override("hello!".into()),
+            &"hello!".into(),
         );
 
         let component = TestComponent::new(

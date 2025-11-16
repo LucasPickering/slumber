@@ -1,18 +1,20 @@
-use crate::view::{
-    Component,
-    common::{fixed_select::FixedSelect, tabs::Tabs},
-    component::{
-        Canvas, ComponentId, Draw, DrawMetadata,
-        internal::{Child, ToChild},
-        recipe_pane::{
-            authentication::AuthenticationDisplay,
-            body::RecipeBodyDisplay,
-            persistence::RecipeOverrideKey,
-            table::{RecipeFieldTable, RecipeFieldTableProps},
-            url::UrlDisplay,
+use crate::{
+    util::PersistentKey,
+    view::{
+        Component,
+        common::{fixed_select::FixedSelect, tabs::Tabs},
+        component::{
+            Canvas, ComponentId, Draw, DrawMetadata,
+            internal::{Child, ToChild},
+            recipe_pane::{
+                authentication::AuthenticationDisplay,
+                body::RecipeBodyDisplay,
+                persistence::RecipeOverrideKey,
+                table::{RecipeFieldTable, RecipeFieldTableProps},
+                url::UrlDisplay,
+            },
         },
     },
-    util::persistence::PersistedLazy,
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph};
@@ -30,7 +32,7 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug)]
 pub struct RecipeDisplay {
     id: ComponentId,
-    tabs: PersistedLazy<RecipeTabKey, Tabs<Tab>>,
+    tabs: Tabs<RecipeTabKey, Tab>,
     method: HttpMethod,
     url: UrlDisplay,
     query: RecipeFieldTable<QueryRowKey, QueryRowToggleKey>,
@@ -52,9 +54,9 @@ impl RecipeDisplay {
                     .is_none()
                     .then_some(Tab::Authentication),
             );
-        let tabs = PersistedLazy::new(
+        let tabs = Tabs::new(
             RecipeTabKey,
-            Tabs::new(FixedSelect::builder().disabled(disabled_tabs).build()),
+            FixedSelect::builder().disabled(disabled_tabs),
         );
 
         Self {
@@ -189,7 +191,7 @@ impl Draw for RecipeDisplay {
         canvas.draw(&self.url, (), url_area, false);
 
         // Navigation tabs
-        canvas.draw(&*self.tabs, (), tabs_area, true);
+        canvas.draw(&self.tabs, (), tabs_area, true);
 
         // Recipe content
         match self.tabs.selected() {
@@ -227,9 +229,12 @@ impl Draw for RecipeDisplay {
 }
 
 /// Persistence key for selected tab
-#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(Tab)]
+#[derive(Debug, Default, Serialize)]
 struct RecipeTabKey;
+
+impl PersistentKey for RecipeTabKey {
+    type Value = Tab;
+}
 
 #[derive(
     Copy,
@@ -255,27 +260,39 @@ enum Tab {
 
 /// Persistence key for selected query param, per recipe. Value is the query
 /// param name
-#[derive(Debug, Serialize, persisted::PersistedKey)]
-#[persisted(Option<String>)]
+#[derive(Debug, Serialize)]
 struct QueryRowKey(RecipeId);
 
+impl PersistentKey for QueryRowKey {
+    type Value = String;
+}
+
 /// Persistence key for toggle state for a single query param in the table
-#[derive(Debug, Serialize, persisted::PersistedKey)]
-#[persisted(bool)]
+#[derive(Debug, Serialize)]
 struct QueryRowToggleKey {
     recipe_id: RecipeId,
     param: String,
 }
 
+impl PersistentKey for QueryRowToggleKey {
+    type Value = bool;
+}
+
 /// Persistence key for selected header, per recipe. Value is the header name
-#[derive(Debug, Serialize, persisted::PersistedKey)]
-#[persisted(Option<String>)]
+#[derive(Debug, Serialize)]
 struct HeaderRowKey(RecipeId);
 
+impl PersistentKey for HeaderRowKey {
+    type Value = String;
+}
+
 /// Persistence key for toggle state for a single header in the table
-#[derive(Debug, Serialize, persisted::PersistedKey)]
-#[persisted(bool)]
+#[derive(Debug, Serialize)]
 struct HeaderRowToggleKey {
     recipe_id: RecipeId,
     header: String,
+}
+
+impl PersistentKey for HeaderRowToggleKey {
+    type Value = bool;
 }

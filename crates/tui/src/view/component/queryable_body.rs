@@ -2,6 +2,7 @@ use crate::{
     context::TuiContext,
     message::Message,
     util,
+    util::{PersistentKey, PersistentStore},
     view::{
         Component, Generate, ViewContext,
         common::{
@@ -20,7 +21,6 @@ use crate::{
 };
 use anyhow::Context;
 use bytes::Bytes;
-use persisted::PersistedContainer;
 use ratatui::{
     layout::{Constraint, Layout},
     text::Text,
@@ -36,17 +36,14 @@ use tokio::task::AbortHandle;
 /// Display response body as text, with a query box to run commands on the body.
 /// The query state can be persisted by persisting this entire container.
 #[derive(Debug)]
-pub struct QueryableBody {
+pub struct QueryableBody<K> {
     id: ComponentId,
     emitter: Emitter<CommandComplete>,
     response: Arc<ResponseRecord>,
+    persistent_key: K,
 
     /// Which command box, if any, are we typing in?
     command_focus: CommandFocus,
-    /// Default query to use when none is present. We have to store this so we
-    /// can apply it when an empty query is loaded from persistence. Generally
-    /// this will come from the config but it's parameterized for testing
-    default_query: Option<String>,
     /// Track status of the current query command
     query_state: CommandState,
     /// Where the user enters their body query
@@ -65,17 +62,30 @@ pub struct QueryableBody {
     text_state: TextState,
 }
 
-impl QueryableBody {
-    /// Create a new body, optionally loading the query text from the
-    /// persistence DB. This is optional because not all callers use the query
-    /// box, or want to persist the value.
+impl<K> QueryableBody<K> {
+    /// Create a new body with an optional default query
     pub fn new(
+        persistent_key: K,
         response: Arc<ResponseRecord>,
         default_query: Option<String>,
-    ) -> Self {
+    ) -> Self
+    where
+        K: PersistentKey<Value = String>,
+    {
         let input_engine = &TuiContext::get().input_engine;
         let query_bind = input_engine.binding_display(Action::Search);
         let export_bind = input_engine.binding_display(Action::Export);
+
+        // Load query from the store. Fall back to the default if missing
+        let query = PersistentStore::get(&persistent_key)
+            // It's pretty common to clear the whole text box without thinking
+            // about it. In that case, we want to restore the default the next
+            // time we reload from persistence (probably either app restart or
+            // next response for this recipe). It's possible the user really
+            // wants an empty box and this is annoying, but I think it'll be
+            // more good than bad.
+            .filter(|query| !query.is_empty())
+            .or(default_query);
 
         let query_text_box = CommandTextBox::new(
             TextBox::default()
@@ -83,7 +93,7 @@ impl QueryableBody {
                     "{query_bind} to query, {export_bind} to export"
                 ))
                 .placeholder_focused("Enter query command (ex: `jq .results`)")
-                .default_value(default_query.clone().unwrap_or_default()),
+                .default_value(query.unwrap_or_default()),
         );
         let export_text_box =
             CommandTextBox::new(TextBox::default().placeholder_focused(
@@ -97,8 +107,8 @@ impl QueryableBody {
             id: ComponentId::default(),
             emitter: Default::default(),
             response,
+            persistent_key,
             command_focus: CommandFocus::None,
-            default_query,
             query_state: CommandState::None,
             query_text_box,
             last_executed_query: None,
@@ -227,7 +237,7 @@ impl QueryableBody {
     }
 }
 
-impl Component for QueryableBody {
+impl<K: PersistentKey<Value = String>> Component for QueryableBody<K> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -287,6 +297,10 @@ impl Component for QueryableBody {
             })
     }
 
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set(&self.persistent_key, &self.query_text_box.text().to_owned());
+    }
+
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
             self.query_text_box.to_child_mut(),
@@ -296,7 +310,7 @@ impl Component for QueryableBody {
     }
 }
 
-impl Draw for QueryableBody {
+impl<K> Draw for QueryableBody<K> {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [body_area, query_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
@@ -343,34 +357,7 @@ impl Draw for QueryableBody {
     }
 }
 
-/// Persist the query text box
-impl PersistedContainer for QueryableBody {
-    type Value = String;
-
-    fn get_to_persist(&self) -> Self::Value {
-        self.query_text_box.get_to_persist()
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        self.query_text_box.restore_persisted(value);
-
-        // It's pretty common to clear the whole text box without thinking about
-        // it. In that case, we want to restore the default the next time we
-        // reload from persistence (probably either app restart or next response
-        // for this recipe). It's possible the user really wants an empty box
-        // and this is annoying, but I think it'll be more good than bad.
-        if self.query_text_box.text().is_empty() {
-            if let Some(query) = self.default_query.clone() {
-                self.query_text_box.set_text(query);
-            }
-        }
-
-        // Update local state and execute the query command (if any)
-        self.update_query();
-    }
-}
-
-impl ToEmitter<CommandComplete> for QueryableBody {
+impl<K> ToEmitter<CommandComplete> for QueryableBody<K> {
     fn to_emitter(&self) -> Emitter<CommandComplete> {
         self.emitter
     }
@@ -497,12 +484,8 @@ mod tests {
     use crate::{
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, run_local, terminal},
-        view::{
-            test_util::{PersistedComponent, TestComponent},
-            util::persistence::DatabasePersistedStore,
-        },
+        view::test_util::TestComponent,
     };
-    use persisted::{PersistedKey, PersistedStore};
     use ratatui::{layout::Margin, text::Span};
     use rstest::{fixture, rstest};
     use serde::Serialize;
@@ -513,10 +496,13 @@ mod tests {
 
     const TEXT: &str = "{\"greeting\":\"hello\"}";
 
-    /// Persisted key for testing
-    #[derive(Debug, Serialize, PersistedKey)]
-    #[persisted(String)]
+    /// Persistence key for testing
+    #[derive(Debug, Serialize)]
     struct Key;
+
+    impl PersistentKey for Key {
+        type Value = String;
+    }
 
     /// Style text to match the text window gutter
     fn gutter(text: &str) -> Span<'_> {
@@ -548,7 +534,7 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            QueryableBody::new(response, None),
+            QueryableBody::new(Key, response, None),
         );
 
         // Assert initial state/view
@@ -607,7 +593,7 @@ mod tests {
     }
 
     /// Render a parsed body with query text box, and load initial query from
-    /// the DB. This tests the `PersistedContainer` implementation
+    /// the DB. This tests the persistence implementation
     #[rstest]
     #[tokio::test]
     async fn test_persistence(
@@ -616,7 +602,7 @@ mod tests {
         response: Arc<ResponseRecord>,
     ) {
         // Add initial query to the DB
-        DatabasePersistedStore::store_persisted(&Key, &"head -c 1".to_owned());
+        harness.set_persisted(&Key, &"head -c 1".to_owned());
 
         // On init, we'll start executing the command in a local task. Wait for
         // that to finish
@@ -625,10 +611,7 @@ mod tests {
                 &harness,
                 &terminal,
                 // Default value should get tossed out
-                PersistedComponent::new(
-                    Key,
-                    QueryableBody::new(response, Some("initial".into())),
-                ),
+                QueryableBody::new(Key, response, Some("initial".into())),
             )
         })
         .await;
@@ -653,7 +636,7 @@ mod tests {
             TestComponent::new(
                 &harness,
                 &terminal,
-                QueryableBody::new(response, Some("head -n 1".into())),
+                QueryableBody::new(Key, response, Some("head -n 1".into())),
             )
         })
         .await;
@@ -670,18 +653,15 @@ mod tests {
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
-        DatabasePersistedStore::store_persisted(&Key, &String::new());
+        harness.set_persisted(&Key, &String::new());
 
         // Local task is spawned to execute the initial subprocess
         let component = run_local(async {
             TestComponent::new(
                 &harness,
                 &terminal,
-                PersistedComponent::new(
-                    Key,
-                    // Default should override the persisted value
-                    QueryableBody::new(response, Some("head -n 1".into())),
-                ),
+                // Default should override the persisted value
+                QueryableBody::new(Key, response, Some("head -n 1".into())),
             )
         })
         .await;
@@ -701,7 +681,7 @@ mod tests {
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            QueryableBody::new(response, None),
+            QueryableBody::new(Key, response, None),
         )
         .with_default_props()
         .with_area(terminal.area().inner(Margin {

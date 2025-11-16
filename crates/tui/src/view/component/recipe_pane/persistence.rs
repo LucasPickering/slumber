@@ -8,13 +8,12 @@ use crate::{
         component::misc::TextBoxModal,
     },
 };
-use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
 use slumber_core::{collection::RecipeId, http::content_type::ContentType};
 use slumber_template::Template;
-use std::{collections::HashMap, fmt::Debug};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug};
 use tracing::debug;
 
-/// Special single-session [PersistedStore] just for edited recipe templates.
+/// Special single-session persistence store just for edited recipe templates.
 /// We don't want to store recipe overrides across sessions, because they could
 /// be very large and conflict with changes in the recipe. Using a dedicated
 /// type for this makes the generic bounds stricter which is nice.
@@ -24,98 +23,117 @@ use tracing::debug;
 #[derive(Debug, Default)]
 pub struct RecipeOverrideStore(HashMap<RecipeOverrideKey, Template>);
 
-impl PersistedStore<RecipeOverrideKey> for RecipeOverrideStore {
-    fn load_persisted(key: &RecipeOverrideKey) -> Option<RecipeOverrideValue> {
-        if let Some(template) =
-            ViewContext::with_override_store(|store| store.0.get(key).cloned())
-        {
-            // Only overridden values are persisted
-            debug!(?key, ?template, "Loaded persisted recipe override");
-            Some(RecipeOverrideValue::Override(template))
-        } else {
-            None
-        }
+impl RecipeOverrideStore {
+    thread_local! {
+        /// Static instance for the store. Persistence is handled in the main
+        /// view thread. We could potentially put this in the view context, but
+        /// isolating it here limits what we need to borrow from the cell to
+        /// just what we need. It also prevents external access to the store.
+        static INSTANCE: RefCell<RecipeOverrideStore> = RefCell::default();
     }
 
-    fn store_persisted(key: &RecipeOverrideKey, value: &RecipeOverrideValue) {
-        // The value will be None if the template isn't overridden, in which
-        // case we don't want to store it
-        if let RecipeOverrideValue::Override(template) = value {
-            debug!(?key, ?template, "Persisting recipe override");
-            ViewContext::with_override_store_mut(|store| {
-                store.0.insert(key.clone(), template.clone());
-            });
-        }
+    /// Get a persisted value from the store
+    pub fn get(key: &RecipeOverrideKey) -> Option<Template> {
+        Self::INSTANCE
+            .with_borrow(|store| store.0.get(key).cloned())
+            .inspect(|template| {
+                debug!(?key, ?template, "Loaded persisted recipe override");
+            })
     }
-}
 
-/// An override value that may be persisted in the store
-#[derive(Debug, PartialEq)]
-pub enum RecipeOverrideValue {
-    /// Default recipe value is in use, i.e. no override is present. Nothing
-    /// will be persisted
-    Default,
-    /// User has provided an override for this field, persist it
-    Override(Template),
+    /// Set a persisted value in the store
+    pub fn set(key: &RecipeOverrideKey, template: &Template) {
+        debug!(?key, ?template, "Persisting recipe override");
+        Self::INSTANCE.with_borrow_mut(|store| {
+            store.0.insert(key.clone(), template.clone());
+        });
+    }
+
+    /// Remove a persisted value from the store
+    fn remove(key: &RecipeOverrideKey) {
+        debug!(?key, "Resetting recipe override");
+        Self::INSTANCE.with_borrow_mut(|store| store.0.remove(key));
+    }
 }
 
 /// A template that can be previewed, overridden, and persisted. Parent is
 /// responsible for implementing the override behavior, and calling
 /// [set_override](Self::set_override) when needed.
 #[derive(Debug)]
-pub struct RecipeTemplate(
-    persisted::PersistedLazy<
-        RecipeOverrideStore,
-        RecipeOverrideKey,
-        RecipeTemplateInner,
-    >,
-);
+pub struct RecipeTemplate {
+    persistent_key: RecipeOverrideKey,
+    original_template: Template,
+    override_template: Option<Template>,
+    preview: TemplatePreview,
+    /// Retain this so we can rebuild the preview with it
+    content_type: Option<ContentType>,
+    /// Does the consumer support streams, or does everything have to be
+    /// resolved to a concrete value?
+    can_stream: bool,
+}
 
 impl RecipeTemplate {
     pub fn new(
-        persisted_key: RecipeOverrideKey,
+        persistent_key: RecipeOverrideKey,
         template: Template,
         content_type: Option<ContentType>,
         can_stream: bool,
     ) -> Self {
-        Self(PersistedLazy::new(
-            persisted_key,
-            RecipeTemplateInner {
-                original_template: template.clone(),
-                override_template: None,
-                preview: TemplatePreview::new(
-                    template,
-                    content_type,
-                    false,
-                    can_stream,
-                ),
-                content_type,
-                can_stream,
-            },
-        ))
+        let override_template = RecipeOverrideStore::get(&persistent_key);
+        let preview = TemplatePreview::new(
+            override_template.as_ref().unwrap_or(&template).clone(),
+            content_type,
+            override_template.is_some(),
+            can_stream,
+        );
+        Self {
+            persistent_key,
+            original_template: template,
+            override_template,
+            preview,
+            content_type,
+            can_stream,
+        }
+    }
+
+    /// Persist the current override (if any) to the [RecipeOverrideStore]
+    pub fn persist(&self) {
+        if let Some(template) = &self.override_template {
+            RecipeOverrideStore::set(&self.persistent_key, template);
+        } else {
+            RecipeOverrideStore::remove(&self.persistent_key);
+        }
+    }
+
+    /// Get the active template. If an override is present, return that.
+    /// Otherwise return the original.
+    pub fn template(&self) -> &Template {
+        self.override_template
+            .as_ref()
+            .unwrap_or(&self.original_template)
+    }
+
+    /// Get the active template preview. If an override is present, return that.
+    /// Otherwise return the original.
+    pub fn preview(&self) -> &TemplatePreview {
+        &self.preview
     }
 
     /// Override the recipe with a new template
     pub fn set_override(&mut self, template: Template) {
-        self.0.get_mut().set_override(template);
+        self.override_template = Some(template);
+        self.render_preview();
     }
 
     /// Reset the template override to the default from the recipe, and
     /// recompute the template preview
     pub fn reset_override(&mut self) {
-        self.0.get_mut().reset_override();
-    }
-
-    pub fn template(&self) -> &Template {
-        self.0.template()
-    }
-
-    pub fn preview(&self) -> &TemplatePreview {
-        &self.0.preview
+        self.override_template = None;
+        self.render_preview();
     }
 
     pub fn is_overridden(&self) -> bool {
-        self.0.override_template.is_some()
+        self.override_template.is_some()
     }
 
     /// Create a modal that will edit this template in a text box. This **does
@@ -145,40 +163,9 @@ impl RecipeTemplate {
             },
         )
     }
-}
 
-/// A template that can be previewed and overridden. Parent is responsible for
-/// implementing the override behavior, and calling
-/// [set_override](Self::set_override) when needed.
-#[derive(Debug)]
-struct RecipeTemplateInner {
-    original_template: Template,
-    override_template: Option<Template>,
-    preview: TemplatePreview,
-    /// Retain this so we can rebuild the preview with it
-    content_type: Option<ContentType>,
-    /// Does the consumer support streams, or does everything have to be
-    /// resolved to a concrete value?
-    can_stream: bool,
-}
-
-impl RecipeTemplateInner {
-    fn template(&self) -> &Template {
-        self.override_template
-            .as_ref()
-            .unwrap_or(&self.original_template)
-    }
-
-    fn set_override(&mut self, template: Template) {
-        self.override_template = Some(template);
-        self.render_preview();
-    }
-
-    fn reset_override(&mut self) {
-        self.override_template = None;
-        self.render_preview();
-    }
-
+    /// Update the preview based on the current template. Call after any changes
+    /// to the override
     fn render_preview(&mut self) {
         self.preview = TemplatePreview::new(
             self.template().clone(),
@@ -189,27 +176,9 @@ impl RecipeTemplateInner {
     }
 }
 
-impl PersistedContainer for RecipeTemplateInner {
-    type Value = RecipeOverrideValue;
-
-    fn get_to_persist(&self) -> Self::Value {
-        match &self.override_template {
-            Some(template) => RecipeOverrideValue::Override(template.clone()),
-            None => RecipeOverrideValue::Default,
-        }
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        if let RecipeOverrideValue::Override(template) = value {
-            self.set_override(template);
-        }
-    }
-}
-
 /// Persisted key for anything that goes in [RecipeOverrideStore]. This uniquely
 /// identifies any piece of a recipe that can be overridden.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, persisted::PersistedKey)]
-#[persisted(RecipeOverrideValue)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct RecipeOverrideKey {
     kind: RecipeOverrideKeyKind,
     recipe_id: RecipeId,
@@ -294,4 +263,36 @@ enum RecipeOverrideKeyKind {
     QueryParam(usize),
     Header(usize),
     FormField(usize),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::{TestHarness, harness};
+    use rstest::rstest;
+    use slumber_util::Factory;
+
+    /// Test persisting and restoring overrides
+    #[rstest]
+    fn test_persistence(_harness: TestHarness) {
+        let recipe_id = RecipeId::factory(());
+        let key = RecipeOverrideKey::url(recipe_id);
+        RecipeOverrideStore::set(&key, &"persisted".into());
+        // Persisted value is loaded on creation
+        let mut template =
+            RecipeTemplate::new(key.clone(), "default".into(), None, false);
+        assert_eq!(template.template(), &"persisted".into());
+
+        // Modify the override and persist, should be updated in the store
+        template.set_override("override".into());
+        template.persist();
+        assert_eq!(template.template(), &"override".into());
+        assert_eq!(RecipeOverrideStore::get(&key), Some("override".into()));
+
+        // Clear the override; should be removed from the store
+        template.reset_override();
+        template.persist();
+        assert_eq!(template.template(), &"default".into());
+        assert_eq!(RecipeOverrideStore::get(&key), None);
+    }
 }

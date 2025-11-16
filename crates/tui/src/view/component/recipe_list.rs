@@ -1,5 +1,6 @@
 use crate::{
     context::TuiContext,
+    util::{PersistentKey, PersistentStore},
     view::{
         Component, Generate, ViewContext,
         common::{
@@ -14,11 +15,9 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        util::persistence::{Persisted, PersistedLazy},
     },
 };
 use derive_more::{Deref, DerefMut};
-use persisted::PersistedKey;
 use ratatui::{
     layout::{Constraint, Layout},
     text::Span,
@@ -50,7 +49,7 @@ pub struct RecipeListPane {
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
-    select: PersistedLazy<SelectedRecipeKey, Select<RecipeListItem>>,
+    select: Select<RecipeListItem>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     ///
@@ -58,7 +57,7 @@ pub struct RecipeListPane {
     /// (if they were collapsed at the time of deletion). That isn't really an
     /// issue though, it just means it'll be pre-collapsed if the user ever
     /// adds the folder back. Not worth working around.
-    collapsed: Persisted<CollapsedKey>,
+    collapsed: Collapsed,
 
     filter: TextBox,
     filter_focused: bool,
@@ -71,11 +70,9 @@ impl RecipeListPane {
 
         // This clone is unfortunate, but we can't hold onto a reference to the
         // recipes
-        let collapsed: Persisted<CollapsedKey> = Persisted::default();
-        let select = PersistedLazy::new(
-            SelectedRecipeKey,
-            collapsed.build_select(recipes, ""),
-        );
+        let collapsed: Collapsed =
+            PersistentStore::get(&CollapsedKey).unwrap_or_default();
+        let select = collapsed.build_select(recipes, "");
         let filter = TextBox::default()
             .placeholder(format!("{binding} to filter"))
             .subscribe([
@@ -117,15 +114,13 @@ impl RecipeListPane {
         let changed = if let Some(folder) = folder {
             let collapsed = &mut self.collapsed;
             match state {
-                CollapseState::Expand => collapsed.get_mut().remove(&folder.id),
-                CollapseState::Collapse => {
-                    collapsed.get_mut().insert(folder.id.clone())
-                }
+                CollapseState::Expand => collapsed.remove(&folder.id),
+                CollapseState::Collapse => collapsed.insert(folder.id.clone()),
                 CollapseState::Toggle => {
                     if collapsed.contains(&folder.id) {
-                        collapsed.get_mut().remove(&folder.id);
+                        collapsed.remove(&folder.id);
                     } else {
-                        collapsed.get_mut().insert(folder.id.clone());
+                        collapsed.insert(folder.id.clone());
                     }
                     true
                 }
@@ -153,7 +148,7 @@ impl RecipeListPane {
         if let Some(selected) = self.select.selected() {
             new_select.select(selected.id());
         }
-        *self.select.get_mut() = new_select;
+        self.select = new_select;
     }
 }
 
@@ -211,6 +206,14 @@ impl Component for RecipeListPane {
         )
     }
 
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set_opt(
+            &SelectedRecipeKey,
+            self.select.selected().map(RecipeListItem::id),
+        );
+        store.set(&CollapsedKey, &self.collapsed);
+    }
+
     fn children(&mut self) -> Vec<Child<'_>> {
         // Filter gets priority if enabled, but users should still be able to
         // navigate the list while filtering
@@ -236,7 +239,7 @@ impl Draw for RecipeListPane {
         let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(area);
-        canvas.draw(&*self.select, SelectListProps::pane(), select_area, true);
+        canvas.draw(&self.select, SelectListProps::pane(), select_area, true);
 
         canvas.draw(
             &self.filter,
@@ -255,9 +258,12 @@ impl ToEmitter<RecipeListPaneEvent> for RecipeListPane {
 }
 
 /// Persisted key for the ID of the selected recipe
-#[derive(Debug, Serialize, PersistedKey)]
-#[persisted(Option<RecipeId>)]
+#[derive(Debug, Serialize)]
 struct SelectedRecipeKey;
+
+impl PersistentKey for SelectedRecipeKey {
+    type Value = RecipeId;
+}
 
 /// Emitted event type for the recipe list pane
 #[derive(Debug)]
@@ -343,9 +349,12 @@ impl Generate for &RecipeListItem {
 }
 
 /// Persistence key for collapsed state
-#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(Collapsed)]
+#[derive(Debug, Default, Serialize)]
 struct CollapsedKey;
+
+impl PersistentKey for CollapsedKey {
+    type Value = Collapsed;
+}
 
 /// Set of collapsed folders. Newtype allows us to encapsulate some extra
 /// functionality
@@ -417,6 +426,7 @@ impl Collapsed {
         };
 
         Select::builder(items)
+            .persisted(&SelectedRecipeKey)
             .subscribe([SelectEventType::Select, SelectEventType::Toggle])
             .build()
     }

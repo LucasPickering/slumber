@@ -1,20 +1,17 @@
 use crate::{
     http::RequestStore,
     message::{Message, MessageSender},
-    view::{
-        component::RecipeOverrideStore,
-        event::{Event, EventQueue},
-    },
+    view::event::{Event, EventQueue},
 };
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use std::{cell::RefCell, sync::Arc};
 use tracing::debug;
 
 /// Thread-local context container, which stores mutable state needed in the
-/// view thread. Until [TuiContext](crate::TuiContext), which stores
-/// read-only state, this state can be mutable because it's not shared between
-/// threads. Some pieces of this state *are* shared between threads, but that's
-/// because they are internally thread-safe.
+/// view thread. Unlike [TuiContext](crate::TuiContext), this state can be
+/// mutable because it's not shared between threads. Some pieces of this state
+/// *are* shared between threads, but that's because they are internally
+/// thread-safe.
 ///
 /// The main purpose of this is to prevent an absurd amount of plumbing required
 /// to get all these individual pieces to every place they're needed in the
@@ -27,10 +24,6 @@ pub struct ViewContext {
     /// Persistence database. The TUI only ever needs to run DB ops related to
     /// our collection, so we can use a collection-restricted DB handle
     database: CollectionDatabase,
-    /// An alternative persistence store just for recipe overrides. These
-    /// values are only persisted within a single session, so they cannot
-    /// use the DB
-    recipe_override_store: RecipeOverrideStore,
     /// Queue of unhandled view events, which will be used to update view state
     event_queue: EventQueue,
     /// Sender to the async message queue, which is used to transmit data and
@@ -66,7 +59,6 @@ impl ViewContext {
             *context = Some(Self {
                 collection,
                 database,
-                recipe_override_store: Default::default(),
                 event_queue: EventQueue::default(),
                 messages_tx,
             });
@@ -99,20 +91,6 @@ impl ViewContext {
     /// Execute a function with access to the database
     pub fn with_database<T>(f: impl FnOnce(&CollectionDatabase) -> T) -> T {
         Self::with(|context| f(&context.database))
-    }
-
-    /// Execute a function with immutable access to the [RecipeOverrideStore]
-    pub fn with_override_store<T>(
-        f: impl FnOnce(&RecipeOverrideStore) -> T,
-    ) -> T {
-        Self::with(|context| f(&context.recipe_override_store))
-    }
-
-    /// Execute a function with mutable access to the [RecipeOverrideStore]
-    pub fn with_override_store_mut<T>(
-        f: impl FnOnce(&mut RecipeOverrideStore) -> T,
-    ) -> T {
-        Self::with_mut(|context| f(&mut context.recipe_override_store))
     }
 
     /// Queue a view event to be handled by the component tree

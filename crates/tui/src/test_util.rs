@@ -4,6 +4,7 @@ use crate::{
     context::TuiContext,
     http::RequestStore,
     message::{Message, MessageSender},
+    util::{PersistentKey, PersistentStore},
     view::ViewContext,
 };
 use ratatui::{
@@ -64,6 +65,12 @@ impl TestHarness {
             messages_tx,
             messages_rx,
         }
+    }
+
+    /// Persist a value in the database. Useful for testing persistence
+    /// restoration.
+    pub fn set_persisted<K: PersistentKey>(&self, key: &K, value: &K::Value) {
+        PersistentStore::new(&self.database).set(key, value);
     }
 
     /// Get the message sender

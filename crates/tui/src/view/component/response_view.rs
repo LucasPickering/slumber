@@ -3,6 +3,7 @@
 use crate::{
     context::TuiContext,
     message::Message,
+    util::PersistentKey,
     view::{
         Component, ViewContext,
         common::header_table::HeaderTable,
@@ -12,11 +13,10 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::{persistence::PersistedLazy, view_text},
+        util::view_text,
     },
 };
 use mime::Mime;
-use persisted::PersistedKey;
 use serde::{Serialize, Serializer};
 use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::ResponseRecord};
@@ -30,7 +30,7 @@ pub struct ResponseBodyView {
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
-    body: PersistedLazy<ResponseQueryKey, QueryableBody>,
+    body: QueryableBody<ResponseQueryKey>,
 }
 
 impl ResponseBodyView {
@@ -41,9 +41,10 @@ impl ResponseBodyView {
         let default_query = mime
             .as_ref()
             .and_then(|mime| config.default_query.get(mime).cloned());
-        let body = PersistedLazy::new(
+        let body = QueryableBody::new(
             ResponseQueryKey { recipe_id, mime },
-            QueryableBody::new(Arc::clone(&response), default_query),
+            Arc::clone(&response),
+            default_query,
         );
         Self {
             id: ComponentId::default(),
@@ -93,13 +94,12 @@ impl Component for ResponseBodyView {
 
 impl Draw for ResponseBodyView {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        canvas.draw(&*self.body, (), metadata.area(), true);
+        canvas.draw(&self.body, (), metadata.area(), true);
     }
 }
 
 /// Persisted key for response body JSONPath query text box
-#[derive(Debug, Serialize, PersistedKey)]
-#[persisted(String)]
+#[derive(Debug, Serialize)]
 struct ResponseQueryKey {
     recipe_id: RecipeId,
     /// Response queries are unique per-mime because query tools tend to be
@@ -108,6 +108,10 @@ struct ResponseQueryKey {
     /// commands
     #[serde(serialize_with = "serialize_mime")]
     mime: Option<Mime>,
+}
+
+impl PersistentKey for ResponseQueryKey {
+    type Value = String;
 }
 
 /// Serialize a MIME type as its string representation

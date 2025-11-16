@@ -1,9 +1,13 @@
 use crate::{
     context::TuiContext,
     http::{RequestMetadata, ResponseMetadata},
+    util::PersistentKey,
     view::{
         Generate, RequestState,
-        common::{Pane, actions::MenuItem, modal::ModalQueue, tabs::Tabs},
+        common::{
+            Pane, actions::MenuItem, fixed_select::FixedSelect,
+            modal::ModalQueue, tabs::Tabs,
+        },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
@@ -13,7 +17,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        util::{format_byte_size, persistence::PersistedLazy},
+        util::format_byte_size,
     },
 };
 use derive_more::Display;
@@ -211,9 +215,12 @@ impl Draw for ExchangePaneMetadata {
 }
 
 /// Persistence key for selected tab
-#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(Tab)]
+#[derive(Debug, Serialize)]
 struct ExchangeTabKey;
+
+impl PersistentKey for ExchangeTabKey {
+    type Value = Tab;
+}
 
 #[derive(
     Copy,
@@ -239,7 +246,7 @@ enum Tab {
 struct ExchangePaneContent {
     id: ComponentId,
     actions_emitter: Emitter<ExchangePaneMenuAction>,
-    tabs: PersistedLazy<ExchangeTabKey, Tabs<Tab>>,
+    tabs: Tabs<ExchangeTabKey, Tab>,
     state: ExchangePaneContentState,
     delete_request_modal: ModalQueue<DeleteRequestModal>,
 }
@@ -283,7 +290,7 @@ impl ExchangePaneContent {
         Self {
             id: Default::default(),
             actions_emitter: Default::default(),
-            tabs: Default::default(),
+            tabs: Tabs::new(ExchangeTabKey, FixedSelect::builder()),
             state,
             delete_request_modal: Default::default(),
         }
@@ -473,7 +480,7 @@ impl Draw for ExchangePaneContent {
         let [tabs_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
-        canvas.draw(&*self.tabs, (), tabs_area, true);
+        canvas.draw(&self.tabs, (), tabs_area, true);
         canvas.draw_portal(&self.delete_request_modal, (), true);
         match &self.state {
             ExchangePaneContentState::Building => {

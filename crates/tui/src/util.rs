@@ -1,3 +1,7 @@
+mod persistence;
+
+pub use persistence::{PersistentKey, PersistentStore};
+
 use crate::{
     message::{Message, MessageSender},
     view::{Confirm, ViewContext},

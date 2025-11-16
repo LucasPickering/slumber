@@ -1,14 +1,16 @@
-use crate::view::{
-    common::select::{
-        Select, SelectBuilder, SelectData, SelectEvent, SelectEventType,
-        SelectItem,
+use crate::{
+    util::PersistentKey,
+    view::{
+        common::select::{
+            Select, SelectBuilder, SelectData, SelectEvent, SelectEventType,
+            SelectItem,
+        },
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+        context::UpdateContext,
+        event::{Emitter, Event, EventMatch, ToEmitter},
     },
-    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-    context::UpdateContext,
-    event::{Emitter, Event, EventMatch, ToEmitter},
 };
 use itertools::Itertools;
-use persisted::PersistedContainer;
 use ratatui::widgets::ListState;
 use std::{
     fmt::{Debug, Display},
@@ -56,7 +58,7 @@ where
                 Add a variant to your enum."
         );
         FixedSelectBuilder {
-            inner: Select::builder(items),
+            inner: Select::builder(items).preselect(&Item::default()),
         }
     }
 
@@ -184,23 +186,6 @@ where
     }
 }
 
-impl<Item, State> PersistedContainer for FixedSelect<Item, State>
-where
-    Item: FixedSelectItem,
-    State: SelectData,
-{
-    type Value = Item;
-
-    fn get_to_persist(&self) -> Self::Value {
-        self.selected()
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        // This will emit a Select event if the item is in the list
-        self.select(&value);
-    }
-}
-
 impl<T: FixedSelectItem> ToEmitter<SelectEvent> for FixedSelect<T> {
     fn to_emitter(&self) -> Emitter<SelectEvent> {
         self.inner.to_emitter()
@@ -213,13 +198,13 @@ pub struct FixedSelectBuilder<Item, State> {
     inner: SelectBuilder<Item, State>,
 }
 
-impl<Item, State> FixedSelectBuilder<Item, State> {
+impl<Item: FixedSelectItem, State> FixedSelectBuilder<Item, State> {
     /// Disable certain items in the list. Disabled items can still be selected,
     /// but do not emit events.
-    pub fn disabled(mut self, disabled: impl IntoIterator<Item = Item>) -> Self
-    where
-        Item: FixedSelectItem,
-    {
+    pub fn disabled(
+        mut self,
+        disabled: impl IntoIterator<Item = Item>,
+    ) -> Self {
         // The inner builder disables by index, so we need to find the index for
         // each value. This is O(n^2) but the lists are so small it doesn't
         // matter.
@@ -229,6 +214,15 @@ impl<Item, State> FixedSelectBuilder<Item, State> {
             // values of the enum
             .map(|v1| Item::iter().position(|v2| v1 == v2).unwrap());
         self.inner = self.inner.disabled_indexes(disabled_indexes);
+        self
+    }
+
+    /// Get the persisted item from the store and select it
+    pub fn persisted<K>(mut self, key: &K) -> Self
+    where
+        K: PersistentKey<Value = Item>,
+    {
+        self.inner = self.inner.persisted(key);
         self
     }
 
@@ -248,7 +242,7 @@ impl<Item, State> FixedSelectBuilder<Item, State> {
     {
         FixedSelect {
             id: ComponentId::default(),
-            inner: self.inner.preselect(&Item::default()).build(),
+            inner: self.inner.build(),
         }
     }
 }

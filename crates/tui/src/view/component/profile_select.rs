@@ -2,7 +2,7 @@
 
 use crate::{
     context::TuiContext,
-    util::ResultReported,
+    util::{PersistentKey, PersistentStore, ResultReported},
     view::{
         Component, Generate, ViewContext,
         common::{
@@ -16,12 +16,10 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         state::StateCell,
-        util::persistence::Persisted,
     },
 };
 use anyhow::anyhow;
 use itertools::Itertools;
-use persisted::PersistedKey;
 use ratatui::{
     layout::{Constraint, Layout},
     text::{Line, Span, Text},
@@ -41,7 +39,7 @@ pub struct ProfilePane {
     /// share selection state with the modal, because the two values aren't
     /// necessarily the same: the user could highlight a profile without
     /// actually selecting it.
-    selected_profile_id: Persisted<SelectedProfileKey>,
+    selected_profile_id: Option<ProfileId>,
     /// The modal presented to change the profile. This modal's selection is
     /// detached from our own selected ID, because a user can highlight an item
     /// in the modal without switching to that profile. The modal emits an
@@ -54,14 +52,16 @@ pub struct ProfilePane {
 }
 
 /// Persisted key for the ID of the selected profile
-#[derive(Debug, Serialize, PersistedKey)]
-#[persisted(Option<ProfileId>)]
+#[derive(Debug, Serialize)]
 struct SelectedProfileKey;
+
+impl PersistentKey for SelectedProfileKey {
+    type Value = ProfileId;
+}
 
 impl ProfilePane {
     pub fn new(collection: &Collection) -> Self {
-        let mut selected_profile_id =
-            Persisted::new_default(SelectedProfileKey);
+        let mut selected_profile_id = PersistentStore::get(&SelectedProfileKey);
 
         // Two invalid cases we need to handle here:
         // - Nothing is persisted but the map has values now
@@ -70,10 +70,10 @@ impl ProfilePane {
         // - Default profile if available
         // - First profile if available
         // - `None` if map is empty
-        match &*selected_profile_id {
+        match &selected_profile_id {
             Some(id) if collection.profiles.contains_key(id) => {}
             _ => {
-                *selected_profile_id.get_mut() = collection
+                selected_profile_id = collection
                     .default_profile()
                     .or(collection.profiles.values().next())
                     .map(Profile::id)
@@ -112,7 +112,7 @@ impl Component for ProfilePane {
             .m()
             .emitted(self.select_emitter, |SelectProfile(profile_id)| {
                 // Handle message from the modal
-                *self.selected_profile_id.get_mut() = Some(profile_id);
+                self.selected_profile_id = Some(profile_id);
                 // Refresh template previews
                 ViewContext::push_event(Event::HttpSelectRequest(None));
             })
@@ -138,7 +138,8 @@ impl Draw for ProfilePane {
 
         // Grab global profile selection state
         let collection = ViewContext::collection();
-        let selected_profile = (*self.selected_profile_id)
+        let selected_profile = self
+            .selected_profile_id
             .as_ref()
             .and_then(|profile_id| collection.profiles.get(profile_id));
         canvas.render_widget(
@@ -381,11 +382,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        test_util::{TestHarness, harness},
-        view::util::persistence::DatabasePersistedStore,
-    };
-    use persisted::PersistedStore;
+    use crate::test_util::{TestHarness, harness};
     use rstest::rstest;
     use slumber_core::test_util::by_id;
     use slumber_util::Factory;
@@ -401,7 +398,7 @@ mod tests {
     #[case::unknown_empty(&[] , Some("p1"), None)]
     #[case::persisted(&["p1", "p2", "default"] , Some("p2"), Some("p2"))]
     fn test_initial_profile(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[case] profile_ids: &[&str],
         #[case] persisted_id: Option<&str>,
         #[case] expected: Option<&str>,
@@ -412,10 +409,7 @@ mod tests {
             ..Profile::factory(())
         }));
         if let Some(persisted_id) = persisted_id {
-            DatabasePersistedStore::store_persisted(
-                &SelectedProfileKey,
-                &Some(persisted_id.into()),
-            );
+            harness.set_persisted(&SelectedProfileKey, &persisted_id.into());
         }
 
         let expected = expected.map(ProfileId::from);
@@ -423,6 +417,6 @@ mod tests {
             profiles,
             ..Collection::factory(())
         });
-        assert_eq!(*component.selected_profile_id, expected);
+        assert_eq!(component.selected_profile_id, expected);
     }
 }

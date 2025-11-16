@@ -145,9 +145,12 @@ impl TuiState {
     pub fn drain_events(&mut self) -> bool {
         match &mut self.0 {
             TuiStateInner::Loaded(state) => {
-                state.view.handle_events(UpdateContext {
+                let handled = state.view.handle_events(UpdateContext {
                     request_store: &mut state.request_store,
-                })
+                });
+                // Persist state after changes
+                state.view.persist(&state.database);
+                handled
             }
             // There is no event queue in the error state
             TuiStateInner::Error { .. } => false,

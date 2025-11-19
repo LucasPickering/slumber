@@ -262,6 +262,9 @@ impl ToEmitter<RecipeListPaneEvent> for RecipeListPane {
 struct SelectedRecipeKey;
 
 impl PersistentKey for SelectedRecipeKey {
+    // Intentionally don't persist None. That's only possible if the recipe map
+    // is empty. If it is, we're forced into None. If not, we want to default to
+    // the first recipe.
     type Value = RecipeId;
 }
 

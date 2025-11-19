@@ -74,7 +74,8 @@ impl PrimaryView {
             .persisted(&PrimaryPaneKey)
             .subscribe([SelectEventType::Select])
             .build();
-        let fullscreen_mode = PersistentStore::get(&FullscreenModeKey);
+        let fullscreen_mode =
+            PersistentStore::get(&FullscreenModeKey).unwrap_or(None);
         let profile_pane = ProfilePane::new(collection);
         let recipe_list_pane = RecipeListPane::new(&collection.recipes);
 
@@ -371,7 +372,7 @@ impl Component for PrimaryView {
 
     fn persist(&self, store: &mut PersistentStore) {
         store.set(&PrimaryPaneKey, &self.selected_pane.selected());
-        store.set_opt(&FullscreenModeKey, self.fullscreen_mode.as_ref());
+        store.set(&FullscreenModeKey, &self.fullscreen_mode);
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -497,7 +498,7 @@ enum PrimaryPane {
 struct FullscreenModeKey;
 
 impl PersistentKey for FullscreenModeKey {
-    type Value = FullscreenMode;
+    type Value = Option<FullscreenMode>;
 }
 
 /// Panes that can be fullscreened. This is separate from [PrimaryPane] because
@@ -568,7 +569,8 @@ mod tests {
     #[rstest]
     fn test_pane_persistence(mut harness: TestHarness, terminal: TestTerminal) {
         harness.set_persisted(&PrimaryPaneKey, &PrimaryPane::Exchange);
-        harness.set_persisted(&FullscreenModeKey, &FullscreenMode::Exchange);
+        harness
+            .set_persisted(&FullscreenModeKey, &Some(FullscreenMode::Exchange));
 
         let component = create_component(&mut harness, &terminal);
         assert_eq!(component.selected_pane.selected(), PrimaryPane::Exchange);

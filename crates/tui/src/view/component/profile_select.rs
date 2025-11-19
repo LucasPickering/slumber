@@ -56,6 +56,9 @@ pub struct ProfilePane {
 struct SelectedProfileKey;
 
 impl PersistentKey for SelectedProfileKey {
+    // Intentionally don't persist None. That's only possible if the profile map
+    // is empty. If it is, we're forced into None. If not, we want to default to
+    // the first profile.
     type Value = ProfileId;
 }
 
@@ -116,6 +119,10 @@ impl Component for ProfilePane {
                 // Refresh template previews
                 ViewContext::push_event(Event::HttpSelectRequest(None));
             })
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set_opt(&SelectedProfileKey, self.selected_profile_id.as_ref());
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {

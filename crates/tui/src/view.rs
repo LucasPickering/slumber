@@ -145,18 +145,11 @@ impl View {
     /// Persist all UI state to the database. This should be called at the end
     /// of each update phase. It does *not* need to be called after each
     /// individual event when multiple events are batched together.
+    ///
+    /// This takes `&mut self` because we dynamically load children, and those
+    /// are always mutable.
     pub fn persist(&mut self, database: &CollectionDatabase) {
-        fn persist(store: &mut PersistentStore, component: &mut dyn Component) {
-            component.persist(store);
-            for mut child in component.children() {
-                if let Some(component) = child.component() {
-                    // Recurions!!
-                    persist(store, component);
-                }
-            }
-        }
-
-        persist(&mut PersistentStore::new(database), &mut self.root);
+        self.root.persist_all(&mut PersistentStore::new(database));
     }
 
     /// ID of the selected profile. `None` iff the list is empty

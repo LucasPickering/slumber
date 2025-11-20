@@ -210,10 +210,11 @@ impl ActionMenuContent {
         for (layer, select) in self.stack.iter_mut().enumerate() {
             // Check if this input is bound to any item in this select
             let bound_index = select.items().position(|item| match item {
-                MenuItemDisplay::Action { shortcut, .. } => {
-                    shortcut == &Some(action)
-                }
-                MenuItemDisplay::Group { .. } => false,
+                // Disallow shortcuts for disabled items
+                MenuItemDisplay::Action {
+                    shortcut, enabled, ..
+                } if *enabled => shortcut == &Some(action),
+                _ => false,
             });
 
             // This action is bound to something!
@@ -629,6 +630,7 @@ mod tests {
                     emitter
                         .menu(TestAction::Disabled, "Disabled")
                         .enable(false)
+                        .shortcut(Some(Action::Reset))
                         .into(),
                     emitter.menu(TestAction::Action1, "Action 1").into(),
                     emitter.menu(TestAction::Action2, "Action 2").into(),
@@ -709,11 +711,17 @@ mod tests {
             .action(&["Action 2"])
             .assert_emitted([TestAction::Action2]);
 
-        // Actions can be selected by shortcut
+        // Actions can be performed by shortcut
         component
             .int()
             .send_keys([KeyCode::Char('x'), KeyCode::Char('e')])
             .assert_emitted([TestAction::Shortcutted]);
+
+        // Disabled action *cannot* be performed by shortcut
+        component
+            .int()
+            .send_keys([KeyCode::Char('x'), KeyCode::Char('z')])
+            .assert_emitted([]);
     }
 
     /// Various input sequences on multiple levels of nested actions

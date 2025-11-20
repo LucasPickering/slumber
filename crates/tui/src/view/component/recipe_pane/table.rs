@@ -1,31 +1,33 @@
 use crate::{
+    context::TuiContext,
     util::{PersistentKey, PersistentStore},
     view::{
-        Generate,
         common::{
+            Checkbox,
             actions::MenuItem,
-            modal::ModalQueue,
-            select::{Select, SelectEvent, SelectEventType, SelectTableProps},
-            table::{Table, ToggleRow},
+            component_select::{ComponentSelect, ComponentSelectTableProps},
+            select::{Select, SelectEvent, SelectEventType},
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
-            misc::TextBoxModal,
-            recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+            recipe_pane::override_template::{
+                EditableTemplate, RecipeOverrideKey,
+            },
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
     },
 };
-use itertools::Itertools;
 use ratatui::{
-    layout::Constraint,
-    widgets::{Row, TableState},
+    layout::{Constraint, Layout},
+    widgets::{Block, TableState},
 };
 use slumber_config::Action;
 use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
 use slumber_template::Template;
+use std::iter;
+use unicode_width::UnicodeWidthStr;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
 /// pane, and provides some common functionality:
@@ -40,18 +42,12 @@ pub struct RecipeFieldTable<RowSelectKey, RowToggleKey> {
     id: ComponentId,
     /// What kind of data we we storing? e.g. "Header"
     noun: &'static str,
-    /// Emitter for the callback from editing a row
-    override_emitter: Emitter<SaveRecipeTableOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeTableMenuAction>,
     /// Persistence key to store which row is selected
     select_persistent_key: RowSelectKey,
-    select: Select<RowState<RowToggleKey>, TableState>,
-    /// Modal to edit template overrides. One modal is used for all rows,
-    /// because we only ever need one at a time and it makes the state
-    /// management simpler. Otherwise each row would need to be its own
-    /// component.
-    edit_modal: ModalQueue<TextBoxModal>,
+    /// Selectable rows
+    select: ComponentSelect<RecipeFieldTableRow<RowToggleKey>, TableState>,
 }
 
 impl<RowSelectKey, RowToggleKey> RecipeFieldTable<RowSelectKey, RowToggleKey>
@@ -67,34 +63,35 @@ where
         >,
         can_stream: bool,
     ) -> Self {
-        let items = rows
+        let rows: Vec<RecipeFieldTableRow<RowToggleKey>> = rows
             .into_iter()
             .enumerate()
-            .map(|(i, (key, template, override_key, toggle_key))| RowState {
-                index: i, // This will be the unique ID for the row
-                key,
-                value: RecipeTemplate::new(
-                    override_key,
-                    template.clone(),
-                    None,
-                    can_stream,
-                ),
-                enabled: PersistentStore::get(&toggle_key).unwrap_or(true),
-                persistent_key: toggle_key,
+            .map(|(i, (key, template, override_key, toggle_key))| {
+                RecipeFieldTableRow::new(
+                    i, // This will be the unique ID for the row
+                    key,
+                    EditableTemplate::new(
+                        override_key,
+                        template.clone(),
+                        None,
+                        can_stream,
+                    ),
+                    toggle_key,
+                )
             })
             .collect();
-        let select = Select::builder(items)
+
+        let select = Select::builder(rows)
             .persisted(&select_key)
-            .subscribe([SelectEventType::Toggle])
+            .subscribe([SelectEventType::Select, SelectEventType::Toggle])
             .build();
+
         Self {
             id: Default::default(),
             noun,
-            override_emitter: Default::default(),
             actions_emitter: Default::default(),
             select_persistent_key: select_key,
-            select,
-            edit_modal: ModalQueue::default(),
+            select: ComponentSelect::new(select),
         }
     }
 
@@ -108,24 +105,14 @@ where
             .collect()
     }
 
-    /// Open a modal to create or edit the selected row's temporary override
+    /// Enter edit mode in the selected row
     fn edit_selected_row(&mut self) {
-        if let Some(selected_row) = self.select.selected() {
-            let emitter = self.override_emitter;
-            let index = selected_row.index;
-            self.edit_modal.open(selected_row.value.edit_modal(
-                format!("Edit value for {}", selected_row.key),
-                // Defer the state update into an event so it can get &mut
-                move |template| {
-                    emitter.emit(SaveRecipeTableOverride {
-                        row_index: index,
-                        template,
-                    });
-                },
-            ));
+        if let Some(selected_row) = self.select.selected_mut() {
+            selected_row.value.edit();
         }
     }
 
+    /// Reset override on selected row
     fn reset_selected_row(&mut self) {
         if let Some(selected_row) = self.select.selected_mut() {
             selected_row.value.reset_override();
@@ -146,34 +133,18 @@ where
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .action(|action, propagate| match action {
-                // Consume the event even if we have no rows, for consistency
-                Action::Edit => self.edit_selected_row(),
-                Action::Reset => self.reset_selected_row(),
-                _ => propagate.set(),
-            })
-            .emitted(self.select.to_emitter(), |event| {
-                if let SelectEvent::Toggle(index) = event {
+            .emitted(self.select.to_emitter(), |event| match event {
+                SelectEvent::Select(_) => {
+                    // When changing selection, stop editing the previous item
+                    for row in self.select.items_mut() {
+                        row.value.submit_edit();
+                    }
+                }
+                SelectEvent::Toggle(index) => {
                     self.select[index].toggle();
                 }
+                SelectEvent::Submit(_) => {}
             })
-            .emitted(
-                self.override_emitter,
-                |SaveRecipeTableOverride {
-                     row_index,
-                     template,
-                 }| {
-                    // The row we're modifying *should* still be the selected
-                    // row, because it shouldn't be possible to change the
-                    // selection while the edit modal is open. It's safer to
-                    // re-grab the modal by index though, just to be sure we've
-                    // got the right one.
-                    self.select.items_mut()[row_index]
-                        .value
-                        .value
-                        .set_override(template);
-                },
-            )
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 // The selected row can't change while the action menu is open,
                 // so we don't need to plumb the index/key through
@@ -203,21 +174,15 @@ where
     }
 
     fn persist(&self, store: &mut PersistentStore) {
-        // Persist the selected row
+        // Persist selected row
         store.set_opt(
             &self.select_persistent_key,
             self.select.selected().map(|row| &row.key),
         );
-        for row in self.select.items() {
-            // For each row, persist the toggle state AND the override
-            store.set(&row.persistent_key, &row.enabled);
-            // Overrides are persisted in a separate single-session store
-            row.value.persist();
-        }
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.edit_modal.to_child_mut(), self.select.to_child_mut()]
+        vec![self.select.to_child_mut()]
     }
 }
 
@@ -233,32 +198,38 @@ where
         props: RecipeFieldTableProps<'a>,
         metadata: DrawMetadata,
     ) {
-        let table = Table {
-            rows: self.select.items().map(Generate::generate).collect_vec(),
-            header: Some(["", props.key_header, props.value_header]),
-            column_widths: &[
-                Constraint::Min(3),
-                Constraint::Percentage(50),
-                Constraint::Percentage(50),
-            ],
-            ..Default::default()
-        };
+        let [header_area, rows_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+                .areas(metadata.area());
+
+        // Find the widest key so we know how to size the key column
+        let key_column_width = iter::once(props.key_header)
+            .chain(self.select.items().map(|row| row.key.as_str()))
+            .map(UnicodeWidthStr::width)
+            .max()
+            .unwrap_or(0) as u16
+            + 1; // Padding!
+        let [_, key_header_area, value_header_area] = Layout::horizontal([
+            Constraint::Length(4), // Checkbox padding
+            Constraint::Length(key_column_width),
+            Constraint::Min(1),
+        ])
+        .areas(header_area);
+
+        // Draw header
+        canvas.render_widget(props.key_header, key_header_area);
+        canvas.render_widget(props.value_header, value_header_area);
+
+        // Draw rows
         canvas.draw(
             &self.select,
-            SelectTableProps { table },
-            metadata.area(),
+            ComponentSelectTableProps(RecipeFieldTableRowProps {
+                key_column_width,
+            }),
+            rows_area,
             true,
         );
-        canvas.draw_portal(&self.edit_modal, (), true);
     }
-}
-
-/// Local event to modify a row's override template. Triggered from the edit
-/// modal
-#[derive(Debug)]
-struct SaveRecipeTableOverride {
-    row_index: usize,
-    template: Template,
 }
 
 #[derive(Debug)]
@@ -278,7 +249,8 @@ pub struct RecipeFieldTableProps<'a> {
 /// One row in the query/header table. Generic param is the persistence key to
 /// use for toggle state
 #[derive(Debug)]
-struct RowState<RowToggleKey> {
+struct RecipeFieldTableRow<RowToggleKey> {
+    id: ComponentId,
     /// Index of this row in the table. This is the unique ID for this row
     /// **in the context of a single session**. Rows can be added/removed
     /// during a collection reload, so we can't persist this.
@@ -290,7 +262,7 @@ struct RowState<RowToggleKey> {
     key: String,
     /// Value template. This includes functionality to make it editable, and
     /// persist the edited value within the current session
-    value: RecipeTemplate,
+    value: EditableTemplate,
     /// Persistence key to store the toggle state for this row
     persistent_key: RowToggleKey,
     /// Is the row enabled/included? This is persisted by row *key* rather than
@@ -302,25 +274,27 @@ struct RowState<RowToggleKey> {
     enabled: bool,
 }
 
-impl<RowToggleKey> Generate for &RowState<RowToggleKey> {
-    type Output<'this>
-        = Row<'this>
-    where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        ToggleRow::new(
-            [self.key.as_str().into(), self.value.preview().generate()],
-            self.enabled,
-        )
-        .generate()
+impl<RowToggleKey> RecipeFieldTableRow<RowToggleKey>
+where
+    RowToggleKey: PersistentKey<Value = bool>,
+{
+    fn new(
+        index: usize,
+        key: String,
+        value: EditableTemplate,
+        toggle_persistent_key: RowToggleKey,
+    ) -> Self {
+        Self {
+            id: ComponentId::default(),
+            index,
+            key,
+            value,
+            enabled: PersistentStore::get(&toggle_persistent_key)
+                .unwrap_or(true),
+            persistent_key: toggle_persistent_key,
+        }
     }
-}
 
-impl<RowToggleKey> RowState<RowToggleKey> {
     fn toggle(&mut self) {
         self.enabled ^= true;
     }
@@ -337,11 +311,70 @@ impl<RowToggleKey> RowState<RowToggleKey> {
     }
 }
 
-// Key-based equality for persistence restoration
-impl<RowToggleKey> PartialEq<RowState<RowToggleKey>> for String {
-    fn eq(&self, other: &RowState<RowToggleKey>) -> bool {
+impl<RowToggleKey> Component for RecipeFieldTableRow<RowToggleKey>
+where
+    RowToggleKey: PersistentKey<Value = bool>,
+{
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        // Persist toggle state
+        store.set(&self.persistent_key, &self.enabled);
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.value.to_child_mut()]
+    }
+}
+
+impl<RowToggleKey> Draw<RecipeFieldTableRowProps>
+    for RecipeFieldTableRow<RowToggleKey>
+{
+    fn draw(
+        &self,
+        canvas: &mut Canvas,
+        props: RecipeFieldTableRowProps,
+        metadata: DrawMetadata,
+    ) {
+        if !self.enabled {
+            let styles = &TuiContext::get().styles;
+            canvas.render_widget(
+                Block::new().style(styles.table.disabled),
+                metadata.area(),
+            );
+        }
+
+        let [checkbox_area, key_area, value_area] = Layout::horizontal([
+            Constraint::Length(4),
+            Constraint::Length(props.key_column_width),
+            Constraint::Min(1),
+        ])
+        .areas(metadata.area());
+
+        // Render each cell
+        canvas.render_widget(
+            Checkbox {
+                checked: self.enabled,
+            },
+            checkbox_area,
+        );
+        canvas.render_widget(self.key.as_str(), key_area);
+        canvas.draw(&self.value, (), value_area, true);
+    }
+}
+
+// Needed for toggle persistence
+impl<RowToggleKey> PartialEq<RecipeFieldTableRow<RowToggleKey>> for String {
+    fn eq(&self, other: &RecipeFieldTableRow<RowToggleKey>) -> bool {
         self == &other.key
     }
+}
+
+#[derive(Copy, Clone)]
+struct RecipeFieldTableRowProps {
+    key_column_width: u16,
 }
 
 #[cfg(test)]
@@ -349,7 +382,10 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{component::RecipeOverrideStore, test_util::TestComponent},
+        view::{
+            component::recipe_pane::override_template::RecipeOverrideStore,
+            test_util::TestComponent,
+        },
     };
     use rstest::rstest;
     use serde::Serialize;
@@ -421,6 +457,7 @@ mod tests {
         // Disable the second row
         component
             .int_props(props_factory)
+            .drain_draw() // Clear initial events
             .send_keys([KeyCode::Down, KeyCode::Char(' ')])
             .assert_empty();
         let selected_row = component.select.selected().unwrap();
@@ -491,6 +528,7 @@ mod tests {
         // Edit the second row
         component
             .int_props(props_factory)
+            .drain_draw() // Clear initial events
             // Open the modal
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("!!!")
@@ -546,6 +584,7 @@ mod tests {
 
         component
             .int_props(props_factory)
+            .drain_draw() // Clear initial events
             .action(&["Edit Row"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();

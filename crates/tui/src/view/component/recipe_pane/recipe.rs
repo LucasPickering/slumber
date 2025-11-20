@@ -9,7 +9,7 @@ use crate::{
             recipe_pane::{
                 authentication::AuthenticationDisplay,
                 body::RecipeBodyDisplay,
-                persistence::RecipeOverrideKey,
+                override_template::RecipeOverrideKey,
                 table::{RecipeFieldTable, RecipeFieldTableProps},
                 url::UrlDisplay,
             },
@@ -158,12 +158,13 @@ impl Component for RecipeDisplay {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
-            self.tabs.to_child_mut(),
             self.url.to_child_mut(),
             self.body.to_child_mut(),
             self.query.to_child_mut(),
             self.headers.to_child_mut(),
             self.authentication.to_child_mut(),
+            // Tabs last so edit text boxes can use left/right if needed
+            self.tabs.to_child_mut(),
         ]
     }
 }
@@ -188,7 +189,7 @@ impl Draw for RecipeDisplay {
 
         // First line: Method + URL
         canvas.render_widget(Paragraph::new(method), method_area);
-        canvas.draw(&self.url, (), url_area, false);
+        canvas.render_widget(self.url.preview(), url_area);
 
         // Navigation tabs
         canvas.draw(&self.tabs, (), tabs_area, true);

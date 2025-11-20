@@ -1,6 +1,6 @@
 use crate::{
     message::{Message, RecipeCopyTarget},
-    util::{PersistentKey, PersistentStore, ResultReported, TempFile},
+    util::{PersistentKey, ResultReported, TempFile},
     view::{
         Component, ViewContext,
         common::{
@@ -11,7 +11,7 @@ use crate::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             recipe_pane::{
-                persistence::{RecipeOverrideKey, RecipeTemplate},
+                override_template::{OverrideTemplate, RecipeOverrideKey},
                 table::{RecipeFieldTable, RecipeFieldTableProps},
             },
         },
@@ -124,20 +124,11 @@ impl Component for RecipeBodyDisplay {
         }
     }
 
-    fn persist(&self, _store: &mut PersistentStore) {
-        match self {
-            // RecipeTemplate isn't a component, so we have to propagate
-            // persistence manually
-            RecipeBodyDisplay::Raw(text_body)
-            | RecipeBodyDisplay::Json(text_body) => text_body.body.persist(),
-            RecipeBodyDisplay::Form(_) => {}
-        }
-    }
-
     fn children(&mut self) -> Vec<Child<'_>> {
         match self {
-            Self::Raw(inner) => vec![inner.to_child_mut()],
-            Self::Json(inner) => vec![inner.to_child_mut()],
+            Self::Raw(text_body) | Self::Json(text_body) => {
+                vec![text_body.to_child_mut()]
+            }
             Self::Form(form) => vec![form.to_child_mut()],
         }
     }
@@ -173,10 +164,14 @@ pub struct TextBody {
     override_emitter: Emitter<SaveBodyOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RawBodyMenuAction>,
-    body: RecipeTemplate,
+    /// Editable body template. We use the external editor to do the editing,
+    /// because the content could be too big to comfortably navigate in the
+    /// in-app editor.
+    body: OverrideTemplate,
     /// Body MIME type, used for syntax highlighting and pager selection. This
     /// has no impact on content of the rendered body
     mime: Option<Mime>,
+    /// Body display window
     text_window: TextWindow,
 }
 
@@ -188,7 +183,7 @@ impl TextBody {
             id: ComponentId::default(),
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
-            body: RecipeTemplate::new(
+            body: OverrideTemplate::new(
                 RecipeOverrideKey::body(recipe.id.clone()),
                 template,
                 content_type,
@@ -307,7 +302,7 @@ impl Component for TextBody {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.text_window.to_child_mut()]
+        vec![self.body.to_child_mut(), self.text_window.to_child_mut()]
     }
 }
 
@@ -391,7 +386,7 @@ mod tests {
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            component::recipe_pane::persistence::RecipeOverrideStore,
+            component::recipe_pane::override_template::RecipeOverrideStore,
             test_util::TestComponent,
         },
     };

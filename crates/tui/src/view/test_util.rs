@@ -168,6 +168,13 @@ where
                 }
             });
         }
+
+        // Persist values in the store after the update. This mimics what the
+        // event loop does
+        ViewContext::with_database(|db| {
+            self.component.persist_all(&mut PersistentStore::new(db));
+        });
+
         propagated
     }
 }
@@ -270,11 +277,6 @@ where
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(mut self) -> Self {
         let propagated = self.component.drain_events();
-        // Persist values in the store after the update. This mimics what the
-        // event loop does
-        ViewContext::with_database(|db| {
-            self.component.persist(&mut PersistentStore::new(db));
-        });
         self.component.draw((self.props_factory)());
         self.propagated.extend(propagated);
         self

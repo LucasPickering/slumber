@@ -1,69 +1,50 @@
 use crate::{
     context::TuiContext,
     view::{
-        Generate,
         common::{
-            actions::MenuItem, fixed_select::FixedSelect, modal::ModalQueue,
-            select::SelectTableProps, table::Table,
+            actions::MenuItem,
+            component_select::{ComponentSelect, ComponentSelectTableProps},
+            select::{Select, SelectEvent, SelectEventType},
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
-            misc::TextBoxModal,
-            recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+            recipe_pane::override_template::{
+                EditableTemplate, RecipeOverrideKey,
+            },
         },
         context::UpdateContext,
-        event::{Emitter, Event, EventMatch},
+        event::{Emitter, Event, EventMatch, ToEmitter},
     },
 };
-use derive_more::derive::Display;
 use ratatui::{
     layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
 };
 use slumber_config::Action;
 use slumber_core::collection::{Authentication, RecipeId};
 use slumber_template::Template;
-use std::iter;
-use strum::{EnumCount, EnumIter};
 
 /// Display authentication settings for a recipe
 #[derive(Debug)]
 pub struct AuthenticationDisplay {
     id: ComponentId,
-    /// Emitter for the callback from editing the authentication field(s)
-    override_emitter: Emitter<SaveAuthenticationOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<AuthenticationMenuAction>,
     state: State,
-    /// Modal to edit template overrides. One modal is used for all templates
-    edit_modal: ModalQueue<TextBoxModal>,
 }
 
 impl AuthenticationDisplay {
     pub fn new(recipe_id: RecipeId, authentication: Authentication) -> Self {
         let state = match authentication {
             Authentication::Basic { username, password } => {
-                let username = RecipeTemplate::new(
-                    RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
+                State::Basic(BasicAuthentication::new(
+                    recipe_id,
                     username,
-                    None,
-                    false,
-                );
-                let password = RecipeTemplate::new(
-                    RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
-                    // See note on this field def for why we unwrap
                     password.unwrap_or_default(),
-                    None,
-                    false,
-                );
-                State::Basic {
-                    username,
-                    password,
-                    selected_field: Default::default(),
-                }
+                ))
             }
             Authentication::Bearer { token } => State::Bearer {
-                token: RecipeTemplate::new(
+                token: EditableTemplate::new(
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
                     None,
@@ -73,10 +54,8 @@ impl AuthenticationDisplay {
         };
         Self {
             id: ComponentId::default(),
-            override_emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             state,
-            edit_modal: ModalQueue::default(),
         }
     }
 
@@ -85,12 +64,11 @@ impl AuthenticationDisplay {
     pub fn override_value(&self) -> Option<Authentication> {
         if self.state.is_overridden() {
             Some(match &self.state {
-                State::Basic {
-                    username, password, ..
-                } => Authentication::Basic {
-                    username: username.template().clone(),
-                    // See note on field def for why we always use Some
-                    password: Some(password.template().clone()),
+                State::Basic(basic) => Authentication::Basic {
+                    username: basic.username().clone(),
+                    // We don't use an option internally because an empty
+                    // password is equivalent to no password
+                    password: Some(basic.password().clone()),
                 },
                 State::Bearer { token, .. } => Authentication::Bearer {
                     token: token.template().clone(),
@@ -99,30 +77,6 @@ impl AuthenticationDisplay {
         } else {
             None
         }
-    }
-
-    /// Open a modal to let the user edit temporary override values
-    fn open_edit_modal(
-        &mut self,
-        emitter: Emitter<SaveAuthenticationOverride>,
-    ) {
-        let (label, template) = match &self.state {
-            State::Basic {
-                username,
-                password,
-                selected_field,
-                ..
-            } => match selected_field.selected() {
-                BasicFields::Username => ("username", username),
-                BasicFields::Password => ("password", password),
-            },
-            State::Bearer { token, .. } => ("bearer token", token),
-        };
-        self.edit_modal.open(template.edit_modal(
-            format!("Edit {label}"),
-            // Defer the state update into an event so it can get &mut
-            move |template| emitter.emit(SaveAuthenticationOverride(template)),
-        ));
     }
 }
 
@@ -134,52 +88,40 @@ impl Component for AuthenticationDisplay {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .action(|action, propagate| match action {
-                Action::Edit => {
-                    self.open_edit_modal(self.override_emitter);
-                }
-                Action::Reset => self.state.reset_override(),
-                _ => propagate.set(),
-            })
-            .emitted(
-                self.override_emitter,
-                |SaveAuthenticationOverride(template)| {
-                    self.state.set_override(template);
-                },
-            )
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 AuthenticationMenuAction::Edit => {
-                    self.open_edit_modal(self.override_emitter);
+                    self.state.selected_template_mut().edit();
                 }
-                AuthenticationMenuAction::Reset => self.state.reset_override(),
+                AuthenticationMenuAction::Reset => {
+                    self.state.selected_template_mut().reset_override();
+                }
             })
     }
 
     fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
+        let label = match &self.state {
+            State::Basic(basic) => basic.select.selected().unwrap().label,
+            State::Bearer { .. } => "Token",
+        };
         vec![
             emitter
-                .menu(AuthenticationMenuAction::Edit, "Edit Authentication")
+                .menu(AuthenticationMenuAction::Edit, format!("Edit {label}"))
                 .shortcut(Some(Action::Edit))
                 .into(),
             emitter
-                .menu(AuthenticationMenuAction::Reset, "Reset Authentication")
-                .enable(self.state.is_overridden())
+                .menu(AuthenticationMenuAction::Reset, format!("Reset {label}"))
+                .enable(self.state.selected_template().is_overridden())
                 .shortcut(Some(Action::Reset))
                 .into(),
         ]
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        let field = match &mut self.state {
-            State::Basic { selected_field, .. } => {
-                Some(selected_field.to_child_mut())
-            }
-            State::Bearer { .. } => None,
-        };
-        iter::once(self.edit_modal.to_child_mut())
-            .chain(field)
-            .collect()
+        match &mut self.state {
+            State::Basic(basic) => vec![basic.to_child_mut()],
+            State::Bearer { token } => vec![token.to_child_mut()],
+        }
     }
 }
 
@@ -203,39 +145,15 @@ impl Draw for AuthenticationDisplay {
         );
 
         match &self.state {
-            State::Basic {
-                username,
-                password,
-                selected_field,
-            } => {
-                let table = Table {
-                    rows: vec![
-                        ["Username:".into(), username.preview().generate()],
-                        ["Password:".into(), password.preview().generate()],
-                    ],
-                    column_widths: &[Constraint::Length(9), Constraint::Min(0)],
-                    ..Default::default()
-                };
-                canvas.draw(
-                    selected_field,
-                    SelectTableProps { table },
-                    content_area,
-                    true,
-                );
+            State::Basic(basic) => {
+                canvas.draw(basic, (), content_area, true);
             }
             State::Bearer { token } => {
-                canvas.render_widget(token.preview().generate(), content_area);
+                canvas.draw(token, (), content_area, true);
             }
         }
-
-        canvas.draw_portal(&self.edit_modal, (), true);
     }
 }
-
-/// Local event to save a user's override value(s). Triggered from the edit
-/// modal.
-#[derive(Debug)]
-struct SaveAuthenticationOverride(Template);
 
 #[derive(Copy, Clone, Debug)]
 enum AuthenticationMenuAction {
@@ -246,85 +164,167 @@ enum AuthenticationMenuAction {
 /// Private to hide enum variants
 #[derive(Debug)]
 enum State {
-    Basic {
-        username: RecipeTemplate,
-        /// This field is optional in the actual recipe, but it's a lot easier
-        /// if we just replace `None` with an empty template. This allows the
-        /// user to edit it and makes rendering easier. It's functionally
-        /// equivalent when building the request.
-        password: RecipeTemplate,
-        /// Track which field is selected, for editability
-        selected_field: FixedSelect<BasicFields, TableState>,
-    },
-    Bearer {
-        token: RecipeTemplate,
-    },
+    Basic(BasicAuthentication),
+    Bearer { token: EditableTemplate },
 }
 
 impl State {
     /// Have *any* fields been overridden?
     fn is_overridden(&self) -> bool {
         match self {
-            Self::Basic {
-                username, password, ..
-            } => username.is_overridden() || password.is_overridden(),
+            Self::Basic(basic) => {
+                basic.select.items().any(|item| item.value.is_overridden())
+            }
             Self::Bearer { token } => token.is_overridden(),
         }
     }
 
-    /// Override the value template for whichever field is selected, and
-    /// recompute the template preview
-    fn set_override(&mut self, template: Template) {
+    /// Get the template that is receiving events
+    fn selected_template(&self) -> &EditableTemplate {
         match self {
-            Self::Basic {
-                username,
-                password,
-                selected_field,
-            } => match selected_field.selected() {
-                BasicFields::Username => {
-                    username.set_override(template);
-                }
-                BasicFields::Password => {
-                    password.set_override(template);
-                }
-            },
-            Self::Bearer { token } => {
-                token.set_override(template);
-            }
+            Self::Basic(basic) => &basic.select.selected().unwrap().value,
+            Self::Bearer { token } => token,
         }
     }
 
-    /// Reset the value template override to the default from the recipe, and
-    /// recompute the template preview
-    fn reset_override(&mut self) {
+    /// Get a mutable reference to the template that is receiving events
+    fn selected_template_mut(&mut self) -> &mut EditableTemplate {
         match self {
-            Self::Basic {
-                username,
-                password,
-                selected_field,
-            } => match selected_field.selected() {
-                BasicFields::Username => {
-                    username.reset_override();
-                }
-                BasicFields::Password => {
-                    password.reset_override();
-                }
-            },
-            Self::Bearer { token } => {
-                token.reset_override();
+            Self::Basic(basic) => {
+                &mut basic.select.selected_mut().unwrap().value
             }
+            Self::Bearer { token } => token,
         }
     }
 }
 
-/// Fields in a basic auth form
-#[derive(
-    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
-)]
-enum BasicFields {
-    #[default]
-    Username,
-    Password,
+/// Wrapper for basic authentication state. This needs to be a separate
+/// component because it has its own event handling for the contained Select
+#[derive(Debug)]
+struct BasicAuthentication {
+    id: ComponentId,
+    /// A list of exactly two fields: [username, password]. This can't use
+    /// `FixedSelect` because there's associated data attached to each
+    /// field
+    select: ComponentSelect<BasicField, TableState>,
+}
+
+impl BasicAuthentication {
+    fn new(
+        recipe_id: RecipeId,
+        username: Template,
+        password: Template,
+    ) -> Self {
+        let username = EditableTemplate::new(
+            RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
+            username,
+            None,
+            false,
+        );
+        let password = EditableTemplate::new(
+            RecipeOverrideKey::auth_basic_password(recipe_id),
+            password,
+            None,
+            false,
+        );
+        let select = Select::builder(vec![
+            BasicField::new("Username", username),
+            BasicField::new("Password", password),
+        ])
+        .subscribe([SelectEventType::Select])
+        .build();
+        Self {
+            id: ComponentId::default(),
+            select: ComponentSelect::new(select),
+        }
+    }
+
+    fn username(&self) -> &Template {
+        self.select[0].value.template()
+    }
+
+    fn password(&self) -> &Template {
+        self.select[1].value.template()
+    }
+}
+
+impl Component for BasicAuthentication {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
+        event
+            .m()
+            .emitted(self.select.to_emitter(), |event| match event {
+                SelectEvent::Select(_) => {
+                    // When changing selection, stop editing the previous item
+                    for row in self.select.items_mut() {
+                        row.value.submit_edit();
+                    }
+                }
+                SelectEvent::Submit(_) | SelectEvent::Toggle(_) => {}
+            })
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.select.to_child_mut()]
+    }
+}
+
+impl Draw for BasicAuthentication {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.draw(
+            &self.select,
+            ComponentSelectTableProps(()),
+            metadata.area(),
+            true,
+        );
+    }
+}
+
+/// One row in a basic auth form. Each form has exactly two rows: Username and
+/// Password
+#[derive(Debug)]
+struct BasicField {
+    id: ComponentId,
+    label: &'static str,
+    value: EditableTemplate,
+}
+
+impl BasicField {
+    fn new(label: &'static str, template: EditableTemplate) -> Self {
+        Self {
+            id: ComponentId::default(),
+            label,
+            value: template,
+        }
+    }
+}
+
+impl Component for BasicField {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.value.to_child_mut()]
+    }
+}
+
+impl Draw for BasicField {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let [label_area, value_area] =
+            Layout::horizontal([Constraint::Length(10), Constraint::Min(1)])
+                .areas(metadata.area());
+
+        canvas.render_widget(self.label, label_area);
+        canvas.draw(&self.value, (), value_area, true);
+    }
 }
 
 #[cfg(test)]
@@ -332,7 +332,10 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{component::RecipeOverrideStore, test_util::TestComponent},
+        view::{
+            component::recipe_pane::override_template::RecipeOverrideStore,
+            test_util::TestComponent,
+        },
     };
     use rstest::rstest;
     use slumber_util::Factory;
@@ -357,6 +360,7 @@ mod tests {
         // Edit username
         component
             .int()
+            .drain_draw() // Clear initial messages
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
@@ -412,17 +416,11 @@ mod tests {
         // Edit password
         component
             .int()
+            .drain_draw() // Clear initial messages
             .send_keys([KeyCode::Down, KeyCode::Char('e'), KeyCode::Enter])
             .assert_empty();
-        assert_eq!(
-            component.override_value(),
-            Some(Authentication::Basic {
-                username: "user1".into(),
-                // None gets replaced by empty string. They're functionally
-                // equivalent because the encoding maps to {username}:{password}
-                password: Some("".into())
-            })
-        );
+        // There's no override because the password wasn't actually modified
+        assert_eq!(component.override_value(), None);
     }
 
     /// Test edit bearer token via keybinds
@@ -473,7 +471,7 @@ mod tests {
 
         component
             .int()
-            .action(&["Edit Authentication"])
+            .action(&["Edit Token"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
@@ -483,10 +481,7 @@ mod tests {
             })
         );
 
-        component
-            .int()
-            .action(&["Reset Authentication"])
-            .assert_empty();
+        component.int().action(&["Reset Token"]).assert_empty();
         assert_eq!(component.override_value(), None);
     }
 

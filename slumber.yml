@@ -129,7 +129,7 @@ requests:
         persist: false
         authentication:
           type: bearer
-          token: "{{ response('login', trigger='12h') | jsonpath('$.form') | base64() }}"
+          token: auth_token
         query:
           sudo: yes_please
           fast: [no_thanks, actually_maybe]

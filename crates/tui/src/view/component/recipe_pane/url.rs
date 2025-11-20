@@ -1,10 +1,9 @@
 use crate::view::{
     UpdateContext,
-    common::{actions::MenuItem, modal::ModalQueue},
+    common::{actions::MenuItem, template_preview::TemplatePreview},
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        misc::TextBoxModal,
-        recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+        recipe_pane::override_template::{EditableTemplate, RecipeOverrideKey},
     },
     event::{Emitter, Event, EventMatch},
 };
@@ -16,19 +15,16 @@ use slumber_template::Template;
 #[derive(Debug)]
 pub struct UrlDisplay {
     id: ComponentId,
-    /// Emitter for the callback from editing the URL
-    override_emitter: Emitter<SaveUrlOverride>,
+
     /// Emitter for menu actions
     actions_emitter: Emitter<UrlMenuAction>,
     /// Rendered URL
-    url: RecipeTemplate,
-    /// Modal to edit template override
-    edit_modal: ModalQueue<TextBoxModal>,
+    url: EditableTemplate,
 }
 
 impl UrlDisplay {
     pub fn new(recipe_id: RecipeId, url: Template) -> Self {
-        let url = RecipeTemplate::new(
+        let url = EditableTemplate::new(
             RecipeOverrideKey::url(recipe_id),
             url,
             None,
@@ -36,11 +32,15 @@ impl UrlDisplay {
         );
         Self {
             id: ComponentId::default(),
-            override_emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             url,
-            edit_modal: ModalQueue::default(),
         }
+    }
+
+    /// Get the preview widget. This is used where the URL is drawn
+    /// non-interactively
+    pub fn preview(&self) -> &TemplatePreview {
+        self.url.preview()
     }
 
     /// If the template has been overridden, get the new template
@@ -48,16 +48,6 @@ impl UrlDisplay {
         self.url
             .is_overridden()
             .then(|| self.url.template().clone())
-    }
-
-    /// Open a modal to let the user edit the temporary override URL
-    fn open_edit_modal(&mut self) {
-        let emitter = self.override_emitter;
-        self.edit_modal.open(self.url.edit_modal(
-            "Edit URL".to_owned(),
-            // Defer the state update into an event so it can use &mut
-            move |template| emitter.emit(SaveUrlOverride(template)),
-        ));
     }
 }
 
@@ -69,16 +59,8 @@ impl Component for UrlDisplay {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .action(|action, propagate| match action {
-                Action::Edit => self.open_edit_modal(),
-                Action::Reset => self.url.reset_override(),
-                _ => propagate.set(),
-            })
-            .emitted(self.override_emitter, |SaveUrlOverride(template)| {
-                self.url.set_override(template);
-            })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
-                UrlMenuAction::Edit => self.open_edit_modal(),
+                UrlMenuAction::Edit => self.url.edit(),
                 UrlMenuAction::Reset => self.url.reset_override(),
             })
     }
@@ -99,21 +81,15 @@ impl Component for UrlDisplay {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.edit_modal.to_child_mut()]
+        vec![self.url.to_child_mut()]
     }
 }
 
 impl Draw for UrlDisplay {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        canvas.render_widget(self.url.preview(), metadata.area());
-        canvas.draw_portal(&self.edit_modal, (), true);
+        canvas.draw(&self.url, (), metadata.area(), true);
     }
 }
-
-/// Local event to save a user's override value(s). Triggered from the edit
-/// modal.
-#[derive(Debug)]
-struct SaveUrlOverride(Template);
 
 #[derive(Copy, Clone, Debug)]
 enum UrlMenuAction {
@@ -126,7 +102,10 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{component::RecipeOverrideStore, test_util::TestComponent},
+        view::{
+            component::recipe_pane::override_template::RecipeOverrideStore,
+            test_util::TestComponent,
+        },
     };
     use rstest::rstest;
     use slumber_util::Factory;

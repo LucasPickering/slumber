@@ -3,7 +3,7 @@ use crate::{
     util::{PersistentKey, PersistentStore},
     view::{
         Generate,
-        common::{scrollbar::Scrollbar, table::Table},
+        common::scrollbar::Scrollbar,
         component::{
             Canvas, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
         },
@@ -17,7 +17,7 @@ use ratatui::{
     text::Text,
     widgets::{
         List, ListDirection, ListItem, ListState, ScrollbarOrientation,
-        StatefulWidget, TableState,
+        TableState,
     },
 };
 use slumber_config::Action;
@@ -38,23 +38,23 @@ use tracing::error;
 /// type that stores the selection state. Typically you want `ListState` or
 /// `TableState`.
 ///
+/// Also see the related wrappers
+/// [FixedSelect](super::fixed_select::FixedSelect) and
+/// [ComponentSelect](super::component_select::ComponentSelect).
+///
 /// ## Drawing
 ///
 /// As this supports multiple semantic meanings with different state backends,
-/// it has multiple [Draw] implementations. Each implementation has an explicit
-/// prop type to make it easy to specify which implementation you want.
-///
-/// - List: [SelectListProps]
-/// - Table: [SelectTableProps]
+/// it has support for multiple [Draw] implementations. Each implementation has
+/// an explicit prop type to make it easy to specify which implementation you
+/// want. Currently the only implementation is [SelectListProps], which draws
+/// as a list.
 ///
 /// Drawing has to be done through these implementations, rather than adhoc
 /// `render_widget` calls, because this is a [Component]. It must be drawn to
 /// the canvas into order to receive events.
 #[derive(derive_more::Debug)]
-pub struct Select<Item, State = ListState>
-where
-    State: SelectData,
-{
+pub struct Select<Item, State = ListState> {
     id: ComponentId,
     emitter: Emitter<SelectEvent>,
     /// Direction of items, for both display and interaction. In top-to-bottom,
@@ -242,21 +242,51 @@ impl<Item, State: SelectData> Select<Item, State> {
         }
     }
 
-    /// Get all items in the list
-    pub fn items(&self) -> impl Iterator<Item = &Item> {
+    /// Get an iterator of each item in the list
+    pub fn items(&self) -> impl ExactSizeIterator<Item = &Item> {
         self.items.iter().map(|item| &item.value)
     }
 
-    /// Get mutable references to all items in the list
-    pub fn items_mut(&mut self) -> &mut [SelectItem<Item>] {
-        &mut self.items
+    /// Get an iterator of mutable references to each item in the list
+    pub fn items_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Item> {
+        self.items.iter_mut().map(|item| &mut item.value)
     }
 
     /// Get all items in the list, including each one's metadata
     pub fn items_with_metadata(
         &self,
-    ) -> impl Iterator<Item = &SelectItem<Item>> {
+    ) -> impl ExactSizeIterator<Item = &SelectItem<Item>> {
         self.items.iter()
+    }
+
+    /// Adjust the state offset to ensure the selected item is visible in the
+    /// view.
+    ///
+    /// ## Params
+    ///
+    /// - `height`: The number of items that fit into the view, assuming all
+    ///   items are the same height
+    pub fn scroll_to_selected(&self, height: usize) {
+        let mut state = self.state.borrow_mut();
+
+        // If we can fit more items in the view, scroll up to do so. This can
+        // happen after a resize
+        if self.len() < state.offset() + height {
+            state.set_offset(self.len().saturating_sub(height));
+        }
+
+        if let Some(selected) = state.selected() {
+            let offset = state.offset();
+            if selected < offset {
+                // If selection is above the view, scroll up so it's the first
+                // visible item
+                state.set_offset(selected);
+            } else if selected >= offset + height {
+                // If selection is below the view, scroll down so it's the
+                // last visible item
+                state.set_offset(selected - height + 1);
+            }
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -279,7 +309,7 @@ impl<Item, State: SelectData> Select<Item, State> {
             .map(|item| &item.value)
     }
 
-    /// Mutable reference to the currently selected item (if any)
+    /// Get a mutable reference to the currently selected item (if any)
     pub fn selected_mut(&mut self) -> Option<&mut Item> {
         let index = self.selected_index()?;
         self.items.get_mut(index).map(|item| &mut item.value)
@@ -289,6 +319,12 @@ impl<Item, State: SelectData> Select<Item, State> {
     pub fn into_selected(mut self) -> Option<Item> {
         let index = self.selected_index()?;
         Some(self.items.swap_remove(index).value)
+    }
+
+    /// Get the visual offset of the current state. This is the index of the
+    /// first visible item in the list.
+    pub fn offset(&self) -> usize {
+        self.state.borrow().offset()
     }
 
     /// Select an item by value. Generally the given value will be the type
@@ -592,38 +628,16 @@ where
     }
 }
 
-/// Props for rendering [Select] as a table
-pub struct SelectTableProps<'a, const COLS: usize, R> {
-    /// Format to render as. This allows the parent to determine the columns
-    /// and rows of the table; the [Select] just provides the selected row
-    /// state.
-    pub table: Table<'a, COLS, R>,
-}
-
-/// Render as a table
-impl<'a, const COLS: usize, R, Item> Draw<SelectTableProps<'a, COLS, R>>
-    for Select<Item, TableState>
-where
-    Table<'a, COLS, R>: StatefulWidget<State = TableState>,
-{
-    fn draw(
-        &self,
-        canvas: &mut Canvas,
-        props: SelectTableProps<'a, COLS, R>,
-        metadata: DrawMetadata,
-    ) {
-        canvas.render_stateful_widget(
-            props.table,
-            metadata.area(),
-            &mut self.state.borrow_mut(),
-        );
-    }
-}
-
 /// Inner state for [Select]. This is an abstraction to allow it to support
 /// multiple state "backends" from Ratatui, to enable usage with different
 /// stateful widgets.
 pub trait SelectData: Default {
+    /// Index of the first visible element
+    fn offset(&self) -> usize;
+
+    /// Set the index of the first visible element
+    fn set_offset(&mut self, offset: usize);
+
     /// Index of the selected element
     fn selected(&self) -> Option<usize>;
 
@@ -639,6 +653,14 @@ impl SelectData for ListState {
     fn select(&mut self, index: Option<usize>) {
         self.select(index);
     }
+
+    fn offset(&self) -> usize {
+        self.offset()
+    }
+
+    fn set_offset(&mut self, offset: usize) {
+        *self = self.with_offset(offset);
+    }
 }
 
 impl SelectData for TableState {
@@ -648,6 +670,14 @@ impl SelectData for TableState {
 
     fn select(&mut self, index: Option<usize>) {
         self.select(index);
+    }
+
+    fn offset(&self) -> usize {
+        self.offset()
+    }
+
+    fn set_offset(&mut self, offset: usize) {
+        *self = self.with_offset(offset);
     }
 }
 
@@ -661,6 +691,12 @@ impl SelectData for usize {
     fn select(&mut self, index: Option<usize>) {
         *self = index.expect("Cannot clear selection");
     }
+
+    fn offset(&self) -> usize {
+        0
+    }
+
+    fn set_offset(&mut self, _offset: usize) {}
 }
 
 /// Emitted event for [Select]
@@ -754,10 +790,14 @@ mod tests {
         let select: Select<&str, ListState> = Select::builder(items)
             .direction(ListDirection::BottomToTop)
             .build();
-        let mut component = TestComponent::new(&harness, &terminal, select);
+        let mut component =
+            TestComponent::new::<SelectListProps>(&harness, &terminal, select);
 
         // Initial state - first item is at the bottom
-        component.int().drain_draw().assert_empty();
+        component
+            .int::<SelectListProps>()
+            .drain_draw()
+            .assert_empty();
         assert_eq!(component.selected(), Some(&"one"));
         terminal.assert_buffer_lines([
             "three".into(),
@@ -766,7 +806,10 @@ mod tests {
         ]);
 
         // Up -> next
-        component.int().send_key(KeyCode::Up).assert_empty();
+        component
+            .int::<SelectListProps>()
+            .send_key(KeyCode::Up)
+            .assert_empty();
         assert_eq!(component.selected(), Some(&"two"));
         terminal.assert_buffer_lines([
             "three".into(),
@@ -775,7 +818,10 @@ mod tests {
         ]);
 
         // Down -> previous
-        component.int().send_key(KeyCode::Down).assert_empty();
+        component
+            .int::<SelectListProps>()
+            .send_key(KeyCode::Down)
+            .assert_empty();
         assert_eq!(component.selected(), Some(&"one"));
         terminal.assert_buffer_lines([
             "three".into(),

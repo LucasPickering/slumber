@@ -1,12 +1,9 @@
 mod authentication;
 mod body;
-mod persistence;
+mod override_template;
 mod recipe;
 mod table;
 mod url;
-
-#[cfg(test)]
-pub use persistence::RecipeOverrideStore;
 
 use crate::{
     context::TuiContext,

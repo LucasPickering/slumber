@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod button;
+pub mod component_select;
 pub mod fixed_select;
 pub mod header_table;
 pub mod modal;
@@ -24,8 +25,9 @@ use crate::{
 use chrono::{DateTime, Duration, Utc};
 use itertools::{Itertools, Position};
 use ratatui::{
+    prelude::{Buffer, Rect},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 use reqwest::{StatusCode, header::HeaderValue};
 use slumber_core::{collection::Profile, util::MaybeStr};
@@ -62,18 +64,13 @@ pub struct Checkbox {
     pub checked: bool,
 }
 
-impl Generate for Checkbox {
-    type Output<'this> = Text<'static>;
-
-    fn generate<'this>(self) -> Self::Output<'this>
+impl Widget for Checkbox {
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
-        Self: 'this,
+        Self: Sized,
     {
-        if self.checked {
-            "[x]".into()
-        } else {
-            "[ ]".into()
-        }
+        let s = if self.checked { "[x]" } else { "[ ]" };
+        s.render(area, buf);
     }
 }
 

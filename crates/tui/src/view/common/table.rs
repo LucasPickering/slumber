@@ -1,15 +1,9 @@
-use crate::{
-    context::TuiContext,
-    view::{Generate, common::Checkbox},
-};
-use itertools::Itertools;
+use crate::context::TuiContext;
 use ratatui::{
     prelude::{Buffer, Constraint, Rect},
     style::Styled,
-    text::Text,
     widgets::{Block, Cell, Row, StatefulWidget, TableState, Widget},
 };
-use std::{iter, marker::PhantomData};
 
 /// Tabular data display with a static number of columns.
 ///
@@ -52,14 +46,7 @@ where
     Cll: Into<Cell<'a>>,
 {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let table = Table {
-            title: self.title,
-            alternate_row_style: self.alternate_row_style,
-            header: self.header,
-            column_widths: self.column_widths,
-            rows: self.rows.into_iter().map(Row::new).collect_vec(),
-        };
-        table.render(area, buf, &mut TableState::default());
+        StatefulWidget::render(self, area, buf, &mut TableState::default());
     }
 }
 
@@ -71,24 +58,9 @@ where
     type State = TableState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let table = Table {
-            title: self.title,
-            alternate_row_style: self.alternate_row_style,
-            header: self.header,
-            column_widths: self.column_widths,
-            rows: self.rows.into_iter().map(Row::new).collect_vec(),
-        };
-        table.render(area, buf, state);
-    }
-}
-
-/// Render a table with dynamic columns and selection state
-impl<'a, const COLS: usize> StatefulWidget for Table<'a, COLS, Row<'a>> {
-    type State = TableState;
-
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let styles = &TuiContext::get().styles;
         let rows = self.rows.into_iter().enumerate().map(|(i, row)| {
+            let row = Row::new(row);
             // Apply theme styles, but let the row's individual styles override
             let base_style = if self.alternate_row_style && i % 2 == 1 {
                 styles.table.alt
@@ -117,60 +89,5 @@ impl<'a, const COLS: usize> StatefulWidget for Table<'a, COLS, Row<'a>> {
 
         // Defer to Ratatui's impl for the actual render
         StatefulWidget::render(table, area, buf, state);
-    }
-}
-
-/// A row in a table that can be toggled on/off. This will generate the checkbox
-/// column, and apply the appropriate row styling.
-#[derive(Debug)]
-pub struct ToggleRow<'a, Cells> {
-    /// Needed to attach the lifetime of this value to the lifetime of the
-    /// generated row
-    phantom: PhantomData<&'a ()>,
-    cells: Cells,
-    enabled: bool,
-}
-
-impl<Cells> ToggleRow<'_, Cells> {
-    pub fn new(cells: Cells, enabled: bool) -> Self {
-        Self {
-            phantom: PhantomData,
-            cells,
-            enabled,
-        }
-    }
-}
-
-impl<'a, Cells> Generate for ToggleRow<'a, Cells>
-where
-    Cells: IntoIterator,
-    Cells::Item: Into<Text<'a>>,
-{
-    type Output<'this>
-        = Row<'this>
-    where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        let styles = &TuiContext::get().styles;
-        // Include the given cells, then tack on the checkbox for enabled state
-        Row::new(
-            iter::once(
-                Checkbox {
-                    checked: self.enabled,
-                }
-                .generate()
-                .into(),
-            )
-            .chain(self.cells.into_iter().map(Cell::from)),
-        )
-        .style(if self.enabled {
-            styles.table.text
-        } else {
-            styles.table.disabled
-        })
     }
 }

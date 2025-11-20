@@ -159,6 +159,11 @@ pub trait ComponentExt: Component {
     ) -> Option<Event>
     where
         Self: Sized;
+
+    /// Call [Component::persist] for all components in the tree.
+    fn persist_all(&mut self, store: &mut PersistentStore)
+    where
+        Self: Sized;
 }
 
 impl<T: Component + ?Sized> ComponentExt for T {
@@ -203,6 +208,13 @@ impl<T: Component + ?Sized> ComponentExt for T {
         Self: Sized,
     {
         update_all(any::type_name::<Self>(), self, context, event)
+    }
+
+    fn persist_all(&mut self, store: &mut PersistentStore)
+    where
+        T: Sized,
+    {
+        persist_all(store, self);
     }
 }
 
@@ -428,9 +440,7 @@ impl<'a> Child<'a> {
 }
 
 /// Abstraction to convert a component type into [Child], which is a wrapper for
-/// a trait object. For 99% of components the blanket implementation will cover
-/// this. This only needs to be implemented manually for types that need an
-/// extra step to extract mutable data.
+/// a trait object.
 pub trait ToChild {
     fn to_child_mut(&mut self) -> Child<'_>;
 }
@@ -532,6 +542,17 @@ fn update_all(
         })
     } else {
         Some(event)
+    }
+}
+
+/// Helper to recursively persist state in an entire component tree
+fn persist_all(store: &mut PersistentStore, component: &mut dyn Component) {
+    component.persist(store);
+    for mut child in component.children() {
+        if let Some(component) = child.component() {
+            // Recursion!!
+            persist_all(store, component);
+        }
     }
 }
 

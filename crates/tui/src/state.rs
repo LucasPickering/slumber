@@ -149,7 +149,9 @@ impl TuiState {
                     request_store: &mut state.request_store,
                 });
                 // Persist state after changes
-                state.view.persist(&state.database);
+                if handled {
+                    state.view.persist(&state.database);
+                }
                 handled
             }
             // There is no event queue in the error state

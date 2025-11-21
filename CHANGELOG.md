@@ -49,6 +49,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - List items can now be selected by click
 - Recipe templates are now edited inline instead of in a pop-up modal
 - Help modal has been moved to a fullscreen page
+- Make `slumber request` aliases `rq` and `req` visible
 
 ## [4.2.0] - 2025-10-14
 

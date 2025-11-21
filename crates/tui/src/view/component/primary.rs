@@ -30,7 +30,7 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{
-    layout::Layout,
+    layout::{Layout, Spacing},
     prelude::{Constraint, Rect},
 };
 use serde::{Deserialize, Serialize};
@@ -169,15 +169,20 @@ impl PrimaryView {
                     Constraint::Max(40),
                     Constraint::Min(40),
                 ])
+                // Overlap so pane borders merge
+                .spacing(Spacing::Overlap(1))
                 .areas(area);
 
                 let [profile_area, recipe_list_area] = Layout::vertical([
                     Constraint::Length(3),
                     Constraint::Min(0),
                 ])
+                // Overlap so pane borders merge
+                .spacing(Spacing::Overlap(1))
                 .areas(left_area);
                 let [recipe_area, exchange_area] =
                     self.get_right_column_layout(right_area);
+
                 Panes {
                     profile: PaneState {
                         area: profile_area,
@@ -207,12 +212,10 @@ impl PrimaryView {
             PrimaryPane::Recipe => (2, 1),
             PrimaryPane::Exchange | PrimaryPane::RecipeList => (1, 2),
         };
-        let denominator = top + bottom;
-        Layout::vertical([
-            Constraint::Ratio(top, denominator),
-            Constraint::Ratio(bottom, denominator),
-        ])
-        .areas(area)
+        Layout::vertical([Constraint::Fill(top), Constraint::Fill(bottom)])
+            // Overlap so pane borders merge
+            .spacing(Spacing::Overlap(1))
+            .areas(area)
     }
 
     /// Send a request for the currently selected recipe

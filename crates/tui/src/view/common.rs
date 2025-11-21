@@ -26,6 +26,7 @@ use chrono::{DateTime, Duration, Utc};
 use itertools::{Itertools, Position};
 use ratatui::{
     prelude::{Buffer, Rect},
+    symbols::merge::MergeStrategy,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
@@ -55,6 +56,7 @@ impl Generate for Pane<'_> {
             .borders(Borders::ALL)
             .border_type(border_type)
             .border_style(border_style)
+            .merge_borders(MergeStrategy::Fuzzy)
             .title(self.title)
     }
 }

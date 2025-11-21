@@ -16,7 +16,6 @@ use crate::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
             exchange_pane::ExchangePane,
-            help::HelpModal,
             misc::DeleteRecipeRequestsModal,
             profile_select::ProfilePane,
             recipe_list::{RecipeListPane, RecipeListPaneEvent},
@@ -59,7 +58,6 @@ pub struct PrimaryView {
     /// `None` if the recipe list is empty or a folder is selected
     exchange_pane:
         StateCell<Option<(RequestId, RequestStateType)>, ExchangePane>,
-    help_modal: ModalQueue<HelpModal>,
     /// Modal to select a different collection file
     collection_select: ModalQueue<CollectionSelect>,
     /// Modal to delete all requests for a recipe
@@ -88,7 +86,6 @@ impl PrimaryView {
             profile_pane,
             recipe_pane: Default::default(),
             exchange_pane: Default::default(),
-            help_modal: Default::default(),
             collection_select: Default::default(),
             delete_requests_modal: Default::default(),
 
@@ -290,7 +287,6 @@ impl Component for PrimaryView {
                 Action::NextPane => self.selected_pane.next(),
                 // Send a request from anywhere
                 Action::Submit => self.send_request(),
-                Action::OpenHelp => self.help_modal.open(HelpModal::default()),
 
                 // Pane hotkeys
                 Action::SelectProfileList => {
@@ -378,7 +374,6 @@ impl Component for PrimaryView {
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
             // Modals
-            self.help_modal.to_child_mut(),
             self.delete_requests_modal.to_child_mut(),
             self.collection_select.to_child_mut(),
             // Not modals
@@ -454,7 +449,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         );
 
         // Modals!!
-        canvas.draw_portal(&self.help_modal, (), true);
         canvas.draw_portal(&self.delete_requests_modal, (), true);
         canvas.draw_portal(&self.collection_select, (), true);
     }

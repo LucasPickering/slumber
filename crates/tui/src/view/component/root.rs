@@ -8,6 +8,7 @@ use crate::{
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
+            help::Help,
             history::History,
             internal::ComponentExt,
             misc::{ConfirmModal, ErrorModal, SelectListModal, TextBoxModal},
@@ -38,6 +39,8 @@ pub struct Root {
     // ==== Children =====
     primary_view: PrimaryView,
     footer: Footer,
+    /// Fullscreen help page. When open, it'll be the only thing we draw
+    help: Help,
     // Modals!!
     // Some of these can only have one instance at a time while some are
     // queues. They use the same implementation, but it's only possible to open
@@ -72,6 +75,7 @@ impl Root {
             // Children
             primary_view: PrimaryView::new(collection),
             footer: Footer::default(),
+            help: Help::default(),
             actions: ActionMenu::default(),
             cancel_request_confirm: ModalQueue::default(),
             confirms: ModalQueue::default(),
@@ -245,6 +249,7 @@ impl Component for Root {
                         self.actions.open(actions);
                     }
                 }
+                Action::OpenHelp => self.help.open(),
                 Action::History => self.open_history(context.request_store),
                 Action::Cancel => self.cancel_request(context),
                 Action::Quit => ViewContext::send_message(Message::Quit),
@@ -290,6 +295,7 @@ impl Component for Root {
             // Non-modals
             self.primary_view.to_child_mut(),
             self.footer.to_child_mut(),
+            self.help.to_child_mut(),
         ]
     }
 }
@@ -301,6 +307,13 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
         props: RootProps<R>,
         metadata: DrawMetadata,
     ) {
+        // Help is a full-page thing and eats all actions, so if it's open it's
+        // the only thing we'll draw
+        if self.help.is_open() {
+            canvas.draw(&self.help, (), metadata.area(), true);
+            return;
+        }
+
         // Create layout
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
@@ -685,5 +698,37 @@ mod tests {
         // New exchange is gone
         assert_eq!(component.selected_request_id, Some(old_exchange.id));
         assert_eq!(harness.request_store.borrow().get(new_exchange.id), None);
+    }
+
+    /// Open and close the help page
+    #[rstest]
+    fn test_help(harness: TestHarness, terminal: TestTerminal) {
+        let props_factory = || RootProps {
+            request_store: harness.request_store.borrow(),
+        };
+        let mut component = TestComponent::builder(
+            &harness,
+            &terminal,
+            Root::new(&harness.collection),
+        )
+        .with_props(props_factory())
+        .build();
+        assert!(!component.help.is_open());
+
+        // Open help
+        component
+            .int_props(props_factory)
+            .drain_draw() // Clear initial events
+            .send_key(KeyCode::Char('?'))
+            .assert_empty();
+        assert!(component.help.is_open());
+
+        // Any key should close. Events are *not* handled by anyone else
+        //
+        component
+            .int_props(props_factory)
+            .send_key(KeyCode::Char('x'))
+            .assert_empty();
+        assert!(!component.help.is_open());
     }
 }

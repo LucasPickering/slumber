@@ -168,12 +168,13 @@ pub enum Action {
     /// Embiggen a pane
     Fullscreen,
     /// Open the actions modal
-    #[display("Actions")]
+    #[display("Open Actions")]
     OpenActions,
     #[display("Help")]
-    /// Open the help modal
+    /// Open the help page
     OpenHelp,
     /// Search command history in query text box
+    #[display("Search Command History")]
     SearchHistory,
     /// Open collection selection modal (unbound by default)
     #[display("Select Collection")]
@@ -335,14 +336,18 @@ impl Display for KeyCombination {
 
         // Write base code
         match self.code {
-            KeyCode::Tab => write!(f, "<tab>"),
+            KeyCode::Tab => write!(f, "tab"),
             KeyCode::Up => write!(f, "↑"),
             KeyCode::Down => write!(f, "↓"),
             KeyCode::Left => write!(f, "←"),
             KeyCode::Right => write!(f, "→"),
-            KeyCode::Esc => write!(f, "<esc>"),
-            KeyCode::Enter => write!(f, "<enter>"),
-            KeyCode::Delete => write!(f, "<del>"),
+            KeyCode::Esc => write!(f, "esc"),
+            KeyCode::Enter => write!(f, "enter"),
+            KeyCode::Delete => write!(f, "del"),
+            KeyCode::PageUp => write!(f, "pgup"),
+            KeyCode::PageDown => write!(f, "pgdown"),
+            KeyCode::Home => write!(f, "home"),
+            KeyCode::End => write!(f, "end"),
             KeyCode::F(num) => write!(f, "F{num}"),
             KeyCode::Char(' ') => write!(f, "<space>"),
             KeyCode::Char(c) => write!(f, "{c}"),

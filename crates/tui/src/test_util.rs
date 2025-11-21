@@ -108,7 +108,7 @@ pub fn terminal(width: u16, height: u16) -> TestTerminal {
 /// Terminal width in chars, for injection to [terminal] fixture
 #[fixture]
 fn width() -> u16 {
-    40
+    50
 }
 
 /// Terminal height in chars, for injection to [terminal] fixture

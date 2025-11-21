@@ -29,6 +29,12 @@ use std::{
     str::FromStr,
 };
 use tracing::warn;
+use winnow::{
+    ModalResult, Parser,
+    combinator::{alt, dispatch, preceded},
+    error::EmptyError,
+    token::take_until,
+};
 
 /// Exit code to return when `exit_status` flag is set and the HTTP response has
 /// an error status code
@@ -393,6 +399,46 @@ impl Prompter for CliPrompter {
                 .channel
                 .respond(select.options.swap_remove(index).value);
         }
+    }
+}
+
+/// TODO
+enum OverrideKey {
+    /// TODO
+    Profile(String),
+    Url,
+    Query(String, usize),
+    Header(String),
+    Body,
+    Form(String),
+    AuthenticationUsername,
+    AuthenticationPassword,
+    AuthenticationToken,
+}
+
+impl FromStr for OverrideKey {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn field(input: &mut &str) -> ModalResult<String> {
+            todo!()
+        }
+
+        let parser = alt((
+            preceded("profile.", field).map(OverrideKey::Profile),
+            "url".map(|_| OverrideKey::Url),
+            // TODO query indexes
+            preceded("query.", field)
+                .map(|parameter| OverrideKey::Query(parameter, 0)),
+            preceded("header.", field).map(OverrideKey::Header),
+            // TODO body
+            preceded("body.", field).map(OverrideKey::Form),
+            "auth.username".map(|_| OverrideKey::AuthenticationUsername),
+            "auth.password".map(|_| OverrideKey::AuthenticationPassword),
+            "auth.token".map(|_| OverrideKey::AuthenticationToken),
+        ));
+        let result = parser.parse(s);
+        todo!()
     }
 }
 

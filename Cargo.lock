@@ -3528,6 +3528,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "winnow",
  "wiremock",
 ]
 

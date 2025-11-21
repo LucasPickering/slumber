@@ -26,6 +26,7 @@ use crate::{
     },
 };
 use crossterm::clipboard::CopyToClipboard;
+use indexmap::IndexMap;
 use ratatui::{
     Frame,
     crossterm::execute,
@@ -39,6 +40,7 @@ use slumber_core::{
     http::RequestId,
     render::{Prompt, Select},
 };
+use slumber_template::Template;
 use std::{
     fmt::{Debug, Display},
     io,
@@ -161,6 +163,11 @@ impl View {
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
         self.root.request_config()
+    }
+
+    /// Get profile fields that have been temporarily overridden
+    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+        self.root.profile_overrides()
     }
 
     /// Select a particular request

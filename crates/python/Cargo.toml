@@ -27,6 +27,7 @@ indexmap = {workspace = true}
 pyo3 = {version = "0.26.0", features = ["experimental-async", "indexmap"]}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
+slumber_template = {workspace = true}
 tokio = {workspace = true, features = ["rt-multi-thread"]}
 
 [lints]

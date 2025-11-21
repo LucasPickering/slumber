@@ -19,6 +19,7 @@ use crate::{
     },
 };
 use anyhow::anyhow;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout},
@@ -27,6 +28,7 @@ use ratatui::{
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::collection::{Collection, HasId, Profile, ProfileId};
+use slumber_template::Template;
 use slumber_util::doc_link;
 
 /// Minimal pane to show the current profile, and handle interaction to open the
@@ -102,6 +104,11 @@ impl ProfilePane {
             self.selected_profile_id.as_ref(),
             self.select_emitter,
         ));
+    }
+
+    /// Get profile fields that have been temporarily overridden
+    pub fn overrides(&self) -> IndexMap<String, Template> {
+        IndexMap::default()
     }
 }
 

@@ -29,6 +29,7 @@ use crate::{
     },
 };
 use derive_more::Display;
+use indexmap::IndexMap;
 use ratatui::{
     layout::Layout,
     prelude::{Constraint, Rect},
@@ -39,6 +40,7 @@ use slumber_core::{
     collection::{Collection, ProfileId, RecipeId, RecipeNode, RecipeNodeType},
     http::RequestId,
 };
+use slumber_template::Template;
 use strum::{EnumCount, EnumIter};
 
 /// Primary TUI view, which shows request/response panes
@@ -118,6 +120,11 @@ impl PrimaryView {
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
         self.recipe_pane.request_config()
+    }
+
+    /// Get profile fields that have been temporarily overridden
+    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+        self.profile_pane.overrides()
     }
 
     /// Is the given pane selected?

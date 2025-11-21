@@ -26,7 +26,9 @@ use derive_more::{Deref, From, derive::Display};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
-use slumber_template::{Arguments, Identifier, LazyValue, RenderError, Value};
+use slumber_template::{
+    Arguments, Identifier, LazyValue, RenderError, Template, Value,
+};
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
 };
@@ -54,7 +56,7 @@ pub struct TemplateContext {
     /// An interface to allow accessing and sending HTTP chained requests
     pub http_provider: Box<dyn HttpProvider>,
     /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<String, String>,
+    pub overrides: IndexMap<String, Template>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
     /// Should sensitive values be shown normally or masked? Enabled for
@@ -198,12 +200,6 @@ impl slumber_template::Context for SingleRenderContext<'_> {
         &self,
         field: &Identifier,
     ) -> Result<LazyValue, RenderError> {
-        // Check overrides first. The override value is NOT treated as a
-        // template
-        if let Some(value) = self.context.overrides.get(field.as_str()) {
-            return Ok(value.clone().into());
-        }
-
         // Check the field cache to see if this value is already being computed
         // somewhere else. If it is, we'll block on that and re-use the result.
         // If not, we get a guard back, meaning we're responsible for the
@@ -222,9 +218,15 @@ impl slumber_template::Context for SingleRenderContext<'_> {
 
         // We're responsible for the computation. Grab the field's value
         let template = self
+            // Check overrides first
             .context
-            .current_profile()
-            .and_then(|profile| profile.data.get(field.as_str()))
+            .overrides
+            .get(field.as_str())
+            .or_else(|| {
+                // Check the current profile
+                let profile = self.context.current_profile()?;
+                profile.data.get(field.as_str())
+            })
             .ok_or_else(|| FunctionError::UnknownField {
                 field: field.to_string(),
             })?;

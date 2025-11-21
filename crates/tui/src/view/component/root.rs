@@ -18,6 +18,7 @@ use crate::{
         event::{Event, EventMatch},
     },
 };
+use indexmap::IndexMap;
 use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
@@ -26,6 +27,7 @@ use slumber_core::{
     http::RequestId,
     render::{Prompt, Select},
 };
+use slumber_template::Template;
 use std::ops::Deref;
 
 /// The root view component
@@ -135,6 +137,11 @@ impl Root {
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
         self.primary_view.request_config()
+    }
+
+    /// Get profile fields that have been temporarily overridden
+    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+        self.primary_view.profile_overrides()
     }
 
     /// Extract the currently selected request from the store

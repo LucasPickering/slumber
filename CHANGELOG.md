@@ -48,6 +48,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Refactor significant portions of the TUI logic. There should be no user-facing changes, but if you notice any bugs [please report them!](https://github.com/LucasPickering/slumber/issues/new/choose)
 - List items can now be selected by click
 - Recipe templates are now edited inline instead of in a pop-up modal
+- Help modal has been moved to a fullscreen page
 
 ## [4.2.1] - 2025-11-26
 

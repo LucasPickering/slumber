@@ -62,7 +62,7 @@ input_bindings:
 | `reload_collection`   | `f5`            | Force reload collection file                          |
 | `fullscreen`          | `f`             | Fullscreen current pane                               |
 | `open_actions`        | `x`             | Open actions menu                                     |
-| `open_help`           | `?`             | Open help dialog                                      |
+| `open_help`           | `?`             | Open help page                                        |
 | `search_history`      | `ctrl r`        | Search command history in query/export text box       |
 | `select_collection`   | `f3`            | Open collection select dialog                         |
 | `select_profile_list` | `p`             | Open Profile List dialog                              |

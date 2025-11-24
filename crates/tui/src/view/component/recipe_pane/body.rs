@@ -29,7 +29,7 @@ use slumber_core::{
 };
 use slumber_template::Template;
 use std::fs;
-use tracing::debug;
+use tracing::{debug, error};
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
@@ -54,18 +54,7 @@ impl RecipeBodyDisplay {
                 Self::Raw(TextBody::new(body.clone(), recipe).into())
             }
             RecipeBody::Json(json) => {
-                // Stringify all the individual templates in the JSON, pretty
-                // print that as JSON, then parse it back as one big template.
-                // This is clumsy but it's the easiest way to represent the body
-                // as a single template, and shouldn't be too expensive
-                let json_string =
-                    format!("{:#}", serde_json::Value::from(json));
-                // This unwrap is safe because we know the body was originally
-                // parsed from a single string so all the individual strings
-                // are valid templates. JSON syntax can't create an invalid
-                // template string anywhere because the braces all get
-                // whitespace between them.
-                let template = json_string.parse().unwrap();
+                let template = preview_json_template(json);
                 Self::Json(TextBody::new(template, recipe).into())
             }
             RecipeBody::FormUrlencoded(fields) => {
@@ -346,6 +335,26 @@ enum RawBodyMenuAction {
 #[derive(Debug)]
 struct SaveBodyOverride(TempFile);
 
+/// Convert a JSON object into a single template for preview in a TextBody
+fn preview_json_template(json: &JsonTemplate) -> Template {
+    // Kill this in https://github.com/LucasPickering/slumber/issues/627
+
+    // Stringify all the individual templates in the JSON, pretty
+    // print that as JSON, then parse it back as one big template.
+    // This is clumsy but it's the easiest way to represent the body
+    // as a single template, and shouldn't be too expensive
+    let json_string = format!("{:#}", serde_json::Value::from(json));
+    // This unwrap *should* be safe because we know the body was originally
+    // parsed from a single string so all the individual strings are valid
+    // templates. JSON syntax can't create an invalid template string anywhere
+    // because the braces all get whitespace between them. To be safe though,
+    // we fall back to the raw string
+    json_string.parse().unwrap_or_else(|error| {
+        error!(?json, %error, "Failed to parse JSON preview template");
+        Template::raw(json_string)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,6 +543,37 @@ mod tests {
             edited("hello!"),
             "  ".into(),
         ]]);
+    }
+
+    /// Convert JSON templates into string templates for preview. This is a
+    /// shortcut to make previewing JSON templates easy. It's actually broken
+    /// and needs to be replaced.
+    /// https://github.com/LucasPickering/slumber/issues/627
+    #[rstest]
+    // Make sure two objects don't look like a template expression
+    #[case::object(
+        json!({"a": {"b": "my name is {{ name }}!"}}).try_into().unwrap(),
+        r#"{
+  "a": {
+    "b": "my name is {{ name }}!"
+  }
+}"#
+    )]
+    // https://github.com/LucasPickering/slumber/issues/646
+    #[case::escaped_quote(
+        JsonTemplate::String(r#"{{ jq('.name="Nemo"') }}"#.into()),
+        // JSON stringification escapes the inner double quotes, which isn't
+        // actually needed and interferes with the template parsing. This
+        // causes it to fall back to treating it as a raw template. Totally a
+        // bug, but not worth fixing before this is replaced.
+        r#""{_{ jq('.name=\"Nemo\"') }}""#
+    )]
+    fn test_preview_json_template(
+        #[case] json: JsonTemplate,
+        #[case] expected: Template,
+    ) {
+        let actual = preview_json_template(&json);
+        assert_eq!(actual, expected);
     }
 
     /// Style text to match the text window gutter

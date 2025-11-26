@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [4.2.1] - 2025-11-26
+
+<!-- ANCHOR: changelog -->
+
 ### Fixed
 
 - Fix crash when previewing a JSON body that contains an escaped quote [#646](https://github.com/LucasPickering/slumber/issues/646)

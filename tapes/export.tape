@@ -11,7 +11,7 @@ Set Theme "MaterialDark"
 Hide
 Type "cargo run"
 Enter
-Sleep 2s
+Wait /q Quit/
 
 # Send List Fish request
 Down 2

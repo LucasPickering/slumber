@@ -146,15 +146,15 @@ requests:
 Now we can easily use that template in multiple recipes. **But**, what if we have multiple profiles? We wouldn't want to copy-paste that template across every profile. Using [composition](../composition.md), we can define the template in one place and share it in every profile:
 
 ```yaml
-.base_profile_data: &base_profile_data
+.base_profile_data:
   fish_id: "{{ response('fish_list', trigger='1d') | jsonpath('$[*].id', mode='array') | select() }}"
 
 profiles:
   local:
-    <<: *base_profile_data
+    $ref: "#/.base_profile_data"
     host: http://localhost:5000
   production:
-    <<: *base_profile_data
+    $ref: "#/.base_profile_data"
     host: https://myfishes.fish
 
 requests:

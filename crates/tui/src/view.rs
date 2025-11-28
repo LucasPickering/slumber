@@ -80,7 +80,7 @@ impl View {
         };
 
         Self {
-            root: Root::new(collection),
+            root: Root::new(),
             debug_monitor,
         }
     }

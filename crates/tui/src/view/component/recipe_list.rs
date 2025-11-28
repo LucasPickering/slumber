@@ -50,6 +50,8 @@ pub struct RecipeListPane {
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
     select: Select<RecipeListItem>,
+    /// TODO
+    last_submitted: Option<RecipeId>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     ///
@@ -64,8 +66,10 @@ pub struct RecipeListPane {
 }
 
 impl RecipeListPane {
-    pub fn new(recipes: &RecipeTree) -> Self {
+    /// TODO move into Default
+    pub fn new() -> Self {
         let input_engine = &TuiContext::get().input_engine;
+        let recipes = &ViewContext::collection().recipes;
         let binding = input_engine.binding_display(Action::Search);
 
         // This clone is unfortunate, but we can't hold onto a reference to the
@@ -73,6 +77,7 @@ impl RecipeListPane {
         let collapsed: Collapsed =
             PersistentStore::get(&CollapsedKey).unwrap_or_default();
         let select = collapsed.build_select(recipes, "");
+        let last_submitted = select.selected().map(RecipeListItem::id).cloned();
         let filter = TextBox::default()
             .placeholder(format!("{binding} to filter"))
             .subscribe([
@@ -85,16 +90,23 @@ impl RecipeListPane {
             emitter: Default::default(),
             actions_emitter: Default::default(),
             select,
+            last_submitted,
             collapsed,
             filter,
             filter_focused: false,
         }
     }
 
-    /// ID and kind of whatever recipe/folder in the list is selected. `None`
-    /// iff the list is empty
+    /// Get the ID and kind of whatever recipe/folder in the list is selected.
+    /// `None` iff the list is empty
     pub fn selected_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
         self.select.selected().map(|node| (&node.id, node.kind))
+    }
+
+    /// Get the display name of the selected recipe/folder. Return `None` iff
+    /// the list is empty
+    pub fn selected_name(&self) -> Option<&str> {
+        self.select.selected().map(|node| node.name.as_str())
     }
 
     /// Get the ID of the selected recipe, if a node is selected and it's a
@@ -173,6 +185,19 @@ impl Component for RecipeListPane {
                     self.set_selected_collapsed(CollapseState::Expand);
                 }
                 Action::Search => self.filter_focused = true,
+                Action::Cancel => {
+                    // Revert to whatever was selected when this list was opened
+                    if let Some(last_submitted) = &self.last_submitted {
+                        self.select.select(last_submitted);
+                    }
+                    self.emitter.emit(RecipeListPaneEvent::Close);
+                }
+                Action::Submit => {
+                    // Checkpoint this ID for the next time we're opened
+                    self.last_submitted =
+                        self.select.selected().map(RecipeListItem::id).cloned();
+                    self.emitter.emit(RecipeListPaneEvent::Close);
+                }
                 _ => propagate.set(),
             })
             .emitted(self.select.to_emitter(), |event| match event {
@@ -223,9 +248,7 @@ impl Component for RecipeListPane {
 
 impl Draw for RecipeListPane {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let context = TuiContext::get();
-
-        let title = context
+        let title = TuiContext::get()
             .input_engine
             .add_hint("Recipes", Action::SelectRecipeList);
         let block = Pane {
@@ -269,10 +292,13 @@ impl PersistentKey for SelectedRecipeKey {
 }
 
 /// Emitted event type for the recipe list pane
+/// TODO rename this to match component name
 #[derive(Debug)]
 pub enum RecipeListPaneEvent {
     /// Forward menu actions to the parent because it has the needed context
     Action(RecipeMenuAction),
+    /// TODO
+    Close,
 }
 
 /// Simplified version of [RecipeNode], to be used in the display tree. This
@@ -459,11 +485,8 @@ mod tests {
             recipes,
             ..Collection::factory(())
         });
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            RecipeListPane::new(&harness.collection.recipes),
-        );
+        let mut component =
+            TestComponent::new(&harness, &terminal, RecipeListPane::new());
         // Clear initial events
         assert_matches!(
             component.int().drain_draw().propagated(),

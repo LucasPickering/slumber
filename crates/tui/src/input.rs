@@ -45,7 +45,7 @@ impl InputEngine {
     /// alone.
     pub fn add_hint(&self, label: impl Display, action: Action) -> String {
         if let Some(binding) = self.binding(action) {
-            format!("{label} ({binding})")
+            format!("{label} [{binding}]")
         } else {
             label.to_string()
         }

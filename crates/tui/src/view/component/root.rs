@@ -22,7 +22,7 @@ use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, ProfileId},
+    collection::ProfileId,
     http::RequestId,
     render::{Prompt, Select},
 };
@@ -56,7 +56,7 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(collection: &Collection) -> Self {
+    pub fn new() -> Self {
         // Restore the selected request via an event. When selecting the
         // request we need to load it into the request store as well, and we
         // don't have access to that here
@@ -73,7 +73,7 @@ impl Root {
             selected_request_id: None,
 
             // Children
-            primary_view: PrimaryView::new(collection),
+            primary_view: PrimaryView::new(),
             footer: Footer::default(),
             help: Help::default(),
             actions: ActionMenu::default(),
@@ -369,7 +369,7 @@ mod tests {
     };
     use rstest::rstest;
     use slumber_core::{
-        collection::{Profile, Recipe},
+        collection::{Collection, Profile, Recipe},
         http::Exchange,
         test_util::by_id,
     };
@@ -390,13 +390,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -433,13 +430,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -478,13 +472,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -517,13 +508,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -563,13 +551,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -603,13 +588,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         // Select recipe pane
         component
             .int_props(props_factory)
@@ -659,13 +641,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         // Select exchange pane
         component
             .int_props(props_factory)
@@ -706,13 +685,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         assert!(!component.help.is_open());
 
         // Open help

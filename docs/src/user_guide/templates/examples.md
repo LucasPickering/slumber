@@ -171,7 +171,7 @@ requests:
 
 ## Non-string JSON templates
 
-[JSON bodies](../recipes.md#body) support dynamic non-string values. By using a template with a single dynamic chunk (i.e. a single `{{ ... }}`), you can create non-string values. Let's say we have a JSON file `./friends.json` with this content:
+[JSON bodies](../recipes/bodies.md) support dynamic non-string values. By using a template with a single dynamic chunk (i.e. a single `{{ ... }}`), you can create non-string values. Let's say we have a JSON file `./friends.json` with this content:
 
 ```json
 ["Barry", "Dora"]
@@ -204,7 +204,7 @@ The request body will render as:
 
 A few things to notice here:
 
-- We had to explicitly parse the contents of the file with `json_parse()`. By default the content loaded is just artbirary bytes; Slumber doesn't know it's supposed to be JSON.
+- We had to explicitly parse the contents of the file with `json_parse()`. By default the content loaded is just arbitrary bytes; Slumber doesn't know it's supposed to be JSON.
 - The parsed JSON is included directly into the JSON body, _without_ the surrounding quotes from the template. In other words, the value was **unpacked**.
 
 In some cases this behavior may not be desired, e.g. when combined with `jsonpath()`. You can pipe to `string()` to **disable this behavior**:

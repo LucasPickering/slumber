@@ -32,7 +32,7 @@ requests:
 
 ## Query Parameters
 
-> See the [API docs](../api/request_collection/query_parameters.md) for more detailed info.
+> See the [API docs](../../api/request_collection/query_parameters.md) for more detailed info.
 
 Query parameters are specified via the `query` field. They form a component of a request URL and provide additional information to the server about a request. In a request recipe, query parameters are defined as a map of `parameter: value`. The value can be a singular value (string/boolean/etc.) or a list of values.
 
@@ -71,7 +71,7 @@ recipes:
 
 ## Authentication
 
-> See the [API docs](../api/request_collection/authentication.md) for more detailed info.
+> See the [API docs](../../api/request_collection/authentication.md) for more detailed info.
 
 Slumber supports multiple methods of request authentication, making it easier to build request with common authentication schemes. The supported types currently are:
 
@@ -100,57 +100,4 @@ requests:
 
 ## Body
 
-> See the [API docs](../api/request_collection/recipe_body.md) for more detailed info.
-
-Slumber supports a number of different body types:
-
-- Raw text/bytes
-- JSON
-- URL-encoded forms (`application/x-www-form-urlencoded`)
-- Multipart forms (`multipart/form-data`)
-
-Here's an example of each one in practice:
-
-```yaml
-requests:
-  text_body:
-    method: POST
-    url: "https://myfishes.fish/fishes/42/name"
-    headers:
-      Content-Type: text/plain
-    body: Alfonso
-
-  binary_body:
-    method: POST
-    url: "https://myfishes.fish/fishes/42/image"
-    headers:
-      Content-Type: image/jpg
-    body: "{{ file('./fish.png') }}"
-
-  json_body:
-    method: POST
-    url: "https://myfishes.fish/fishes/42"
-    # Content-Type header will be set to `application/json` automatically
-    body:
-      type: json
-      data: { "name": "Alfonso" }
-
-  urlencoded_body:
-    method: POST
-    url: "https://myfishes.fish/fishes/42"
-    # Content-Type header will be set to `application/x-www-form-urlencoded` automatically
-    body:
-      type: form_urlencoded
-      data:
-        name: Alfonso
-
-  multipart_body:
-    method: POST
-    url: "https://myfishes.fish/fishes/42"
-    # Content-Type header will be set to `multipart/form-data` automatically
-    body:
-      type: form_multipart
-      data:
-        name: Alfonso
-        image: b"\x12\x34"
-```
+[See the next page](./bodies.md)

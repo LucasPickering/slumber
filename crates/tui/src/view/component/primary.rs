@@ -3,7 +3,7 @@
 use crate::{
     http::{RequestConfig, RequestState, RequestStateType},
     message::{Message, RecipeCopyTarget},
-    util::{PersistentStore, ResultReported},
+    util::{PersistentKey, PersistentStore, ResultReported},
     view::{
         Component, ViewContext,
         common::{actions::MenuItem, modal::ModalQueue},
@@ -33,6 +33,7 @@ use ratatui::{
     layout::{Layout, Spacing},
     prelude::{Constraint, Rect},
 };
+use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{
     collection::{HasId, ProfileId, RecipeId, RecipeNode, RecipeNodeType},
@@ -75,10 +76,11 @@ pub struct PrimaryView {
 
 impl PrimaryView {
     pub fn new() -> Self {
-        let state = ViewState::Default(DefaultPane::Recipe);
+        let view = PersistentStore::get(&ViewStateKey)
+            .unwrap_or(ViewState::Default(DefaultPane::Recipe));
         Self {
             id: ComponentId::default(),
-            view: state,
+            view,
 
             recipe_list: SidebarList::default(),
             recipe_pane: RecipePane::default(),
@@ -320,6 +322,7 @@ impl Component for PrimaryView {
     }
 
     fn menu(&self) -> Vec<MenuItem> {
+        // TODO edit profile too
         let emitter = self.global_actions_emitter;
         let edit_collection_name = match self.selected_recipe_node() {
             None => "Edit Collection",
@@ -333,8 +336,8 @@ impl Component for PrimaryView {
         ]
     }
 
-    fn persist(&self, _store: &mut PersistentStore) {
-        // TODO persist
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set(&ViewStateKey, &self.view);
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -520,7 +523,7 @@ pub struct PrimaryViewProps<'a> {
 }
 
 /// TODO
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 enum ViewState {
     /// TODO
     Default(DefaultPane),
@@ -530,27 +533,35 @@ enum ViewState {
     Recipe(RecipeSelectPane),
 }
 
-/// TODO
-#[derive(Copy, Clone, Debug, PartialEq, EnumIter)]
+/// Selectable pane in [ViewState::Default]
+#[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
 enum DefaultPane {
     Recipe,
     Exchange,
 }
 
-/// TODO
-#[derive(Copy, Clone, Debug, PartialEq, EnumIter)]
+/// Selectable pane in [ViewState::Profile]
+#[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
 enum ProfileSelectPane {
     List,
     Recipe,
     Profile,
 }
 
-/// TODO
-#[derive(Copy, Clone, Debug, PartialEq, EnumIter)]
+/// Selectable pane in [ViewState::Recipe]
+#[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
 enum RecipeSelectPane {
     List,
     Recipe,
     Exchange,
+}
+
+/// Persistent key for [ViewState]
+#[derive(Debug, Serialize)]
+struct ViewStateKey;
+
+impl PersistentKey for ViewStateKey {
+    type Value = ViewState;
 }
 
 /// Menu actions available in all contexts

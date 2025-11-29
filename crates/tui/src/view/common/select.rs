@@ -136,7 +136,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     /// Set the value that should be initially selected
     pub fn preselect<T>(mut self, value: &T) -> Self
     where
-        T: PartialEq<Item>,
+        Item: PartialEq<T>,
     {
         // Our list of items is immutable, so we can safely store just the
         // index. This is useful so we don't need an additional generic on the
@@ -152,7 +152,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     /// conditional in calling code.
     pub fn preselect_opt<T>(self, value: Option<&T>) -> Self
     where
-        T: PartialEq<Item>,
+        Item: PartialEq<T>,
     {
         if let Some(value) = value {
             self.preselect(value)
@@ -170,7 +170,7 @@ impl<Item, State> SelectBuilder<Item, State> {
         K: PersistentKey,
         // The persisted value doesn't have to be the ENTIRE item that we have
         // in the list, it just needs to be comparable (e.g. ID for a recipe)
-        K::Value: PartialEq<Item>,
+        Item: PartialEq<K::Value>,
     {
         self.preselect_opt(PersistentStore::get(key).as_ref())
     }
@@ -181,13 +181,17 @@ impl<Item, State> SelectBuilder<Item, State> {
     /// ensure you don't select a value that will then be filtered out.
     pub fn filter(mut self, filter: &str) -> Self
     where
-        Item: ToString,
+        Item: SelectFilter,
     {
         let filter = filter.trim();
         if !filter.is_empty() {
             let filter = filter.to_lowercase();
             self.items.retain(|item| {
-                item.value.to_string().to_lowercase().contains(&filter)
+                // TODO
+                let terms = item.value.terms();
+                terms
+                    .iter()
+                    .any(|term| term.to_lowercase().contains(&filter))
             });
         }
         self
@@ -222,6 +226,11 @@ impl<Item, State> SelectBuilder<Item, State> {
 
         select
     }
+}
+
+/// TODO
+pub trait SelectFilter {
+    fn terms(&self) -> Vec<&str>;
 }
 
 impl<Item, State: SelectData> Select<Item, State> {
@@ -325,15 +334,6 @@ impl<Item, State: SelectData> Select<Item, State> {
     /// first visible item in the list.
     pub fn offset(&self) -> usize {
         self.state.borrow().offset()
-    }
-
-    /// Select an item by value. Generally the given value will be the type
-    /// `Item`, but it could be anything that compares to `Item` (e.g. an ID
-    /// type).
-    pub fn select<T: PartialEq<Item>>(&mut self, value: &T) {
-        if let Some(index) = find_index(&self.items, value) {
-            self.select_index(index);
-        }
     }
 
     /// Select an item by index
@@ -715,9 +715,9 @@ pub enum SelectEvent {
 /// Find the index of a value in the list
 fn find_index<Item, T>(items: &[SelectItem<Item>], value: &T) -> Option<usize>
 where
-    T: PartialEq<Item>,
+    Item: PartialEq<T>,
 {
-    items.iter().position(|item| value == &item.value)
+    items.iter().position(|item| &item.value == value)
 }
 
 #[cfg(test)]
@@ -736,6 +736,13 @@ mod tests {
     use slumber_util::assert_matches;
     use std::{collections::HashSet, ops::Deref};
     use terminput::KeyCode;
+
+    // Filter a list of plain strings, for testing
+    impl SelectFilter for &'_ str {
+        fn terms(&self) -> Vec<&str> {
+            vec![self]
+        }
+    }
 
     // Rendering in tests is much simpler if Props implements Default. Outside
     // tests though we want to force consumers to make a choice about props.
@@ -843,16 +850,15 @@ mod tests {
         #[case] expected_selected: Option<usize>,
     ) {
         let items = ["apple", "APPLE", "banana"];
-        let select: Select<&str, ListState> =
-            Select::builder(items.into_iter().collect())
-                .filter(filter)
-                .preselect_opt(preselect.as_ref())
-                .build();
+        let select: Select<&str> = Select::builder(Vec::from_iter(items))
+            .filter(filter)
+            .preselect_opt(preselect.as_ref())
+            .build();
+        assert_eq!(select.selected_index(), expected_selected);
         assert_eq!(
             select.items().copied().collect::<Vec<_>>(),
             expected_visible
         );
-        assert_eq!(select.selected_index(), expected_selected);
     }
 
     /// Test going up and down in the list
@@ -1194,9 +1200,9 @@ mod tests {
             }
         }
 
-        impl PartialEq<ProfileItem> for ProfileId {
-            fn eq(&self, item: &ProfileItem) -> bool {
-                self == &item.0
+        impl PartialEq<ProfileId> for ProfileItem {
+            fn eq(&self, id: &ProfileId) -> bool {
+                self.id() == id
             }
         }
 

@@ -5,7 +5,10 @@ use crate::{
         ToStringGenerate, UpdateContext, ViewContext,
         common::{
             modal::Modal,
-            select::{Select, SelectEvent, SelectEventType, SelectListProps},
+            select::{
+                Select, SelectEvent, SelectEventType, SelectFilter,
+                SelectListProps,
+            },
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
@@ -101,9 +104,16 @@ struct CollectionSelectItem {
     path: PathBuf,
 }
 
-impl PartialEq<CollectionSelectItem> for CollectionId {
-    fn eq(&self, other: &CollectionSelectItem) -> bool {
-        self == &other.id
+// Persistence
+impl PartialEq<CollectionId> for CollectionSelectItem {
+    fn eq(&self, id: &CollectionId) -> bool {
+        &self.id == id
+    }
+}
+
+impl SelectFilter for CollectionSelectItem {
+    fn terms(&self) -> Vec<&str> {
+        vec![&self.display_name]
     }
 }
 

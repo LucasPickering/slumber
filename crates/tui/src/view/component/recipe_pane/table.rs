@@ -366,9 +366,9 @@ impl<RowToggleKey> Draw<RecipeFieldTableRowProps>
 }
 
 // Needed for toggle persistence
-impl<RowToggleKey> PartialEq<RecipeFieldTableRow<RowToggleKey>> for String {
-    fn eq(&self, other: &RecipeFieldTableRow<RowToggleKey>) -> bool {
-        self == &other.key
+impl<RowToggleKey> PartialEq<String> for RecipeFieldTableRow<RowToggleKey> {
+    fn eq(&self, key: &String) -> bool {
+        &self.key == key
     }
 }
 

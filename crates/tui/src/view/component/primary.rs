@@ -11,18 +11,17 @@ use crate::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
             exchange_pane::ExchangePane,
-            header::{PrimaryHeader, PrimaryHeaderProps},
             misc::DeleteRecipeRequestsModal,
-            primary_list::{
-                Format, PrimaryList, PrimaryListEvent, PrimaryListProps,
-            },
             profile::{
                 ProfileListItem, ProfileListState, ProfilePreview,
                 ProfilePreviewProps,
             },
-            recipe_list::{RecipeListPane, RecipeListPaneEvent},
+            recipe_list::RecipeListState,
             recipe_pane::{
                 RecipeMenuAction, RecipePane, RecipePaneEvent, RecipePaneProps,
+            },
+            sidebar_list::{
+                Format, PrimaryListEvent, PrimaryListProps, SidebarList,
             },
         },
         context::UpdateContext,
@@ -53,14 +52,12 @@ pub struct PrimaryView {
     // fullscreen: Option<PrimaryPane>,
 
     // Children
-    /// Header to open the recipe list
-    recipe_header: PrimaryHeader,
-    /// Sidebar list to select a recipe
-    recipe_list: RecipeListPane,
+    /// Header/sidebar to select a recipe
+    recipe_list: SidebarList<RecipeListState>,
     /// TODO
     recipe_pane: RecipePane,
     /// Header/sidebar to select a profile
-    profile_list: PrimaryList<ProfileListState>,
+    profile_list: SidebarList<ProfileListState>,
     /// TODO
     profile_pane: ProfilePreview,
     /// The exchange pane shows a particular request/response. The entire
@@ -83,13 +80,9 @@ impl PrimaryView {
             id: ComponentId::default(),
             view: state,
 
-            recipe_header: PrimaryHeader::new(
-                "Recipe",
-                Action::SelectRecipeList,
-            ),
-            recipe_list: RecipeListPane::new(),
+            recipe_list: SidebarList::default(),
             recipe_pane: RecipePane::default(),
-            profile_list: PrimaryList::new(ProfileListState),
+            profile_list: SidebarList::default(),
             profile_pane: ProfilePreview::default(),
             exchange_pane: Default::default(),
             collection_select: Default::default(),
@@ -117,7 +110,9 @@ impl PrimaryView {
     }
 
     fn selected_recipe_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
-        self.recipe_list.selected_node()
+        self.recipe_list
+            .selected()
+            .map(|item| (item.id(), item.kind()))
     }
 
     /// Get a definition of the request that should be sent from the current
@@ -268,11 +263,7 @@ impl Component for PrimaryView {
         event
             .m()
             .click(|position, _| {
-                if self.recipe_header.contains(position)
-                    || self.recipe_list.contains(position)
-                {
-                    self.open_recipe_list();
-                } else if self.recipe_pane.contains(position) {
+                if self.recipe_pane.contains(position) {
                     self.select_recipe_pane();
                 } else if self.profile_pane.contains(position) {
                     self.select_profile_pane();
@@ -305,26 +296,19 @@ impl Component for PrimaryView {
                 // }
                 _ => propagate.set(),
             })
-            .emitted(self.profile_list.to_emitter(), |event| match event {
-                PrimaryListEvent::Open => self.open_profile_list(),
-                PrimaryListEvent::Close => self.close_sidebar(),
-            })
             .emitted(self.recipe_list.to_emitter(), |event| match event {
-                // Menu action forwarded up
-                RecipeListPaneEvent::Action(action) => {
-                    self.handle_recipe_menu_action(action);
-                }
-                RecipeListPaneEvent::Close => self.close_sidebar(),
+                PrimaryListEvent::Open => self.open_recipe_list(),
+                PrimaryListEvent::Close => self.close_sidebar(),
             })
             .emitted(self.recipe_pane.to_emitter(), |event| match event {
                 RecipePaneEvent::Action(action) => {
                     self.handle_recipe_menu_action(action);
                 }
             })
-            // Close sidebar when an item is selected
-            // TODO should we revert this to whatever was selected when the
-            // sidebar was opened?
-            .emitted(self.profile_list.to_emitter(), |_| self.close_sidebar())
+            .emitted(self.profile_list.to_emitter(), |event| match event {
+                PrimaryListEvent::Open => self.open_profile_list(),
+                PrimaryListEvent::Close => self.close_sidebar(),
+            })
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {
                 match menu_action {
@@ -375,10 +359,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         props: PrimaryViewProps<'a>,
         metadata: DrawMetadata,
     ) {
-        let recipe_header_props = PrimaryHeaderProps {
-            value: self.recipe_list.selected_name(),
-        };
-
         // Precompute recipe pane
         let collection = ViewContext::collection();
         let selected_recipe_node =
@@ -424,8 +404,10 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     false,
                 );
                 canvas.draw(
-                    &self.recipe_header,
-                    recipe_header_props,
+                    &self.recipe_list,
+                    PrimaryListProps {
+                        format: Format::Header,
+                    },
                     recipe_list_area,
                     false,
                 );
@@ -451,8 +433,10 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 // Header
                 let [recipe_header_area] = areas.headers;
                 canvas.draw(
-                    &self.recipe_header,
-                    recipe_header_props,
+                    &self.recipe_list,
+                    PrimaryListProps {
+                        format: Format::Header,
+                    },
                     recipe_header_area,
                     false,
                 );
@@ -501,7 +485,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 // Sidebar
                 canvas.draw(
                     &self.recipe_list,
-                    (),
+                    PrimaryListProps {
+                        format: Format::List,
+                    },
                     areas.sidebar,
                     *selected_pane == RecipeSelectPane::List,
                 );

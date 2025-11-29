@@ -2,46 +2,55 @@
 
 use crate::{
     context::TuiContext,
-    util::ResultReported,
+    util::{PersistentKey, ResultReported},
     view::{
         Component, Generate, ViewContext,
-        common::{Pane, table::Table, template_preview::TemplatePreview},
+        common::{
+            Pane, select::SelectFilter, table::Table,
+            template_preview::TemplatePreview,
+        },
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
-            primary_list::PrimaryListState,
+            sidebar_list::PrimaryListState,
         },
         state::StateCell,
     },
 };
 use anyhow::anyhow;
 use itertools::Itertools;
-use ratatui::text::{Span, Text};
+use ratatui::text::Span;
+use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::collection::{HasId, Profile, ProfileId};
-use slumber_util::doc_link;
 
 /// TODO
-#[derive(Debug)]
-pub struct ProfileListState;
+#[derive(Debug, Default)]
+pub struct ProfileListState {
+    id: ComponentId,
+}
+
+impl Component for ProfileListState {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+}
 
 impl PrimaryListState for ProfileListState {
     const TITLE: &str = "Profile";
     const ACTION: Action = Action::SelectProfileList;
     type Item = ProfileListItem;
+    type PersistentKey = SelectedProfileKey;
+
+    fn persistent_key(&self) -> Self::PersistentKey {
+        SelectedProfileKey
+    }
 
     fn items(&self) -> Vec<Self::Item> {
         ViewContext::collection()
             .profiles
             .values()
-            .map(Self::Item::from)
+            .map(ProfileListItem::new)
             .collect()
-    }
-
-    fn empty_text(&self) -> Text<'static> {
-        Text::from(vec![
-            "No profiles defined; add one to your collection.".into(),
-            doc_link("api/request_collection/profile").into(),
-        ])
     }
 }
 
@@ -51,6 +60,15 @@ impl PrimaryListState for ProfileListState {
 pub struct ProfileListItem {
     id: ProfileId,
     name: String,
+}
+
+impl ProfileListItem {
+    fn new(profile: &Profile) -> Self {
+        Self {
+            id: profile.id.clone(),
+            name: profile.name().to_owned(),
+        }
+    }
 }
 
 impl HasId for ProfileListItem {
@@ -65,18 +83,15 @@ impl HasId for ProfileListItem {
     }
 }
 
-impl PartialEq<ProfileListItem> for ProfileId {
-    fn eq(&self, item: &ProfileListItem) -> bool {
-        self == item.id()
+impl PartialEq<ProfileId> for ProfileListItem {
+    fn eq(&self, id: &ProfileId) -> bool {
+        self.id() == id
     }
 }
 
-impl From<&Profile> for ProfileListItem {
-    fn from(profile: &Profile) -> Self {
-        Self {
-            id: profile.id.clone(),
-            name: profile.name().to_owned(),
-        }
+impl SelectFilter for ProfileListItem {
+    fn terms(&self) -> Vec<&str> {
+        vec![&self.name]
     }
 }
 
@@ -92,6 +107,17 @@ impl Generate for &ProfileListItem {
     {
         self.name.as_str().into()
     }
+}
+
+/// Persistent key for the ID of the selected profile
+#[derive(Debug, Serialize)]
+pub struct SelectedProfileKey;
+
+impl PersistentKey for SelectedProfileKey {
+    // Intentionally don't persist None. That's only possible if the profile map
+    // is empty. If it is, we're forced into None. If not, we want to default to
+    // the first profile.
+    type Value = ProfileId;
 }
 
 /// TODO

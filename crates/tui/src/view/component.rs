@@ -2,13 +2,11 @@ mod collection_select;
 mod command_text_box;
 mod exchange_pane;
 mod footer;
-mod header;
 mod help;
 mod history;
 mod internal;
 mod misc;
 mod primary;
-mod primary_list;
 mod profile;
 mod queryable_body;
 mod recipe_list;
@@ -16,6 +14,7 @@ mod recipe_pane;
 mod request_view;
 mod response_view;
 mod root;
+mod sidebar_list;
 
 pub use internal::{
     Canvas, Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,

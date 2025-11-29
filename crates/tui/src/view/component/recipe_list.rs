@@ -1,57 +1,31 @@
 use crate::{
-    context::TuiContext,
     util::{PersistentKey, PersistentStore},
     view::{
-        Component, Generate, ViewContext,
-        common::{
-            Pane,
-            actions::MenuItem,
-            select::{Select, SelectEvent, SelectEventType, SelectListProps},
-            text_box::{TextBox, TextBoxEvent, TextBoxProps},
-        },
+        Generate, ViewContext,
+        common::select::SelectFilter,
         component::{
-            Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
-            recipe_pane::RecipeMenuAction,
+            Component, ComponentId,
+            sidebar_list::{Collapse, PrimaryListState},
         },
-        context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
     },
 };
-use derive_more::{Deref, DerefMut};
-use ratatui::{
-    layout::{Constraint, Layout},
-    text::Span,
-};
-use serde::{Deserialize, Serialize};
+use ratatui::text::Span;
+use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::collection::{
-    HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
+    HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType,
 };
 use std::collections::HashSet;
 
-/// List/tree of recipes and folders. This is mostly just a list, but with some
-/// extra logic to allow expanding/collapsing nodes. This could be made into a
-/// more generic component, but that adds abstraction that's not necessary
-/// because this is the only tree in the app. For similar reasons, we don't use
-/// the library tui-tree-widget, because it requires more abstraction that it
-/// saves us in code.
-///
-/// This implementation leans heavily on the fact that all nodes in the tree
-/// have a unique ID, which is another reason why it deserves its own
-/// implementation.
+/// State for a list/tree of recipes and folders. This is mostly just a list,
+/// but with some extra logic to allow expanding/collapsing nodes. This is meant
+/// to be used as state for [PrimaryList](super::primary_list::PrimaryList).
+/// That parent handles some of the expand/collapse logic (e.g. input handling),
+/// but some is handled here as well because the implementation is specific
+/// to folders and recipes.
 #[derive(Debug)]
-pub struct RecipeListPane {
+pub struct RecipeListState {
     id: ComponentId,
-    /// Emitter for events that the parent will consume
-    emitter: Emitter<RecipeListPaneEvent>,
-    /// Emitter for menu actions, to be handled by our parent
-    actions_emitter: Emitter<RecipeMenuAction>,
-    /// The visible list of items is tracked using normal list state, so we can
-    /// easily re-use existing logic. We'll rebuild this any time a folder is
-    /// expanded/collapsed (i.e whenever the list of items changes)
-    select: Select<RecipeListItem>,
-    /// TODO
-    last_submitted: Option<RecipeId>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     ///
@@ -59,76 +33,87 @@ pub struct RecipeListPane {
     /// (if they were collapsed at the time of deletion). That isn't really an
     /// issue though, it just means it'll be pre-collapsed if the user ever
     /// adds the folder back. Not worth working around.
-    collapsed: Collapsed,
-
-    filter: TextBox,
-    filter_focused: bool,
+    collapsed: HashSet<RecipeId>,
 }
 
-impl RecipeListPane {
-    /// TODO move into Default
-    pub fn new() -> Self {
-        let input_engine = &TuiContext::get().input_engine;
-        let recipes = &ViewContext::collection().recipes;
-        let binding = input_engine.binding_display(Action::Search);
+impl RecipeListState {
+    /// Is the given folder collapsed?
+    fn is_collapsed(&self, folder_id: &RecipeId) -> bool {
+        self.collapsed.contains(folder_id)
+    }
 
-        // This clone is unfortunate, but we can't hold onto a reference to the
-        // recipes
-        let collapsed: Collapsed =
-            PersistentStore::get(&CollapsedKey).unwrap_or_default();
-        let select = collapsed.build_select(recipes, "");
-        let last_submitted = select.selected().map(RecipeListItem::id).cloned();
-        let filter = TextBox::default()
-            .placeholder(format!("{binding} to filter"))
-            .subscribe([
-                TextBoxEvent::Cancel,
-                TextBoxEvent::Change,
-                TextBoxEvent::Submit,
-            ]);
+    /// Is the given node visible? This takes lookup key so it can check all
+    /// ancestors for visibility too.
+    fn is_visible(&self, lookup_key: &RecipeLookupKey) -> bool {
+        // If any ancestors are collapsed, this is *not* visible
+        !lookup_key
+            .ancestors()
+            .iter()
+            .any(|id| self.is_collapsed(id))
+    }
+}
+
+impl Default for RecipeListState {
+    fn default() -> Self {
+        let collapsed = PersistentStore::get(&CollapsedKey).unwrap_or_default();
         Self {
             id: ComponentId::default(),
-            emitter: Default::default(),
-            actions_emitter: Default::default(),
-            select,
-            last_submitted,
             collapsed,
-            filter,
-            filter_focused: false,
         }
     }
+}
 
-    /// Get the ID and kind of whatever recipe/folder in the list is selected.
-    /// `None` iff the list is empty
-    pub fn selected_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
-        self.select.selected().map(|node| (&node.id, node.kind))
+impl Component for RecipeListState {
+    fn id(&self) -> ComponentId {
+        self.id
     }
 
-    /// Get the display name of the selected recipe/folder. Return `None` iff
-    /// the list is empty
-    pub fn selected_name(&self) -> Option<&str> {
-        self.select.selected().map(|node| node.name.as_str())
+    // TODO actions
+
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set(&CollapsedKey, &self.collapsed);
+    }
+}
+
+impl PrimaryListState for RecipeListState {
+    const TITLE: &str = "Recipe";
+    const ACTION: Action = Action::SelectRecipeList;
+
+    type Item = RecipeListItem;
+    type PersistentKey = SelectedRecipeKey;
+
+    fn persistent_key(&self) -> Self::PersistentKey {
+        SelectedRecipeKey
     }
 
-    /// Get the ID of the selected recipe, if a node is selected and it's a
-    /// recipe
-    fn selected_recipe_id(&self) -> Option<&RecipeId> {
-        self.select
-            .selected()
-            .filter(|node| node.is_recipe())
-            .map(|node| &node.id)
+    fn items(&self) -> Vec<Self::Item> {
+        let recipes = &ViewContext::collection().recipes;
+
+        // No filter - calculate visible nodes based on collapsed state
+        recipes
+            .iter()
+            .filter(|(lookup_key, _)| self.is_visible(lookup_key))
+            .map(|(lookup_key, node)| {
+                RecipeListItem::new(
+                    node,
+                    self.is_collapsed(node.id()),
+                    lookup_key.depth(),
+                )
+            })
+            .collect()
     }
 
     /// Set the currently selected folder as expanded/collapsed (or toggle it).
     /// If a folder is not selected, do nothing. Returns whether a change was
     /// made.
-    fn set_selected_collapsed(&mut self, state: CollapseState) -> bool {
-        let folder = self.select.selected().filter(|node| node.is_folder());
-        let changed = if let Some(folder) = folder {
+    fn collapse(&mut self, selected: &Self::Item, action: Collapse) -> bool {
+        if selected.is_folder() {
+            let folder = selected;
             let collapsed = &mut self.collapsed;
-            match state {
-                CollapseState::Expand => collapsed.remove(&folder.id),
-                CollapseState::Collapse => collapsed.insert(folder.id.clone()),
-                CollapseState::Toggle => {
+            match action {
+                Collapse::Expand => collapsed.remove(&folder.id),
+                Collapse::Collapse => collapsed.insert(folder.id.clone()),
+                Collapse::Toggle => {
                     if collapsed.contains(&folder.id) {
                         collapsed.remove(&folder.id);
                     } else {
@@ -138,175 +123,24 @@ impl RecipeListPane {
                 }
             }
         } else {
+            // Recipe selected - do nothing
             false
-        };
-
-        // If we changed the set of what is visible, rebuild the list state
-        if changed {
-            self.rebuild_select();
         }
-
-        changed
     }
-
-    /// Rebuild the select list based on current filter/collapsed state
-    fn rebuild_select(&mut self) {
-        let mut new_select = self.collapsed.build_select(
-            &ViewContext::collection().recipes,
-            &self.filter.text().trim().to_lowercase(),
-        );
-
-        // Carry over the selection
-        if let Some(selected) = self.select.selected() {
-            new_select.select(selected.id());
-        }
-        self.select = new_select;
-    }
-}
-
-impl Component for RecipeListPane {
-    fn id(&self) -> ComponentId {
-        self.id
-    }
-
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event
-            .m()
-            .click(|position, _| {
-                if self.filter.contains(position) {
-                    self.filter_focused = true;
-                }
-            })
-            .action(|action, propagate| match action {
-                Action::Left => {
-                    self.set_selected_collapsed(CollapseState::Collapse);
-                }
-                Action::Right => {
-                    self.set_selected_collapsed(CollapseState::Expand);
-                }
-                Action::Search => self.filter_focused = true,
-                Action::Cancel => {
-                    // Revert to whatever was selected when this list was opened
-                    if let Some(last_submitted) = &self.last_submitted {
-                        self.select.select(last_submitted);
-                    }
-                    self.emitter.emit(RecipeListPaneEvent::Close);
-                }
-                Action::Submit => {
-                    // Checkpoint this ID for the next time we're opened
-                    self.last_submitted =
-                        self.select.selected().map(RecipeListItem::id).cloned();
-                    self.emitter.emit(RecipeListPaneEvent::Close);
-                }
-                _ => propagate.set(),
-            })
-            .emitted(self.select.to_emitter(), |event| match event {
-                SelectEvent::Select(_) => {
-                    // When highlighting a new recipe, load its most recent
-                    // request from the DB. If a recipe isn't selected, this
-                    // will do nothing
-                    ViewContext::push_event(Event::HttpSelectRequest(None));
-                }
-                SelectEvent::Submit(_) => {}
-                SelectEvent::Toggle(_) => {
-                    self.set_selected_collapsed(CollapseState::Toggle);
-                }
-            })
-            .emitted(self.filter.to_emitter(), |event| match event {
-                TextBoxEvent::Change => self.rebuild_select(),
-                TextBoxEvent::Cancel | TextBoxEvent::Submit => {
-                    self.filter_focused = false;
-                }
-            })
-            .emitted(self.actions_emitter, |menu_action| {
-                // Forward this to our parent
-                self.emitter.emit(RecipeListPaneEvent::Action(menu_action));
-            })
-    }
-
-    fn menu(&self) -> Vec<MenuItem> {
-        RecipeMenuAction::menu(
-            self.actions_emitter,
-            self.selected_recipe_id().is_some(),
-        )
-    }
-
-    fn persist(&self, store: &mut PersistentStore) {
-        store.set_opt(
-            &SelectedRecipeKey,
-            self.select.selected().map(RecipeListItem::id),
-        );
-        store.set(&CollapsedKey, &self.collapsed);
-    }
-
-    fn children(&mut self) -> Vec<Child<'_>> {
-        // Filter gets priority if enabled, but users should still be able to
-        // navigate the list while filtering
-        vec![self.filter.to_child_mut(), self.select.to_child_mut()]
-    }
-}
-
-impl Draw for RecipeListPane {
-    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let title = TuiContext::get()
-            .input_engine
-            .add_hint("Recipes", Action::SelectRecipeList);
-        let block = Pane {
-            title: &title,
-            has_focus: metadata.has_focus(),
-        }
-        .generate();
-        let area = block.inner(metadata.area());
-        canvas.render_widget(block, metadata.area());
-
-        let [select_area, filter_area] =
-            Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
-                .areas(area);
-        canvas.draw(&self.select, SelectListProps::pane(), select_area, true);
-
-        canvas.draw(
-            &self.filter,
-            TextBoxProps::default(),
-            filter_area,
-            self.filter_focused,
-        );
-    }
-}
-
-/// Notify parent when this pane is clicked
-impl ToEmitter<RecipeListPaneEvent> for RecipeListPane {
-    fn to_emitter(&self) -> Emitter<RecipeListPaneEvent> {
-        self.emitter
-    }
-}
-
-/// Persisted key for the ID of the selected recipe
-#[derive(Debug, Serialize)]
-struct SelectedRecipeKey;
-
-impl PersistentKey for SelectedRecipeKey {
-    // Intentionally don't persist None. That's only possible if the recipe map
-    // is empty. If it is, we're forced into None. If not, we want to default to
-    // the first recipe.
-    type Value = RecipeId;
-}
-
-/// Emitted event type for the recipe list pane
-/// TODO rename this to match component name
-#[derive(Debug)]
-pub enum RecipeListPaneEvent {
-    /// Forward menu actions to the parent because it has the needed context
-    Action(RecipeMenuAction),
-    /// TODO
-    Close,
 }
 
 /// Simplified version of [RecipeNode], to be used in the display tree. This
 /// only stores whatever data is necessary to render the list
 #[derive(Debug)]
-struct RecipeListItem {
+pub struct RecipeListItem {
     id: RecipeId,
     name: String,
+    /// The name of this item and *all* of its children, grandchildren, etc.For
+    /// This is used during filtering, so that a folder always shows when any
+    /// of its children match. This duplicates a lot of strings in the recipe
+    /// tree, but the overall size should be very low so it has no meaningful
+    /// impact.
+    search_terms: Vec<String>,
     kind: RecipeNodeType,
     depth: usize,
     collapsed: bool,
@@ -314,21 +148,35 @@ struct RecipeListItem {
 
 impl RecipeListItem {
     fn new(node: &RecipeNode, collapsed: bool, depth: usize) -> Self {
+        fn add_search_terms(terms: &mut Vec<String>, node: &RecipeNode) {
+            terms.push(node.name().to_owned());
+            if let RecipeNode::Folder(folder) = node {
+                for child in folder.children.values() {
+                    // Recursion!
+                    add_search_terms(terms, child);
+                }
+            }
+        }
+
+        let mut search_terms = vec![];
+        add_search_terms(&mut search_terms, node);
+
         Self {
             id: node.id().clone(),
             name: node.name().to_owned(),
+            search_terms,
             kind: node.into(),
             collapsed,
             depth,
         }
     }
 
-    fn is_folder(&self) -> bool {
-        matches!(self.kind, RecipeNodeType::Folder)
+    pub fn kind(&self) -> RecipeNodeType {
+        self.kind
     }
 
-    fn is_recipe(&self) -> bool {
-        matches!(self.kind, RecipeNodeType::Recipe)
+    fn is_folder(&self) -> bool {
+        matches!(self.kind, RecipeNodeType::Folder)
     }
 }
 
@@ -344,9 +192,15 @@ impl HasId for RecipeListItem {
     }
 }
 
-impl PartialEq<RecipeListItem> for RecipeId {
-    fn eq(&self, item: &RecipeListItem) -> bool {
-        self == item.id()
+impl PartialEq<RecipeId> for RecipeListItem {
+    fn eq(&self, id: &RecipeId) -> bool {
+        self.id() == id
+    }
+}
+
+impl SelectFilter for RecipeListItem {
+    fn terms(&self) -> Vec<&str> {
+        self.search_terms.iter().map(String::as_str).collect()
     }
 }
 
@@ -377,175 +231,21 @@ impl Generate for &RecipeListItem {
     }
 }
 
+/// Persisted key for the ID of the selected recipe
+#[derive(Debug, Serialize)]
+pub struct SelectedRecipeKey;
+
+impl PersistentKey for SelectedRecipeKey {
+    // Intentionally don't persist None. That's only possible if the recipe map
+    // is empty. If it is, we're forced into None. If not, we want to default to
+    // the first recipe.
+    type Value = RecipeId;
+}
+
 /// Persistence key for collapsed state
 #[derive(Debug, Default, Serialize)]
 struct CollapsedKey;
 
 impl PersistentKey for CollapsedKey {
-    type Value = Collapsed;
-}
-
-/// Set of collapsed folders. Newtype allows us to encapsulate some extra
-/// functionality
-#[derive(Debug, Default, Deref, DerefMut, Serialize, Deserialize)]
-#[serde(transparent)]
-struct Collapsed(HashSet<RecipeId>);
-
-/// Ternary state for modifying node collapse state
-enum CollapseState {
-    Expand,
-    Collapse,
-    Toggle,
-}
-
-impl Collapsed {
-    /// Is this specific folder collapsed?
-    fn is_collapsed(&self, folder_id: &RecipeId) -> bool {
-        self.0.contains(folder_id)
-    }
-
-    /// Is the given node visible? This takes lookup key so it can check all
-    /// ancestors for visibility too.
-    fn is_visible(&self, lookup_key: &RecipeLookupKey) -> bool {
-        // If any ancestors are collapsed, this is *not* visible
-        !lookup_key
-            .ancestors()
-            .iter()
-            .any(|id| self.is_collapsed(id))
-    }
-
-    /// Construct select list based on which nodes are currently visible
-    fn build_select(
-        &self,
-        recipes: &RecipeTree,
-        filter: &str,
-    ) -> Select<RecipeListItem> {
-        let items = if filter.is_empty() {
-            // No filter - calculate visible nodes based on collapsed state
-            recipes
-                .iter()
-                .filter(|(lookup_key, _)| self.is_visible(lookup_key))
-                .map(|(lookup_key, node)| {
-                    RecipeListItem::new(
-                        node,
-                        self.is_collapsed(node.id()),
-                        lookup_key.depth(),
-                    )
-                })
-                .collect()
-        } else {
-            // Find all nodes that match the filter, *and their parents*. If a
-            // node is visible we want to show its ancestry too
-            let visible: HashSet<RecipeId> = recipes
-                .iter()
-                .filter(|(_, node)| node.name().to_lowercase().contains(filter))
-                // If a node matches, then all its parents should be visible too
-                .flat_map(|(lookup_key, _)| lookup_key)
-                .collect();
-
-            recipes
-                .iter()
-                .filter(|(_, node)| visible.contains(node.id()))
-                .map(|(lookup_key, node)| {
-                    // Never collapse folders here, because we want to show the
-                    // user what they're filtering for
-                    RecipeListItem::new(node, false, lookup_key.depth())
-                })
-                .collect()
-        };
-
-        Select::builder(items)
-            .persisted(&SelectedRecipeKey)
-            .subscribe([SelectEventType::Select, SelectEventType::Toggle])
-            .build()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        test_util::{TestHarness, TestTerminal, terminal},
-        view::test_util::TestComponent,
-    };
-    use itertools::Itertools;
-    use rstest::{fixture, rstest};
-    use slumber_core::{
-        collection::{Collection, Recipe},
-        test_util::by_id,
-    };
-    use slumber_util::{Factory, assert_matches};
-    use terminput::KeyCode;
-
-    /// Test the filter box
-    #[rstest]
-    fn test_filter(terminal: TestTerminal, recipes: RecipeTree) {
-        // Recipe tree needs to be in ViewContext so it can be used in updates
-        let harness = TestHarness::new(Collection {
-            recipes,
-            ..Collection::factory(())
-        });
-        let mut component =
-            TestComponent::new(&harness, &terminal, RecipeListPane::new());
-        // Clear initial events
-        assert_matches!(
-            component.int().drain_draw().propagated(),
-            &[Event::HttpSelectRequest(None)],
-        );
-
-        // Enter filter
-        component.int().send_key(KeyCode::Char('/')).assert_empty();
-        assert!(component.filter_focused);
-
-        // Find something. Match should be caseless. Should trigger an event to
-        // load the latest request
-        assert_matches!(
-            component.int().send_text("2").propagated(),
-            &[Event::HttpSelectRequest(None)]
-        );
-        let select = &component.select;
-        assert_eq!(
-            select
-                .items()
-                .map(|item| &item.id as &str)
-                .collect_vec()
-                .as_slice(),
-            &["recipe2", "recipe22"]
-        );
-        assert_eq!(
-            select.selected().map(|item| &item.id as &str),
-            Some("recipe2")
-        );
-
-        // Exit filter
-        component.int().send_key(KeyCode::Esc).assert_empty();
-        assert!(!component.filter_focused);
-    }
-
-    #[fixture]
-    fn recipes() -> RecipeTree {
-        by_id([
-            Recipe {
-                id: "recipe1".into(),
-                name: Some("Recipe 1".into()),
-                ..Recipe::factory(())
-            },
-            Recipe {
-                id: "recipe2".into(),
-                name: Some("Recipe 2".into()),
-                ..Recipe::factory(())
-            },
-            Recipe {
-                id: "recipe3".into(),
-                name: Some("Recipe 3".into()),
-                ..Recipe::factory(())
-            },
-            Recipe {
-                id: "recipe22".into(),
-                name: Some("Recipe 22".into()),
-                ..Recipe::factory(())
-            },
-        ])
-        .into()
-    }
+    type Value = HashSet<RecipeId>;
 }

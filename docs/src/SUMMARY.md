@@ -7,7 +7,8 @@
 # User Guide
 
 - [Key Concepts](./user_guide/key_concepts.md)
-  - [Recipes](./user_guide/recipes.md)
+  - [Recipes](./user_guide/recipes/index.md)
+    - [Bodies](./user_guide/recipes/bodies.md)
   - [Templates](./user_guide/templates/index.md)
     - [Values](./user_guide/templates/values.md)
     - [Functions](./user_guide/templates/functions.md)

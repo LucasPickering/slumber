@@ -23,7 +23,7 @@ JSON bodies can contain any data. All strings in the JSON are treated as [templa
 | ------ | ---- | ------------ | -------- |
 | `data` | Any  | JSON content | Required |
 
-See [the guide](../../user_guide/recipes.md#body) for more detail on how to use JSON bodies.
+See [the guide](../../user_guide/recipes/bodies.md) for more detail on how to use JSON bodies.
 
 ### URL-encoded Form
 
@@ -33,7 +33,7 @@ See [the guide](../../user_guide/recipes.md#body) for more detail on how to use 
 | ------ | ------------------------------------------------------------------- | ----------- | -------- |
 | `data` | [`mapping[string, Template]`](../../user_guide/templates/index.md)` | Form fields | Required |
 
-See [the guide](../../user_guide/recipes.md#body) for more detail on how to use form bodies.
+See [the guide](../../user_guide/recipes/bodies.md) for more detail on how to use form bodies.
 
 ### Multipart Form
 
@@ -43,7 +43,7 @@ See [the guide](../../user_guide/recipes.md#body) for more detail on how to use 
 | ------ | ------------------------------------------------------------------- | ----------- | -------- |
 | `data` | [`mapping[string, Template]`](../../user_guide/templates/index.md)` | Form fields | Required |
 
-See [the guide](../../user_guide/recipes.md#body) for more detail on how to use form bodies, and [Multipart File Streaming](../../user_guide/streaming.md#multipart-file-streaming) for details on how data is streamed.
+See [the guide](../../user_guide/recipes/bodies.md) for more detail on how to use form bodies, and [Multipart File Streaming](../../user_guide/streaming.md#multipart-file-streaming) for details on how data is streamed.
 
 ## Examples
 

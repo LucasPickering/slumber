@@ -172,7 +172,7 @@ impl<State: PrimaryListState> Component for SidebarList<State> {
     }
 }
 
-impl<State> Draw<PrimaryListProps> for SidebarList<State>
+impl<State> Draw<SidebarListProps> for SidebarList<State>
 where
     State: PrimaryListState,
     for<'a> &'a State::Item: Generate,
@@ -181,7 +181,7 @@ where
     fn draw(
         &self,
         canvas: &mut Canvas,
-        props: PrimaryListProps,
+        props: SidebarListProps,
         metadata: DrawMetadata,
     ) {
         // Both formats use a pane outline
@@ -236,13 +236,31 @@ where
 }
 
 /// Draw props for [PrimaryList]
-pub struct PrimaryListProps {
-    pub format: Format,
+pub struct SidebarListProps {
+    format: Format,
+}
+
+impl SidebarListProps {
+    /// Draw the sidebar in collapsed/header mode, where just the selected
+    /// value is visit
+    pub fn header() -> Self {
+        Self {
+            format: Format::Header,
+        }
+    }
+
+    /// Draw the sidebar in list mode, where the entire list is visible and
+    /// interactive
+    pub fn list() -> Self {
+        Self {
+            format: Format::List,
+        }
+    }
 }
 
 /// Visual format of the list
 #[derive(Debug)]
-pub enum Format {
+enum Format {
     /// List is collapsed and just visible as a header. Only the selected value
     /// is visible
     Header,

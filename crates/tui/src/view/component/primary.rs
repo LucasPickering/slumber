@@ -20,9 +20,7 @@ use crate::{
             recipe_pane::{
                 RecipeMenuAction, RecipePane, RecipePaneEvent, RecipePaneProps,
             },
-            sidebar_list::{
-                Format, PrimaryListEvent, PrimaryListProps, SidebarList,
-            },
+            sidebar_list::{PrimaryListEvent, SidebarList, SidebarListProps},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
@@ -46,20 +44,19 @@ use strum::{EnumIter, IntoEnumIterator};
 pub struct PrimaryView {
     id: ComponentId,
     // Own state
-    /// TODO comment
-    /// TODO persistence
+    /// Current layout and selection state of the view
     view: ViewState,
-    // TODO fix fullscreen
-    // fullscreen: Option<PrimaryPane>,
 
     // Children
     /// Header/sidebar to select a recipe
     recipe_list: SidebarList<RecipeListState>,
-    /// TODO
+    /// Recipe preview/detail pane
+    /// TODO rename
     recipe_pane: RecipePane,
     /// Header/sidebar to select a profile
     profile_list: SidebarList<ProfileListState>,
-    /// TODO
+    /// Profile preview/detail pane
+    /// TODO rename
     profile_pane: ProfilePreview,
     /// The exchange pane shows a particular request/response. The entire
     /// component is rebuilt whenever the selected request changes. The key is
@@ -76,8 +73,7 @@ pub struct PrimaryView {
 
 impl PrimaryView {
     pub fn new() -> Self {
-        let view = PersistentStore::get(&ViewStateKey)
-            .unwrap_or(ViewState::Default(DefaultPane::Recipe));
+        let view = PersistentStore::get(&ViewStateKey).unwrap_or_default();
         Self {
             id: ComponentId::default(),
             view,
@@ -121,91 +117,6 @@ impl PrimaryView {
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
         self.recipe_pane.request_config()
-    }
-
-    /// Enter/exit fullscreen mode for the current selected pane
-    fn toggle_fullscreen(&mut self) {
-        todo!()
-    }
-
-    /// Open the profile list in the sidebar
-    fn open_profile_list(&mut self) {
-        self.view = ViewState::Profile(ProfileSelectPane::List);
-    }
-
-    /// Open the recipe list in the sidebar
-    fn open_recipe_list(&mut self) {
-        self.view = ViewState::Recipe(RecipeSelectPane::List);
-    }
-
-    /// Close the sidebar and return to the default view
-    fn close_sidebar(&mut self) {
-        // TODO retain selected pane if possible
-        self.view = ViewState::Default(DefaultPane::Recipe);
-    }
-
-    /// Select the previous pane in the cycle
-    fn previous_pane(&mut self) {
-        fn previous<T: PartialEq + IntoEnumIterator>(value: T) -> T {
-            T::iter()
-                .rev() // Reverse to get previous!
-                .cycle()
-                .skip_while(|v| *v != value)
-                .nth(1) // Get one *after* the found value
-                .expect("Iterator is cycled so it always returns")
-        }
-
-        // Each state has a different pane type
-        match &mut self.view {
-            ViewState::Default(pane) => *pane = previous(*pane),
-            ViewState::Profile(pane) => *pane = previous(*pane),
-            ViewState::Recipe(pane) => *pane = previous(*pane),
-        }
-    }
-
-    /// Select the next pane in the cycle
-    fn next_pane(&mut self) {
-        fn next<T: PartialEq + IntoEnumIterator>(value: T) -> T {
-            T::iter()
-                .cycle()
-                .skip_while(|v| *v != value)
-                .nth(1) // Get one *after* the found value
-                .expect("Iterator is cycled so it always returns")
-        }
-
-        // Each state has a different pane type
-        match &mut self.view {
-            ViewState::Default(pane) => *pane = next(*pane),
-            ViewState::Profile(pane) => *pane = next(*pane),
-            ViewState::Recipe(pane) => *pane = next(*pane),
-        }
-    }
-
-    /// TODO
-    fn select_recipe_pane(&mut self) {
-        match &mut self.view {
-            ViewState::Default(pane) => *pane = DefaultPane::Recipe,
-            ViewState::Profile(pane) => *pane = ProfileSelectPane::Recipe,
-            ViewState::Recipe(pane) => *pane = RecipeSelectPane::Recipe,
-        }
-    }
-
-    /// TODO
-    fn select_profile_pane(&mut self) {
-        match &mut self.view {
-            ViewState::Profile(pane) => *pane = ProfileSelectPane::Profile,
-            // Profile pane isn't visible
-            ViewState::Default(_) | ViewState::Recipe(_) => {}
-        }
-    }
-
-    /// TODO
-    fn select_exchange_pane(&mut self) {
-        match &mut self.view {
-            ViewState::Default(pane) => *pane = DefaultPane::Exchange,
-            ViewState::Profile(_) => {} // Exchange pane isn't visible
-            ViewState::Recipe(pane) => *pane = RecipeSelectPane::Exchange,
-        }
     }
 
     /// Send a request for the currently selected recipe
@@ -266,31 +177,31 @@ impl Component for PrimaryView {
             .m()
             .click(|position, _| {
                 if self.recipe_pane.contains(position) {
-                    self.select_recipe_pane();
+                    self.view.select_recipe_pane();
                 } else if self.profile_pane.contains(position) {
-                    self.select_profile_pane();
+                    self.view.select_profile_pane();
                 } else if self.exchange_pane.get_mut().contains(position) {
-                    self.select_exchange_pane();
+                    self.view.select_exchange_pane();
                 }
             })
             .action(|action, propagate| match action {
-                Action::PreviousPane => self.previous_pane(),
-                Action::NextPane => self.next_pane(),
+                Action::PreviousPane => self.view.previous_pane(),
+                Action::NextPane => self.view.next_pane(),
                 // Send a request from anywhere
                 Action::Submit => self.send_request(),
 
                 // Pane hotkeys
-                Action::SelectProfileList => self.open_profile_list(),
-                Action::SelectProfile => self.select_profile_pane(),
-                Action::SelectRecipeList => self.open_recipe_list(),
-                Action::SelectRecipe => self.select_recipe_pane(),
-                Action::SelectResponse => self.select_exchange_pane(),
+                Action::SelectProfileList => self.view.open_profile_list(),
+                Action::SelectProfile => self.view.select_profile_pane(),
+                Action::SelectRecipeList => self.view.open_recipe_list(),
+                Action::SelectRecipe => self.view.select_recipe_pane(),
+                Action::SelectResponse => self.view.select_exchange_pane(),
                 Action::SelectCollection => {
                     self.collection_select.open(CollectionSelect::new());
                 }
 
                 // Toggle fullscreen
-                Action::Fullscreen => self.toggle_fullscreen(),
+                Action::Fullscreen => self.view.toggle_fullscreen(),
                 // Exit fullscreen
                 // TODO fix fullscreen
                 // Action::Cancel if self.fullscreen.is_some() => {
@@ -299,8 +210,8 @@ impl Component for PrimaryView {
                 _ => propagate.set(),
             })
             .emitted(self.recipe_list.to_emitter(), |event| match event {
-                PrimaryListEvent::Open => self.open_recipe_list(),
-                PrimaryListEvent::Close => self.close_sidebar(),
+                PrimaryListEvent::Open => self.view.open_recipe_list(),
+                PrimaryListEvent::Close => self.view.close_sidebar(),
             })
             .emitted(self.recipe_pane.to_emitter(), |event| match event {
                 RecipePaneEvent::Action(action) => {
@@ -308,8 +219,8 @@ impl Component for PrimaryView {
                 }
             })
             .emitted(self.profile_list.to_emitter(), |event| match event {
-                PrimaryListEvent::Open => self.open_profile_list(),
-                PrimaryListEvent::Close => self.close_sidebar(),
+                PrimaryListEvent::Open => self.view.open_profile_list(),
+                PrimaryListEvent::Close => self.view.close_sidebar(),
             })
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {
@@ -391,26 +302,26 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             },
         );
 
+        let area = metadata.area();
         match &self.view {
             // Sidebar is closed
-            ViewState::Default(selected_pane) => {
-                let areas = DefaultAreas::new(metadata.area());
+            ViewState::Default {
+                selected_pane,
+                fullscreen: false,
+            } => {
+                let areas = DefaultAreas::new(area);
 
                 // Header
                 let [profile_list_area, recipe_list_area] = areas.headers;
                 canvas.draw(
                     &self.profile_list,
-                    PrimaryListProps {
-                        format: Format::Header,
-                    },
+                    SidebarListProps::header(),
                     profile_list_area,
                     false,
                 );
                 canvas.draw(
                     &self.recipe_list,
-                    PrimaryListProps {
-                        format: Format::Header,
-                    },
+                    SidebarListProps::header(),
                     recipe_list_area,
                     false,
                 );
@@ -429,27 +340,38 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     *selected_pane == DefaultPane::Exchange,
                 );
             }
+            ViewState::Default {
+                selected_pane,
+                fullscreen: true,
+            } => match selected_pane {
+                DefaultPane::Recipe => {
+                    canvas.draw(&self.recipe_pane, recipe_props, area, true);
+                }
+                DefaultPane::Exchange => {
+                    canvas.draw(&*exchange_pane, (), area, true);
+                }
+            },
+
             // Profile list is open in sidebar
-            ViewState::Profile(selected_pane) => {
-                let areas = SidebarAreas::new(metadata.area());
+            ViewState::Profile {
+                selected_pane,
+                fullscreen: false,
+            } => {
+                let areas = SidebarAreas::new(area);
 
                 // Header
-                let [recipe_header_area] = areas.headers;
+                let [recipe_list_area] = areas.headers;
                 canvas.draw(
                     &self.recipe_list,
-                    PrimaryListProps {
-                        format: Format::Header,
-                    },
-                    recipe_header_area,
+                    SidebarListProps::header(),
+                    recipe_list_area,
                     false,
                 );
 
                 // Sidebar
                 canvas.draw(
                     &self.profile_list,
-                    PrimaryListProps {
-                        format: Format::List,
-                    },
+                    SidebarListProps::list(),
                     areas.sidebar,
                     *selected_pane == ProfileSelectPane::List,
                 );
@@ -470,17 +392,41 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     *selected_pane == ProfileSelectPane::Profile,
                 );
             }
+            ViewState::Profile {
+                selected_pane,
+                fullscreen: true,
+            } => match selected_pane {
+                ProfileSelectPane::List => canvas.draw(
+                    &self.profile_list,
+                    SidebarListProps::list(),
+                    area,
+                    true,
+                ),
+                ProfileSelectPane::Recipe => {
+                    canvas.draw(&self.recipe_pane, recipe_props, area, true);
+                }
+                ProfileSelectPane::Profile => canvas.draw(
+                    &self.profile_pane,
+                    ProfilePreviewProps {
+                        profile_id: self.selected_profile_id(),
+                    },
+                    area,
+                    true,
+                ),
+            },
+
             // Recipe list is open in sidebar
-            ViewState::Recipe(selected_pane) => {
-                let areas = SidebarAreas::new(metadata.area());
+            ViewState::Recipe {
+                selected_pane,
+                fullscreen: false,
+            } => {
+                let areas = SidebarAreas::new(area);
 
                 // Header
                 let [profile_list_area] = areas.headers;
                 canvas.draw(
                     &self.profile_list,
-                    PrimaryListProps {
-                        format: Format::Header,
-                    },
+                    SidebarListProps::header(),
                     profile_list_area,
                     false,
                 );
@@ -488,9 +434,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 // Sidebar
                 canvas.draw(
                     &self.recipe_list,
-                    PrimaryListProps {
-                        format: Format::List,
-                    },
+                    SidebarListProps::list(),
                     areas.sidebar,
                     *selected_pane == RecipeSelectPane::List,
                 );
@@ -509,6 +453,23 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     *selected_pane == RecipeSelectPane::Exchange,
                 );
             }
+            ViewState::Recipe {
+                selected_pane,
+                fullscreen: true,
+            } => match selected_pane {
+                RecipeSelectPane::List => canvas.draw(
+                    &self.recipe_list,
+                    SidebarListProps::list(),
+                    area,
+                    true,
+                ),
+                RecipeSelectPane::Recipe => {
+                    canvas.draw(&self.recipe_pane, recipe_props, area, true);
+                }
+                RecipeSelectPane::Exchange => {
+                    canvas.draw(&*exchange_pane, (), area, true);
+                }
+            },
         }
 
         // Modals!!
@@ -526,11 +487,155 @@ pub struct PrimaryViewProps<'a> {
 #[derive(Debug, Serialize, Deserialize)]
 enum ViewState {
     /// TODO
-    Default(DefaultPane),
+    Default {
+        selected_pane: DefaultPane,
+        fullscreen: bool,
+    },
     /// TODO
-    Profile(ProfileSelectPane),
+    Profile {
+        selected_pane: ProfileSelectPane,
+        fullscreen: bool,
+    },
     /// TODO
-    Recipe(RecipeSelectPane),
+    Recipe {
+        selected_pane: RecipeSelectPane,
+        fullscreen: bool,
+    },
+}
+
+impl ViewState {
+    // TODO switching panes should exit fullscreen
+
+    /// Open the profile list in the sidebar
+    fn open_profile_list(&mut self) {
+        *self = Self::Profile {
+            selected_pane: ProfileSelectPane::List,
+            fullscreen: false,
+        };
+    }
+
+    /// Open the recipe list in the sidebar
+    fn open_recipe_list(&mut self) {
+        *self = Self::Recipe {
+            selected_pane: RecipeSelectPane::List,
+            fullscreen: false,
+        };
+    }
+
+    /// Close the sidebar and return to the default view
+    fn close_sidebar(&mut self) {
+        // TODO retain selected pane if possible
+        *self = Self::Default {
+            selected_pane: DefaultPane::Recipe,
+            fullscreen: false,
+        };
+    }
+
+    /// Select the previous pane in the cycle
+    fn previous_pane(&mut self) {
+        fn previous<T: PartialEq + IntoEnumIterator>(value: T) -> T {
+            T::iter()
+                .rev() // Reverse to get previous!
+                .cycle()
+                .skip_while(|v| *v != value)
+                .nth(1) // Get one *after* the found value
+                .expect("Iterator is cycled so it always returns")
+        }
+
+        // Each state has a different pane type
+        match self {
+            ViewState::Default { selected_pane, .. } => {
+                *selected_pane = previous(*selected_pane);
+            }
+            ViewState::Profile { selected_pane, .. } => {
+                *selected_pane = previous(*selected_pane);
+            }
+            ViewState::Recipe { selected_pane, .. } => {
+                *selected_pane = previous(*selected_pane);
+            }
+        }
+    }
+
+    /// Select the next pane in the cycle
+    fn next_pane(&mut self) {
+        fn next<T: PartialEq + IntoEnumIterator>(value: T) -> T {
+            T::iter()
+                .cycle()
+                .skip_while(|v| *v != value)
+                .nth(1) // Get one *after* the found value
+                .expect("Iterator is cycled so it always returns")
+        }
+
+        // Each state has a different pane type
+        match self {
+            ViewState::Default { selected_pane, .. } => {
+                *selected_pane = next(*selected_pane);
+            }
+            ViewState::Profile { selected_pane, .. } => {
+                *selected_pane = next(*selected_pane);
+            }
+            ViewState::Recipe { selected_pane, .. } => {
+                *selected_pane = next(*selected_pane);
+            }
+        }
+    }
+
+    /// TODO
+    fn select_recipe_pane(&mut self) {
+        match self {
+            ViewState::Default { selected_pane, .. } => {
+                *selected_pane = DefaultPane::Recipe;
+            }
+            ViewState::Profile { selected_pane, .. } => {
+                *selected_pane = ProfileSelectPane::Recipe;
+            }
+            ViewState::Recipe { selected_pane, .. } => {
+                *selected_pane = RecipeSelectPane::Recipe;
+            }
+        }
+    }
+
+    /// TODO
+    fn select_profile_pane(&mut self) {
+        match self {
+            ViewState::Profile { selected_pane, .. } => {
+                *selected_pane = ProfileSelectPane::Profile;
+            }
+            // Profile pane isn't visible
+            ViewState::Default { .. } | ViewState::Recipe { .. } => {}
+        }
+    }
+
+    /// TODO
+    fn select_exchange_pane(&mut self) {
+        match self {
+            ViewState::Default { selected_pane, .. } => {
+                *selected_pane = DefaultPane::Exchange;
+            }
+            ViewState::Profile { .. } => {} // Exchange pane isn't visible
+            ViewState::Recipe { selected_pane, .. } => {
+                *selected_pane = RecipeSelectPane::Exchange;
+            }
+        }
+    }
+
+    /// Enter/exit fullscreen mode for the currently selected pane
+    fn toggle_fullscreen(&mut self) {
+        match self {
+            ViewState::Default { fullscreen, .. }
+            | ViewState::Profile { fullscreen, .. }
+            | ViewState::Recipe { fullscreen, .. } => *fullscreen ^= true,
+        }
+    }
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        Self::Default {
+            selected_pane: DefaultPane::Recipe,
+            fullscreen: false,
+        }
+    }
 }
 
 /// Selectable pane in [ViewState::Default]

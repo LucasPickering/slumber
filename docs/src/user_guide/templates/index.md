@@ -16,6 +16,7 @@ Slumber templates in 60 seconds or less:
     - Escape inner quotes with `\`
   - Bytes: `b'hello'` or `b"hello"`
   - Array: `[1, "hello", [true, b"world"]]`
+  - Object: `{ 'a': 1, 'b': 2 }`
 - Profile fields: `host` (see [Profiles](../profiles.md))
 - Function calls: `g(f(), 1)`
   - [See all available functions](../../api/template_functions.md)

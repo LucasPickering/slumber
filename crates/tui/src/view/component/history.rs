@@ -206,9 +206,9 @@ impl Generate for &RequestStateSummary {
 }
 
 /// Allow selection by ID
-impl PartialEq<RequestStateSummary> for RequestId {
-    fn eq(&self, other: &RequestStateSummary) -> bool {
-        self == &other.id()
+impl PartialEq<RequestId> for RequestStateSummary {
+    fn eq(&self, id: &RequestId) -> bool {
+        &self.id() == id
     }
 }
 
@@ -333,7 +333,7 @@ mod tests {
             .load_summaries(Some(profile_id), recipe_id)
             .unwrap()
             .collect_vec();
-        assert_eq!(&requests, &[]);
+        assert_eq!(&requests, &[] as &[RequestStateSummary]);
         assert_eq!(&harness.database.get_all_requests().unwrap(), &[]);
     }
 }

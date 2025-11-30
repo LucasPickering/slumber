@@ -58,18 +58,9 @@ impl EventQueue {
 /// queued asynchronously and are used to interact *between* threads.
 #[derive(derive_more::Debug)]
 pub enum Event {
-    /// Input from the user, which may or may not be bound to an action. Most
-    /// components just care about the action, but some require raw input
-    Input(InputEvent),
-
-    /// Load a request from the database. If the ID is given, load that
-    /// specific request. If not, get the most recent for the current
-    /// profile+recipe.
-    ///
-    /// This is a top-level event because it's send from multiple different
-    /// components throughout the tree, such that using emitted events would be
-    /// excessively complicated.
-    HttpSelectRequest(Option<RequestId>),
+    /// User has requested to delete all requests for the current selected
+    /// recipe. This will trigger a confirmation modal before the deletion
+    DeleteRecipeRequests,
 
     /// A localized event emitted by a particular [Emitter] implementation.
     /// The event type here does not need to be unique because the emitter ID
@@ -82,6 +73,19 @@ pub enum Event {
         emitter_type: String,
         event: Box<dyn LocalEvent>,
     },
+
+    /// Input from the user, which may or may not be bound to an action. Most
+    /// components just care about the action, but some require raw input
+    Input(InputEvent),
+
+    /// Load a request from the database. If the ID is given, load that
+    /// specific request. If not, get the most recent for the current
+    /// profile+recipe.
+    ///
+    /// This is a top-level event because it's send from multiple different
+    /// components throughout the tree, such that using emitted events would be
+    /// excessively complicated.
+    HttpSelectRequest(Option<RequestId>),
 }
 
 impl Event {

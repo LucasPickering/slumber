@@ -388,9 +388,10 @@ pub trait HttpProvider: Debug + Send + Sync {
 /// process. The implementor is responsible for deciding *how* to ask the user.
 ///
 /// **Note:** The prompter has to be able to handle simultaneous prompt
-/// requests, if a template has multiple prompt values, or if multiple templates
-/// with prompts are being rendered simultaneously.  The implementor is
-/// responsible for queueing prompts to show to the user one at a time.
+/// requests. This happens if a template has multiple prompt values or if
+/// multiple templates with prompts are being rendered simultaneously. The
+/// implementor is responsible for queueing prompts to show to the user one at a
+/// time.
 pub trait Prompter: Debug + Send + Sync {
     /// Ask the user a question, and use the given channel to return a response.
     /// To indicate "no response", simply drop the returner.
@@ -398,34 +399,32 @@ pub trait Prompter: Debug + Send + Sync {
     /// If an error occurs while prompting the user, just drop the returner.
     /// The implementor is responsible for logging the error as appropriate.
     fn prompt(&self, prompt: Prompt);
-
-    /// Ask the user to pick an item for a list of choices
-    fn select(&self, select: Select);
 }
 
 /// Data defining a prompt which should be presented to the user
 #[derive(Debug)]
-pub struct Prompt {
-    /// Tell the user what we're asking for
-    pub message: String,
-    /// Value used to pre-populate the text box
-    pub default: Option<String>,
-    /// Should the value the user is typing be masked? E.g. password input
-    pub sensitive: bool,
-    /// How the prompter will pass the answer back
-    pub channel: ResponseChannel<String>,
-}
-
-/// A list of options to present to the user
-#[derive(Debug)]
-pub struct Select {
-    /// Tell the user what we're asking for
-    pub message: String,
-    /// List of choices the user can pick from
-    pub options: Vec<SelectOption>,
-    /// How the prompter will pass the answer back. The returned value is the
-    /// `value` field from the selected [SelectOption]
-    pub channel: ResponseChannel<Value>,
+pub enum Prompt {
+    /// Ask the user for text input
+    Text {
+        /// Tell the user what we're asking for
+        message: String,
+        /// Value used to pre-populate the text box
+        default: Option<String>,
+        /// Should the value the user is typing be masked? E.g. password input
+        sensitive: bool,
+        /// How the prompter will pass the answer back
+        channel: ResponseChannel<String>,
+    },
+    /// Ask the user to pick a value from a list
+    Select {
+        /// Tell the user what we're asking for
+        message: String,
+        /// List of choices the user can pick from
+        options: Vec<SelectOption>,
+        /// How the prompter will pass the answer back. The returned value is
+        /// the `value` field from the selected [SelectOption]
+        channel: ResponseChannel<Value>,
+    },
 }
 
 /// An entry in a `select()` list

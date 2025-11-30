@@ -10,7 +10,7 @@ use slumber_core::{
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
-    render::{Prompt, ResponseChannel, Select},
+    render::{Prompt, ResponseChannel},
 };
 use slumber_template::{RenderedOutput, Template};
 use slumber_util::{ResultTracedAnyhow, yaml::SourceLocation};
@@ -147,10 +147,6 @@ pub enum Message {
         /// `None`, and the original response bytes will be used.
         data: Option<String>,
     },
-
-    /// Show a select list to the user, asking them to choose an item
-    /// Use the included channel to return the selection.
-    SelectStart(Select),
 
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the

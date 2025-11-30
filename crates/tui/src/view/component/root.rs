@@ -24,11 +24,7 @@ use crate::{
 use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{
-    collection::ProfileId,
-    http::RequestId,
-    render::{Prompt, Select},
-};
+use slumber_core::{collection::ProfileId, http::RequestId, render::Prompt};
 use std::ops::Deref;
 
 /// The root view component
@@ -110,26 +106,35 @@ impl Root {
         self.footer.notify(message);
     }
 
-    /// Prompt the user for text input
+    /// Prompt the user for input
     pub fn prompt(&mut self, prompt: Prompt) {
-        self.prompts.open(TextBoxModal::new(
-            prompt.message,
-            TextBox::default()
-                .sensitive(prompt.sensitive)
-                .default_value(prompt.default.unwrap_or_default()),
-            |response| prompt.channel.respond(response),
-        ));
-    }
-
-    /// Ask the user to select an item from a list
-    pub fn select(&mut self, select: Select) {
-        self.selects.open(SelectListModal::new(
-            select.message,
-            select.options,
-            |response| {
-                select.channel.respond(response);
-            },
-        ));
+        match prompt {
+            Prompt::Text {
+                message,
+                default,
+                sensitive,
+                channel,
+            } => {
+                self.prompts.open(TextBoxModal::new(
+                    message,
+                    TextBox::default()
+                        .sensitive(sensitive)
+                        .default_value(default.unwrap_or_default()),
+                    |response| channel.respond(response),
+                ));
+            }
+            Prompt::Select {
+                message,
+                options,
+                channel,
+            } => {
+                self.selects.open(SelectListModal::new(
+                    message,
+                    options,
+                    |response| channel.respond(response),
+                ));
+            }
+        }
     }
 
     /// ID of the selected profile. `None` iff the list is empty

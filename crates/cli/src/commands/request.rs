@@ -16,7 +16,7 @@ use slumber_core::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
         ResponseRecord, StoredRequestError, TriggeredRequestError,
     },
-    render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
+    render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
 };
 use slumber_util::{ResultTraced, ResultTracedAnyhow};
@@ -343,55 +343,80 @@ impl HttpProvider for CliHttpProvider {
 #[derive(Debug)]
 struct CliPrompter;
 
-impl Prompter for CliPrompter {
-    fn prompt(&self, prompt: Prompt) {
+impl CliPrompter {
+    /// Ask the user for text input
+    fn text(
+        message: String,
+        default: Option<String>,
+        sensitive: bool,
+    ) -> anyhow::Result<String> {
         // This will implicitly queue the prompts by blocking the main thread.
         // Since the CLI has nothing else to do while waiting on a response,
         // that's fine.
-        let result = if prompt.sensitive {
+        if sensitive {
             // Dialoguer doesn't support default values here so there's nothing
             // we can do
-            if prompt.default.is_some() {
+            if default.is_some() {
                 warn!(
                     "Default value not supported for sensitive prompts in CLI"
                 );
             }
 
             Password::new()
-                .with_prompt(prompt.message)
+                .with_prompt(message)
                 .allow_empty_password(true)
                 .interact()
         } else {
-            let mut input =
-                Input::new().with_prompt(prompt.message).allow_empty(true);
-            if let Some(default) = prompt.default {
+            let mut input = Input::new().with_prompt(message).allow_empty(true);
+            if let Some(default) = default {
                 input = input.default(default);
             }
             input.interact()
         }
-        .context("Error reading value from prompt")
-        .traced();
-
         // If we failed to read the value, print an error and report nothing
-        if let Ok(value) = result {
-            prompt.channel.respond(value);
-        }
+        .context("Error reading value from prompt")
+        .traced()
     }
 
-    fn select(&self, mut select: Select) {
-        let result = DialoguerSelect::new()
-            .with_prompt(select.message)
-            .items(&select.options)
+    /// Ask the user to select a value from a list. Return the selected value.
+    fn select(
+        message: String,
+        mut options: Vec<SelectOption>,
+    ) -> anyhow::Result<slumber_template::Value> {
+        let index = DialoguerSelect::new()
+            .with_prompt(message)
+            .items(&options)
             .default(0)
-            .interact();
+            .interact()
+            // If we failed to read the value, print an error and report nothing
+            .context("Error reading value from select")
+            .traced()?;
+        Ok(options.swap_remove(index).value)
+    }
+}
 
-        // If we failed to read the value, print an error and report nothing
-        if let Ok(index) =
-            result.context("Error reading value from select").traced()
-        {
-            select
-                .channel
-                .respond(select.options.swap_remove(index).value);
+impl Prompter for CliPrompter {
+    fn prompt(&self, prompt: Prompt) {
+        match prompt {
+            Prompt::Text {
+                message,
+                default,
+                sensitive,
+                channel,
+            } => {
+                if let Ok(response) = Self::text(message, default, sensitive) {
+                    channel.respond(response);
+                }
+            }
+            Prompt::Select {
+                message,
+                options,
+                channel,
+            } => {
+                if let Ok(response) = Self::select(message, options) {
+                    channel.respond(response);
+                }
+            }
         }
     }
 }

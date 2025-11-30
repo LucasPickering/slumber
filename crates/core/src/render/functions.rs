@@ -2,9 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    render::{
-        FunctionError, Prompt, Select, SelectOption, SingleRenderContext,
-    },
+    render::{FunctionError, Prompt, SelectOption, SingleRenderContext},
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
@@ -844,7 +842,7 @@ pub async fn prompt(
     #[kwarg] sensitive: bool,
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
-    context.prompter.prompt(Prompt {
+    context.prompter.prompt(Prompt::Text {
         message: message.unwrap_or_default(),
         default,
         sensitive,
@@ -1015,7 +1013,7 @@ pub async fn select(
     }
 
     let (tx, rx) = oneshot::channel();
-    context.prompter.select(Select {
+    context.prompter.prompt(Prompt::Select {
         message: message.unwrap_or_default(),
         options,
         channel: tx.into(),

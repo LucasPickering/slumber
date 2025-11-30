@@ -14,7 +14,7 @@ use chrono::{
 use itertools::Itertools;
 use mime::Mime;
 use ratatui::text::{Line, Text};
-use slumber_core::render::{Prompt, Prompter, ResponseChannel, Select};
+use slumber_core::render::{Prompt, Prompter, ResponseChannel};
 use std::io::Write;
 use tracing::trace;
 
@@ -46,10 +46,6 @@ impl Prompter for TuiPrompter {
     fn prompt(&self, prompt: Prompt) {
         self.messages_tx.send(Message::PromptStart(prompt));
     }
-
-    fn select(&self, select: Select) {
-        self.messages_tx.send(Message::SelectStart(select));
-    }
 }
 
 /// A prompter that returns a static value; used for template previews, where
@@ -59,12 +55,17 @@ pub struct PreviewPrompter;
 
 impl Prompter for PreviewPrompter {
     fn prompt(&self, prompt: Prompt) {
-        let value = prompt.default.unwrap_or_else(|| "<prompt>".into());
-        prompt.channel.respond(value);
-    }
-
-    fn select(&self, select: Select) {
-        select.channel.respond("<select>".into());
+        match prompt {
+            Prompt::Text {
+                default, channel, ..
+            } => {
+                let value = default.unwrap_or_else(|| "<prompt>".into());
+                channel.respond(value);
+            }
+            Prompt::Select { channel, .. } => {
+                channel.respond("<select>".into());
+            }
+        }
     }
 }
 

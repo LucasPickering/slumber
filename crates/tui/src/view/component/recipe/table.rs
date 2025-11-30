@@ -11,9 +11,7 @@ use crate::{
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
-            recipe_pane::override_template::{
-                EditableTemplate, RecipeOverrideKey,
-            },
+            recipe::override_template::{EditableTemplate, RecipeOverrideKey},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
@@ -366,9 +364,9 @@ impl<RowToggleKey> Draw<RecipeFieldTableRowProps>
 }
 
 // Needed for toggle persistence
-impl<RowToggleKey> PartialEq<RecipeFieldTableRow<RowToggleKey>> for String {
-    fn eq(&self, other: &RecipeFieldTableRow<RowToggleKey>) -> bool {
-        self == &other.key
+impl<RowToggleKey> PartialEq<String> for RecipeFieldTableRow<RowToggleKey> {
+    fn eq(&self, key: &String) -> bool {
+        &self.key == key
     }
 }
 
@@ -383,7 +381,7 @@ mod tests {
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            component::recipe_pane::override_template::RecipeOverrideStore,
+            component::recipe::override_template::RecipeOverrideStore,
             test_util::TestComponent,
         },
     };

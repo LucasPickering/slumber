@@ -3388,6 +3388,7 @@ dependencies = [
  "slumber_config",
  "slumber_core",
  "slumber_import",
+ "slumber_template",
  "slumber_util",
  "tokio",
  "tracing",
@@ -3520,6 +3521,7 @@ dependencies = [
  "pyo3",
  "slumber_config",
  "slumber_core",
+ "slumber_template",
  "tokio",
 ]
 

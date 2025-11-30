@@ -11,7 +11,10 @@ use crate::{
             help::Help,
             history::History,
             internal::ComponentExt,
-            misc::{ConfirmModal, ErrorModal, SelectListModal, TextBoxModal},
+            misc::{
+                ConfirmModal, DeleteRecipeRequestsModal, ErrorModal,
+                SelectListModal, TextBoxModal,
+            },
             primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
@@ -22,7 +25,7 @@ use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, ProfileId},
+    collection::ProfileId,
     http::RequestId,
     render::{Prompt, Select},
 };
@@ -48,6 +51,8 @@ pub struct Root {
     // errors or prompts).
     actions: ActionMenu,
     cancel_request_confirm: ModalQueue<ConfirmModal>,
+    /// Confirmation modal to delete all requests for a recipe
+    delete_requests_confirm: ModalQueue<DeleteRecipeRequestsModal>,
     confirms: ModalQueue<ConfirmModal>,
     errors: ModalQueue<ErrorModal>,
     history: ModalQueue<History>,
@@ -56,7 +61,7 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(collection: &Collection) -> Self {
+    pub fn new() -> Self {
         // Restore the selected request via an event. When selecting the
         // request we need to load it into the request store as well, and we
         // don't have access to that here
@@ -73,11 +78,12 @@ impl Root {
             selected_request_id: None,
 
             // Children
-            primary_view: PrimaryView::new(collection),
+            primary_view: PrimaryView::new(),
             footer: Footer::default(),
             help: Help::default(),
             actions: ActionMenu::default(),
             cancel_request_confirm: ModalQueue::default(),
+            delete_requests_confirm: ModalQueue::default(),
             confirms: ModalQueue::default(),
             errors: ModalQueue::default(),
             history: ModalQueue::default(),
@@ -208,6 +214,16 @@ impl Root {
         }
     }
 
+    /// Open a modal to confirm deletion of all requests for the selected recipe
+    fn delete_requests(&mut self) {
+        if let Some(recipe_id) = self.primary_view.selected_recipe_id().cloned()
+        {
+            let profile_id = self.primary_view.selected_profile_id().cloned();
+            self.delete_requests_confirm
+                .open(DeleteRecipeRequestsModal::new(profile_id, recipe_id));
+        }
+    }
+
     /// Cancel the active request
     fn cancel_request(&mut self, context: &mut UpdateContext<'_>) {
         if let Some(request_id) = self.selected_request_id
@@ -259,6 +275,15 @@ impl Component for Root {
                 _ => propagate.set(),
             })
             .any(|event| match event {
+                Event::DeleteRecipeRequests => {
+                    self.delete_requests();
+                    None
+                }
+
+                // There shouldn't be anything left unhandled. Bubble up to log
+                // it
+                Event::Emitted { .. } => Some(event),
+
                 // Set selected request, and load it from the DB if needed
                 Event::HttpSelectRequest(request_id) => {
                     self.select_request(context.request_store, request_id)
@@ -269,10 +294,6 @@ impl Component for Root {
                 // Any other unhandled input event should *not* log an error,
                 // because it is probably just unmapped input, and not a bug
                 Event::Input { .. } => None,
-
-                // There shouldn't be anything left unhandled. Bubble up to log
-                // it
-                Event::Emitted { .. } => Some(event),
             })
     }
 
@@ -288,6 +309,7 @@ impl Component for Root {
             // Rest of the modals
             self.actions.to_child_mut(),
             self.cancel_request_confirm.to_child_mut(),
+            self.delete_requests_confirm.to_child_mut(),
             self.confirms.to_child_mut(),
             self.history.to_child_mut(),
             self.prompts.to_child_mut(),
@@ -338,6 +360,7 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
         // Modals
         canvas.draw_portal(&self.actions, (), true);
         canvas.draw_portal(&self.cancel_request_confirm, (), true);
+        canvas.draw_portal(&self.delete_requests_confirm, (), true);
         canvas.draw_portal(&self.confirms, (), true);
         canvas.draw_portal(&self.history, (), true);
         canvas.draw_portal(&self.prompts, (), true);
@@ -369,7 +392,7 @@ mod tests {
     };
     use rstest::rstest;
     use slumber_core::{
-        collection::{Profile, Recipe},
+        collection::{Collection, Profile, Recipe},
         http::Exchange,
         test_util::by_id,
     };
@@ -390,13 +413,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -433,13 +453,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -478,13 +495,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -517,13 +531,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -534,7 +545,7 @@ mod tests {
         // Select the second recipe
         component
             .int_props(props_factory)
-            .send_keys([KeyCode::Char('l'), KeyCode::Down])
+            .send_keys([KeyCode::Char('2'), KeyCode::Down])
             .assert_empty();
         assert_eq!(component.selected_request_id, Some(exchange2.id));
     }
@@ -563,13 +574,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         component
             .int_props(props_factory)
             .drain_draw()
@@ -580,8 +588,9 @@ mod tests {
         // Select the second profile
         component
             .int_props(props_factory)
-            .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
+            .send_keys([KeyCode::Char('1'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
+        // The exchange from profile2 should be selected now
         assert_eq!(component.selected_request_id, Some(exchange2.id));
     }
 
@@ -603,13 +612,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         // Select recipe pane
         component
             .int_props(props_factory)
@@ -659,13 +665,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         // Select exchange pane
         component
             .int_props(props_factory)
@@ -706,13 +709,10 @@ mod tests {
         let props_factory = || RootProps {
             request_store: harness.request_store.borrow(),
         };
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection),
-        )
-        .with_props(props_factory())
-        .build();
+        let mut component =
+            TestComponent::builder(&harness, &terminal, Root::new())
+                .with_props(props_factory())
+                .build();
         assert!(!component.help.is_open());
 
         // Open help

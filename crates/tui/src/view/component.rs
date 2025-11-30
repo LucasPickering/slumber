@@ -7,13 +7,13 @@ mod history;
 mod internal;
 mod misc;
 mod primary;
-mod profile_select;
+mod profile;
 mod queryable_body;
-mod recipe_list;
-mod recipe_pane;
+mod recipe;
 mod request_view;
 mod response_view;
 mod root;
+mod sidebar_list;
 
 pub use internal::{
     Canvas, Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,

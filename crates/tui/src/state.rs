@@ -379,7 +379,6 @@ impl LoadedState {
             Message::Input(event) => self.view.handle_input(event),
             Message::Notify(message) => self.view.notify(message),
             Message::PromptStart(prompt) => self.view.prompt(prompt),
-            Message::SelectStart(select) => self.view.select(select),
             Message::ConfirmStart(confirm) => self.view.confirm(confirm),
             Message::TemplatePreview {
                 template,

@@ -3,7 +3,7 @@ use crate::view::{
     common::{actions::MenuItem, template_preview::TemplatePreview},
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        recipe_pane::override_template::{EditableTemplate, RecipeOverrideKey},
+        recipe::override_template::{EditableTemplate, RecipeOverrideKey},
     },
     event::{Emitter, Event, EventMatch},
 };
@@ -103,7 +103,7 @@ mod tests {
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            component::recipe_pane::override_template::RecipeOverrideStore,
+            component::recipe::override_template::RecipeOverrideStore,
             test_util::TestComponent,
         },
     };

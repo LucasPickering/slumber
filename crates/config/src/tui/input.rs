@@ -181,9 +181,11 @@ pub enum Action {
     SelectCollection,
     /// Select profile list pane
     SelectProfileList,
+    /// Select profile detail pane
+    SelectProfile,
     /// Select recipe list pane
     SelectRecipeList,
-    /// Select recipe pane
+    /// Select recipe detail pane
     SelectRecipe,
     /// Select response pane
     #[serde(alias = "select_request")] // Backward compatibility
@@ -516,8 +518,9 @@ impl Default for InputMap {
                 modifiers: KeyModifiers::CTRL,
             }.into(),
             Action::SelectCollection => KeyCode::F(3).into(),
-            Action::SelectProfileList => KeyCode::Char('p').into(),
-            Action::SelectRecipeList => KeyCode::Char('l').into(),
+            Action::SelectProfileList => KeyCode::Char('1').into(),
+            Action::SelectProfile => KeyCode::Char('p').into(),
+            Action::SelectRecipeList => KeyCode::Char('2').into(),
             Action::SelectRecipe => KeyCode::Char('c').into(),
             Action::SelectResponse => KeyCode::Char('r').into(),
             // ^^^^^ If making changes, make sure to update the docs ^^^^^

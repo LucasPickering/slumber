@@ -101,9 +101,10 @@ struct CollectionSelectItem {
     path: PathBuf,
 }
 
-impl PartialEq<CollectionSelectItem> for CollectionId {
-    fn eq(&self, other: &CollectionSelectItem) -> bool {
-        self == &other.id
+// Persistence
+impl PartialEq<CollectionId> for CollectionSelectItem {
+    fn eq(&self, id: &CollectionId) -> bool {
+        &self.id == id
     }
 }
 

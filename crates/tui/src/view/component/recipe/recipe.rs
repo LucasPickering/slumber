@@ -6,7 +6,7 @@ use crate::{
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            recipe_pane::{
+            recipe::{
                 authentication::AuthenticationDisplay,
                 body::RecipeBodyDisplay,
                 override_template::RecipeOverrideKey,

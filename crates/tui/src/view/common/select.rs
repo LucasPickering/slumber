@@ -136,7 +136,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     /// Set the value that should be initially selected
     pub fn preselect<T>(mut self, value: &T) -> Self
     where
-        T: PartialEq<Item>,
+        Item: PartialEq<T>,
     {
         // Our list of items is immutable, so we can safely store just the
         // index. This is useful so we don't need an additional generic on the
@@ -152,7 +152,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     /// conditional in calling code.
     pub fn preselect_opt<T>(self, value: Option<&T>) -> Self
     where
-        T: PartialEq<Item>,
+        Item: PartialEq<T>,
     {
         if let Some(value) = value {
             self.preselect(value)
@@ -170,7 +170,7 @@ impl<Item, State> SelectBuilder<Item, State> {
         K: PersistentKey,
         // The persisted value doesn't have to be the ENTIRE item that we have
         // in the list, it just needs to be comparable (e.g. ID for a recipe)
-        K::Value: PartialEq<Item>,
+        Item: PartialEq<K::Value>,
     {
         self.preselect_opt(PersistentStore::get(key).as_ref())
     }
@@ -325,15 +325,6 @@ impl<Item, State: SelectData> Select<Item, State> {
     /// first visible item in the list.
     pub fn offset(&self) -> usize {
         self.state.borrow().offset()
-    }
-
-    /// Select an item by value. Generally the given value will be the type
-    /// `Item`, but it could be anything that compares to `Item` (e.g. an ID
-    /// type).
-    pub fn select<T: PartialEq<Item>>(&mut self, value: &T) {
-        if let Some(index) = find_index(&self.items, value) {
-            self.select_index(index);
-        }
     }
 
     /// Select an item by index
@@ -715,9 +706,9 @@ pub enum SelectEvent {
 /// Find the index of a value in the list
 fn find_index<Item, T>(items: &[SelectItem<Item>], value: &T) -> Option<usize>
 where
-    T: PartialEq<Item>,
+    Item: PartialEq<T>,
 {
-    items.iter().position(|item| value == &item.value)
+    items.iter().position(|item| &item.value == value)
 }
 
 #[cfg(test)]
@@ -732,7 +723,7 @@ mod tests {
     use ratatui::text::Span;
     use rstest::rstest;
     use serde::Serialize;
-    use slumber_core::collection::{HasId, ProfileId};
+    use slumber_core::collection::ProfileId;
     use slumber_util::assert_matches;
     use std::{collections::HashSet, ops::Deref};
     use terminput::KeyCode;
@@ -843,16 +834,15 @@ mod tests {
         #[case] expected_selected: Option<usize>,
     ) {
         let items = ["apple", "APPLE", "banana"];
-        let select: Select<&str, ListState> =
-            Select::builder(items.into_iter().collect())
-                .filter(filter)
-                .preselect_opt(preselect.as_ref())
-                .build();
+        let select: Select<&str> = Select::builder(Vec::from_iter(items))
+            .filter(filter)
+            .preselect_opt(preselect.as_ref())
+            .build();
+        assert_eq!(select.selected_index(), expected_selected);
         assert_eq!(
             select.items().copied().collect::<Vec<_>>(),
             expected_visible
         );
-        assert_eq!(select.selected_index(), expected_selected);
     }
 
     /// Test going up and down in the list
@@ -1042,14 +1032,8 @@ mod tests {
             .assert_emitted([SelectEvent::Select(2)]);
         assert_eq!(component.selected(), Some(&"c"));
 
-        // Select by value/index should do nothing if it's disabled
+        // Indexes should skip disabled items
         let select = &mut component;
-        // Make sure that *nothing* happens, and that it's not skipping to the
-        // next/previous enabled value
-        select.select(&"b");
-        assert_eq!(select.selected(), Some(&"c"));
-        select.select(&"d");
-        assert_eq!(select.selected(), Some(&"c"));
         select.select_index(1);
         assert_eq!(select.selected(), Some(&"c"));
     }
@@ -1182,21 +1166,9 @@ mod tests {
         #[derive(Debug)]
         struct ProfileItem(ProfileId);
 
-        impl HasId for ProfileItem {
-            type Id = ProfileId;
-
-            fn id(&self) -> &Self::Id {
-                &self.0
-            }
-
-            fn set_id(&mut self, id: Self::Id) {
-                self.0 = id;
-            }
-        }
-
-        impl PartialEq<ProfileItem> for ProfileId {
-            fn eq(&self, item: &ProfileItem) -> bool {
-                self == &item.0
+        impl PartialEq<ProfileId> for ProfileItem {
+            fn eq(&self, id: &ProfileId) -> bool {
+                &self.0 == id
             }
         }
 

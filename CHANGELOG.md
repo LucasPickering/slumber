@@ -44,6 +44,8 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 
 ### Changed
 
+- Reconfigured the TUI layout. The main change is that the recipe and profile lists open in an expandable sidebar now
+  - Switching between recipes and profiles should feel faster and more intuitive now
 - Some menu actions have been moved into nested sections for better organization
 - Refactor significant portions of the TUI logic. There should be no user-facing changes, but if you notice any bugs [please report them!](https://github.com/LucasPickering/slumber/issues/new/choose)
 - List items can now be selected by click

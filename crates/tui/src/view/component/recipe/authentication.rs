@@ -9,9 +9,7 @@ use crate::{
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
-            recipe_pane::override_template::{
-                EditableTemplate, RecipeOverrideKey,
-            },
+            recipe::override_template::{EditableTemplate, RecipeOverrideKey},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
@@ -333,7 +331,7 @@ mod tests {
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            component::recipe_pane::override_template::RecipeOverrideStore,
+            component::recipe::override_template::RecipeOverrideStore,
             test_util::TestComponent,
         },
     };

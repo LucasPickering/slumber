@@ -441,7 +441,7 @@ async fn prompt(
     default: Option<String>,
 ) -> Option<String> {
     let (tx, rx) = oneshot::channel();
-    messages_tx.send(Message::PromptStart(Prompt {
+    messages_tx.send(Message::PromptStart(Prompt::Text {
         message: message.to_string(),
         default,
         sensitive: false,
@@ -500,15 +500,15 @@ mod tests {
         ));
 
         // First we expect a prompt for the file path
-        let prompt = assert_matches!(
+        let (message, default, channel) = assert_matches!(
             harness.pop_message_wait().await,
-            Message::PromptStart(prompt) => prompt,
+            Message::PromptStart(Prompt::Text { message, default, channel, .. }) => {
+                (message, default, channel)
+            },
         );
-        assert_eq!(&prompt.message, "Enter a path for the file");
-        assert_eq!(prompt.default.as_deref(), Some("default.txt"));
-        prompt
-            .channel
-            .respond(expected_path.to_str().unwrap().to_owned());
+        assert_eq!(&message, "Enter a path for the file");
+        assert_eq!(default.as_deref(), Some("default.txt"));
+        channel.respond(expected_path.to_str().unwrap().to_owned());
 
         if exists {
             // Now we expect a confirmation prompt

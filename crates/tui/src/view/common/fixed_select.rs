@@ -2,8 +2,7 @@ use crate::{
     util::PersistentKey,
     view::{
         common::select::{
-            Select, SelectBuilder, SelectData, SelectEvent, SelectEventType,
-            SelectItem,
+            Select, SelectBuilder, SelectData, SelectEvent, SelectItem,
         },
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
@@ -95,16 +94,6 @@ where
         Item: PartialEq,
     {
         &self.selected() == item
-    }
-
-    /// Select an item by value. Context is required for callbacks. Generally
-    /// the given value will be the type `Item`, but it could be anything that
-    /// compares to `Item` (e.g. an ID type).
-    pub fn select<T>(&mut self, value: &T)
-    where
-        T: PartialEq<Item>,
-    {
-        self.inner.select(value);
     }
 
     /// Select the previous item in the list
@@ -223,15 +212,6 @@ impl<Item: FixedSelectItem, State> FixedSelectBuilder<Item, State> {
         K: PersistentKey<Value = Item>,
     {
         self.inner = self.inner.persisted(key);
-        self
-    }
-
-    /// Which types of events should this emit?
-    pub fn subscribe(
-        mut self,
-        event_types: impl IntoIterator<Item = SelectEventType>,
-    ) -> Self {
-        self.inner = self.inner.subscribe(event_types);
         self
     }
 

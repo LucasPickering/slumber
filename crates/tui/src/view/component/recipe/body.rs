@@ -10,7 +10,7 @@ use crate::{
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            recipe_pane::{
+            recipe::{
                 override_template::{OverrideTemplate, RecipeOverrideKey},
                 table::{RecipeFieldTable, RecipeFieldTableProps},
             },
@@ -386,7 +386,7 @@ mod tests {
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            component::recipe_pane::override_template::RecipeOverrideStore,
+            component::recipe::override_template::RecipeOverrideStore,
             test_util::TestComponent,
         },
     };

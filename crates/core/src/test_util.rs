@@ -7,7 +7,7 @@ use crate::{
         Exchange, HttpEngine, RequestSeed, StoredRequestError,
         TriggeredRequestError,
     },
-    render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
+    render::{HttpProvider, Prompt, Prompter, TemplateContext},
 };
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -106,17 +106,23 @@ impl TestPrompter {
 
 impl Prompter for TestPrompter {
     fn prompt(&self, prompt: Prompt) {
-        // Grab the next value in the sequence. If we're all out, don't respond
-        let index = self.index.fetch_add(1, Ordering::Relaxed);
-        if let Some(value) = self.responses.get(index) {
-            prompt.channel.respond(value.clone());
-        } else if let Some(default) = prompt.default {
-            prompt.channel.respond(default);
+        match prompt {
+            Prompt::Text {
+                default, channel, ..
+            } => {
+                // Grab the next value in the sequence. If we're all out, don't
+                // respond
+                let index = self.index.fetch_add(1, Ordering::Relaxed);
+                if let Some(value) = self.responses.get(index) {
+                    channel.respond(value.clone());
+                } else if let Some(default) = default {
+                    channel.respond(default);
+                }
+            }
+            Prompt::Select { .. } => {
+                unimplemented!("TestPrompter does not support selects")
+            }
         }
-    }
-
-    fn select(&self, _select: Select) {
-        unimplemented!("TestPrompter does not support selects")
     }
 }
 
@@ -139,16 +145,21 @@ impl TestSelectPrompter {
 }
 
 impl Prompter for TestSelectPrompter {
-    fn prompt(&self, _prompt: Prompt) {
-        unimplemented!("TestSelectPrompter does not support prompts")
-    }
-
-    fn select(&self, mut select: Select) {
-        let index = self.index.fetch_add(1, Ordering::Relaxed);
-        if let Some(value_index) = self.responses.get(index) {
-            select
-                .channel
-                .respond(select.options.swap_remove(*value_index).value);
+    fn prompt(&self, prompt: Prompt) {
+        match prompt {
+            Prompt::Text { .. } => unimplemented!(
+                "TestSelectPrompter does not support text prompts"
+            ),
+            Prompt::Select {
+                mut options,
+                channel,
+                ..
+            } => {
+                let index = self.index.fetch_add(1, Ordering::Relaxed);
+                if let Some(value_index) = self.responses.get(index) {
+                    channel.respond(options.swap_remove(*value_index).value);
+                }
+            }
         }
     }
 }

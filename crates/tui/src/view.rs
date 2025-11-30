@@ -37,7 +37,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
-    render::{Prompt, Select},
+    render::Prompt,
 };
 use std::{
     fmt::{Debug, Display},
@@ -192,11 +192,6 @@ impl View {
     /// Prompt the user for text input
     pub fn prompt(&mut self, prompt: Prompt) {
         self.root.prompt(prompt);
-    }
-
-    /// Ask the user to select an item from a list
-    pub fn select(&mut self, select: Select) {
-        self.root.select(select);
     }
 
     /// Queue an event to update the view according to an input event from the

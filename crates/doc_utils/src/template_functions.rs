@@ -15,8 +15,11 @@ use syn::{
 };
 
 pub const REPLACE: &str = "{{#template_functions}}";
-/// Rust file containing template function definitions
-const INPUT_FILE: &str = "crates/core/src/render/functions.rs";
+/// Rust file containing template function definitions. Relative to docs/
+const INPUT_FILE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../core/src/render/functions.rs",
+);
 /// Strings that must appear in every doc comment. Use bold instead of headers
 /// to keep clutter out of the Table of Contents
 const REQUIRED_SECTIONS: &[&str] = &["**Parameters**", "**Examples**"];
@@ -32,7 +35,7 @@ thread_local! {
 /// markdown
 pub fn render() -> Result<String> {
     let content = fs::read_to_string(INPUT_FILE)
-        .context(format!("Error reading {INPUT_FILE}"))?;
+        .context(format!("Error opening {INPUT_FILE}"))?;
 
     let ast = syn::parse_file(&content)
         .context(format!("Error reading {INPUT_FILE}"))?;

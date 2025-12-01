@@ -24,5 +24,4 @@ run = "cargo test"
 RUST_BACKTRACE = "1"
 
 [tools]
-"cargo:mdbook-pagetoc" = "0.2.0"
-mdbook = "0.4"
+mdbook = "0.5.1"

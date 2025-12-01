@@ -9,7 +9,9 @@ name = "doc_utils"
 publish = false
 repository = {workspace = true}
 rust-version = {workspace = true}
-version = "0.0.1"
+# Even though this crate isn't published, we keep the version in sync so the
+# `version` preprocessor has the correct value
+version = {workspace = true}
 
 [package.metadata.release]
 release = false

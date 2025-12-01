@@ -97,6 +97,8 @@ impl SlumberPreprocessor {
     fn render(self) -> Result<String> {
         match self {
             Self::TemplateFunctions => template_functions::render(),
+            // doc_utils/Cargo.toml uses the same version as everything else
+            // specifically so this is correct
             Self::Version => Ok(env!("CARGO_PKG_VERSION").to_owned()),
         }
     }

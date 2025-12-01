@@ -2,7 +2,6 @@
 authors = ["Lucas Pickering"]
 description = "Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests."
 language = "en"
-multilingual = false
 src = "src"
 title = "Slumber"
 
@@ -11,18 +10,13 @@ title = "Slumber"
 extra-watch-dirs = ["../crates/doc_utils/", "../crates/core/src/render/functions.rs"]
 
 [preprocessor.template_functions]
-command = "./mise-tasks/mdbook.rs --mode template-functions"
+command = "../mise-tasks/mdbook.rs --mode template-functions"
 renderer = ["html"]
 
-[preprocessor.pagetoc]
-after = ["template_functions"]
-
 [preprocessor.version]
-command = "./mise-tasks/mdbook.rs --mode version"
+command = "../mise-tasks/mdbook.rs --mode version"
 
 [output.html]
-additional-css = ["theme/pagetoc.css"]
-additional-js = ["theme/pagetoc.js"]
 default-theme = "dark"
 edit-url-template = "https://github.com/LucasPickering/slumber/edit/master/docs/{path}"
 git-repository-url = "https://github.com/LucasPickering/slumber"
@@ -44,7 +38,7 @@ preferred-dark-theme = "coal"
 "/book/user_guide/database.html" = "/user_guide/database.html"
 "/book/user_guide/tui/editor.html" = "/user_guide/tui/editor.html"
 "/book/user_guide/tui/filter_query.md" = "/user_guide/tui/filter_query.md"
-# Only concepts: no equivalent page anymore
+# Old concepts: no equivalent page anymore
 "/book/api/request_collection/chain.html" = "/other/v4_migration.html"
 "/book/api/request_collection/chain_source.html" = "/other/v4_migration.html"
 "/book/api/request_collection/template.html" = "/other/v4_migration.html"

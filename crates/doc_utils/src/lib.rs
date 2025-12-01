@@ -9,10 +9,11 @@ mod template_functions;
 
 use anyhow::anyhow;
 use clap::{Parser, ValueEnum};
-use mdbook::{
+use mdbook_preprocessor::{
+    Preprocessor, PreprocessorContext,
     book::{Book, BookItem},
     errors::{Error, Result},
-    preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext},
+    parse_input,
 };
 use std::{io, io::IsTerminal};
 
@@ -46,7 +47,7 @@ pub fn mdbook() -> anyhow::Result<()> {
 
     if let Some(Subcommand::Supports { renderer }) = args.subcommand {
         // Caller wants to know if this renderer is supported
-        let supported = preprocessor.supports_renderer(&renderer);
+        let supported = preprocessor.supports_renderer(&renderer)?;
 
         // Signal whether the renderer is supported by exiting with 1 or 0.
         if supported {
@@ -86,7 +87,7 @@ enum SlumberPreprocessor {
 
 impl SlumberPreprocessor {
     fn preprocess(self) -> Result<()> {
-        let (ctx, book) = CmdPreprocessor::parse_input(io::stdin())?;
+        let (ctx, book) = parse_input(io::stdin())?;
         let processed_book = self.run(&ctx, book)?;
         serde_json::to_writer(io::stdout(), &processed_book)?;
         Ok(())
@@ -133,7 +134,7 @@ impl Preprocessor for SlumberPreprocessor {
         Ok(book)
     }
 
-    fn supports_renderer(&self, _renderer: &str) -> bool {
-        true
+    fn supports_renderer(&self, _renderer: &str) -> Result<bool, Error> {
+        Ok(true)
     }
 }

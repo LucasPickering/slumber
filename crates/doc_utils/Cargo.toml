@@ -19,7 +19,7 @@ tag = false
 anyhow = {workspace = true}
 clap = {workspace = true, features = ["derive"]}
 itertools = {workspace = true}
-mdbook = {version = "0.4", default-features = false}
+mdbook-preprocessor = {version = "0.5", default-features = false}
 serde_json = {workspace = true}
 syn = {workspace = true, features = ["extra-traits", "full", "printing"]}
 quote = {workspace = true}

@@ -162,7 +162,7 @@ pub fn yield_terminal(
                 // differently when redirected
                 error!(status = status.code(), "Command failed");
                 // Show the error to the user
-                Err(anyhow::anyhow!("Command failed with status {}", status))
+                Err(anyhow::anyhow!("Command failed with status {status}"))
             }
         })
         .context(error_context);
@@ -419,7 +419,7 @@ pub async fn run_command(
     );
     if !output.status.success() {
         let stderr = std::str::from_utf8(&output.stderr).unwrap_or_default();
-        bail!("{}", stderr);
+        bail!("{stderr}");
     }
     Ok(output.stdout)
 }

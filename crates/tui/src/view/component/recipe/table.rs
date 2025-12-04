@@ -5,7 +5,9 @@ use crate::{
         common::{
             Checkbox,
             actions::MenuItem,
-            component_select::{ComponentSelect, ComponentSelectTableProps},
+            component_select::{
+                ComponentSelect, ComponentSelectProps, SelectStyles,
+            },
             select::{Select, SelectEvent, SelectEventType},
         },
         component::{
@@ -18,8 +20,8 @@ use crate::{
     },
 };
 use ratatui::{
-    layout::{Constraint, Layout},
-    widgets::{Block, TableState},
+    layout::{Constraint, Layout, Spacing},
+    widgets::Block,
 };
 use slumber_config::Action;
 use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
@@ -45,7 +47,7 @@ pub struct RecipeFieldTable<RowSelectKey, RowToggleKey> {
     /// Persistence key to store which row is selected
     select_persistent_key: RowSelectKey,
     /// Selectable rows
-    select: ComponentSelect<RecipeFieldTableRow<RowToggleKey>, TableState>,
+    select: ComponentSelect<RecipeFieldTableRow<RowToggleKey>>,
 }
 
 impl<RowSelectKey, RowToggleKey> RecipeFieldTable<RowSelectKey, RowToggleKey>
@@ -219,11 +221,14 @@ where
         canvas.render_widget(props.value_header, value_header_area);
 
         // Draw rows
+        let item_props = RecipeFieldTableRowProps { key_column_width };
         canvas.draw(
             &self.select,
-            ComponentSelectTableProps(RecipeFieldTableRowProps {
-                key_column_width,
-            }),
+            ComponentSelectProps {
+                styles: SelectStyles::table(),
+                spacing: Spacing::default(),
+                item_props: Box::new(move |_, _| (item_props, 1)),
+            },
             rows_area,
             true,
         );

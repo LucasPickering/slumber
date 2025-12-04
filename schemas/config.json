@@ -154,10 +154,13 @@
           "f3"
         ],
         "select_profile_list": [
+          "1"
+        ],
+        "select_profile": [
           "p"
         ],
         "select_recipe_list": [
-          "l"
+          "2"
         ],
         "select_recipe": [
           "c"
@@ -297,10 +300,13 @@
           "f3"
         ],
         "select_profile_list": [
+          "1"
+        ],
+        "select_profile": [
           "p"
         ],
         "select_recipe_list": [
-          "l"
+          "2"
         ],
         "select_recipe": [
           "c"

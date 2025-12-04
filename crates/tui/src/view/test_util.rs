@@ -140,7 +140,7 @@ where
         T: Draw<Props>,
     {
         self.terminal.draw(|frame| {
-            let mut canvas = Canvas::new(frame);
+            let mut canvas = Canvas::new(frame.buffer_mut());
             canvas.draw(&self.component, props, self.area, self.has_focus);
         });
     }

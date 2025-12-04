@@ -267,14 +267,20 @@ async fn test_concat(
 
 /// `env()`
 #[rstest]
-#[case::set("CARGO_PKG_NAME", Ok("slumber_core"))]
-#[case::unset("NOT_A_REAL_ENV_VAR", Ok(""))]
+#[case::set("CARGO_PKG_NAME", None, Ok("slumber_core"))]
+#[case::unset("NOT_A_REAL_ENV_VAR", None, Ok(""))]
+#[case::unset_default("NOT_A_REAL_ENV_VAR", Some("default"), Ok("default"))]
 #[tokio::test]
 async fn test_env(
     #[case] variable: &str,
+    #[case] default: Option<&str>,
     #[case] expected: Result<&str, &str>,
 ) {
-    let template = Template::function_call("env", [variable.into()], []);
+    let template = Template::function_call(
+        "env",
+        [variable.into()],
+        [("default", default.map(Expression::from))],
+    );
     assert_result(
         template
             .render_bytes(&TemplateContext::factory(()).streaming(false))

@@ -274,16 +274,18 @@ pub fn debug(value: Value) -> Value {
 /// **Parameters**
 ///
 /// - `variable`: Name of the environment variable to read
+/// - `default`: Value to return when the environment variable is not present
 ///
 /// **Examples**
 ///
 /// ```sh
 /// {{ env("HOME") }} => "/home/username"
-/// {{ env("NONEXISTENT") }} => null
+/// {{ env("NONEXISTENT") }} => ""
+/// {{ env("NONEXISTENT", default="default") }} => "default"
 /// ```
 #[template]
-pub fn env(variable: String) -> String {
-    env::var(variable).unwrap_or_default()
+pub fn env(variable: String, #[kwarg] default: String) -> String {
+    env::var(variable).unwrap_or(default)
 }
 
 /// Load contents of a file. While the output type is `bytes`,

@@ -8,9 +8,9 @@ mod context;
 mod http;
 mod input;
 mod message;
-mod state;
 #[cfg(test)]
 mod test_util;
+mod tui_state;
 mod util;
 mod view;
 
@@ -18,7 +18,7 @@ use crate::{
     context::TuiContext,
     input::InputEvent,
     message::{Message, MessageSender},
-    state::TuiState,
+    tui_state::TuiState,
     util::{CANCEL_TOKEN, ResultReported},
 };
 use anyhow::Context;

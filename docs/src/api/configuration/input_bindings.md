@@ -39,16 +39,16 @@ input_bindings:
 | `scroll_right`        | `shift right`   | Scroll right one column in the current view           |
 | `quit`                | `q`             | Exit current dialog, or the entire app                |
 | `force_quit`          | `ctrl c`        | Exit the app, regardless                              |
-| `previous_pane`       | `shift tab`     | Select previous pane in the cycle                     |
-| `next_pane`           | `tab`           |                                                       |
-| `up`                  | `up`            |                                                       |
-| `down`                | `down`          |                                                       |
-| `left`                | `left`          |                                                       |
-| `right`               | `right`         |                                                       |
-| `page_up`             | `pgup`          |                                                       |
-| `page_down`           | `pgdn`          |                                                       |
-| `home`                | `home`          |                                                       |
-| `end`                 | `end`           |                                                       |
+| `previous_pane`       | `shift tab`     | Select previous pane/form field in the cycle          |
+| `next_pane`           | `tab`           | Select next pane/form field in the cycle              |
+| `up`                  | `up`            | Navigate up                                           |
+| `down`                | `down`          | Navigate down                                         |
+| `left`                | `left`          | Navigate left                                         |
+| `right`               | `right`         | Navigate right                                        |
+| `page_up`             | `pgup`          | Scroll up by one page                                 |
+| `page_down`           | `pgdn`          | Scroll down by one page                               |
+| `home`                | `home`          | Move to the start of a line of text                   |
+| `end`                 | `end`           | Move to the end of a line of text                     |
 | `submit`              | `enter`         | Send a request, submit a text box, etc.               |
 | `toggle`              | `space`         | Toggle a checkbox on/off                              |
 | `cancel`              | `esc`           | Cancel current dialog or request                      |

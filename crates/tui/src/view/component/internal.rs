@@ -243,8 +243,9 @@ pub trait Draw<Props = ()> {
 /// A wrapper around a [Frame] that manages draw state for a single frame of
 /// drawing.
 #[derive(derive_more::Debug)]
-pub struct Canvas<'buf, 'fr> {
-    frame: &'fr mut Frame<'buf>,
+pub struct Canvas<'buf> {
+    /// Main frame buffer
+    buffer: &'buf mut Buffer,
     /// Each [Portal] element is rendered to its own buffer. The buffers are
     /// then merged together into the main frame buffer at the end of the draw.
     /// If there are multiple portals, the *later* rendered portals take
@@ -252,33 +253,29 @@ pub struct Canvas<'buf, 'fr> {
     portals: Vec<Buffer>,
 }
 
-impl<'buf, 'fr> Canvas<'buf, 'fr> {
+impl<'buf> Canvas<'buf> {
     /// Wrap a frame for a single walk down the draw tree
-    pub fn new(frame: &'fr mut Frame<'buf>) -> Self {
+    pub fn new(buffer: &'buf mut Buffer) -> Self {
         Self {
-            frame,
+            buffer,
             portals: vec![],
         }
     }
 
     /// Draw an entire component tree to the canvas
-    pub fn draw_all<T, Props>(
-        frame: &'fr mut Frame<'buf>,
-        root: &T,
-        props: Props,
-    ) where
+    pub fn draw_all<T, Props>(frame: &'buf mut Frame, root: &T, props: Props)
+    where
         T: Component + Draw<Props>,
     {
         // Clear the set of visible components so we can start fresh
         VISIBLE_COMPONENTS.with_borrow_mut(HashMap::clear);
 
-        let mut canvas = Self::new(frame);
+        let mut canvas = Self::new(frame.buffer_mut());
         canvas.draw(root, props, canvas.area(), true);
 
         // Merge portaled buffers into the main buffer
-        let main_buffer = canvas.frame.buffer_mut();
         for portal_buffer in &canvas.portals {
-            main_buffer.merge(portal_buffer);
+            canvas.buffer.merge(portal_buffer);
         }
     }
 
@@ -334,31 +331,30 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
         // The portal buffer will only contain the area that the portal wants to
         // draw to. Ratatui is smart enough to shift the buffers to align by
         // area before merging.
-        let main_buffer =
-            mem::replace(self.frame.buffer_mut(), Buffer::empty(area));
+        let main_buffer = mem::replace(self.buffer, Buffer::empty(area));
         self.draw(component, props, area, has_focus);
         // Swap the main buffer back into the frame
-        let portal = mem::replace(self.frame.buffer_mut(), main_buffer);
+        let portal = mem::replace(self.buffer, main_buffer);
         // Store what we rendered, to be merged in later
         self.portals.push(portal);
     }
 
-    /// [Frame::area]
+    /// Get the full screen area
     pub fn area(&self) -> Rect {
-        self.frame.area()
+        self.buffer.area
     }
 
-    /// [Frame::buffer_mut]
+    /// Get a mutable reference to the internal screen buffer
     pub fn buffer_mut(&mut self) -> &mut Buffer {
-        self.frame.buffer_mut()
+        self.buffer
     }
 
-    /// [Frame::render_widget]
+    /// Render a [Widget] to the active buffer
     pub fn render_widget<W: Widget>(&mut self, widget: W, area: Rect) {
-        self.frame.render_widget(widget, area);
+        widget.render(area, self.buffer);
     }
 
-    /// [Frame::render_stateful_widget]
+    /// Render a [StatefulWidget] to the active buffer
     pub fn render_stateful_widget<W>(
         &mut self,
         widget: W,
@@ -367,7 +363,7 @@ impl<'buf, 'fr> Canvas<'buf, 'fr> {
     ) where
         W: StatefulWidget,
     {
-        self.frame.render_stateful_widget(widget, area, state);
+        widget.render(area, self.buffer, state);
     }
 }
 

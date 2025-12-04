@@ -3,7 +3,9 @@ use crate::{
     view::{
         common::{
             actions::MenuItem,
-            component_select::{ComponentSelect, ComponentSelectTableProps},
+            component_select::{
+                ComponentSelect, ComponentSelectProps, SelectStyles,
+            },
             select::{Select, SelectEvent, SelectEventType},
         },
         component::{
@@ -15,9 +17,7 @@ use crate::{
         event::{Emitter, Event, EventMatch, ToEmitter},
     },
 };
-use ratatui::{
-    layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
-};
+use ratatui::{layout::Layout, prelude::Constraint, text::Span};
 use slumber_config::Action;
 use slumber_core::collection::{Authentication, RecipeId};
 use slumber_template::Template;
@@ -204,7 +204,7 @@ struct BasicAuthentication {
     /// A list of exactly two fields: [username, password]. This can't use
     /// `FixedSelect` because there's associated data attached to each
     /// field
-    select: ComponentSelect<BasicField, TableState>,
+    select: ComponentSelect<BasicField>,
 }
 
 impl BasicAuthentication {
@@ -278,7 +278,10 @@ impl Draw for BasicAuthentication {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         canvas.draw(
             &self.select,
-            ComponentSelectTableProps(()),
+            ComponentSelectProps {
+                styles: SelectStyles::table(),
+                ..Default::default()
+            },
             metadata.area(),
             true,
         );

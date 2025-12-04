@@ -570,7 +570,8 @@ fn has_focus(component: &dyn Component) -> bool {
 pub struct ComponentId(Uuid);
 
 impl ComponentId {
-    fn new() -> Self {
+    /// Get a random component ID
+    pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
 }

@@ -122,10 +122,10 @@ pub enum Action {
     #[display("Force Quit")]
     ForceQuit,
 
-    /// Focus the previous pane
+    /// Focus the previous pane or form input
     #[display("Prev Pane")]
     PreviousPane,
-    /// Focus the next pane
+    /// Focus the next pane or form input
     #[display("Next Pane")]
     NextPane,
 

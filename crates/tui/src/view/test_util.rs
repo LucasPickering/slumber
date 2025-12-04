@@ -303,7 +303,9 @@ where
             assert!(
                 queue.is_empty(),
                 "Event queue is not empty. To prevent unintended side effects, \
-                the queue must be empty before an update. {queue:?}"
+                the queue must be empty before an update. Maybe you want to call
+                drain_draw() before the first interaction?\n\
+                {queue:?}"
             );
         });
         ViewContext::push_event(event);

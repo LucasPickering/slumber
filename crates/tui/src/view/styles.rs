@@ -10,6 +10,7 @@ use slumber_config::Theme;
 /// there. Styles are grouped into sub-structs generally by component.
 #[derive(Debug)]
 pub struct Styles {
+    pub form: FormStyles,
     pub list: ListStyles,
     pub modal: ModalStyles,
     pub pane: PaneStyles,
@@ -20,6 +21,15 @@ pub struct Styles {
     pub text: TextStyle,
     pub text_box: TextBoxStyle,
     pub text_window: TextWindowStyle,
+}
+
+/// Styles for the recipe input form
+#[derive(Debug)]
+pub struct FormStyles {
+    /// Style for a input field title when not selected/focused
+    pub title: Style,
+    /// Style for a input field title when selected/focused
+    pub title_highlight: Style,
 }
 
 /// Styles for List component
@@ -104,6 +114,8 @@ pub struct TemplatePreviewStyles {
 pub struct TextStyle {
     /// Text that needs some visual emphasis/separation
     pub highlight: Style,
+    /// Informational text that should be de-emphasized
+    pub hint: Style,
     /// Text in the primary color
     pub primary: Style,
     /// Templates that have been overridden in this session
@@ -133,6 +145,11 @@ pub struct TextWindowStyle {
 impl Styles {
     pub fn new(theme: &Theme) -> Self {
         Self {
+            form: FormStyles {
+                title: Style::default().add_modifier(Modifier::UNDERLINED),
+                title_highlight: Style::default()
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+            },
             list: ListStyles {
                 highlight: Style::default()
                     .bg(theme.primary_color)
@@ -194,6 +211,7 @@ impl Styles {
                 highlight: Style::default()
                     .fg(theme.primary_text_color)
                     .bg(theme.primary_color),
+                hint: Style::default().fg(Color::DarkGray),
                 primary: Style::default().fg(theme.primary_color),
                 edited: Style::default().add_modifier(Modifier::ITALIC),
                 error: Style::default().bg(theme.error_color),

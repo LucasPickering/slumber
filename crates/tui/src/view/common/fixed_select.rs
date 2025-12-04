@@ -2,7 +2,7 @@ use crate::{
     util::PersistentKey,
     view::{
         common::select::{
-            Select, SelectBuilder, SelectData, SelectEvent, SelectItem,
+            Select, SelectBuilder, SelectEvent, SelectItem, SelectState,
         },
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
@@ -27,7 +27,7 @@ use strum::{EnumCount, IntoEnumIterator};
 pub struct FixedSelect<Item, State = ListState>
 where
     Item: FixedSelectItem,
-    State: SelectData,
+    State: SelectState,
 {
     id: ComponentId,
     /// Re-use Select for state management. The only different is we
@@ -39,7 +39,7 @@ where
 impl<Item, State> FixedSelect<Item, State>
 where
     Item: FixedSelectItem,
-    State: SelectData,
+    State: SelectState,
 {
     /// Start a builder for a new fixed-size list, with items derived from a
     /// static enum.
@@ -112,7 +112,7 @@ where
 impl<Item, State> Default for FixedSelect<Item, State>
 where
     Item: FixedSelectItem,
-    State: SelectData,
+    State: SelectState,
 {
     fn default() -> Self {
         Self::builder().build()
@@ -124,7 +124,7 @@ where
 impl<Item, State> Index<usize> for FixedSelect<Item, State>
 where
     Item: FixedSelectItem,
-    State: SelectData,
+    State: SelectState,
 {
     type Output = Item;
 
@@ -136,7 +136,7 @@ where
 impl<Item, State> IndexMut<usize> for FixedSelect<Item, State>
 where
     Item: FixedSelectItem,
-    State: SelectData,
+    State: SelectState,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.inner[index]
@@ -146,7 +146,7 @@ where
 impl<Item, State> Component for FixedSelect<Item, State>
 where
     Item: FixedSelectItem,
-    State: SelectData,
+    State: SelectState,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -166,7 +166,7 @@ where
 impl<Item, State, Props> Draw<Props> for FixedSelect<Item, State>
 where
     Item: FixedSelectItem,
-    State: SelectData,
+    State: SelectState,
     Select<Item, State>: Draw<Props>,
 {
     fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata) {
@@ -218,7 +218,7 @@ impl<Item: FixedSelectItem, State> FixedSelectBuilder<Item, State> {
     pub fn build(self) -> FixedSelect<Item, State>
     where
         Item: FixedSelectItem,
-        State: SelectData,
+        State: SelectState,
     {
         FixedSelect {
             id: ComponentId::default(),

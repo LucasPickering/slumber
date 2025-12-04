@@ -125,7 +125,7 @@ fn height() -> u16 {
 pub struct TestTerminal(RefCell<Terminal<TestBackend>>);
 
 impl TestTerminal {
-    fn new(width: u16, height: u16) -> Self {
+    pub fn new(width: u16, height: u16) -> Self {
         let backend = TestBackend::new(width, height);
         let terminal = Terminal::new(backend).unwrap();
         Self(terminal.into())

@@ -3590,7 +3590,6 @@ dependencies = [
  "tree-sitter-json",
  "unicode-width 0.1.14",
  "uuid",
- "wiremock",
 ]
 
 [[package]]

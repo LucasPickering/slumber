@@ -41,6 +41,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{ProfileId, RecipeId, RecipeNode, RecipeNodeType},
     http::RequestId,
+    render::Prompt,
 };
 
 /// Primary TUI view, which shows request/response panes
@@ -114,6 +115,11 @@ impl PrimaryView {
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
         self.recipe_detail.request_config()
+    }
+
+    /// Prompt the user for input
+    pub fn prompt(&mut self, prompt: Prompt) {
+        self.recipe_detail.prompt(prompt);
     }
 
     /// Send a request for the currently selected recipe
@@ -244,46 +250,53 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         props: PrimaryViewProps<'a>,
         metadata: DrawMetadata,
     ) {
-        // Precompute recipe pane
-        let collection = ViewContext::collection();
-        let selected_recipe_node =
-            self.selected_recipe_node().and_then(|(id, _)| {
-                collection
-                    .recipes
-                    .try_get(id)
-                    .reported(&ViewContext::messages_tx())
-            });
-        let recipe_props = RecipePaneProps {
-            selected_recipe_node,
-            selected_profile_id: self.selected_profile_id(),
+        // Helper to draw recipe pane
+        let draw_recipe_detail = |canvas: &mut Canvas, area, has_focus| {
+            let collection = ViewContext::collection();
+            let selected_recipe_node =
+                self.selected_recipe_node().and_then(|(id, _)| {
+                    collection
+                        .recipes
+                        .try_get(id)
+                        .reported(&ViewContext::messages_tx())
+                });
+            canvas.draw(
+                &self.recipe_detail,
+                RecipePaneProps {
+                    selected_recipe_node,
+                    selected_profile_id: self.selected_profile_id(),
+                },
+                area,
+                has_focus,
+            );
         };
 
-        // Precompute exchange paner
-        // Rebuild the pane whenever we select a new request or the
-        // current request transitions between states
-        let exchange_pane = self.exchange_pane.get_or_update(
-            &props.selected_request.map(|request_state| {
-                (request_state.id(), request_state.into())
-            }),
-            || {
-                ExchangePane::new(
-                    props.selected_request,
-                    self.selected_recipe_node().map(|(_, node_type)| node_type),
-                )
-            },
-        );
+        // Helper to draw exchange pane
+        let draw_exchange = |canvas: &mut Canvas, area, has_focus| {
+            // Rebuild the pane whenever we select a new request or the
+            // current request transitions between states
+            let exchange_pane = self.exchange_pane.get_or_update(
+                &props.selected_request.map(|request_state| {
+                    (request_state.id(), request_state.into())
+                }),
+                || {
+                    ExchangePane::new(
+                        props.selected_request,
+                        self.selected_recipe_node()
+                            .map(|(_, node_type)| node_type),
+                    )
+                },
+            );
+            canvas.draw(&*exchange_pane, (), area, has_focus);
+        };
 
         let area = metadata.area();
         let fullscreen = self.view.is_fullscreen();
         match self.view.layout() {
             // Sidebar is closed
             PrimaryLayout::Default(pane) if fullscreen => match pane {
-                DefaultPane::Recipe => {
-                    canvas.draw(&self.recipe_detail, recipe_props, area, true);
-                }
-                DefaultPane::Exchange => {
-                    canvas.draw(&*exchange_pane, (), area, true);
-                }
+                DefaultPane::Recipe => draw_recipe_detail(canvas, area, true),
+                DefaultPane::Exchange => draw_exchange(canvas, area, true),
             },
             PrimaryLayout::Default(selected_pane) => {
                 let areas = DefaultAreas::new(area);
@@ -304,15 +317,13 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
 
                 // Panes
-                canvas.draw(
-                    &self.recipe_detail,
-                    recipe_props,
+                draw_recipe_detail(
+                    canvas,
                     areas.top_pane,
                     selected_pane == DefaultPane::Recipe,
                 );
-                canvas.draw(
-                    &*exchange_pane,
-                    (),
+                draw_exchange(
+                    canvas,
                     areas.bottom_pane,
                     selected_pane == DefaultPane::Exchange,
                 );
@@ -327,7 +338,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     true,
                 ),
                 ProfileSelectPane::Recipe => {
-                    canvas.draw(&self.recipe_detail, recipe_props, area, true);
+                    draw_recipe_detail(canvas, area, true);
                 }
                 ProfileSelectPane::Profile => canvas.draw(
                     &self.profile_detail,
@@ -359,9 +370,8 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
 
                 // Panes
-                canvas.draw(
-                    &self.recipe_detail,
-                    recipe_props,
+                draw_recipe_detail(
+                    canvas,
                     areas.top_pane,
                     selected_pane == ProfileSelectPane::Recipe,
                 );
@@ -384,11 +394,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     true,
                 ),
                 RecipeSelectPane::Recipe => {
-                    canvas.draw(&self.recipe_detail, recipe_props, area, true);
+                    draw_recipe_detail(canvas, area, true);
                 }
-                RecipeSelectPane::Exchange => {
-                    canvas.draw(&*exchange_pane, (), area, true);
-                }
+                RecipeSelectPane::Exchange => draw_exchange(canvas, area, true),
             },
             PrimaryLayout::Recipe(selected_pane) => {
                 let areas = SidebarAreas::new(area);
@@ -411,15 +419,13 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
 
                 // Panes
-                canvas.draw(
-                    &self.recipe_detail,
-                    recipe_props,
+                draw_recipe_detail(
+                    canvas,
                     areas.top_pane,
                     selected_pane == RecipeSelectPane::Recipe,
                 );
-                canvas.draw(
-                    &*exchange_pane,
-                    (),
+                draw_exchange(
+                    canvas,
                     areas.bottom_pane,
                     selected_pane == RecipeSelectPane::Exchange,
                 );

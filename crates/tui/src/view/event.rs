@@ -74,10 +74,6 @@ pub enum Event {
         event: Box<dyn LocalEvent>,
     },
 
-    /// Input from the user, which may or may not be bound to an action. Most
-    /// components just care about the action, but some require raw input
-    Input(InputEvent),
-
     /// Load a request from the database. If the ID is given, load that
     /// specific request. If not, get the most recent for the current
     /// profile+recipe.
@@ -86,6 +82,10 @@ pub enum Event {
     /// components throughout the tree, such that using emitted events would be
     /// excessively complicated.
     HttpSelectRequest(Option<RequestId>),
+
+    /// Input from the user, which may or may not be bound to an action. Most
+    /// components just care about the action, but some require raw input
+    Input(InputEvent),
 }
 
 impl Event {

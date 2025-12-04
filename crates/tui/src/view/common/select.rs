@@ -133,6 +133,13 @@ impl<Item, State> SelectBuilder<Item, State> {
         self
     }
 
+    /// Set the index that should be initially selected
+    pub fn preselect_index(mut self, index: usize) -> Self {
+        // If the index is invalid, it will be replaced by 0 in the build()
+        self.preselect_index = index;
+        self
+    }
+
     /// Set the value that should be initially selected
     pub fn preselect<T>(mut self, value: &T) -> Self
     where
@@ -195,7 +202,7 @@ impl<Item, State> SelectBuilder<Item, State> {
 
     pub fn build(self) -> Select<Item, State>
     where
-        State: SelectData,
+        State: SelectState,
     {
         let mut select = Select {
             id: ComponentId::default(),
@@ -224,7 +231,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     }
 }
 
-impl<Item, State: SelectData> Select<Item, State> {
+impl<Item, State: SelectState> Select<Item, State> {
     /// Start a new builder
     pub fn builder(items: Vec<Item>) -> SelectBuilder<Item, State> {
         SelectBuilder {
@@ -252,6 +259,11 @@ impl<Item, State: SelectData> Select<Item, State> {
         self.items.iter_mut().map(|item| &mut item.value)
     }
 
+    /// Get an iterator of owned items in the list
+    pub fn into_items(self) -> impl ExactSizeIterator<Item = Item> {
+        self.items.into_iter().map(|item| item.value)
+    }
+
     /// Get all items in the list, including each one's metadata
     pub fn items_with_metadata(
         &self,
@@ -259,34 +271,13 @@ impl<Item, State: SelectData> Select<Item, State> {
         self.items.iter()
     }
 
-    /// Adjust the state offset to ensure the selected item is visible in the
-    /// view.
+    /// Run a function with mutable access to the view state
     ///
-    /// ## Params
-    ///
-    /// - `height`: The number of items that fit into the view, assuming all
-    ///   items are the same height
-    pub fn scroll_to_selected(&self, height: usize) {
-        let mut state = self.state.borrow_mut();
-
-        // If we can fit more items in the view, scroll up to do so. This can
-        // happen after a resize
-        if self.len() < state.offset() + height {
-            state.set_offset(self.len().saturating_sub(height));
-        }
-
-        if let Some(selected) = state.selected() {
-            let offset = state.offset();
-            if selected < offset {
-                // If selection is above the view, scroll up so it's the first
-                // visible item
-                state.set_offset(selected);
-            } else if selected >= offset + height {
-                // If selection is below the view, scroll down so it's the
-                // last visible item
-                state.set_offset(selected - height + 1);
-            }
-        }
+    /// State is held in a [RefCell] to allow mutation during the draw phase.
+    /// This function ensures access to it is encapsulated to prevent
+    /// concurrent access.
+    pub fn with_state<T>(&self, f: impl FnOnce(&mut State) -> T) -> T {
+        f(&mut self.state.borrow_mut())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -319,12 +310,6 @@ impl<Item, State: SelectData> Select<Item, State> {
     pub fn into_selected(mut self) -> Option<Item> {
         let index = self.selected_index()?;
         Some(self.items.swap_remove(index).value)
-    }
-
-    /// Get the visual offset of the current state. This is the index of the
-    /// first visible item in the list.
-    pub fn offset(&self) -> usize {
-        self.state.borrow().offset()
     }
 
     /// Select an item by index
@@ -440,7 +425,7 @@ impl<Item, State: SelectData> Select<Item, State> {
 
 impl<Item, State> Default for Select<Item, State>
 where
-    State: SelectData,
+    State: SelectState,
 {
     fn default() -> Self {
         Select::<Item, State>::builder(Vec::new()).build()
@@ -451,7 +436,7 @@ where
 /// events, when we know the index will be valid
 impl<Item, State> Index<usize> for Select<Item, State>
 where
-    State: SelectData,
+    State: SelectState,
 {
     type Output = Item;
 
@@ -462,7 +447,7 @@ where
 
 impl<Item, State> IndexMut<usize> for Select<Item, State>
 where
-    State: SelectData,
+    State: SelectState,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.items[index].value
@@ -471,7 +456,7 @@ where
 
 impl<Item, State> Component for Select<Item, State>
 where
-    State: SelectData,
+    State: SelectState,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -504,8 +489,8 @@ where
                 ScrollDirection::Left | ScrollDirection::Right => {}
             })
             .action(|action, propagate| match action {
-                // Up/down keys and scrolling. Scrolling will only work if
-                // .set_area() is called on the wrapping Component by our parent
+                // Up/down keys and scrolling. Scrolling will only work if this
+                // is drawn to the screen
                 Action::Up | Action::ScrollUp => self.up(),
                 Action::Down | Action::ScrollDown => self.down(),
                 // Don't eat these events unless the user has subscribed
@@ -526,7 +511,7 @@ where
 
 impl<Item, State> ToEmitter<SelectEvent> for Select<Item, State>
 where
-    State: SelectData,
+    State: SelectState,
 {
     fn to_emitter(&self) -> Emitter<SelectEvent> {
         self.emitter
@@ -622,13 +607,7 @@ where
 /// Inner state for [Select]. This is an abstraction to allow it to support
 /// multiple state "backends" from Ratatui, to enable usage with different
 /// stateful widgets.
-pub trait SelectData: Default {
-    /// Index of the first visible element
-    fn offset(&self) -> usize;
-
-    /// Set the index of the first visible element
-    fn set_offset(&mut self, offset: usize);
-
+pub trait SelectState: Default {
     /// Index of the selected element
     fn selected(&self) -> Option<usize>;
 
@@ -636,45 +615,29 @@ pub trait SelectData: Default {
     fn select(&mut self, index: Option<usize>);
 }
 
-impl SelectData for ListState {
+impl SelectState for ListState {
     fn selected(&self) -> Option<usize> {
         self.selected()
     }
 
     fn select(&mut self, index: Option<usize>) {
         self.select(index);
-    }
-
-    fn offset(&self) -> usize {
-        self.offset()
-    }
-
-    fn set_offset(&mut self, offset: usize) {
-        *self = self.with_offset(offset);
     }
 }
 
-impl SelectData for TableState {
+impl SelectState for TableState {
     fn selected(&self) -> Option<usize> {
         self.selected()
     }
 
     fn select(&mut self, index: Option<usize>) {
         self.select(index);
-    }
-
-    fn offset(&self) -> usize {
-        self.offset()
-    }
-
-    fn set_offset(&mut self, offset: usize) {
-        *self = self.with_offset(offset);
     }
 }
 
 /// Selection state is just a number. This is useful for tabs and other
 /// fixed-size elements that can never be empty.
-impl SelectData for usize {
+impl SelectState for usize {
     fn selected(&self) -> Option<usize> {
         Some(*self)
     }
@@ -682,12 +645,6 @@ impl SelectData for usize {
     fn select(&mut self, index: Option<usize>) {
         *self = index.expect("Cannot clear selection");
     }
-
-    fn offset(&self) -> usize {
-        0
-    }
-
-    fn set_offset(&mut self, _offset: usize) {}
 }
 
 /// Emitted event for [Select]

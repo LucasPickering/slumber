@@ -4,17 +4,14 @@ use crate::{
     util::{PersistentKey, PersistentStore, ResultReported},
     view::{
         Component, Confirm, ViewContext,
-        common::{actions::ActionMenu, modal::ModalQueue, text_box::TextBox},
+        common::{actions::ActionMenu, modal::ModalQueue},
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
             help::Help,
             history::History,
             internal::ComponentExt,
-            misc::{
-                ConfirmModal, DeleteRecipeRequestsModal, ErrorModal,
-                SelectListModal, TextBoxModal,
-            },
+            misc::{ConfirmModal, DeleteRecipeRequestsModal, ErrorModal},
             primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
@@ -52,8 +49,6 @@ pub struct Root {
     confirms: ModalQueue<ConfirmModal>,
     errors: ModalQueue<ErrorModal>,
     history: ModalQueue<History>,
-    prompts: ModalQueue<TextBoxModal>,
-    selects: ModalQueue<SelectListModal>,
 }
 
 impl Root {
@@ -83,8 +78,6 @@ impl Root {
             confirms: ModalQueue::default(),
             errors: ModalQueue::default(),
             history: ModalQueue::default(),
-            prompts: ModalQueue::default(),
-            selects: ModalQueue::default(),
         }
     }
 
@@ -108,33 +101,7 @@ impl Root {
 
     /// Prompt the user for input
     pub fn prompt(&mut self, prompt: Prompt) {
-        match prompt {
-            Prompt::Text {
-                message,
-                default,
-                sensitive,
-                channel,
-            } => {
-                self.prompts.open(TextBoxModal::new(
-                    message,
-                    TextBox::default()
-                        .sensitive(sensitive)
-                        .default_value(default.unwrap_or_default()),
-                    |response| channel.respond(response),
-                ));
-            }
-            Prompt::Select {
-                message,
-                options,
-                channel,
-            } => {
-                self.selects.open(SelectListModal::new(
-                    message,
-                    options,
-                    |response| channel.respond(response),
-                ));
-            }
-        }
+        self.primary_view.prompt(prompt);
     }
 
     /// ID of the selected profile. `None` iff the list is empty
@@ -317,8 +284,6 @@ impl Component for Root {
             self.delete_requests_confirm.to_child_mut(),
             self.confirms.to_child_mut(),
             self.history.to_child_mut(),
-            self.prompts.to_child_mut(),
-            self.selects.to_child_mut(),
             // Non-modals
             self.primary_view.to_child_mut(),
             self.footer.to_child_mut(),
@@ -368,8 +333,6 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
         canvas.draw_portal(&self.delete_requests_confirm, (), true);
         canvas.draw_portal(&self.confirms, (), true);
         canvas.draw_portal(&self.history, (), true);
-        canvas.draw_portal(&self.prompts, (), true);
-        canvas.draw_portal(&self.selects, (), true);
         // Errors render last because they're drawn on top (highest priority)
         canvas.draw_portal(&self.errors, (), true);
     }

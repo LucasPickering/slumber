@@ -80,9 +80,9 @@ requests:
           data:
             {
               "name": "{{ prompt(message='Name', default='Fishy') }}",
-              "species": "{{ prompt(message='Species', default='Fish') }}",
+              "species": "{{ select(['Sunfish', 'baby fuckin wheel'], message='Species') }}",
               "age": "{{ prompt(message='Age', default=3) | integer() }}",
-              "weight_kg": "{{ prompt(message='Weight (kg)', default='1.5') | float() }}",
+              "weight_kg": "{{ prompt(message='Weight (kg)', default='1000.5') | float() }}",
             }
 
       modify_fish:

@@ -83,6 +83,11 @@ impl<State: SidebarListState> SidebarList<State> {
         self.select.selected().map(|item| &item.0)
     }
 
+    /// Get the ID of the selected item, or `None` if the list is empty
+    pub fn selected_id(&self) -> Option<&<State::Item as SidebarListItem>::Id> {
+        self.selected().map(State::Item::id)
+    }
+
     /// Get the inner state value
     pub fn state(&self) -> &State {
         &self.state

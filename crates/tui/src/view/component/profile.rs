@@ -10,10 +10,10 @@ use crate::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             sidebar_list::{SidebarListItem, SidebarListState},
         },
-        state::StateCell,
     },
 };
 use anyhow::anyhow;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Serialize;
 use slumber_config::Action;
@@ -88,28 +88,31 @@ impl PersistentKey for SelectedProfileKey {
 #[derive(Debug, Default)]
 pub struct ProfileDetail {
     id: ComponentId,
-    /// Cached field previews. Recomputes whenever the selected profile changes
-    fields: StateCell<Option<ProfileId>, Vec<(String, TemplatePreview)>>,
+    /// Precomputed field previews
+    fields: Vec<(String, TemplatePreview)>,
 }
 
 impl ProfileDetail {
     /// Recompute the field previews for a profile
-    fn render_previews(
-        profile_id: Option<&ProfileId>,
-    ) -> Vec<(String, TemplatePreview)> {
+    ///
+    /// Call this whenever this selected profile changes.
+    pub fn refresh(&mut self, profile_id: Option<&ProfileId>) {
         let collection = ViewContext::collection();
-        let Some(profile_data) = profile_id.and_then(|profile_id| {
-            let profile = collection
-                .profiles
-                .get(profile_id)
-                // Failure is a logic error
-                .ok_or_else(|| anyhow!("No profile with ID `{profile_id}`"))
-                .reported(&ViewContext::messages_tx())?;
-            Some(&profile.data)
-        }) else {
-            return vec![];
-        };
-        profile_data
+        let default = IndexMap::new();
+        let profile_data = profile_id
+            .and_then(|profile_id| {
+                let profile = collection
+                    .profiles
+                    .get(profile_id)
+                    // Failure is a logic error
+                    .ok_or_else(|| anyhow!("No profile with ID `{profile_id}`"))
+                    .reported(&ViewContext::messages_tx())?;
+                Some(&profile.data)
+            })
+            .unwrap_or(&default);
+
+        // Start a preview render for each field
+        self.fields = profile_data
             .iter()
             .map(|(key, template)| {
                 (
@@ -118,14 +121,15 @@ impl ProfileDetail {
                         template.clone(),
                         None,
                         false,
-                        // We don't know how this value will be used, so let's
-                        // say we *do* support streaming to prevent loading
+                        // We don't know how this value will be used, so
+                        // let's say we *do*
+                        // support streaming to prevent loading
                         // some huge streams
                         true,
                     ),
                 )
             })
-            .collect_vec()
+            .collect_vec();
     }
 }
 
@@ -135,13 +139,8 @@ impl Component for ProfileDetail {
     }
 }
 
-impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
-    fn draw(
-        &self,
-        canvas: &mut Canvas,
-        props: ProfileDetailProps<'a>,
-        metadata: DrawMetadata,
-    ) {
+impl Draw for ProfileDetail {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let title = TuiContext::get()
             .input_engine
             .add_hint("Profile", Action::SelectProfile);
@@ -153,16 +152,10 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
         let area = block.inner(metadata.area());
         canvas.render_widget(block, metadata.area());
 
-        // Whenever the selected profile changes, rebuild the internal state.
-        // This is needed because the template preview rendering is async.
-        let profile_id = props.profile_id;
-        let fields = self.fields.get_or_update(&profile_id.cloned(), || {
-            Self::render_previews(profile_id)
-        });
-
         let table = Table {
             header: Some(["Field", "Value"]),
-            rows: fields
+            rows: self
+                .fields
                 .iter()
                 .map(|(key, value)| [key.as_str().into(), value.generate()])
                 .collect_vec(),
@@ -171,9 +164,4 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
         };
         canvas.render_widget(table, area);
     }
-}
-
-/// Props for [ProfileDetail]
-pub struct ProfileDetailProps<'a> {
-    pub profile_id: Option<&'a ProfileId>,
 }

@@ -1,64 +1,12 @@
 //! State types for the view.
 
 use derive_more::Deref;
-use std::{
-    cell::{Ref, RefCell},
-    time::Duration,
-};
+use std::time::Duration;
 use uuid::Uuid;
 
-/// An internally mutable cell for UI state. Certain state needs to be updated
-/// during the draw phase, typically because it's derived from parent data
-/// passed via props. This is safe to use in the render phase, because rendering
-/// is entirely synchronous.
-///
-/// In addition to storing the state value, this stores a state key as well. The
-/// key is used to determine when to update the state. The key should be
-/// something cheaply comparable. If the value itself is cheaply comparable,
-/// you can just use that as the key.
-///
-/// The only way to initialize a new state cell is via its [Default]
-/// implementation. This requires that both `K` and `V` implement [Default] as
-/// well, so we can provide an initial value. In the past we stored an `Option`
-/// internally so we could avoid this requirement, but this polluted the type
-/// signatures of various functions for little gain.
-#[derive(Debug, Default)]
-pub struct StateCell<K, V> {
-    state: RefCell<(K, V)>,
-}
-
-impl<K, V> StateCell<K, V> {
-    /// Get the current state value, or a new value if the state is stale. State
-    /// will be stale if it is uninitialized OR the key has changed. In either
-    /// case, `init` will be called to create a new value. The given key will be
-    /// cloned iff the state is updated, so that the key can be stored.
-    pub fn get_or_update(&self, key: &K, init: impl FnOnce() -> V) -> Ref<'_, V>
-    where
-        K: Clone + PartialEq,
-    {
-        let mut state = self.state.borrow_mut();
-        if &state.0 != key {
-            // Recreate the state
-            *state = (key.clone(), init());
-        }
-        drop(state);
-
-        // It'd be nice to return an `impl Deref` here instead to prevent
-        // leaking implementation details, but I was struggling with the
-        // lifetimes on that
-        Ref::map(self.state.borrow(), |state| &state.1)
-    }
-
-    /// Get a reference to the state value. This can panic, if the state  is
-    /// already borrowed elsewhere. Returns `None` iff the state cell is
-    /// uninitialized.
-    pub fn borrow(&self) -> Ref<'_, V> {
-        Ref::map(self.state.borrow(), |state| &state.1)
-    }
-}
-
 /// A uniquely identified immutable value. Useful for detecting changes in
-/// values that are expensive to do full comparisons on.
+/// values that are expensive to do full comparisons on (e.g. large blocks of
+/// text).
 #[derive(Debug, Deref)]
 pub struct Identified<T> {
     id: Uuid,

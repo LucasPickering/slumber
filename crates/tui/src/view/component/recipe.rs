@@ -357,8 +357,8 @@ pub struct RecipeDetail {
     id: ComponentId,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeMenuAction>,
-    /// UI state derived from the selected node+profile. [Self::reload] should
-    /// be called whenever either changes.
+    /// UI state derived from the selected node+profile. When either changes,
+    /// the component has to be rebuilt
     state: RecipeNodeState,
     /// A form for answering prompts from the request render engine. This
     /// receives prompts from the render tasks via messages, and whenever there

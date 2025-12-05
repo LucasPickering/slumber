@@ -5,7 +5,7 @@ use crate::{
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, EventMatch},
-        state::{Identified, StateCell},
+        state::Identified,
     },
 };
 use ratatui::{
@@ -31,7 +31,9 @@ pub struct TextWindow {
     id: ComponentId,
     /// Cache the size of the text window, because it's expensive to calculate.
     /// Checking the width of a text requires counting all its graphemes.
-    text_size: StateCell<Uuid, TextSize>,
+    /// [TextSize] stores a unique ID for the source text object, which comes
+    /// from [Identified].
+    text_size: Cell<TextSize>,
     /// Horizontal scroll
     offset_x: Cell<usize>,
     /// Vertical scroll
@@ -42,53 +44,18 @@ pub struct TextWindow {
     window_height: Cell<usize>,
 }
 
-#[derive(Clone, Debug)]
-pub struct TextWindowProps<'a> {
-    /// Text to render. We take a reference because this component tends to
-    /// contain a lot of text, and we don't want to force a clone on render
-    pub text: &'a Identified<Text<'a>>,
-    pub margins: ScrollbarMargins,
-}
-
-/// How far outside the text window should scrollbars be placed? Margin of
-/// 0 uses the outermost row/column of the text area. Positive values
-/// pushes the scrollbar outside the rendered outside, negative moves
-/// it inside.
-#[derive(Clone, Debug)]
-pub struct ScrollbarMargins {
-    pub right: i32,
-    pub bottom: i32,
-}
-
-impl Default for ScrollbarMargins {
-    fn default() -> Self {
-        Self {
-            right: 1,
-            bottom: 1,
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct TextSize {
-    /// Number of graphemes in the longest line in the text
-    width: usize,
-    /// Number of lines in the text
-    height: usize,
-}
-
 impl TextWindow {
     /// Get the final line that we can't scroll past. This will be the first
     /// line of the last page of text
     fn max_scroll_line(&self) -> usize {
-        let text_height = self.text_size.borrow().height;
+        let text_height = self.text_size.get().height;
         text_height.saturating_sub(self.window_height.get())
     }
 
     /// Get the final column that we can't scroll (horizontally) past. This will
     /// be the left edge of the rightmost "page" of text
     fn max_scroll_column(&self) -> usize {
-        let text_width = self.text_size.borrow().width;
+        let text_width = self.text_size.get().width;
         text_width.saturating_sub(self.window_width.get())
     }
 
@@ -206,37 +173,23 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
     ) {
         let styles = &TuiContext::get().styles;
 
-        let text_state = self.text_size.get_or_update(&props.text.id(), || {
-            // Note: Paragraph has methods for this, but that requires an
-            // owned copy of Text, which involves a lot of cloning
-
-            // This counts _graphemes_, not bytes, so it's O(n)
-            let text_width = props
-                .text
-                .lines
-                .iter()
-                .map(Line::width)
-                .max()
-                .unwrap_or_default();
-            // Assume no line wrapping when calculating line count
-            let text_height = props.text.lines.len();
-            TextSize {
-                width: text_width,
-                height: text_height,
-            }
-        });
+        // If the text has changed, recalculate dimensions
+        if self.text_size.get().id != props.text.id() {
+            self.text_size.update(|_| TextSize::new(props.text));
+        }
+        let text_size = self.text_size.get();
 
         let [gutter_area, _, text_area] = Layout::horizontal([
             // Size gutter based on width of max line number
             Constraint::Length(
-                (text_state.height as f32).log10().floor() as u16 + 1,
+                (text_size.height as f32).log10().floor() as u16 + 1,
             ),
             Constraint::Length(1), // Spacer
             Constraint::Min(0),
         ])
         .areas(metadata.area());
-        let has_vertical_scroll = text_state.height > text_area.height as usize;
-        let has_horizontal_scroll = text_state.width > text_area.width as usize;
+        let has_vertical_scroll = text_size.height > text_area.height as usize;
+        let has_horizontal_scroll = text_size.width > text_area.width as usize;
 
         // Store text and window sizes for calculations in the update code
         self.window_width.set(text_area.width as usize);
@@ -249,7 +202,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         let first_line = self.offset_y.get() + 1;
         let last_line = cmp::min(
             first_line + self.window_height.get() - 1,
-            text_state.height,
+            text_size.height,
         );
         canvas.render_widget(
             Paragraph::new(
@@ -269,7 +222,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         if has_vertical_scroll {
             canvas.render_widget(
                 Scrollbar {
-                    content_length: text_state.height,
+                    content_length: text_size.height,
                     offset: self.offset_y.get(),
                     margin: props.margins.right,
                     ..Default::default()
@@ -280,7 +233,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         if has_horizontal_scroll {
             canvas.render_widget(
                 Scrollbar {
-                    content_length: text_state.width,
+                    content_length: text_size.width,
                     offset: self.offset_x.get(),
                     orientation: ScrollbarOrientation::HorizontalBottom,
                     margin: props.margins.bottom,
@@ -288,6 +241,68 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
                 },
                 text_area,
             );
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TextWindowProps<'a> {
+    /// Text to render. We take a reference because this component tends to
+    /// contain a lot of text, and we don't want to force a clone on render.
+    /// This uses `Identified` as a wrapper so that each text object has a
+    /// unique ID attached. When the text content changes, the ID will change.
+    /// We use that to detect when the text dimensions need to be recalculated.
+    pub text: &'a Identified<Text<'a>>,
+    pub margins: ScrollbarMargins,
+}
+
+/// How far outside the text window should scrollbars be placed? Margin of
+/// 0 uses the outermost row/column of the text area. Positive values
+/// pushes the scrollbar outside the rendered outside, negative moves
+/// it inside.
+#[derive(Clone, Debug)]
+pub struct ScrollbarMargins {
+    pub right: i32,
+    pub bottom: i32,
+}
+
+impl Default for ScrollbarMargins {
+    fn default() -> Self {
+        Self {
+            right: 1,
+            bottom: 1,
+        }
+    }
+}
+
+/// Cached dimensions for a particular text object
+#[derive(Copy, Clone, Debug, Default)]
+struct TextSize {
+    /// Unique ID for the text object that this value measures. This comes from
+    /// [Identified]. When text content changes, its ID will change as well.
+    id: Uuid,
+    /// Number of graphemes in the longest line in the text
+    width: usize,
+    /// Number of lines in the text
+    height: usize,
+}
+
+impl TextSize {
+    /// Calculate dimensions of the given text
+    fn new(text: &Identified<Text>) -> Self {
+        // Note: Paragraph has methods for this, but that requires an
+        // owned copy of Text, which involves a lot of cloning
+
+        let lines = &text.lines;
+        // This counts _graphemes_, not bytes, so it's O(len)
+        let text_width =
+            lines.iter().map(Line::width).max().unwrap_or_default();
+        // Assume no line wrapping when calculating line count
+        let text_height = lines.len();
+        Self {
+            id: text.id(),
+            width: text_width,
+            height: text_height,
         }
     }
 }

@@ -36,7 +36,7 @@ impl InputEngine {
     /// action is unbound, use a placeholder string instead
     pub fn binding_display(&self, action: Action) -> String {
         self.binding(action)
-            .map(|binding| format!("{binding}"))
+            .map(|binding| format!("[{binding}]"))
             .unwrap_or_else(|| "<unbound>".to_owned())
     }
 

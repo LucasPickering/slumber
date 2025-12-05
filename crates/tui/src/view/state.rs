@@ -49,13 +49,6 @@ impl<K, V> StateCell<K, V> {
         Ref::map(self.state.borrow(), |state| &state.1)
     }
 
-    /// Get a reference to the state key. This can panic, if the state is
-    /// already borrowed elsewhere. Returns `None` iff the state cell is
-    /// uninitialized.
-    pub fn borrow_key(&self) -> Ref<'_, K> {
-        Ref::map(self.state.borrow(), |state| &state.0)
-    }
-
     /// Get a reference to the state value. This can panic, if the state  is
     /// already borrowed elsewhere. Returns `None` iff the state cell is
     /// uninitialized.

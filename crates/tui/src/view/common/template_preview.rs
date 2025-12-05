@@ -81,8 +81,10 @@ impl TemplatePreview {
         let text = Arc::new(Mutex::new(text));
 
         // Trigger a task to render the preview and write the answer back into
-        // the mutex
-        if tui_context.config.tui.preview_templates {
+        // the mutex. If the template is static (has no dynamic chunks), there's
+        // no need to do this. We'll display the raw template text by default,
+        // which will be equivalent to the rendered text
+        if tui_context.config.tui.preview_templates && template.is_dynamic() {
             let destination = Arc::clone(&text);
             let on_complete = move |c| {
                 Self::calculate_rendered_text(
@@ -265,7 +267,27 @@ mod tests {
         render::TemplateContext,
         test_util::by_id,
     };
-    use slumber_util::Factory;
+    use slumber_util::{Factory, assert_matches};
+
+    /// TemplatePreview message should only be sent for dynamic templates
+    #[rstest]
+    #[case::static_("static!", false)]
+    #[case::dynamic("{{ dynamic }}", true)]
+    fn test_send_message(
+        mut harness: TestHarness,
+        #[case] template: Template,
+        #[case] should_send: bool,
+    ) {
+        TemplatePreview::new(template, None, false, false);
+        if should_send {
+            assert_matches!(
+                harness.pop_message_now(),
+                Message::TemplatePreview { .. }
+            );
+        } else {
+            harness.assert_messages_empty();
+        }
+    }
 
     /// Test line breaks, multi-byte characters, and binary data
     #[rstest]

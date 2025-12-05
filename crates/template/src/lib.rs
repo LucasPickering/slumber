@@ -173,6 +173,14 @@ impl Template {
         self.chunks.is_empty()
     }
 
+    /// Does the template have at least one dynamic chunk? If this returns
+    /// `false`, the template will always render to its source text
+    pub fn is_dynamic(&self) -> bool {
+        self.chunks
+            .iter()
+            .any(|chunk| matches!(chunk, TemplateChunk::Expression(_)))
+    }
+
     /// Render the template, returning the individual rendered chunks rather
     /// than stitching them together into a string. If any individual chunk
     /// fails to render, its error will be returned inline as

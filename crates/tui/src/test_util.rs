@@ -78,6 +78,13 @@ impl TestHarness {
         &self.messages_tx
     }
 
+    /// Assert that the message queue is empty
+    pub fn assert_messages_empty(&mut self) {
+        if let Ok(message) = self.messages_rx.try_recv() {
+            panic!("Expected message queue to be empty, but got {message:?}");
+        }
+    }
+
     /// Pop the next message off the queue. Panic if the queue is empty
     pub fn pop_message_now(&mut self) -> Message {
         self.messages_rx.try_recv().expect("Message queue empty")

@@ -163,7 +163,7 @@ impl TuiState {
     pub fn draw(&self, frame: &mut Frame) {
         match &self.0 {
             TuiStateInner::Loaded(state) => {
-                state.view.draw(frame, &state.request_store);
+                state.view.draw(frame);
             }
             TuiStateInner::Error {
                 collection_file,

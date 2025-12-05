@@ -139,7 +139,7 @@ impl PrimaryView {
                     .try_get(id)
                     .reported(&ViewContext::messages_tx())
             });
-        self.recipe_detail.refresh(selected_recipe_node);
+        self.recipe_detail = RecipeDetail::new(selected_recipe_node);
 
         // When the recipe/profile changes, we want to select the most recent
         // recipe for that combo as well
@@ -210,8 +210,8 @@ impl Component for PrimaryView {
                 SidebarListEvent::Open => self.view.open_profile_list(),
                 SidebarListEvent::Select => {
                     // Both panes can change when the profile changes
-                    self.profile_detail
-                        .refresh(self.profile_list.selected_id());
+                    self.profile_detail =
+                        ProfileDetail::new(self.profile_list.selected_id());
                     self.refresh_recipe();
                 }
                 SidebarListEvent::Close => self.view.close_sidebar(),

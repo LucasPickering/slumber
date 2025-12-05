@@ -528,7 +528,7 @@ mod tests {
     #[tokio::test]
     async fn test_text_body(
         harness: TestHarness,
-        #[with(26, 3)] terminal: TestTerminal,
+        #[with(27, 3)] terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
         let mut component = TestComponent::new(
@@ -543,14 +543,11 @@ mod tests {
         let styles = &TuiContext::get().styles.text_box;
         terminal.assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}".into()],
-            vec![gutter(" "), "                       ".into()],
-            vec![
-                Span::styled(
-                    "/ to query, : to export",
-                    styles.text.patch(styles.placeholder),
-                ),
-                Span::styled("   ", styles.text),
-            ],
+            vec![gutter(" "), "".into()],
+            vec![Span::styled(
+                "[/] to query, [:] to export",
+                styles.text.patch(styles.placeholder),
+            )],
         ]);
 
         // Type something into the query box
@@ -586,9 +583,9 @@ mod tests {
 
         // Check the view again
         terminal.assert_buffer_lines([
-            vec![gutter("1"), " {                  ".into()],
-            vec![gutter(" "), "                    ".into()],
-            vec![Span::styled("head -c 1                 ", styles.text)],
+            vec![gutter("1"), " {                   ".into()],
+            vec![gutter(" "), "                     ".into()],
+            vec![Span::styled("head -c 1                  ", styles.text)],
         ]);
     }
 

@@ -18,13 +18,14 @@ use crate::{
 use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
-    text::{Line, Text},
-    widgets::Block,
+    prelude::{Buffer, Rect},
+    text::{Line, Span, Text},
+    widgets::Widget,
 };
 use slumber_config::Action;
 use slumber_core::render::{Prompt, ResponseChannel, SelectOption};
 use slumber_template::Value;
-use std::{cmp, mem};
+use std::{borrow::Cow, cmp, mem};
 
 /// A form displaying prompts for the recipe builder
 ///
@@ -38,6 +39,10 @@ pub struct PromptForm {
     /// All inputs in the form. We use a select for this to manage the focus
     /// on one input at a time
     select: ComponentSelect<PromptInput>,
+    /// Are we in edit mode? User has to explicitly switch to editing. This
+    /// flag is retained when switching fields, so the user doesn't have to
+    /// edit each field individually.
+    editing: bool,
 }
 
 impl PromptForm {
@@ -77,16 +82,27 @@ impl Component for PromptForm {
         event.m().action(|action, propagate| match action {
             Action::PreviousPane => self.select.up(),
             Action::NextPane => self.select.down(),
+            Action::Edit if !self.editing => self.editing = true,
             Action::Cancel => {
-                // Clear out all inputs. This will drop all the prompts,
-                // triggering an error in the request
-                self.select = ComponentSelect::default();
+                if self.editing {
+                    // If editing, just exit editing
+                    self.editing = false;
+                } else {
+                    // Clear out all inputs. This will drop all the prompts,
+                    // triggering an error in the request
+                    self.select = ComponentSelect::default();
+                }
             }
             Action::Submit => {
-                // Tell each input to submit its response to its channel
-                let select = mem::take(&mut self.select).into_select();
-                for input in select.into_items() {
-                    input.submit();
+                if self.editing {
+                    // If editing, just exit editing
+                    self.editing = false;
+                } else {
+                    // Tell each input to submit its response to its channel
+                    let select = mem::take(&mut self.select).into_select();
+                    for input in select.into_items() {
+                        input.submit();
+                    }
                 }
             }
             _ => propagate.set(),
@@ -116,14 +132,17 @@ impl Draw for PromptForm {
         canvas
             .render_widget(Line::from(help).style(styles.text.hint), help_area);
 
+        let props = PromptInputProps {
+            editing: self.editing,
+        };
         canvas.draw(
             &self.select,
             ComponentSelectProps {
                 styles: SelectStyles::none(),
                 spacing: Spacing::default(),
-                item_props: Box::new(|item, is_selected| {
+                item_props: Box::new(move |item, is_selected| {
                     // Let each item determine its own height
-                    ((), item.height(is_selected))
+                    (props, item.height(is_selected && props.editing))
                 }),
             },
             form_area,
@@ -163,6 +182,7 @@ impl PromptInput {
             } => Self::Text {
                 id: ComponentId::default(),
                 message,
+
                 text_box: TextBox::default()
                     .sensitive(sensitive)
                     .default_value(default.unwrap_or_default()),
@@ -182,10 +202,10 @@ impl PromptInput {
     }
 
     /// Get the intended draw height of this input, including its header
-    fn height(&self, is_selected: bool) -> u16 {
+    fn height(&self, editing: bool) -> u16 {
         let content_height = match self {
-            // When a select is focused, we show the entire list
-            PromptInput::Select { select, .. } if is_selected => {
+            // When a select is editable, we show the entire list
+            PromptInput::Select { select, .. } if editing => {
                 // Cap the height of the list to prevent taking up too much
                 // space
                 cmp::min(select.len() as u16, 5)
@@ -226,21 +246,6 @@ impl Component for PromptInput {
         }
     }
 
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> EventMatch {
-        event.m().action(|action, propagate| match action {
-            // Eat up/down so it can't be used to navigate the form. Up/down is
-            // used within select fields, so allowing it to navigate fields
-            // within the form gives inconsistent behavior. We'll force the user
-            // to use tab/shift-tab instead
-            Action::Up | Action::Down => {}
-            _ => propagate.set(),
-        })
-    }
-
     fn children(&mut self) -> Vec<Child<'_>> {
         match self {
             Self::Text { text_box, .. } => vec![text_box.to_child_mut()],
@@ -249,49 +254,105 @@ impl Component for PromptInput {
     }
 }
 
-impl Draw for PromptInput {
-    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        // Draw the title above the content
-        let styles = &TuiContext::get().styles.form;
-        let has_focus = metadata.has_focus();
-        let title = match self {
+impl Draw<PromptInputProps> for PromptInput {
+    fn draw(
+        &self,
+        canvas: &mut Canvas,
+        props: PromptInputProps,
+        metadata: DrawMetadata,
+    ) {
+        let [title_area, content_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)])
+                .areas(metadata.area());
+
+        // Draw the title
+        canvas.render_widget(
+            InputTitle {
+                input: self,
+                editing: props.editing,
+                has_focus: metadata.has_focus(),
+            },
+            title_area,
+        );
+
+        if metadata.has_focus() && props.editing {
+            // If focused + editing, show the interactive content
+            match self {
+                PromptInput::Text { text_box, .. } => canvas.draw(
+                    text_box,
+                    TextBoxProps::default(),
+                    content_area,
+                    true,
+                ),
+                PromptInput::Select { select, .. } => canvas.draw(
+                    select,
+                    SelectListProps::pane(),
+                    content_area,
+                    true,
+                ),
+            }
+        } else {
+            // Content is just a string
+            let value: Cow<'_, str> = match self {
+                PromptInput::Text { text_box, .. } => text_box.display_text(),
+                PromptInput::Select { select, .. } => {
+                    select
+                        .selected()
+                        .map(|item| item.label.as_str())
+                        // Empty list should be prevented by the render engine
+                        .unwrap_or("<None>")
+                        .into()
+                }
+            };
+            canvas.render_widget(value.as_ref(), content_area);
+        }
+    }
+}
+
+/// Draw props for [PromptInput]
+#[derive(Copy, Clone)]
+struct PromptInputProps {
+    editing: bool,
+}
+
+/// Widget to draw the title line of a form field
+struct InputTitle<'a> {
+    input: &'a PromptInput,
+    editing: bool,
+    has_focus: bool,
+}
+
+impl Widget for InputTitle<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let styles = &TuiContext::get().styles;
+
+        let title_style = if self.has_focus {
+            styles.form.title_highlight
+        } else {
+            styles.form.title
+        };
+        let mut title = Line::default();
+        let field_name = match self.input {
             PromptInput::Text { message, .. }
             | PromptInput::Select { message, .. } => message.as_str(),
         };
-        let title_style = if has_focus {
-            styles.title_highlight
-        } else {
-            styles.title
-        };
-        let block = Block::new().title(Line::from(title).style(title_style));
-        let area = block.inner(metadata.area());
-        canvas.render_widget(block, metadata.area());
+        title.push_span(Span::from(field_name).style(title_style));
 
-        match self {
-            PromptInput::Text { text_box, .. } if has_focus => {
-                // If focused, draw the textbox
-                canvas.draw(text_box, TextBoxProps::default(), area, true);
-            }
-            PromptInput::Text { text_box, .. } => {
-                // If not focused, just show the content. This eliminates the
-                // text box style, which provides more contrast between
-                // focused/unfocused
-                canvas.render_widget(text_box.text(), area);
-            }
-            PromptInput::Select { select, .. } if has_focus => {
-                // If focused, show the whole list
-                canvas.draw(select, SelectListProps::pane(), area, true);
-            }
-            PromptInput::Select { select, .. } => {
-                // If unfocused, just show the selected item
-                let selected = select
-                    .selected()
-                    .map(|item| item.label.as_str())
-                    // Empty list should be prevented by the render engine
-                    .unwrap_or("<None>");
-                canvas.render_widget(selected, area);
-            }
+        // If focused, show a hint
+        if self.has_focus {
+            let input_engine = &TuiContext::get().input_engine;
+            let hint = if self.editing {
+                format!(
+                    " Done {}",
+                    input_engine.binding_display(Action::Submit)
+                )
+            } else {
+                format!(" Edit {}", input_engine.binding_display(Action::Edit))
+            };
+            title.push_span(Span::from(hint).style(styles.text.hint));
         }
+
+        title.render(area, buf);
     }
 }
 
@@ -346,14 +407,15 @@ mod tests {
         component
             .int()
             .drain_draw() // Draw so children are visible
+            .send_key(KeyCode::Char('e')) // Edit
             .send_text("123") // Modify username
-            .send_key(KeyCode::Tab) // Switch to species
+            .send_key(KeyCode::Tab) // Switch to species - still editing
             .send_key(KeyCode::Down) // Select 2nd option
             .send_key_modifiers(KeyCode::Tab, KeyModifiers::SHIFT) // Go back
             .send_text("4") // Modify username again
-            // Wrap to password
-            .send_key_modifiers(KeyCode::Tab, KeyModifiers::SHIFT)
+            .send_key(KeyCode::Up) // We can navigate with arrow keys too
             .send_text("456") // Modify password
+            .send_key(KeyCode::Enter) // Done editing
             .send_key(KeyCode::Enter) // Submit
             .assert_empty();
 
@@ -382,22 +444,23 @@ mod tests {
 
     /// Text input field
     #[rstest]
-    fn test_text(harness: TestHarness, #[with(10, 5)] terminal: TestTerminal) {
+    fn test_text(harness: TestHarness, #[with(8, 5)] terminal: TestTerminal) {
         let mut component =
             TestComponent::new(&harness, &terminal, PromptForm::default());
         let (username_prompt, mut username_rx) =
             text("Username", Some("user"), false);
         component.prompt(username_prompt);
         let (password_prompt, mut password_rx) =
-            text("Password", Some("hunter2"), true);
+            text("Password", Some("hunter"), true);
         component.prompt(password_prompt);
 
         component
             .int()
             .drain_draw() // Draw so children are visible
+            .send_key(KeyCode::Char('e')) // Edit
             .send_text("12") // Modify username
             .send_key(KeyCode::Tab) // Switch to password
-            .send_text("34") // Modify password
+            .send_text("2") // Modify password
             .assert_empty();
 
         // Check terminal contents
@@ -406,27 +469,28 @@ mod tests {
             Line::styled("Username", styles.form.title),
             Line::styled("user12", Style::default()),
             Line::styled("Password", styles.form.title_highlight),
-            // Sensitive fields get masked
+            // Sensitive fields get masked, even when not editing
             Line::from_iter([
-                "•••••••••".set_style(styles.text_box.text),
+                "•••••••".set_style(styles.text_box.text),
                 " ".set_style(styles.text_box.cursor),
             ]),
             // Footer gets cut off
-            Line::styled("Change Fie", styles.text.hint),
+            Line::styled("Change F", styles.text.hint),
         ]);
 
         // Submit
-        component.int().send_key(KeyCode::Enter).assert_empty();
+        component
+            .int()
+            // Done editing, then submit
+            .send_keys([KeyCode::Enter, KeyCode::Enter])
+            .assert_empty();
         assert_eq!(username_rx.try_recv().unwrap(), "user12");
-        assert_eq!(password_rx.try_recv().unwrap(), "hunter234");
+        assert_eq!(password_rx.try_recv().unwrap(), "hunter2");
     }
 
     /// Select input field
     #[rstest]
-    fn test_select(
-        harness: TestHarness,
-        #[with(10, 5)] terminal: TestTerminal,
-    ) {
+    fn test_select(harness: TestHarness, #[with(7, 5)] terminal: TestTerminal) {
         let mut component =
             TestComponent::new(&harness, &terminal, PromptForm::default());
         let (prompt, mut rx) = select(
@@ -442,22 +506,26 @@ mod tests {
         component
             .int()
             .drain_draw() // Draw so children are visible
-            .send_key(KeyCode::Down)
+            .send_keys([KeyCode::Char('e'), KeyCode::Down])
             .assert_empty();
 
         // Check terminal contents
         let styles = &TuiContext::get().styles;
         terminal.assert_buffer_lines([
             Line::styled("Species", styles.form.title_highlight),
-            Line::styled("holy shit ", Style::default()),
-            Line::styled("it's a bab", styles.list.highlight),
-            Line::styled("look at th", Style::default()),
+            Line::styled("holy sh", Style::default()),
+            Line::styled("it's a ", styles.list.highlight),
+            Line::styled("look at", Style::default()),
             // Footer gets cut off
-            Line::styled("Change Fie", styles.text.hint),
+            Line::styled("Change ", styles.text.hint),
         ]);
 
         // Submit
-        component.int().send_key(KeyCode::Enter).assert_empty();
+        component
+            .int()
+            // Done editing, then submit
+            .send_keys([KeyCode::Enter, KeyCode::Enter])
+            .assert_empty();
         assert_eq!(rx.try_recv().unwrap(), 2.into());
     }
 

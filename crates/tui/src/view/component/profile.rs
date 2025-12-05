@@ -93,10 +93,10 @@ pub struct ProfileDetail {
 }
 
 impl ProfileDetail {
-    /// Recompute the field previews for a profile
-    ///
-    /// Call this whenever this selected profile changes.
-    pub fn refresh(&mut self, profile_id: Option<&ProfileId>) {
+    /// Build the profile detail pane. This should be called whenever the
+    /// selected profile changes, because the entire contents of the pane
+    /// changes too.
+    pub fn new(profile_id: Option<&ProfileId>) -> Self {
         let collection = ViewContext::collection();
         let default = IndexMap::new();
         let profile_data = profile_id
@@ -112,7 +112,7 @@ impl ProfileDetail {
             .unwrap_or(&default);
 
         // Start a preview render for each field
-        self.fields = profile_data
+        let fields = profile_data
             .iter()
             .map(|(key, template)| {
                 (
@@ -130,6 +130,11 @@ impl ProfileDetail {
                 )
             })
             .collect_vec();
+
+        Self {
+            id: ComponentId::new(),
+            fields,
+        }
     }
 }
 

@@ -17,15 +17,9 @@ use crate::{
                 DefaultPane, PrimaryLayout, ProfileSelectPane,
                 RecipeSelectPane, ViewState,
             },
-            profile::{
-                ProfileDetail, ProfileDetailProps, ProfileListItem,
-                ProfileListState,
-            },
+            profile::{ProfileDetail, ProfileListState},
             recipe::{RecipeDetail, RecipeList},
-            sidebar_list::{
-                SidebarList, SidebarListEvent, SidebarListItem,
-                SidebarListProps,
-            },
+            sidebar_list::{SidebarList, SidebarListEvent, SidebarListProps},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
@@ -104,7 +98,7 @@ impl PrimaryView {
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.profile_list.selected().map(ProfileListItem::id)
+        self.profile_list.selected_id()
     }
 
     fn selected_recipe_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
@@ -214,7 +208,12 @@ impl Component for PrimaryView {
             })
             .emitted(self.profile_list.to_emitter(), |event| match event {
                 SidebarListEvent::Open => self.view.open_profile_list(),
-                SidebarListEvent::Select => self.refresh_recipe(),
+                SidebarListEvent::Select => {
+                    // Both panes can change when the profile changes
+                    self.profile_detail
+                        .refresh(self.profile_list.selected_id());
+                    self.refresh_recipe();
+                }
                 SidebarListEvent::Close => self.view.close_sidebar(),
             })
             // Handle our own menu action type
@@ -338,14 +337,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 ProfileSelectPane::Recipe => {
                     canvas.draw(&self.recipe_detail, (), area, true);
                 }
-                ProfileSelectPane::Profile => canvas.draw(
-                    &self.profile_detail,
-                    ProfileDetailProps {
-                        profile_id: self.selected_profile_id(),
-                    },
-                    area,
-                    true,
-                ),
+                ProfileSelectPane::Profile => {
+                    canvas.draw(&self.profile_detail, (), area, true);
+                }
             },
             PrimaryLayout::Profile(selected_pane) => {
                 let areas = SidebarAreas::new(area);
@@ -376,9 +370,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
                 canvas.draw(
                     &self.profile_detail,
-                    ProfileDetailProps {
-                        profile_id: self.selected_profile_id(),
-                    },
+                    (),
                     areas.bottom_pane,
                     selected_pane == ProfileSelectPane::Profile,
                 );

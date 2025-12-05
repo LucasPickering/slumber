@@ -90,6 +90,12 @@ impl RecipeTree {
         self.get(id).ok_or_else(|| UnknownRecipeError(id.clone()))
     }
 
+    /// Get a **folder** by ID. If the ID isn't in the tree, or points to a
+    /// recipe, return `None`
+    pub fn get_folder(&self, id: &RecipeId) -> Option<&Folder> {
+        self.get(id).and_then(RecipeNode::folder)
+    }
+
     /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
     /// folder, return `None`
     pub fn get_recipe(&self, id: &RecipeId) -> Option<&Recipe> {

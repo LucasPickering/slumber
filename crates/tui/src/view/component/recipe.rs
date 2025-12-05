@@ -10,7 +10,6 @@ mod url;
 
 use crate::{
     context::TuiContext,
-    http::RequestConfig,
     message::{Message, RecipeCopyTarget},
     util::{PersistentKey, PersistentStore},
     view::{
@@ -27,21 +26,22 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        state::StateCell,
     },
 };
 use itertools::{Itertools, Position};
 use ratatui::{
     layout::Alignment,
+    prelude::{Buffer, Rect},
     text::{Line, Text},
+    widgets::Widget,
 };
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{
-        Folder, HasId, ProfileId, RecipeId, RecipeLookupKey, RecipeNode,
-        RecipeNodeType,
+        Folder, HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType,
     },
+    http::BuildOptions,
     render::Prompt,
 };
 use slumber_util::doc_link;
@@ -357,41 +357,48 @@ pub struct RecipeDetail {
     id: ComponentId,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeMenuAction>,
-    /// All UI state derived from the recipe is stored together, and reset when
-    /// the recipe or profile changes
-    recipe_state: StateCell<RecipeStateKey, Option<RecipeDisplay>>,
+    /// UI state derived from the selected node+profile. [Self::reload] should
+    /// be called whenever either changes.
+    state: RecipeNodeState,
     /// A form for answering prompts from the request render engine. This
     /// receives prompts from the render tasks via messages, and whenever there
     /// is at least one prompt, we show this in place of the recipe node detail
     prompt_form: PromptForm,
 }
 
-#[derive(Debug)]
-pub struct RecipePaneProps<'a> {
-    /// ID of the recipe *or* folder selected
-    pub selected_recipe_node: Option<&'a RecipeNode>,
-    pub selected_profile_id: Option<&'a ProfileId>,
-}
-
 impl RecipeDetail {
-    /// Get a definition of the request that should be sent from the current
-    /// recipe settings
-    pub fn request_config(&self) -> Option<RequestConfig> {
-        let state_key = self.recipe_state.borrow_key();
-        let recipe_id = state_key.recipe_id.clone()?;
-        let profile_id = state_key.selected_profile_id.clone();
-        let recipe_state = self.recipe_state.borrow();
-        let options = recipe_state.as_ref()?.build_options();
-        Some(RequestConfig {
-            profile_id,
-            recipe_id,
-            options,
-        })
+    /// Generate a [BuildOptions] instance based on current UI state. Return
+    /// `None` only when there is no recipe selected.
+    pub fn build_options(&self) -> Option<BuildOptions> {
+        match &self.state {
+            RecipeNodeState::None | RecipeNodeState::Folder { .. } => None,
+            RecipeNodeState::Recipe { display, .. } => {
+                Some(display.build_options())
+            }
+        }
     }
 
     /// Prompt the user for input
     pub fn prompt(&mut self, prompt: Prompt) {
         self.prompt_form.prompt(prompt);
+    }
+
+    /// Refresh all previews. Call this whenever the selected recipe **or
+    /// profile** changes
+    ///
+    /// Even though this doesn't take the profile ID, we need to refresh all
+    /// previews when the profile changes.
+    pub fn refresh(&mut self, selected_recipe_node: Option<&RecipeNode>) {
+        self.state = match selected_recipe_node {
+            None => RecipeNodeState::None,
+            Some(RecipeNode::Folder(folder)) => RecipeNodeState::Folder {
+                id: folder.id.clone(),
+            },
+            Some(RecipeNode::Recipe(recipe)) => RecipeNodeState::Recipe {
+                id: recipe.id.clone(),
+                display: (RecipeDisplay::new(recipe)),
+            },
+        };
     }
 }
 
@@ -407,34 +414,32 @@ impl Component for RecipeDetail {
     }
 
     fn menu(&self) -> Vec<MenuItem> {
-        RecipeMenuAction::menu(
-            self.actions_emitter,
-            self.recipe_state.borrow().is_some(),
-        )
+        let has_recipe = matches!(&self.state, RecipeNodeState::Recipe { .. });
+        RecipeMenuAction::menu(self.actions_emitter, has_recipe)
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![
-            self.prompt_form.to_child_mut(),
-            self.recipe_state.get_mut().to_child_mut(),
-        ]
+        let recipe_display = match &mut self.state {
+            RecipeNodeState::None | RecipeNodeState::Folder { .. } => {
+                Child::None
+            }
+            RecipeNodeState::Recipe { display, .. } => display.to_child_mut(),
+        };
+        vec![self.prompt_form.to_child_mut(), recipe_display]
     }
 }
 
-impl<'a> Draw<RecipePaneProps<'a>> for RecipeDetail {
-    fn draw(
-        &self,
-        canvas: &mut Canvas,
-        props: RecipePaneProps<'a>,
-        metadata: DrawMetadata,
-    ) {
+impl Draw for RecipeDetail {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let context = TuiContext::get();
 
         // Render outermost block
         let title = context.input_engine.add_hint(
-            match props.selected_recipe_node {
-                Some(RecipeNode::Folder(_)) => "Folder",
-                Some(RecipeNode::Recipe(_)) | None => "Recipe",
+            match &self.state {
+                RecipeNodeState::Folder { .. } => "Folder",
+                RecipeNodeState::Recipe { .. } | RecipeNodeState::None => {
+                    "Recipe"
+                }
             },
             Action::SelectRecipe,
         );
@@ -453,61 +458,58 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipeDetail {
         }
 
         // Include the folder/recipe ID in the header
-        if let Some(node) = props.selected_recipe_node {
-            block = block.title(
-                Line::from(node.id().to_string())
-                    .alignment(Alignment::Right)
-                    .style(context.styles.text.title),
-            );
+        match &self.state {
+            RecipeNodeState::None => {}
+            RecipeNodeState::Folder { id, .. }
+            | RecipeNodeState::Recipe { id, .. } => {
+                block = block.title(
+                    Line::from(id.to_string())
+                        .alignment(Alignment::Right)
+                        .style(context.styles.text.title),
+                );
+            }
         }
         canvas.render_widget(block, metadata.area());
 
-        // Whenever the recipe or profile changes, generate a preview for
-        // each templated value. Almost anything that could change the
-        // preview will either involve changing one of those two things, or
-        // would require reloading the whole collection which will reset
-        // UI state.
-        let recipe_state = self.recipe_state.get_or_update(
-            &RecipeStateKey {
-                selected_profile_id: props.selected_profile_id.cloned(),
-                recipe_id: props
-                    .selected_recipe_node
-                    .map(RecipeNode::id)
-                    .cloned(),
-            },
-            || match props.selected_recipe_node {
-                Some(RecipeNode::Recipe(recipe)) => {
-                    Some(RecipeDisplay::new(recipe))
-                }
-                Some(RecipeNode::Folder(_)) | None => None,
-            },
-        );
-
-        match props.selected_recipe_node {
-            None => canvas.render_widget(
+        match &self.state {
+            RecipeNodeState::None => canvas.render_widget(
                 Text::from(vec![
                     "No recipes defined; add one to your collection".into(),
                     doc_link("api/request_collection/request_recipe").into(),
                 ]),
                 inner_area,
             ),
-            Some(RecipeNode::Folder(folder)) => {
-                canvas.render_widget(folder.generate(), inner_area);
-            }
-            Some(RecipeNode::Recipe(_)) => {
-                if let Some(recipe_state) = &*recipe_state {
-                    canvas.draw(recipe_state, (), inner_area, true);
+            RecipeNodeState::Folder { id } => {
+                // Folder *should* always be defined
+                if let Some(folder) =
+                    ViewContext::collection().recipes.get_folder(id)
+                {
+                    // Recompute the text on every render. This is a bit simpler
+                    // than storing it, and shouldn't be too expensive
+                    canvas.render_widget(FolderTree { folder }, inner_area);
                 }
+            }
+            RecipeNodeState::Recipe { display, .. } => {
+                canvas.draw(display, (), inner_area, true);
             }
         }
     }
 }
 
-/// Template preview state will be recalculated when any of these fields change
-#[derive(Clone, Debug, Default, PartialEq)]
-struct RecipeStateKey {
-    selected_profile_id: Option<ProfileId>,
-    recipe_id: Option<RecipeId>,
+/// Display state for a recipe node
+#[derive(Debug, Default)]
+enum RecipeNodeState {
+    /// Recipe list is empty
+    #[default]
+    None,
+    /// Folder is selected
+    Folder { id: RecipeId },
+    /// Recipe is selected
+    Recipe {
+        id: RecipeId,
+        /// Interactive recipe previews
+        display: RecipeDisplay,
+    },
 }
 
 /// Items in the actions popup menu. This is used by both the list and detail
@@ -571,17 +573,13 @@ impl RecipeMenuAction {
     }
 }
 
-/// Render folder as a tree
-impl Generate for &Folder {
-    type Output<'this>
-        = Text<'this>
-    where
-        Self: 'this;
+/// Widget to display a folder and its children as a tree
+struct FolderTree<'a> {
+    folder: &'a Folder,
+}
 
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
+impl Widget for FolderTree<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         // Generate something like:
         // Users
         // ├─Get Users
@@ -625,21 +623,25 @@ impl Generate for &Folder {
             }
         }
 
-        let mut lines = vec![self.name().into()];
-        add_lines(&mut lines, self, &mut Vec::new());
-        lines.into()
+        // We could probably be more efficient and write as we go instead of
+        // accumulating into Text, but whatever
+        let mut lines = vec![self.folder.name().into()];
+        add_lines(&mut lines, self.folder, &mut Vec::new());
+        let text: Text = lines.into();
+        text.render(area, buf);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
+    use crate::test_util::{TestTerminal, terminal};
+    use rstest::rstest;
     use slumber_core::{collection::Recipe, test_util::by_id};
     use slumber_util::{Factory, yaml::SourceLocation};
 
-    #[test]
-    fn test_folder_tree() {
+    #[rstest]
+    fn test_folder_tree(#[with(14, 10)] terminal: TestTerminal) {
         let folder = Folder {
             id: "1f".into(),
             location: SourceLocation::default(),
@@ -684,17 +686,21 @@ mod tests {
             ]),
         };
 
-        let expected = "\
-1f
-├─1.1r
-├─1.2r
-├─1.3f
-│ └─1.3.1r
-├─1.4f
-└─1.5f
-  ├─1.5.1r
-  └─1.5.2f
-    └─1.5.2.1r";
-        assert_eq!(folder.generate().to_string(), expected);
+        terminal.draw(|f| {
+            f.render_widget(FolderTree { folder: &folder }, f.area());
+        });
+
+        terminal.assert_buffer_lines([
+            "1f",
+            "├─1.1r",
+            "├─1.2r",
+            "├─1.3f",
+            "│ └─1.3.1r",
+            "├─1.4f",
+            "└─1.5f",
+            "  ├─1.5.1r",
+            "  └─1.5.2f",
+            "    └─1.5.2.1r",
+        ]);
     }
 }

@@ -55,13 +55,6 @@ impl<K, V> StateCell<K, V> {
     pub fn borrow(&self) -> Ref<'_, V> {
         Ref::map(self.state.borrow(), |state| &state.1)
     }
-
-    /// Get a mutable reference to the state value. This will never panic
-    /// because `&mut self` guarantees exclusive access. Returns `None` iff
-    /// the state cell is uninitialized.
-    pub fn get_mut(&mut self) -> &mut V {
-        &mut self.state.get_mut().1
-    }
 }
 
 /// A uniquely identified immutable value. Useful for detecting changes in

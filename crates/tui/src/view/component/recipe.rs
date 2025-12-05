@@ -367,6 +367,30 @@ pub struct RecipeDetail {
 }
 
 impl RecipeDetail {
+    /// Build the recipe detail pane. This should be called whenever the
+    /// selected recipe or profile changes. A change to either triggers a
+    /// full refresh of the pane.
+    pub fn new(selected_recipe_node: Option<&RecipeNode>) -> Self {
+        let state = match selected_recipe_node {
+            None => RecipeNodeState::None,
+            Some(RecipeNode::Folder(folder)) => RecipeNodeState::Folder {
+                id: folder.id.clone(),
+            },
+            Some(RecipeNode::Recipe(recipe)) => RecipeNodeState::Recipe {
+                id: recipe.id.clone(),
+                display: (RecipeDisplay::new(recipe)),
+            },
+        };
+        Self {
+            id: ComponentId::new(),
+            actions_emitter: Emitter::default(),
+            state,
+            // Intentionally reset the form whenever the pane changes. This will
+            // cancel the active request by closing the form channels.
+            prompt_form: PromptForm::default(),
+        }
+    }
+
     /// Generate a [BuildOptions] instance based on current UI state. Return
     /// `None` only when there is no recipe selected.
     pub fn build_options(&self) -> Option<BuildOptions> {
@@ -381,24 +405,6 @@ impl RecipeDetail {
     /// Prompt the user for input
     pub fn prompt(&mut self, prompt: Prompt) {
         self.prompt_form.prompt(prompt);
-    }
-
-    /// Refresh all previews. Call this whenever the selected recipe **or
-    /// profile** changes
-    ///
-    /// Even though this doesn't take the profile ID, we need to refresh all
-    /// previews when the profile changes.
-    pub fn refresh(&mut self, selected_recipe_node: Option<&RecipeNode>) {
-        self.state = match selected_recipe_node {
-            None => RecipeNodeState::None,
-            Some(RecipeNode::Folder(folder)) => RecipeNodeState::Folder {
-                id: folder.id.clone(),
-            },
-            Some(RecipeNode::Recipe(recipe)) => RecipeNodeState::Recipe {
-                id: recipe.id.clone(),
-                display: (RecipeDisplay::new(recipe)),
-            },
-        };
     }
 }
 

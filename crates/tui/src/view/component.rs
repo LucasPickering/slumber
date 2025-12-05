@@ -19,4 +19,4 @@ pub use internal::{
     Canvas, Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
     Portal, ToChild,
 };
-pub use root::{Root, RootProps};
+pub use root::Root;

@@ -20,7 +20,7 @@ use crate::{
     message::MessageSender,
     util::{PersistentStore, ResultReported},
     view::{
-        component::{Canvas, Component, ComponentExt, Root, RootProps},
+        component::{Canvas, Component, ComponentExt, Root},
         debug::DebugMonitor,
         event::Event,
     },
@@ -87,11 +87,7 @@ impl View {
 
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
-    pub fn draw<'f>(
-        &'f self,
-        frame: &'f mut Frame,
-        request_store: &RequestStore,
-    ) {
+    pub fn draw<'f>(&'f self, frame: &'f mut Frame) {
         // If the screen is too small to render anything, don't try. This avoids
         // panics within ratatui from trying to render borders and margins
         // outside the buffer area
@@ -102,14 +98,10 @@ impl View {
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
             debug_monitor.draw(frame, |frame| {
-                Canvas::draw_all(
-                    frame,
-                    &self.root,
-                    RootProps { request_store },
-                );
+                Canvas::draw_all(frame, &self.root, ());
             });
         } else {
-            Canvas::draw_all(frame, &self.root, RootProps { request_store });
+            Canvas::draw_all(frame, &self.root, ());
         }
     }
 
@@ -308,7 +300,7 @@ mod tests {
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // Nothing new
-        terminal.draw(|frame| view.draw(frame, &request_store));
+        terminal.draw(|frame| view.draw(frame));
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // *Now* the queue is drained

@@ -12,7 +12,7 @@ use crate::{
             history::History,
             internal::ComponentExt,
             misc::{ConfirmModal, DeleteRecipeRequestsModal, ErrorModal},
-            primary::{PrimaryView, PrimaryViewProps},
+            primary::PrimaryView,
         },
         context::UpdateContext,
         event::{Event, EventMatch},
@@ -22,7 +22,6 @@ use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{collection::ProfileId, http::RequestId, render::Prompt};
-use std::ops::Deref;
 
 /// The root view component
 #[derive(Debug)]
@@ -162,6 +161,8 @@ impl Root {
         };
 
         self.selected_request_id = state.map(RequestState::id);
+        // Update the exchange pane with the new request
+        self.primary_view.refresh_request(state);
         Ok(())
     }
 
@@ -292,13 +293,8 @@ impl Component for Root {
     }
 }
 
-impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
-    fn draw(
-        &self,
-        canvas: &mut Canvas,
-        props: RootProps<R>,
-        metadata: DrawMetadata,
-    ) {
+impl Draw for Root {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Help is a full-page thing and eats all actions, so if it's open it's
         // the only thing we'll draw
         if self.help.is_open() {
@@ -312,12 +308,9 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
                 .areas(metadata.area());
 
         // Main content
-        let selected_request = self
-            .selected_request_id
-            .and_then(|id| props.request_store.get(id));
         canvas.draw(
             &self.primary_view,
-            PrimaryViewProps { selected_request },
+            (),
             main_area,
             // If any modals are open, the modal queue will eat all input
             // events so we don't have to worry about catching stray events
@@ -336,11 +329,6 @@ impl<R: Deref<Target = RequestStore>> Draw<RootProps<R>> for Root {
         // Errors render last because they're drawn on top (highest priority)
         canvas.draw_portal(&self.errors, (), true);
     }
-}
-
-#[derive(Debug)]
-pub struct RootProps<R: Deref<Target = RequestStore>> {
-    pub request_store: R,
 }
 
 /// Persistence key for the selected request
@@ -378,17 +366,9 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
-        component
-            .int_props(props_factory)
-            .drain_draw()
-            .assert_empty();
+            TestComponent::new(&harness, &terminal, Root::new());
+        component.int().drain_draw().assert_empty();
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = &component.primary_view;
@@ -418,17 +398,9 @@ mod tests {
         harness.database.insert_exchange(&new_exchange).unwrap();
         harness.set_persisted(&SelectedRequestKey, &old_exchange.id);
 
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
-        component
-            .int_props(props_factory)
-            .drain_draw()
-            .assert_empty();
+            TestComponent::new(&harness, &terminal, Root::new());
+        component.int().drain_draw().assert_empty();
 
         // Make sure everything was preselected correctly
         assert_eq!(
@@ -460,17 +432,9 @@ mod tests {
         // Put a random ID in the DB
         harness.set_persisted(&SelectedRequestKey, &RequestId::new());
 
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
-        component
-            .int_props(props_factory)
-            .drain_draw()
-            .assert_empty();
+            TestComponent::new(&harness, &terminal, Root::new());
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(component.selected_request_id, Some(new_exchange.id));
     }
@@ -496,23 +460,15 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
-        component
-            .int_props(props_factory)
-            .drain_draw()
-            .assert_empty();
+            TestComponent::new(&harness, &terminal, Root::new());
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(component.selected_request_id, Some(exchange1.id));
 
         // Select the second recipe
         component
-            .int_props(props_factory)
+            .int()
             .send_keys([KeyCode::Char('2'), KeyCode::Down])
             .assert_empty();
         assert_eq!(component.selected_request_id, Some(exchange2.id));
@@ -539,23 +495,15 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
-        component
-            .int_props(props_factory)
-            .drain_draw()
-            .assert_empty();
+            TestComponent::new(&harness, &terminal, Root::new());
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(component.selected_request_id, Some(exchange1.id));
 
         // Select the second profile
         component
-            .int_props(props_factory)
+            .int()
             .send_keys([KeyCode::Char('1'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
         // The exchange from profile2 should be selected now
@@ -577,16 +525,11 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
+            TestComponent::new(&harness, &terminal, Root::new());
         // Select recipe pane
         component
-            .int_props(props_factory)
+            .int()
             .drain_draw()
             .send_key(KeyCode::Char('c'))
             .assert_empty();
@@ -596,7 +539,7 @@ mod tests {
 
         // Select "Delete Requests" but decline the confirmation
         component
-            .int_props(props_factory)
+            .int()
             .action(&["Delete Requests"])
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
@@ -608,7 +551,7 @@ mod tests {
         // Select "Delete Requests" and accept. I don't feel like testing Delete
         // for All Profiles
         component
-            .int_props(props_factory)
+            .int()
             .action(&["Delete Requests"])
             // Confirm
             .send_keys([KeyCode::Enter])
@@ -630,16 +573,11 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
+            TestComponent::new(&harness, &terminal, Root::new());
         // Select exchange pane
         component
-            .int_props(props_factory)
+            .int()
             .drain_draw()
             .send_key(KeyCode::Char('r'))
             .assert_empty();
@@ -649,7 +587,7 @@ mod tests {
 
         // Select "Delete Request" but decline the confirmation
         component
-            .int_props(props_factory)
+            .int()
             .action(&["Delete Request"])
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
@@ -659,7 +597,7 @@ mod tests {
         assert_eq!(component.selected_request_id, Some(new_exchange.id));
 
         component
-            .int_props(props_factory)
+            .int()
             .send_key(KeyCode::Char('r'))
             .action(&["Delete Request"])
             // Confirm
@@ -674,18 +612,13 @@ mod tests {
     /// Open and close the help page
     #[rstest]
     fn test_help(harness: TestHarness, terminal: TestTerminal) {
-        let props_factory = || RootProps {
-            request_store: harness.request_store.borrow(),
-        };
         let mut component =
-            TestComponent::builder(&harness, &terminal, Root::new())
-                .with_props(props_factory())
-                .build();
+            TestComponent::new(&harness, &terminal, Root::new());
         assert!(!component.help.is_open());
 
         // Open help
         component
-            .int_props(props_factory)
+            .int()
             .drain_draw() // Clear initial events
             .send_key(KeyCode::Char('?'))
             .assert_empty();
@@ -693,10 +626,7 @@ mod tests {
 
         // Any key should close. Events are *not* handled by anyone else
         //
-        component
-            .int_props(props_factory)
-            .send_key(KeyCode::Char('x'))
-            .assert_empty();
+        component.int().send_key(KeyCode::Char('x')).assert_empty();
         assert!(!component.help.is_open());
     }
 }

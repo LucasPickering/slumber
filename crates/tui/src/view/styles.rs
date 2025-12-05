@@ -148,6 +148,7 @@ impl Styles {
             form: FormStyles {
                 title: Style::default().add_modifier(Modifier::UNDERLINED),
                 title_highlight: Style::default()
+                    .fg(theme.primary_color)
                     .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             },
             list: ListStyles {

@@ -16,7 +16,7 @@ use ratatui::{
     widgets::{Paragraph, ScrollbarOrientation},
 };
 use slumber_config::Action;
-use std::{cell::Cell, collections::HashSet, mem};
+use std::{borrow::Cow, cell::Cell, collections::HashSet, mem};
 use terminput::{KeyCode, KeyModifiers};
 
 /// Single line text submission component
@@ -94,8 +94,23 @@ impl TextBox {
     }
 
     /// Get current text
+    ///
+    /// For sensitive inputs, this will return the **unmasked** value. Use
+    /// [Self::display_text] for strings that will be displayed.
     pub fn text(&self) -> &str {
         &self.state.text
+    }
+
+    /// Get current visible text
+    ///
+    /// For sensitive inputs, this will return the **masked** value. Use
+    /// [Self::text] for strings that will *not* be displayed.
+    pub fn display_text(&self) -> Cow<'_, str> {
+        if self.sensitive {
+            Masked::new(&self.state.text, '•').into()
+        } else {
+            self.state.text.as_str().into()
+        }
     }
 
     /// Move the text out of this text box and return it
@@ -121,12 +136,12 @@ impl TextBox {
     /// Check if the current input text is valid. Always returns true if there
     /// is no validator
     fn is_valid(&self) -> bool {
-        self.text().is_empty()
+        let text = &self.state.text;
+        text.is_empty()
             || self
                 .validator
                 .as_ref()
-                .map(|validator| validator(self.text()))
-                .unwrap_or(true)
+                .is_none_or(|validator| validator(text))
     }
 
     /// Handle a key input event, to modify text state. Return `true` if the
@@ -240,11 +255,8 @@ impl Draw<TextBoxProps> for TextBox {
             Line::from(placeholder)
                 .style(styles.text_box.placeholder)
                 .into()
-        } else if self.sensitive {
-            // Hide top secret data
-            Masked::new(&self.state.text, '•').into()
         } else {
-            self.state.text.as_str().into()
+            self.display_text().into()
         };
 
         // Draw the text

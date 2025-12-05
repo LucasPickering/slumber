@@ -21,7 +21,7 @@ use crate::{
                 ProfileDetail, ProfileDetailProps, ProfileListItem,
                 ProfileListState,
             },
-            recipe::{RecipeDetail, RecipeList, RecipePaneProps},
+            recipe::{RecipeDetail, RecipeList},
             sidebar_list::{
                 SidebarList, SidebarListEvent, SidebarListItem,
                 SidebarListProps,
@@ -114,7 +114,14 @@ impl PrimaryView {
     /// Get a definition of the request that should be sent from the current
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
-        self.recipe_detail.request_config()
+        let profile_id = self.selected_profile_id().cloned();
+        let recipe_id = self.selected_recipe_id()?.clone();
+        let options = self.recipe_detail.build_options()?;
+        Some(RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        })
     }
 
     /// Prompt the user for input
@@ -125,6 +132,24 @@ impl PrimaryView {
     /// Send a request for the currently selected recipe
     fn send_request(&self) {
         ViewContext::send_message(Message::HttpBeginRequest);
+    }
+
+    /// Refresh the recipe preview. Call this whenever the selected recipe *or*
+    /// profile changes
+    fn refresh_recipe(&mut self) {
+        let collection = ViewContext::collection();
+        let selected_recipe_node =
+            self.selected_recipe_node().and_then(|(id, _)| {
+                collection
+                    .recipes
+                    .try_get(id)
+                    .reported(&ViewContext::messages_tx())
+            });
+        self.recipe_detail.refresh(selected_recipe_node);
+
+        // When the recipe/profile changes, we want to select the most recent
+        // recipe for that combo as well
+        ViewContext::push_event(Event::HttpSelectRequest(None));
     }
 
     /// Send a message to open the collection file to the selected
@@ -184,21 +209,12 @@ impl Component for PrimaryView {
             })
             .emitted(self.recipe_list.to_emitter(), |event| match event {
                 SidebarListEvent::Open => self.view.open_recipe_list(),
-                SidebarListEvent::Select => {
-                    // When the selected recipe changes, select the most recent
-                    // request for this recipe
-                    ViewContext::push_event(Event::HttpSelectRequest(None));
-                }
+                SidebarListEvent::Select => self.refresh_recipe(),
                 SidebarListEvent::Close => self.view.close_sidebar(),
             })
             .emitted(self.profile_list.to_emitter(), |event| match event {
                 SidebarListEvent::Open => self.view.open_profile_list(),
-                SidebarListEvent::Select => {
-                    // Requests are only shown for the selected profile, so when
-                    // the profile changes we have to select the most recent
-                    // request for the new profile+recipe
-                    ViewContext::push_event(Event::HttpSelectRequest(None));
-                }
+                SidebarListEvent::Select => self.refresh_recipe(),
                 SidebarListEvent::Close => self.view.close_sidebar(),
             })
             // Handle our own menu action type
@@ -250,27 +266,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         props: PrimaryViewProps<'a>,
         metadata: DrawMetadata,
     ) {
-        // Helper to draw recipe pane
-        let draw_recipe_detail = |canvas: &mut Canvas, area, has_focus| {
-            let collection = ViewContext::collection();
-            let selected_recipe_node =
-                self.selected_recipe_node().and_then(|(id, _)| {
-                    collection
-                        .recipes
-                        .try_get(id)
-                        .reported(&ViewContext::messages_tx())
-                });
-            canvas.draw(
-                &self.recipe_detail,
-                RecipePaneProps {
-                    selected_recipe_node,
-                    selected_profile_id: self.selected_profile_id(),
-                },
-                area,
-                has_focus,
-            );
-        };
-
         // Helper to draw exchange pane
         let draw_exchange = |canvas: &mut Canvas, area, has_focus| {
             // Rebuild the pane whenever we select a new request or the
@@ -295,7 +290,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         match self.view.layout() {
             // Sidebar is closed
             PrimaryLayout::Default(pane) if fullscreen => match pane {
-                DefaultPane::Recipe => draw_recipe_detail(canvas, area, true),
+                DefaultPane::Recipe => {
+                    canvas.draw(&self.recipe_detail, (), area, true);
+                }
                 DefaultPane::Exchange => draw_exchange(canvas, area, true),
             },
             PrimaryLayout::Default(selected_pane) => {
@@ -317,8 +314,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
 
                 // Panes
-                draw_recipe_detail(
-                    canvas,
+                canvas.draw(
+                    &self.recipe_detail,
+                    (),
                     areas.top_pane,
                     selected_pane == DefaultPane::Recipe,
                 );
@@ -338,7 +336,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     true,
                 ),
                 ProfileSelectPane::Recipe => {
-                    draw_recipe_detail(canvas, area, true);
+                    canvas.draw(&self.recipe_detail, (), area, true);
                 }
                 ProfileSelectPane::Profile => canvas.draw(
                     &self.profile_detail,
@@ -370,8 +368,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
 
                 // Panes
-                draw_recipe_detail(
-                    canvas,
+                canvas.draw(
+                    &self.recipe_detail,
+                    (),
                     areas.top_pane,
                     selected_pane == ProfileSelectPane::Recipe,
                 );
@@ -394,7 +393,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     true,
                 ),
                 RecipeSelectPane::Recipe => {
-                    draw_recipe_detail(canvas, area, true);
+                    canvas.draw(&self.recipe_detail, (), area, true);
                 }
                 RecipeSelectPane::Exchange => draw_exchange(canvas, area, true),
             },
@@ -419,8 +418,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
 
                 // Panes
-                draw_recipe_detail(
-                    canvas,
+                canvas.draw(
+                    &self.recipe_detail,
+                    (),
                     areas.top_pane,
                     selected_pane == RecipeSelectPane::Recipe,
                 );

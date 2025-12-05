@@ -3,7 +3,7 @@
 mod view_state;
 
 use crate::{
-    http::{RequestConfig, RequestState, RequestStateType},
+    http::{RequestConfig, RequestState},
     message::Message,
     util::{PersistentKey, PersistentStore, ResultReported},
     view::{
@@ -23,7 +23,6 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        state::StateCell,
     },
 };
 use ratatui::{
@@ -34,7 +33,6 @@ use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{ProfileId, RecipeId, RecipeNode, RecipeNodeType},
-    http::RequestId,
     render::Prompt,
 };
 
@@ -56,10 +54,10 @@ pub struct PrimaryView {
     /// Profile preview/detail pane
     profile_detail: ProfileDetail,
     /// The exchange pane shows a particular request/response. The entire
-    /// component is rebuilt whenever the selected request changes. The key is
-    /// `None` if the recipe list is empty or a folder is selected
-    exchange_pane:
-        StateCell<Option<(RequestId, RequestStateType)>, ExchangePane>,
+    /// component is rebuilt whenever the selected request changes. Internally
+    /// it handles non-recipe selections (empty recipe list, folder selected,
+    /// etc.) so we don't need to handle that here.
+    exchange_pane: ExchangePane,
     /// Modal to select a different collection file
     collection_select: ModalQueue<CollectionSelect>,
 
@@ -146,6 +144,15 @@ impl PrimaryView {
         ViewContext::push_event(Event::HttpSelectRequest(None));
     }
 
+    /// Update the Exchange pane with the selected request. Call this whenever
+    /// a new request is selected.
+    pub fn refresh_request(&mut self, selected_request: Option<&RequestState>) {
+        self.exchange_pane = ExchangePane::new(
+            selected_request,
+            self.selected_recipe_node().map(|(_, node_type)| node_type),
+        );
+    }
+
     /// Send a message to open the collection file to the selected
     /// recipe/folder. If there are no recipes, just open to the start
     fn edit_collection(&self) {
@@ -173,7 +180,7 @@ impl Component for PrimaryView {
                     self.view.select_recipe_pane();
                 } else if self.profile_detail.contains(position) {
                     self.view.select_profile_pane();
-                } else if self.exchange_pane.get_mut().contains(position) {
+                } else if self.exchange_pane.contains(position) {
                     self.view.select_exchange_pane();
                 }
             })
@@ -253,37 +260,13 @@ impl Component for PrimaryView {
             self.recipe_detail.to_child_mut(),
             self.profile_list.to_child_mut(),
             self.profile_detail.to_child_mut(),
-            self.exchange_pane.get_mut().to_child_mut(),
+            self.exchange_pane.to_child_mut(),
         ]
     }
 }
 
-impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
-    fn draw(
-        &self,
-        canvas: &mut Canvas,
-        props: PrimaryViewProps<'a>,
-        metadata: DrawMetadata,
-    ) {
-        // Helper to draw exchange pane
-        let draw_exchange = |canvas: &mut Canvas, area, has_focus| {
-            // Rebuild the pane whenever we select a new request or the
-            // current request transitions between states
-            let exchange_pane = self.exchange_pane.get_or_update(
-                &props.selected_request.map(|request_state| {
-                    (request_state.id(), request_state.into())
-                }),
-                || {
-                    ExchangePane::new(
-                        props.selected_request,
-                        self.selected_recipe_node()
-                            .map(|(_, node_type)| node_type),
-                    )
-                },
-            );
-            canvas.draw(&*exchange_pane, (), area, has_focus);
-        };
-
+impl Draw for PrimaryView {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
         let fullscreen = self.view.is_fullscreen();
         match self.view.layout() {
@@ -292,7 +275,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 DefaultPane::Recipe => {
                     canvas.draw(&self.recipe_detail, (), area, true);
                 }
-                DefaultPane::Exchange => draw_exchange(canvas, area, true),
+                DefaultPane::Exchange => {
+                    canvas.draw(&self.exchange_pane, (), area, true);
+                }
             },
             PrimaryLayout::Default(selected_pane) => {
                 let areas = DefaultAreas::new(area);
@@ -319,8 +304,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     areas.top_pane,
                     selected_pane == DefaultPane::Recipe,
                 );
-                draw_exchange(
-                    canvas,
+                canvas.draw(
+                    &self.exchange_pane,
+                    (),
                     areas.bottom_pane,
                     selected_pane == DefaultPane::Exchange,
                 );
@@ -387,7 +373,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 RecipeSelectPane::Recipe => {
                     canvas.draw(&self.recipe_detail, (), area, true);
                 }
-                RecipeSelectPane::Exchange => draw_exchange(canvas, area, true),
+                RecipeSelectPane::Exchange => {
+                    canvas.draw(&self.exchange_pane, (), area, true);
+                }
             },
             PrimaryLayout::Recipe(selected_pane) => {
                 let areas = SidebarAreas::new(area);
@@ -416,8 +404,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     areas.top_pane,
                     selected_pane == RecipeSelectPane::Recipe,
                 );
-                draw_exchange(
-                    canvas,
+                canvas.draw(
+                    &self.exchange_pane,
+                    (),
                     areas.bottom_pane,
                     selected_pane == RecipeSelectPane::Exchange,
                 );
@@ -427,11 +416,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         // Modals!!
         canvas.draw_portal(&self.collection_select, (), true);
     }
-}
-
-#[derive(Debug, Default)]
-pub struct PrimaryViewProps<'a> {
-    pub selected_request: Option<&'a RequestState>,
 }
 
 /// Persistent key for [ViewState]

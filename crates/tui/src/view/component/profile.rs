@@ -85,7 +85,7 @@ impl PersistentKey for SelectedProfileKey {
 }
 
 /// Preview the fields of a profile
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ProfileDetail {
     id: ComponentId,
     /// Precomputed field previews

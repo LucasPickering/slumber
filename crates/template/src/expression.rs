@@ -188,6 +188,18 @@ impl From<Vec<Expression>> for Expression {
     }
 }
 
+impl From<Vec<i64>> for Expression {
+    fn from(values: Vec<i64>) -> Self {
+        values.into_iter().map(Expression::from).collect()
+    }
+}
+
+impl From<Vec<&str>> for Expression {
+    fn from(values: Vec<&str>) -> Self {
+        values.into_iter().map(Expression::from).collect()
+    }
+}
+
 /// Object from (key, value) pairs
 impl<const N: usize> From<[(&str, Expression); N]> for Expression {
     fn from(value: [(&str, Expression); N]) -> Self {

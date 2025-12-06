@@ -118,8 +118,8 @@ async fn test_base64(
 #[case::string_zero("0".into(), true)]
 #[case::bytes_empty(b"".into(), false)]
 #[case::bytes_invalid(invalid_utf8().into(), true)]
-#[case::array_empty(vec![].into(), false)]
-#[case::array_filled(vec!["1".into(), "2".into()].into(), true)]
+#[case::array_empty((vec![] as Vec<i64>).into(), false)]
+#[case::array_filled(vec!["1", "2"].into(), true)]
 #[tokio::test]
 async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     let template = Template::function_call("boolean", [input], []);
@@ -215,11 +215,8 @@ async fn test_command(
 /// This ensures we don't execute the command for previews
 #[tokio::test]
 async fn test_command_lazy() {
-    let template = Template::function_call(
-        "command",
-        [vec!["i-will-fail".into()].into()],
-        [],
-    );
+    let template =
+        Template::function_call("command", [vec!["i-will-fail"].into()], []);
     // This shouldn't fail because the command isn't evaluated yet
     let output = template
         .render(&TemplateContext::factory(()).streaming(true))
@@ -364,7 +361,7 @@ async fn test_file_tilde(temp_dir: TempDir) {
 #[case::bool_false(false.into(), Ok(0.0))]
 #[case::bool_true(true.into(), Ok(1.0))]
 #[case::array(
-    vec!["1".into(), "2".into()].into(),
+    vec!["1", "2"].into(),
     Err("Expected one of float, integer, boolean, or string/bytes"),
 )]
 #[tokio::test]
@@ -396,7 +393,7 @@ async fn test_float(
 #[case::bool_false(false.into(), Ok(0))]
 #[case::bool_true(true.into(), Ok(1))]
 #[case::array(
-    vec!["1".into(), "2".into()].into(),
+    vec!["1", "2"].into(),
     Err("Expected one of integer, float, boolean, or string/bytes"),
 )]
 #[tokio::test]
@@ -932,16 +929,52 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
     );
 }
 
+/// `slice()`
+#[rstest]
+#[case::string_zeroes("abc".into(), 0, 0, "".into())]
+#[case::string_len("abc".into(), 3, 3, "".into())]
+#[case::string_partial("abc".into(), 1, 3, "bc".into())]
+#[case::string_full("abc".into(), 0, 3, "abc".into())]
+#[case::array_zeroes(vec![0, 1, 2].into(), 0, 0, Vec::<i64>::new().into())]
+#[case::array_len(vec![0, 1, 2].into(), 3, 3, Vec::<i64>::new().into())]
+#[case::array_partial(vec![0, 1, 2].into(), 1, 3, vec![1, 2].into())]
+#[case::array_full(vec![0, 1, 2].into(), 0, 3, vec![0, 1, 2].into())]
+#[case::stop_less_than_start("abc".into(), 2, 1, "".into())]
+#[case::start_low("abc".into(), -1, 1, "a".into())]
+#[case::stop_high("abc".into(), 1, 5, "bc".into())]
+#[tokio::test]
+async fn test_slice(
+    #[case] value: Expression,
+    #[case] start: i64,
+    #[case] stop: i64,
+    #[case] expected: Value,
+) {
+    let template = Template::function_call(
+        "slice",
+        [start.into(), stop.into(), value],
+        [],
+    );
+    assert_eq!(
+        template
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
+            .await
+            .unwrap(),
+        expected,
+    );
+}
+
 /// `split()`
 #[rstest]
-#[case::empty_string("", ",", None, Ok(vec![""]))]
+#[case::empty_string("", ",", None, Ok(vec![""].into()))]
 #[case::empty_separator("abc", "", None, Ok(vec!["", "a", "b", "c", ""]))]
 #[case::empty_empty("", "", None, Ok(vec!["", ""]))]
 #[case::comma("a,b,c,", ",", None, Ok(vec!["a", "b", "c", ""]))]
 #[case::n("a,b,c,", ",", Some(2), Ok(vec!["a", "b", "c,"]))]
 #[case::n_zero("a,b,c,", ",", Some(0), Ok(vec!["a,b,c,"]))]
 #[case::n_over("a,b,c,", ",", Some(7), Ok(vec!["a", "b", "c", ""]))]
-#[case::n_invalid(
+#[case::error_n_invalid(
     "", ",", Some(-1), Err("argument n=-1: Integer out of range [0, 4294967295]"
 ))]
 #[tokio::test]
@@ -971,7 +1004,7 @@ async fn test_split(
 #[case::primitive(true.into(), Ok("true"))]
 #[case::string("test".into(), Ok("test"))]
 #[case::bytes(b"test".into(), Ok("test"))]
-#[case::array(vec!["a".into(), "b".into()].into(), Ok("['a', 'b']"))]
+#[case::array(vec!["a", "b"].into(), Ok("['a', 'b']"))]
 #[case::error_invalid_utf8(invalid_utf8().into(), Err("invalid utf-8"))]
 #[tokio::test]
 async fn test_string(

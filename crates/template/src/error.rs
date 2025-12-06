@@ -179,6 +179,10 @@ pub enum ValueError {
     #[error(transparent)]
     Integer(#[from] ParseIntError),
 
+    /// Error converting an i64 to a different numeric type
+    #[error("Integer out of range {expected}")]
+    IntegerRange { expected: String },
+
     /// In many contexts, the render output needs to be usable as a string.
     /// This error occurs when we wanted to render to a string, but whatever
     /// bytes we got were not valid UTF-8. The underlying error message is
@@ -197,10 +201,6 @@ pub enum ValueError {
     /// External error type
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
-
-    /// Error converting an i64 to a different numeric type
-    #[error("Integer out of range {expected}")]
-    IntegerRange { expected: String },
 
     /// Function expected one type but a value of a different type was given
     #[error("Expected {expected}")]

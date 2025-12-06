@@ -527,5 +527,12 @@ fn type_map() -> HashMap<Type, TypeDef> {
         (parse_quote!(Value), TypeDef::Value),
         (parse_quote!(serde_json::Value), TypeDef::Value),
         (parse_quote!(Vec<String>), TypeDef::List(&TypeDef::String)),
+        (
+            parse_quote!(StringOrArray),
+            TypeDef::Union(&[
+                &TypeDef::String,
+                &TypeDef::List(&TypeDef::Value),
+            ]),
+        ),
     ])
 }

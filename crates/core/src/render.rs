@@ -283,6 +283,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "response_header" => functions::response_header(arguments).await,
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
+            "slice" => functions::slice(arguments),
             "split" => functions::split(arguments),
             "string" => functions::string(arguments),
             "trim" => functions::trim(arguments),

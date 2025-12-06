@@ -966,6 +966,58 @@ pub fn sensitive(
 }
 
 /// ```notrust
+/// description: >-
+///   Extract a portion of a string or array
+///
+///   Indexes are zero-based and [inclusive, exclusive)
+/// parameters:
+///   start:
+///     description: Index of the first element to include, starting at 0
+///   stop:
+///     description: Index *after* the last element to include, starting at 0
+/// return: Subslice of the input string/array. If `stop < start`, return an
+///   empty slice. If either index outside the range `[0, length]`, it will be
+///   clamped to that range.
+/// examples:
+///   - input: "[0, 1, 2] | slice(1, 2)"
+///     output: "[1]"
+///   - input: "[0, 1, 2] | slice(1, 3)"
+///     output: "[1, 2]"
+///   - input: "'abc' | slice(0, 2)"
+///     output: "'ab'"
+///   - input: "'abc' | slice(0, 0)"
+///     output: "''"
+/// ```
+#[template]
+pub fn slice(start: i64, stop: i64, value: StringOrArray) -> StringOrArray {
+    let len = match &value {
+        StringOrArray::String(string) => string.len(),
+        StringOrArray::Array(array) => array.len(),
+    } as i64;
+    let start = start.clamp(0, len) as usize;
+    let stop = stop.clamp(0, len) as usize;
+
+    // Special case - return empty
+    if stop < start {
+        return match value {
+            StringOrArray::String(_) => StringOrArray::String("".into()),
+            StringOrArray::Array(_) => StringOrArray::Array(vec![]),
+        };
+    }
+
+    match value {
+        StringOrArray::String(mut string) => {
+            let string = string.drain(start..stop).collect::<String>();
+            StringOrArray::String(string)
+        }
+        StringOrArray::Array(mut array) => {
+            let array = array.drain(start..stop).collect::<Vec<_>>();
+            StringOrArray::Array(array)
+        }
+    }
+}
+
+/// ```notrust
 /// description: Split a string on a separator
 /// parameters:
 ///   separator:
@@ -1142,6 +1194,40 @@ impl_try_from_value_str!(TrimMode);
 impl TryFromValue for RecipeId {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         String::try_from_value(value).map(RecipeId::from)
+    }
+}
+
+/// Strings and arrays share similar operations, so some functions take one or
+/// the other
+enum StringOrArray {
+    String(String),
+    Array(Vec<Value>),
+}
+
+impl TryFromValue for StringOrArray {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
+        match value {
+            Value::String(string) => Ok(Self::String(string)),
+            Value::Array(array) => Ok(Self::Array(array)),
+            _ => Err(WithValue::new(
+                value,
+                ValueError::Type {
+                    expected: Expected::OneOf(&[
+                        &Expected::String,
+                        &Expected::Array,
+                    ]),
+                },
+            )),
+        }
+    }
+}
+
+impl From<StringOrArray> for Value {
+    fn from(value: StringOrArray) -> Self {
+        match value {
+            StringOrArray::String(string) => Value::String(string),
+            StringOrArray::Array(array) => Value::Array(array),
+        }
     }
 }
 

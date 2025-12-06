@@ -20,7 +20,7 @@ fn main() -> ExitCode {
     match doc_utils::mdbook() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("Error: {e}");
+            eprintln!("Error: {e:#}");
             ExitCode::FAILURE
         }
     }

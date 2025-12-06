@@ -30,29 +30,28 @@ use tracing::{Instrument, debug, debug_span};
 
 // ===========================================================
 // Documentation for these functions is generated automatically by an mdbook
-// preprocessor in the doc_utils crate. The generator will generally enforce
-// that each function has sufficient documentation on it. That said...
-//
-// DOC COMMENTS ON TEMPLATE FUNCTIONS SHOULD BE WRITTEN FOR THE USER. They are
-// public-facing!!
+// preprocessor in the doc_utils crate. Each doc comment must be YAML adhering
+// to a specific schema. See template_functions.rs for the schema.
 // ===========================================================
 
-/// Encode or decode content to/from base64.
-///
-/// **Parameters**
-///
-/// - `decode`: Decode the input from base64 to its original value instead of
-///   encoding it *to* base64
-///
-/// **Errors**
-///
-/// - If `decode=true` and the string is not valid base64
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ base64("test") }} => "dGVzdA=="
-/// {{ base64("dGVzdA==", decode=true) }} => "test"
+/// ```notrust
+/// description: Encode or decode content to/from base64
+/// parameters:
+///   value:
+///     description: Value to encode or decode
+///   decode:
+///     description: Decode the input from base64 to its original value instead
+///       of encoding it *to* base64
+///     default: false
+/// return: The encoded value (if `decode=false`) or decoded value
+///     (if `decode=true`)
+/// errors:
+///   - If `decode=true` and `value` is not a valid base64 string
+/// examples:
+///   - input: base64("test")
+///     output: '"dGVzdA=="'
+///   - input: base64("dGVzdA==", decode=true)
+///     output: '"test"'
 /// ```
 #[template]
 pub fn base64(
@@ -69,59 +68,57 @@ pub fn base64(
     }
 }
 
-/// Convert a value to a boolean. Empty values such as `0`, `""` or `[]`
-/// convert to `false`. Anything else converts to `true`.
-///
-/// **Parameters**
-///
-/// - `value`: Value to convert
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ boolean(null) }} => false
-/// {{ boolean(0) }} => false
-/// {{ boolean(1) }} => true
-/// {{ boolean('') }} => false
-/// {{ boolean('0') }} => true
-/// {{ boolean([]) }} => false
-/// {{ boolean([0]) }} => true
+/// ```notrust
+/// description: Convert a value to a boolean. Empty values such as `0`, `""` or `[]`
+///   convert to `false`. Anything else converts to `true`.
+/// parameters:
+///   value:
+///     description: Value to convert
+/// return: Boolean representation of the input
+/// examples:
+///   - input: boolean(null)
+///     output: false
+///   - input: boolean(0)
+///     output: false
+///   - input: boolean(1)
+///     output: true
+///   - input: boolean('')
+///     output: false
+///   - input: boolean('0')
+///     output: true
+///   - input: boolean([])
+///     output: false
+///   - input: boolean([0])
+///     output: true
 /// ```
 #[template]
 pub fn boolean(value: Value) -> bool {
     value.to_bool()
 }
 
-/// Run a command in a subprocess and return its stdout output. While the output
-/// type is `bytes`, [in most cases you can use it interchangeably as a
-/// string](../user_guide/templates/values.md#bytes-vs-string).
-///
-/// This function supports [streaming](../user_guide/streaming.html).
-///
-/// **Parameters**
-///
-/// - `command`: Command to run, in the form `[program, arg1, arg2, ...]`
-/// - `cwd`: Directory to execute the subprocess in. Defaults to the directory
-///   containing the collection file. For example, if the collection is
-///   `/data/slumber.yml`, the subprocess will execute in `/data` regardless of
-///   where Slumber is invoked from. The given path will be resolved relative to
-///   that default.
-/// - `stdin`: Data to pipe to the subprocess's stdin
-///
-/// **Errors**
-///
-/// - If the command fails to initialize (e.g. the program is unknown)
-/// - If the subprocess exits with a non-zero status code
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ command(["echo", "hello"]) }} => "hello\n"
-/// {{ command(["grep", "1"], stdin="line 1\nline2") }} => "line 1\n"
+/// ```notrust
+/// description: Run a command in a subprocess and return its stdout output.
+///   Supports streaming of stdout.
+/// parameters:
+///   command:
+///     description: Command to run, in the form [program, arg1, arg2, ...]
+///   cwd:
+///     description: Directory to execute the subprocess in. The given path will
+///         be resolved relative to the directory containing the collection file.
+///     default: .
+///   stdin:
+///     description: Data to pipe to the subprocess's stdin
+///     default: "b''"
+/// return: Stdout output as bytes. May be returned as a stream (LazyValue).
+/// errors:
+///   - If the command fails to initialize (e.g. program unknown)
+///   - If the subprocess exits with a non-zero status code
+/// examples:
+///   - input: command(["echo", "hello"])
+///     output: "hello\n"
+///   - input: command(["grep","1"], stdin="line 1\nline2")
+///     output: "line 1\n"
 /// ```
-///
-/// > `command` is commonly paired with [`trim`](#trim) to remove trailing
-/// newlines from command output: `{{ command(["echo", "hello"]) | trim() }}`
 #[template]
 pub fn command(
     #[context] context: &SingleRenderContext<'_>,
@@ -231,37 +228,36 @@ pub fn command(
     })
 }
 
-/// Concatenate any number of strings together
-///
-/// **Parameters**
-///
-/// - `elements`: Strings to concatenate together. Any non-string values will be
-///   stringified
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ concat(['My name is ', name, ' and I am ', age]) }} => "My name is Ted and I am 37"
-/// {{ file("data.json") | jsonpath("$.users[*].name") | concat() }} => Concatenate all names in the JSON together
+/// ```notrust
+/// description: Concatenate any number of strings together
+/// parameters:
+///   elements:
+///     description: Strings to concatenate together. Any non-string values will be stringified
+/// return: Concatenated string
+/// examples:
+///   - input: concat(['My name is ', name, ' and I am ', age])
+///     output: "My name is Ted and I am 37"
+///   - input: file("data.json") | jsonpath("$.users[*].name") | concat()
+///     output: "TedSteveSarah"
 /// ```
 #[template]
 pub fn concat(elements: Vec<String>) -> String {
     elements.into_iter().join("")
 }
 
-/// Print a value to stdout, returning the same value. This isn't very useful
-/// in the TUI because stdout gets clobbered, but it can be helpful for
-/// debugging templates with the CLI.
-///
-/// **Parameters**
-///
-/// - `value`: The value to print and return
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ debug("hello") }} => "hello" (also prints "hello" to stdout)
-/// {{ file("data.json") | debug() | jsonpath("$.data") }} => Extract data field and print intermediate result
+/// ```notrust
+/// description: Print a value to stdout, returning the same value. Useful for debugging templates.
+/// parameters:
+///   value:
+///     description: The value to print and return
+/// return: The same value that was passed in
+/// examples:
+///   - input: debug("hello")
+///     output: "'hello'"
+///     comment: Prints "hello"
+///   - input: 'file("data.json") | debug() | jsonpath("$.data")'
+///     output: '123'
+///     comment: Contents of data.json will be printed
 /// ```
 #[template]
 pub fn debug(value: Value) -> Value {
@@ -269,47 +265,40 @@ pub fn debug(value: Value) -> Value {
     value
 }
 
-/// Get the value of an environment variable, or `""` if not set.
-///
-/// **Parameters**
-///
-/// - `variable`: Name of the environment variable to read
-/// - `default`: Value to return when the environment variable is not present
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ env("HOME") }} => "/home/username"
-/// {{ env("NONEXISTENT") }} => ""
-/// {{ env("NONEXISTENT", default="default") }} => "default"
+/// ```notrust
+/// description: Get the value of an environment variable, or `""` if not set.
+/// parameters:
+///   variable:
+///     description: Name of the environment variable to read
+///   default:
+///     description: Value to return when the environment variable is not present
+///     default: ""
+/// return: Value of the environment variable or the provided default
+/// examples:
+///   - input: env("HOME")
+///     output: "/home/username"
+///   - input: env("NONEXISTENT")
+///     output: ""
+///   - input: env("NONEXISTENT", default="default")
+///     output: "default"
 /// ```
 #[template]
 pub fn env(variable: String, #[kwarg] default: String) -> String {
     env::var(variable).unwrap_or(default)
 }
 
-/// Load contents of a file. While the output type is `bytes`,
-/// [in most cases you can use it interchangeably as a
-/// string](../user_guide/templates/values.md#bytes-vs-string). `bytes`
-/// support means you can also use this to load binary files such as images,
-/// which can be useful for request bodies.
-///
-/// This function supports [streaming](../user_guide/streaming.html).
-///
-/// **Parameters**
-///
-/// - `path`: Path to the file to read, relative to the collection file
-///   (`slumber.yml`) in use. A leading `~` will be expanded to your home
-///   directory (`$HOME`).
-///
-/// **Errors**
-///
-/// - If an I/O error occurs while opening the file (e.g. file missing)
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ file("config.json") }} => Contents of config.json file
+/// ```notrust
+/// description: Load contents of a file. Output is bytes but can be used as a string in most cases.
+///   Supports streaming for large/binary files.
+/// parameters:
+///   path:
+///     description: Path to the file to read, relative to the collection file (`slumber.yml`). A leading `~` will be expanded to $HOME.
+/// return: File contents as bytes (may be a stream)
+/// errors:
+///   - If an I/O error occurs while opening the file (e.g. file missing)
+/// examples:
+///   - input: file("config.json")
+///     output: Contents of config.json file
 /// ```
 #[template]
 pub fn file(
@@ -334,26 +323,28 @@ pub fn file(
     }
 }
 
-/// Convert a value to a float
-///
-/// **Parameters**
-///
-/// - `value`: Value to convert
-///
-/// **Errors**
-///
-/// - If `value` is a string or byte string that doesn't parse to a float, or an
-///   inconvertible type such as an array
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ float('3.5') }} => 3.5
-/// {{ float(b'3.5') }} => 3.5
-/// {{ float(3) }} => 3.0
-/// {{ float(null) }} => 0.0
-/// {{ float(false) }} => 0.0
-/// {{ float(true) }} => 1.0
+/// ```notrust
+/// description: Convert a value to a float
+/// parameters:
+///   value:
+///     description: Value to convert
+/// return: Floating point representation (f64)
+/// errors:
+///   - If `value` is a string or byte string that doesn't parse to a float
+///   - If `value` is an inconvertible type such as an array or object
+/// examples:
+///   - input: float('3.5')
+///     output: 3.5
+///   - input: float(b'3.5')
+///     output: 3.5
+///   - input: float(3)
+///     output: 3.0
+///   - input: float(null)
+///     output: 0.0
+///   - input: float(false)
+///     output: 0.0
+///   - input: float(true)
+///     output: 1.0
 /// ```
 #[template]
 pub fn float(value: Value) -> Result<f64, ValueError> {
@@ -375,26 +366,28 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
     }
 }
 
-/// Convert a value to an int
-///
-/// **Parameters**
-///
-/// - `value`: Value to convert
-///
-/// **Errors**
-///
-/// - If `value` is a string or byte string that doesn't parse to an integer, or
-///   an inconvertible type such as an array
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ integer('3') }} => 3
-/// {{ integer(b'3') }} => 3
-/// {{ integer(3.5) }} => 3
-/// {{ integer(null) }} => 0
-/// {{ integer(false) }} => 0
-/// {{ integer(true) }} => 1
+/// ```notrust
+/// description: Convert a value to an int
+/// parameters:
+///   value:
+///     description: Value to convert
+/// return: Integer representation (i64)
+/// errors:
+///   - If `value` is a string or byte string that doesn't parse to an integer
+///   - If `value` is an inconvertible type such as an array or object
+/// examples:
+///   - input: integer('3')
+///     output: 3
+///   - input: integer(b'3')
+///     output: 3
+///   - input: integer(3.5)
+///     output: 3
+///   - input: integer(null)
+///     output: 0
+///   - input: integer(false)
+///     output: 0
+///   - input: integer(true)
+///     output: 1
 /// ```
 #[template]
 pub fn integer(value: Value) -> Result<i64, ValueError> {
@@ -416,51 +409,24 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
     }
 }
 
-/// Transform a JSON value using a [jq](https://jqlang.org/manual/) query. For
-/// simple queries, [`jsonpath`](#jsonpath) is often simpler to use, but `jq` is
-/// much more powerful and flexible. In particular, `jq` can be used to
-/// construct new JSON values, while JSONPath can only extract from existing
-/// values.
-///
-/// This function is most useful when used after a data-providing function such
-/// as [`file`](#file) or [`response`](#response).
-///
-/// This relies on a pure Rust reimplmentation of `jq` called
-/// [jaq](https://github.com/01mf02/jaq). While largely compliant with the
-/// original `jq` behavior, [there are some differences](https://github.com/01mf02/jaq?tab=readme-ov-file#differences-between-jq-and-jaq).
-///
-/// **Parameters**
-///
-/// - `value`: JSON value to query. If this is a string or bytes, it will be
-///   parsed as JSON before being queried. If it's already a structured value
-///   (bool, array, etc.), it will be mapped directly to JSON. This value is
-///   typically piped in from the output of `response()` or `file()`.
-/// - `query`: `jq` query string (see `jq` docs linked above)
-/// - `mode` (default: `"auto"`): How to handle multiple results (see table
-///   below)
-///
-/// An explanation of `mode` using this object as an example:
-///
-/// ```json
-/// [{ "name": "Apple" }, { "name": "Kiwi" }, { "name": "Mango" }]
-/// ```
-///
-/// | Mode     | Description                                                                       | `$.id` | `$[0].name` | `$[*].name`                  |
-/// | -------- | --------------------------------------------------------------------------------- | ------ | ----------- | ---------------------------- |
-/// | `auto`   | If query returns a single value, use it. If it returns multiple, use a JSON array | Error  | `Apple`     | `["Apple", "Kiwi", "Mango"]` |
-/// | `single` | If a query returns a single value, use it. Otherwise, error.                      | Error  | `Apple`     | Error                        |
-/// | `array`  | Return results as an array, regardless of count.                                  | `[]`   | `["Apple"]` | `["Apple", "Kiwi", "Mango"]` |
-///
-/// **Errors**
-///
-/// - If `value` is a string with invalid JSON
-/// - If the query returns no results and `mode='auto'` or `mode='single'`
-/// - If the query returns 2+ results and `mode='single'`
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ response('get_user') | jq(".first_name") }} => "Alice"
+/// ```notrust
+/// description: Transform a JSON value using a `jq` query. Uses the `jaq` Rust implementation.
+/// parameters:
+///   query:
+///     description: "`jq` query string"
+///   value:
+///     description: JSON value to query. Strings/bytes will be parsed as JSON first.
+///   mode:
+///     description: How to handle multiple results (auto/single/array)
+///     default: "auto"
+/// return: Resulting template `Value`
+/// errors:
+///   - If `value` is a string with invalid JSON
+///   - If the query returns no results and `mode='auto'` or `mode='single'`
+///   - If the query returns 2+ results and `mode='single'`
+/// examples:
+///   - input: response('get_user') | jq(".first_name")
+///     output: "Alice"
 /// ```
 #[template]
 pub fn jq(
@@ -578,86 +544,43 @@ impl FromStr for JaqQuery {
 
 impl_try_from_value_str!(JaqQuery);
 
-/// Parse a JSON string to a template value.
-///
-/// **Parameters**
-///
-/// - `value`: JSON string
-///
-/// **Errors**
-///
-/// - If `value` is not valid JSON
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ json_parse('{"name": "Alice"}') }} => {"name": "Alice"}
-/// # Commonly combined with file() or response() because they spit out raw JSON
-/// {{ file('body.json') | json_parse() }} => {"name": "Alice"}"
-/// {{ response('get_user') | json_parse() }} => {"name": "Alice"}"
-/// ```
-///
-/// This can be used in `json` request bodies to create dynamic non-string
-/// values.
-///
-/// ```yaml
-/// body:
-///   type: json
-///   data: {
-///     "data": "{{ response('get_user') | json_parse() }}"
-///   }
-/// ```
-///
-/// This will render a request body like:
-///
-/// ```json
-/// {"data": {"name": "Alice"}}
+/// ```notrust
+/// description: Parse a JSON string to a template value.
+/// parameters:
+///   value:
+///     description: JSON string
+/// return: Parsed JSON as `serde_json::Value`
+/// errors:
+///   - If `value` is not valid JSON
+/// examples:
+///   - input: "json_parse('{\"name\": \"Alice\"}')"
+///     output: '{"name": "Alice"}'
+///   - input: "file('body.json') | json_parse()"
+///     output: '{"name": "Alice"}'
 /// ```
 #[template]
 pub fn json_parse(value: String) -> Result<serde_json::Value, FunctionError> {
     serde_json::from_str(&value).map_err(FunctionError::JsonParse)
 }
 
-/// Transform a JSON value using a JSONPath query. See
-/// [JSONPath specification](https://datatracker.ietf.org/doc/html/rfc9535) or
-/// [jsonpath.com](https://jsonpath.com/) for query syntax. For more complex
-/// queries, you may want to use [`jq`](#jq) instead.
-///
-/// This function is most useful when used after a data-providing function such
-/// as [`file`](#file) or [`response`](#response).
-///
-/// **Parameters**
-///
-/// - `value`: JSON value to query. If this is a string or bytes, it will be
-///   parsed as JSON before being queried. If it's already a structured value
-///   (bool, array, etc.), it will be mapped directly to JSON. This value is
-///   typically piped in from the output of `response()` or `file()`.
-/// - `query`: JSONPath query string
-/// - `mode` (default: `"auto"`): How to handle multiple results (see table
-///   below)
-///
-/// An explanation of `mode` using this object as an example:
-///
-/// ```json
-/// [{ "name": "Apple" }, { "name": "Kiwi" }, { "name": "Mango" }]
-/// ```
-///
-/// | Mode     | Description                                                                       | `$.id` | `$[0].name` | `$[*].name`                  |
-/// | -------- | --------------------------------------------------------------------------------- | ------ | ----------- | ---------------------------- |
-/// | `auto`   | If query returns a single value, use it. If it returns multiple, use a JSON array | Error  | `Apple`     | `["Apple", "Kiwi", "Mango"]` |
-/// | `single` | If a query returns a single value, use it. Otherwise, error.                      | Error  | `Apple`     | Error                        |
-/// | `array`  | Return results as an array, regardless of count.                                  | `[]`   | `["Apple"]` | `["Apple", "Kiwi", "Mango"]` |
-///
-/// **Errors**
-///
-/// - If `value` is a string with invalid JSON
-/// - If the query returns no results and `mode='auto'` or `mode='single'`
-/// - If the query returns 2+ results and `mode='single'`
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ response('get_user') | jsonpath("$.first_name") }} => "Alice"
+/// ```notrust
+/// description: Transform a JSON value using a JSONPath query.
+/// parameters:
+///   value:
+///     description: JSON value to query. Strings/bytes will be parsed as JSON before querying.
+///   query:
+///     description: JSONPath query string
+///   mode:
+///     description: How to handle multiple results (auto/single/array)
+///     default: "auto"
+/// return: Resulting template `Value`
+/// errors:
+///   - If `value` is a string with invalid JSON
+///   - If the query returns no results and `mode='auto'` or `mode='single'`
+///   - If the query returns 2+ results and `mode='single'`
+/// examples:
+///   - input: response('get_user') | jsonpath("$.first_name")
+///     output: "Alice"
 /// ```
 #[template]
 pub fn jsonpath(
@@ -715,7 +638,12 @@ impl TryFromValue for JsonValue {
     }
 }
 
-/// Control how a jq/JSONPath selector returns 0 vs 1 vs 2+ results
+/// ```notrust
+/// description: Control how a jq/JSONPath selector returns 0 vs 1 vs 2+ results
+/// parameters: {}
+/// return: Enum describing mode (auto/single/array)
+/// examples: []
+/// ```
 #[derive(Copy, Clone, Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum JsonQueryMode {
@@ -811,30 +739,28 @@ impl FromStr for JsonQueryMode {
 
 impl_try_from_value_str!(JsonQueryMode);
 
-/// Prompt the user to enter a text value.
-///
-/// **Parameters**
-///
-/// - `message`: Optional prompt message to display to the user
-/// - `default`: Optional default value to pre-fill the input
-/// - `sensitive`: Mask the input while typing. Unlike the
-///   [`sensitive`](#sensitive) function, which masks *output* values, this flag
-///   enables masking on the input *and* output. This means it's redundant to
-///   combine `sensitive` with `prompt`.
-///
-/// **Errors**
-///
-/// - If the user doesn't give a response
-///
-/// **Examples**
-///
-/// ```sh
-/// # Prompt with no message. User may be confused!
-/// {{ prompt() }} => "What do I put here? Help!!"
-/// # Prompts with custom message
-/// {{ prompt(message="Enter your name") }} => "Barry Barracuda"
-/// # Mask input while the user types
-/// {{ prompt(message="Password", sensitive=true) }} => "hunter2"
+/// ```notrust
+/// description: Prompt the user to enter a text value.
+/// parameters:
+///   message:
+///     description: Optional prompt message to display to the user
+///     default: "''"
+///   default:
+///     description: Optional default value to pre-fill the input
+///     default: "''"
+///   sensitive:
+///     description: Mask the input while typing. Also masks output in previews.
+///     default: false
+/// return: Entered string
+/// errors:
+///   - If the user doesn't give a response
+/// examples:
+///   - input: prompt()
+///     output: "What do I put here? Help!!"
+///   - input: prompt(message="Enter your name")
+///     output: "Barry Barracuda"
+///   - input: prompt(message="Password", sensitive=true)
+///     output: "hunter2"
 /// ```
 #[template]
 pub async fn prompt(
@@ -865,57 +791,25 @@ pub async fn prompt(
     }
 }
 
-/// Load the most recent response body for the given recipe and current profile.
-/// While the output type is `bytes`, [in most cases you can use it
-/// interchangeably as a
-/// string](../user_guide/templates/values.md#bytes-vs-string).
-///
-/// **Parameters**
-///
-/// - `recipe_id`: ID (**not** name) of the recipe to load the response from
-/// - `trigger`: When to execute the upstream request
-///
-/// An explanation of `trigger`:
-///
-/// | Value          | Description                                                                                                            |
-/// | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-/// | `"never"`      | Never trigger. The most recent response in history for the upstream recipe will always be used; error if there is none |
-/// | `"no_history"` | Trigger only if there is no response in history for the upstream recipe                                                |
-/// | `"always"`     | Always execute the upstream request                                                                                    |
-/// | `Duration`     | Trigger if the most recent response for the upstream recipe is older than some duration, or there is none              |
-///
-/// `Duration` is a `string` in the format `<quantity><unit>...`, e.g. `"3h"`.
-/// Supported units are:
-///
-/// - `s` (seconds)
-/// - `m` (minutes)
-/// - `h` (hours)
-/// - `d` (days)
-///
-/// Multiple units can be combined:
-///
-/// - `"10h5m"`: 10 hours and 5 minutes
-/// - `"3d2s"`: 3 days and 2 seconds
-///
-/// **Errors**
-///
-/// - If `recipe` isn't in the collection
-/// - If there is no request in history and `trigger='never'`
-/// - If a request is triggered and failed
-///
-/// **Examples**
-///
-/// ```sh
-/// # Use the most recent response body. Error if there are no responses in history
-/// {{ response("login") }} => {"token": "abc123"}
-/// # Re-execute if older than 1 hour
-/// {{ response("login", trigger="1h") }} => {"token": "abc123"}
-/// # Combine with jsonpath for data extraction
-/// {{ response("login") | jsonpath("$.token") }} => "abc123"
+/// ```notrust
+/// description: Load the most recent response body for the given recipe and current profile.
+/// parameters:
+///   recipe_id:
+///     description: ID (not name) of the recipe to load the response from
+///   trigger:
+///     description: When to execute the upstream request (never/no_history/always/Duration)
+///     default: "never"
+/// return: Most recent response body as bytes
+/// errors:
+///   - If `recipe` isn't in the collection
+///   - If there is no request in history and `trigger='never'`
+///   - If a request is triggered and failed
+/// examples:
+///   - input: response("login")
+///     output: '{"token": "abc123"}'
+///   - input: response("login", trigger="1h")
+///     output: '{"token": "abc123"}'
 /// ```
-///
-/// > `response` is commonly combined with [`jsonpath`](#jsonpath) to extract
-/// > data from JSON responses
 #[template]
 pub async fn response(
     #[context] context: &SingleRenderContext<'_>,
@@ -930,29 +824,25 @@ pub async fn response(
     Ok(body.into_bytes())
 }
 
-/// Load a header value from the most recent response for a recipe and the
-/// current profile. While the output type is `bytes`,
-/// [in most cases you can use it interchangeably as a
-/// string](../user_guide/templates/values.md#bytes-vs-string).
-///
-/// **Parameters**
-///
-/// - `recipe_id`: ID (**not** name) of the recipe to load the response from
-/// - `header`: Name of the header to extract (case-insensitive)
-/// - `trigger`: When to execute the upstream request vs using the cached
-///   response; [see `response`](#response)
-///
-/// **Errors**
-///
-/// - If `recipe` isn't in the collection
-/// - If there is no request in history and `trigger='never'`
-/// - If a request is triggered and failed
-///
-/// **Examples**
-///
-/// ```sh
-/// # Fetch current rate limit, refreshed if older than 5 minutes
-/// {{ response_header("get_rate_limit", "X-Rate-Limit", trigger="5m") }} => Value of X-Rate-Limit response header
+/// ```notrust
+/// description: Load a header value from the most recent response for a recipe and the current profile.
+/// parameters:
+///   recipe_id:
+///     description: ID (not name) of the recipe to load the response from
+///   header:
+///     description: Name of the header to extract (case-insensitive)
+///   trigger:
+///     description: When to execute the upstream request vs using cached response
+///     default: "never"
+/// return: Header value as bytes
+/// errors:
+///   - If `recipe` isn't in the collection
+///   - If there is no request in history and `trigger='never'`
+///   - If a request is triggered and failed
+///   - If the header is missing
+/// examples:
+///   - input: response_header("get_rate_limit", "X-Rate-Limit", trigger="5m")
+///     output: "100"
 /// ```
 #[template]
 pub async fn response_header(
@@ -973,33 +863,25 @@ pub async fn response_header(
     Ok(header_value.as_bytes().to_vec().into())
 }
 
-/// Ask the user to select a value from a list.
-///
-/// **Parameters**
-///
-/// - `options`: List of options to choose from. Each option can be either a
-///   string *or* an object with the fields `"label"` and `"value"`. If an
-///   object is given, the `"label"` field will be shown to the user, but the
-///   corresponding `"value"` field will be returned.
-/// - `message`: Descriptive message to display to the user
-///
-/// **Errors**
-///
-/// - If `options` is empty
-/// - If the user doesn't give a response
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ select(["dev", "staging", "prod"]) }} => "dev"
-/// # Custom prompt message
-/// {{ select(["GET", "POST", "PUT"], message="HTTP method") }} => "POST"
-/// # "label" will be shown to the user, but the corresponding "value" will be returned
-/// {{ select([{"label": "Sam", "value": 1}, {"label": "Mike", "value": 2}]) }} => 2
-/// # jq() can be used to construct labelled options dynamically
-/// {{ [{"name": "Sam", "id": 1}, {"name": "Mike", "id": 2}]
-///     | jq('[.[] | {label: .name, value: .id}]')
-///     | select(message="Select user") }}
+/// ```notrust
+/// description: Ask the user to select a value from a list.
+/// parameters:
+///   options:
+///     description: List of options to choose from. Each option can be either a string or an object with "label" and "value".
+///   message:
+///     description: Descriptive message to display to the user
+///     default: ""
+/// return: The selected value
+/// errors:
+///   - If `options` is empty
+///   - If the user doesn't give a response
+/// examples:
+///   - input: select(["dev", "staging", "prod"])
+///     output: "dev"
+///   - input: select(["GET", "POST","PUT"], message="HTTP method")
+///     output: "POST"
+///   - input: select([{"label":"Sam","value":1},{"label":"Mike","value":2}])
+///     output: 2
 /// ```
 #[template]
 pub async fn select(
@@ -1041,18 +923,15 @@ impl TryFromValue for SelectOption {
     }
 }
 
-/// Mark a value as sensitive, masking it in template previews. This has no
-/// impact on how requests are actually sent, it only prevents sensitive values
-/// such as passwords from being displayed in the recipe preview.
-///
-/// **Parameters**
-///
-/// - `value`: String to mask
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ sensitive("hunter2") }} => "•••••••" (in preview)
+/// ```notrust
+/// description: Mark a value as sensitive, masking it in template previews. No impact on requests sent.
+/// parameters:
+///   value:
+///     description: String to mask
+/// return: Masked string in preview, input string when building requests
+/// examples:
+///   - input: sensitive("hunter2")
+///     output: "•••••••"
 /// ```
 #[template]
 pub fn sensitive(
@@ -1062,44 +941,43 @@ pub fn sensitive(
     mask_sensitive(context, value)
 }
 
-/// Stringify a value. Any value can be converted to a string except for
-/// non-UTF-8 bytes
-///
-/// **Parameters**
-///
-/// - `value`: Value to stringify
-///
-/// **Errors**
-///
-/// - If `value` is a byte string that isn't valid UTF-8
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ string('hello') }} => "hello"
-/// {{ string(b'hello') }} => "hello"
-/// {{ string([1, 2, 3]) }} => "[1, 2, 3]"
+/// ```notrust
+/// description: Stringify a value. Any value can be converted to a string except for non-UTF-8 bytes
+/// parameters:
+///   value:
+///     description: Value to stringify
+/// return: String representation
+/// errors:
+///   - If `value` is a byte string that isn't valid UTF-8
+/// examples:
+///   - input: string('hello')
+///     output: "hello"
+///   - input: string(b'hello')
+///     output: "hello"
+///   - input: string([1, 2, 3])
+///     output: "[1, 2, 3]"
 /// ```
 #[template]
 pub fn string(value: Value) -> Result<String, ValueError> {
     String::try_from_value(value).map_err(WithValue::into_error)
 }
 
-/// Trim whitespace from the beginning and/or end of a string.
-///
-/// **Parameters**
-///
-/// - `value`: String to trim (typically piped in from a previous function with
-///   `|`)
-/// - `mode` (default: `"both"`): Section of the string to trim
-///
-/// **Examples**
-///
-/// ```sh
-/// {{ trim("  hello  ") }} => "hello"
-/// {{ trim("  hello  ", mode="start") }} => "hello  "
-/// # Remove trailing newline from command output
-/// {{ command(["echo", "hello"]) | trim() }} => "hello"
+/// ```notrust
+/// description: Trim whitespace from the beginning and/or end of a string.
+/// parameters:
+///   value:
+///     description: String to trim (typically piped in)
+///   mode:
+///     description: Section of the string to trim (start/end/both)
+///     default: "both"
+/// return: Trimmed string
+/// examples:
+///   - input: trim("  hello  ")
+///     output: "hello"
+///   - input: trim("  hello  ", mode="start")
+///     output: "hello  "
+///   - input: command(["echo", "hello"]) | trim()
+///     output: "hello"
 /// ```
 #[template]
 pub fn trim(value: String, #[kwarg] mode: TrimMode) -> String {

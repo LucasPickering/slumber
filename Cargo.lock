@@ -822,10 +822,13 @@ version = "4.2.1"
 dependencies = [
  "anyhow",
  "clap",
+ "indexmap 2.12.1",
  "itertools 0.13.0",
  "mdbook-preprocessor",
  "quote",
+ "serde",
  "serde_json",
+ "serde_yaml",
  "syn 2.0.101",
 ]
 

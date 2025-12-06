@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `join()` joins an array on a separator
   - `slice()` slices a portion out of a string or array
   - `upper()` and `lower()` convert strings to upper/lower case respectively
+  - `replace()` replaces occurrences of one string with another
 
 ## [4.2.1] - 2025-11-26
 

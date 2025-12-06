@@ -160,7 +160,7 @@ jobs:
         with:
           key: python-${{ matrix.platform.name }}
 
-      - name: Setup
+      - name: Install dependencies
         working-directory: crates/python
         run: mise setup
 

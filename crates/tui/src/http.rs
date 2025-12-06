@@ -5,7 +5,7 @@ mod tests;
 
 use crate::{
     context::TuiContext,
-    message::{Message, MessageSender},
+    message::{HttpMessage, Message, MessageSender},
 };
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -138,7 +138,7 @@ impl RequestStore {
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
         abort_handle: Option<AbortHandle>,
-    ) {
+    ) -> &RequestState {
         let state = RequestState::Building {
             id,
             start_time: Utc::now(),
@@ -146,7 +146,10 @@ impl RequestStore {
             recipe_id,
             abort_handle,
         };
-        self.requests.insert(id, state);
+        match self.requests.entry(id) {
+            Entry::Vacant(entry) => entry.insert(state),
+            Entry::Occupied(_) => panic!("Request {id} started twice"),
+        }
     }
 
     /// Mark a request as loading. Return the updated state.
@@ -518,8 +521,8 @@ impl HttpProvider for TuiHttpProvider {
             let profile_id = template_context.selected_profile.clone();
             let recipe_id = seed.recipe_id.clone();
 
-            self.messages_tx.send(Message::HttpBuildingTriggered {
-                id: request_id,
+            self.messages_tx.send(HttpMessage::Triggered {
+                request_id,
                 profile_id,
                 recipe_id,
             });
@@ -531,20 +534,18 @@ impl HttpProvider for TuiHttpProvider {
                 .map_err(Arc::new)
                 .inspect_err(|error| {
                     // Report error to the TUI
-                    self.messages_tx.send(Message::HttpBuildError {
-                        error: Arc::clone(error),
-                    });
+                    self.messages_tx
+                        .send(HttpMessage::BuildError(Arc::clone(error)));
                 })?;
 
             // Build successful, send it out
-            self.messages_tx.send(Message::HttpLoading {
-                request: Arc::clone(ticket.record()),
-            });
+            self.messages_tx
+                .send(HttpMessage::Loading(Arc::clone(ticket.record())));
 
             // Clone the exchange so we can persist it in the DB/store and
             // still return it
             let result = ticket.send().await.map_err(Arc::new);
-            self.messages_tx.send(Message::HttpComplete(result.clone()));
+            self.messages_tx.send(HttpMessage::Complete(result.clone()));
             result.map_err(TriggeredRequestError::Send)
         }
     }

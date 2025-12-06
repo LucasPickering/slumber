@@ -352,7 +352,7 @@ impl PersistentKey for CollapsedKey {
 /// Display detail for the current recipe node, which could be a recipe, a
 /// folder, or empty. This also handles the prompt form. When there are prompts
 /// open, the recipe node detail is replaced with the prompts.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RecipeDetail {
     id: ComponentId,
     /// Emitter for menu actions

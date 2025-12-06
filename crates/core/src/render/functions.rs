@@ -410,6 +410,30 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
 }
 
 /// ```notrust
+/// description: >-
+///   Join a list of strings with a separator
+///
+///   `join` is the inverse of [`split`](#split). `join(sep, split(sep, value))`
+///   always yields `value`.
+/// parameters:
+///   delimiter:
+///     description: String to split on
+///   value:
+///     description: String to split
+/// return: Joined string
+/// examples:
+///   - input: "['a', 'b', 'c'] | join(',')"
+///     output: "'a,b,c''
+///   - input: "[1, 2, 3] | join(',')"
+///     output: "'1,2,3'"
+///     comment: Non-string values are coerced to strings
+/// ```
+#[template]
+pub fn join(separator: String, values: Vec<String>) -> String {
+    values.join(&separator)
+}
+
+/// ```notrust
 /// description: Transform a JSON value using a `jq` query. Uses the `jaq` Rust implementation.
 /// parameters:
 ///   query:
@@ -942,9 +966,9 @@ pub fn sensitive(
 }
 
 /// ```notrust
-/// description: Split a string on a delimiter
+/// description: Split a string on a separator
 /// parameters:
-///   delimiter:
+///   separator:
 ///     description: String to split on
 ///   value:
 ///     description: String to split
@@ -965,7 +989,7 @@ pub fn sensitive(
 /// ```
 #[template]
 pub fn split(
-    delimiter: String,
+    separator: String,
     value: String,
     #[kwarg] n: Option<u32>,
 ) -> Vec<String> {
@@ -977,12 +1001,12 @@ pub fn split(
             vec![value]
         } else {
             value
-                .splitn((n + 1) as usize, &delimiter)
+                .splitn((n + 1) as usize, &separator)
                 .map(String::from)
                 .collect()
         }
     } else {
-        value.split(&delimiter).map(String::from).collect()
+        value.split(&separator).map(String::from).collect()
     }
 }
 

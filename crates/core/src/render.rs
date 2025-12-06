@@ -274,6 +274,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "file" => functions::file(arguments),
             "float" => functions::float(arguments),
             "integer" => functions::integer(arguments),
+            "join" => functions::join(arguments),
             "jq" => functions::jq(arguments),
             "json_parse" => functions::json_parse(arguments),
             "jsonpath" => functions::jsonpath(arguments),

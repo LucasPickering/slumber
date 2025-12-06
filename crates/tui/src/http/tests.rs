@@ -189,17 +189,17 @@ async fn test_life_cycle_request_error() {
     assert_matches!(store.get(id), Some(RequestState::RequestError { .. }));
 }
 
-/// building->cancelled and loading->cancelled
+/// building->cancelled
 #[rstest]
 #[tokio::test]
-async fn test_life_cycle_cancel() {
+async fn test_life_cycle_building_cancel() {
     let mut store = RequestStore::new(CollectionDatabase::factory(()));
     let exchange = Exchange::factory(());
     let id = exchange.id;
     let profile_id = &exchange.request.profile_id;
     let recipe_id = &exchange.request.recipe_id;
 
-    // This flag confirms that neither future ever finishes
+    // This flag confirms that neither the future never finishes
     let future_finished: Arc<AtomicBool> = Default::default();
 
     let ff = Arc::clone(&future_finished);
@@ -218,6 +218,20 @@ async fn test_life_cycle_cancel() {
     store.cancel(id);
     assert_matches!(store.get(id), Some(RequestState::Cancelled { .. }));
     assert!(!future_finished.load(Ordering::Relaxed));
+}
+
+/// loading->cancelled
+#[rstest]
+#[tokio::test]
+async fn test_life_cycle_loading_cancel() {
+    let mut store = RequestStore::new(CollectionDatabase::factory(()));
+    let exchange = Exchange::factory(());
+    let id = exchange.id;
+    let profile_id = &exchange.request.profile_id;
+    let recipe_id = &exchange.request.recipe_id;
+
+    // This flag confirms that neither the future never finishes
+    let future_finished: Arc<AtomicBool> = Default::default();
 
     let ff = Arc::clone(&future_finished);
     store.start(

@@ -4,7 +4,7 @@ mod view_state;
 
 use crate::{
     http::{RequestConfig, RequestState},
-    message::Message,
+    message::{HttpMessage, Message},
     util::{PersistentKey, PersistentStore, ResultReported},
     view::{
         Component, ViewContext,
@@ -123,7 +123,7 @@ impl PrimaryView {
 
     /// Send a request for the currently selected recipe
     fn send_request(&self) {
-        ViewContext::send_message(Message::HttpBeginRequest);
+        ViewContext::send_message(HttpMessage::Begin);
     }
 
     /// Refresh the recipe preview. Call this whenever the selected recipe *or*

@@ -96,28 +96,8 @@ pub enum Message {
         mime: Option<Mime>,
     },
 
-    /// Launch an HTTP request from the given recipe/profile.
-    HttpBeginRequest,
-    /// Announce that we've started building an HTTP request that was triggered
-    /// by another request.
-    HttpBuildingTriggered {
-        id: RequestId,
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-    },
-    /// Request failed to build
-    HttpBuildError { error: Arc<RequestBuildError> },
-    /// We launched the HTTP request
-    HttpLoading { request: Arc<RequestRecord> },
-    /// The HTTP request either succeeded or failed. We don't need to store the
-    /// recipe ID here because it's in the inner container already. Combining
-    /// these two cases saves a bit of boilerplate. The error must be wrapped
-    /// in `Arc` because it may need to be shared. Triggered requests need their
-    /// error returned to the template engine, but also need to be inserted into
-    /// the request store.
-    HttpComplete(Result<Exchange, Arc<RequestError>>),
-    /// Cancel an HTTP request
-    HttpCancel(RequestId),
+    /// A message that modifies the state of an HTTP request
+    Http(HttpMessage),
     /// Get the most recent _completed_ request for a recipe+profile combo
     HttpGetLatest {
         profile_id: Option<ProfileId>,
@@ -163,6 +143,40 @@ pub enum Message {
         #[debug(skip)]
         on_complete: Callback<RenderedOutput>,
     },
+}
+
+impl From<HttpMessage> for Message {
+    fn from(value: HttpMessage) -> Self {
+        Message::Http(value)
+    }
+}
+
+/// A message that modifies the state of an HTTP request. These are grouped
+/// together to enable the state manager to propagate these changes to the view
+/// easily.
+#[derive(Debug)]
+pub enum HttpMessage {
+    /// Build and send an HTTP request based on the current recipe/profile state
+    Begin,
+    /// An HTTP request was triggered by another request, and is now being built
+    Triggered {
+        request_id: RequestId,
+        profile_id: Option<ProfileId>,
+        recipe_id: RecipeId,
+    },
+    /// Request failed to build
+    ///
+    /// The error is wrapped in `Arc` because it may be shared with other tasks.
+    BuildError(Arc<RequestBuildError>),
+    /// Request was sent and we're now waiting on a response
+    Loading(Arc<RequestRecord>),
+    /// The HTTP request either succeeded or failed. We don't need to store the
+    /// recipe ID here because it's in the inner container already. Combining
+    /// these two cases saves a bit of boilerplate. The error must be wrapped
+    /// in `Arc` because it may be shared with other tasks.
+    Complete(Result<Exchange, Arc<RequestError>>),
+    /// Request was cancelled
+    Cancel(RequestId),
 }
 
 /// Component/form of a recipe to copy to the clipboard

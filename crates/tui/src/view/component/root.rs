@@ -1,6 +1,6 @@
 use crate::{
     http::{RequestConfig, RequestState, RequestStore},
-    message::Message,
+    message::{HttpMessage, Message},
     util::{PersistentKey, PersistentStore, ResultReported},
     view::{
         Component, Confirm, ViewContext,
@@ -123,9 +123,8 @@ impl Root {
             .and_then(|id| request_store.get(id))
     }
 
-    /// Select the given request. This will ensure the request data is loaded
-    /// in memory.
-    pub fn select_request(
+    /// Load a request from the store and select it
+    fn load_and_select_request(
         &mut self,
         request_store: &mut RequestStore,
         request_id: Option<RequestId>,
@@ -147,7 +146,7 @@ impl Root {
             // initialization where the recipe list asks for the latest
             // request *after* the selected ID is loaded from persistence
             let selected_request = self.selected_request(request_store);
-            let profile_id = self.primary_view.selected_profile_id();
+            let profile_id = self.selected_profile_id();
             if selected_request.is_some_and(|request| {
                 request.recipe_id() == recipe_id
                     && request.profile_id() == profile_id
@@ -160,10 +159,40 @@ impl Root {
             None
         };
 
-        self.selected_request_id = state.map(RequestState::id);
-        // Update the exchange pane with the new request
-        self.primary_view.refresh_request(state);
+        if let Some(state) = state {
+            self.update_request(state, true);
+        } else {
+            // We switch to a recipe with no request, or just deleted the last
+            // request for a recipe
+            self.clear_request();
+        }
+
         Ok(())
+    }
+
+    /// Update the UI to reflect the current state of an HTTP request. If
+    /// `select` is `true`, select the request too.
+    pub fn update_request(&mut self, state: &RequestState, select: bool) {
+        // If we're being told to select a request but it's not for the current
+        // profile/recipe, then we say: NO. YOU'RE NOT MY REAL MOM.
+        if select
+            && state.profile_id() == self.selected_profile_id()
+            && Some(state.recipe_id()) == self.primary_view.selected_recipe_id()
+        {
+            self.selected_request_id = Some(state.id());
+        }
+
+        // If the updated request is the one in view, rebuild the view
+        if Some(state.id()) == self.selected_request_id {
+            self.primary_view.refresh_request(Some(state));
+        }
+    }
+
+    /// Clear the selected request. Call this when switching to a state that has
+    /// no request available
+    fn clear_request(&mut self) {
+        self.selected_request_id = None;
+        self.primary_view.refresh_request(None);
     }
 
     /// Open the history modal for current recipe+profile
@@ -206,7 +235,7 @@ impl Root {
                 "Cancel request?".into(),
                 move |response| {
                     if response {
-                        ViewContext::send_message(Message::HttpCancel(
+                        ViewContext::send_message(HttpMessage::Cancel(
                             request_id,
                         ));
                     }
@@ -259,8 +288,11 @@ impl Component for Root {
 
                 // Set selected request, and load it from the DB if needed
                 Event::HttpSelectRequest(request_id) => {
-                    self.select_request(context.request_store, request_id)
-                        .reported(&ViewContext::messages_tx());
+                    self.load_and_select_request(
+                        context.request_store,
+                        request_id,
+                    )
+                    .reported(&ViewContext::messages_tx());
                     None
                 }
 

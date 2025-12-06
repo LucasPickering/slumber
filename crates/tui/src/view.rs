@@ -15,10 +15,10 @@ pub use util::{Confirm, PreviewPrompter, TuiPrompter};
 
 use crate::{
     context::TuiContext,
-    http::{RequestConfig, RequestState, RequestStore},
+    http::{RequestConfig, RequestState},
     input::InputEvent,
     message::MessageSender,
-    util::{PersistentStore, ResultReported},
+    util::PersistentStore,
     view::{
         component::{Canvas, Component, ComponentExt, Root},
         debug::DebugMonitor,
@@ -36,7 +36,6 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
-    http::RequestId,
     render::Prompt,
 };
 use std::{
@@ -155,15 +154,10 @@ impl View {
         self.root.request_config()
     }
 
-    /// Select a particular request
-    pub fn select_request(
-        &mut self,
-        request_store: &mut RequestStore,
-        request_id: RequestId,
-    ) {
-        self.root
-            .select_request(request_store, Some(request_id))
-            .reported(&ViewContext::messages_tx());
+    /// Update the UI to reflect the current state of an HTTP request. If
+    /// `select` is `true`, select the request too.
+    pub fn update_request(&mut self, state: &RequestState, select: bool) {
+        self.root.update_request(state, select);
     }
 
     /// Ask the user a yes/no question

@@ -906,6 +906,40 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
     );
 }
 
+/// `split()`
+#[rstest]
+#[case::empty_string("", ",", None, Ok(vec![""]))]
+#[case::empty_delimiter("abc", "", None, Ok(vec!["", "a", "b", "c", ""]))]
+#[case::empty_empty("", "", None, Ok(vec!["", ""]))]
+#[case::comma("a,b,c,", ",", None, Ok(vec!["a", "b", "c", ""]))]
+#[case::n("a,b,c,", ",", Some(2), Ok(vec!["a", "b", "c,"]))]
+#[case::n_zero("a,b,c,", ",", Some(0), Ok(vec!["a,b,c,"]))]
+#[case::n_over("a,b,c,", ",", Some(7), Ok(vec!["a", "b", "c", ""]))]
+#[case::n_invalid(
+    "", ",", Some(-1), Err("argument n=-1: Integer out of range [0, 4294967295]"
+    ))]
+#[tokio::test]
+async fn test_split(
+    #[case] value: &str,
+    #[case] delimiter: &str,
+    #[case] n: Option<i64>,
+    #[case] expected: Result<Vec<&str>, &str>,
+) {
+    let template = Template::function_call(
+        "split",
+        [delimiter.into(), value.into()],
+        [("n", n.map(Expression::from))],
+    );
+    assert_result(
+        template
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
+            .await,
+        expected.map(Value::from),
+    );
+}
+
 /// `string()`
 #[rstest]
 #[case::primitive(true.into(), Ok("true"))]

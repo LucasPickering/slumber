@@ -280,6 +280,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "jsonpath" => functions::jsonpath(arguments),
             "lower" => functions::lower(arguments),
             "prompt" => functions::prompt(arguments).await,
+            "replace" => functions::replace(arguments),
             "response" => functions::response(arguments).await,
             "response_header" => functions::response_header(arguments).await,
             "select" => functions::select(arguments).await,

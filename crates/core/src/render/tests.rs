@@ -649,6 +649,37 @@ async fn test_prompt(
     );
 }
 
+/// `replace()`
+#[rstest]
+#[case::non_overlapping("banana", "na", "ma", None, Ok("bamama"))]
+#[case::overlapping("bananan", "nan", "mam", None, Ok("bamaman"))]
+#[case::n_limited("banana", "na", "ma", Some(1), Ok("bamana"))]
+#[case::n_zero("banana", "na", "ma", Some(0), Ok("banana"))]
+#[case::n_over("banana", "na", "ma", Some(7), Ok("bamama"))]
+#[case::error_n_invalid(
+    "", "", "", Some(-1), Err("argument n=-1: Integer out of range [0, 4294967295]"
+))]
+#[tokio::test]
+async fn test_replace(
+    #[case] value: &str,
+    #[case] from: &str,
+    #[case] to: &str,
+    #[case] n: Option<i64>,
+    #[case] expected: Result<&str, &str>,
+) {
+    let template = Template::function_call(
+        "replace",
+        [from.into(), to.into(), value.into()],
+        [("n", n.map(Expression::from))],
+    );
+    assert_result(
+        template
+            .render_string(&TemplateContext::factory(()).streaming(false))
+            .await,
+        expected,
+    );
+}
+
 /// `response()`
 #[rstest]
 // ===== Response is cached =====
@@ -983,11 +1014,11 @@ async fn test_slice(
 
 /// `split()`
 #[rstest]
-#[case::empty_string("", ",", None, Ok(vec![""].into()))]
+#[case::empty_string("", ",", None, Ok(vec![""]))]
 #[case::empty_separator("abc", "", None, Ok(vec!["", "a", "b", "c", ""]))]
 #[case::empty_empty("", "", None, Ok(vec!["", ""]))]
 #[case::comma("a,b,c,", ",", None, Ok(vec!["a", "b", "c", ""]))]
-#[case::n("a,b,c,", ",", Some(2), Ok(vec!["a", "b", "c,"]))]
+#[case::n_limited("a,b,c,", ",", Some(2), Ok(vec!["a", "b", "c,"]))]
 #[case::n_zero("a,b,c,", ",", Some(0), Ok(vec!["a,b,c,"]))]
 #[case::n_over("a,b,c,", ",", Some(7), Ok(vec!["a", "b", "c", ""]))]
 #[case::error_n_invalid(

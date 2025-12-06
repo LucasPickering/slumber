@@ -834,6 +834,39 @@ pub async fn prompt(
 }
 
 /// ```notrust
+/// description: Replace all occurrences of `from` in `value` with `to`
+/// parameters:
+///   from:
+///     description: String to be replaced
+///   value:
+///     description: String to split
+///   n:
+///     description: Maximum number of replacements to make, starting from the
+///       start of the string. If `null`, make all possible replacements
+///     default: null
+/// return: Array of separated string segments
+/// examples:
+///   - input: "'banana' | replace('na', 'ma')"
+///     output: "'bamama'"
+///   - input: "'bananan' | replace('nan', 'mam')"
+///     output: "'bamaman'"
+///     comment: Overlapping instances of `to` are NOT all replaced
+/// ```
+#[template]
+pub fn replace(
+    from: String,
+    to: String,
+    value: String,
+    #[kwarg] n: Option<u32>,
+) -> String {
+    if let Some(n) = n {
+        value.replacen(&from, &to, n as usize)
+    } else {
+        value.replace(&from, &to)
+    }
+}
+
+/// ```notrust
 /// description: Load the most recent response body for the given recipe and current profile.
 /// parameters:
 ///   recipe_id:

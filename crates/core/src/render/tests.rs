@@ -598,6 +598,22 @@ async fn test_jsonpath(
     );
 }
 
+/// `lower()`
+#[rstest]
+#[case::ascii("heLLo", "hello")]
+#[case::utf8("NÄGEMIST", "nägemist")]
+#[tokio::test]
+async fn test_lower(#[case] input: &str, #[case] expected: &str) {
+    let template = Template::function_call("lower", [input.into()], []);
+    assert_eq!(
+        template
+            .render_string(&TemplateContext::factory(()).streaming(false))
+            .await
+            .unwrap(),
+        expected
+    );
+}
+
 /// `prompt()`
 #[rstest]
 #[case::reply(Some("test"), None, false, Ok("test"))]
@@ -1040,6 +1056,22 @@ async fn test_trim(
     assert_eq!(
         template
             .render_bytes(&TemplateContext::factory(()).streaming(false))
+            .await
+            .unwrap(),
+        expected
+    );
+}
+
+/// `upper()`
+#[rstest]
+#[case::ascii("heLLo", "HELLO")]
+#[case::utf8("nägemist", "NÄGEMIST")]
+#[tokio::test]
+async fn test_upper(#[case] input: &str, #[case] expected: &str) {
+    let template = Template::function_call("upper", [input.into()], []);
+    assert_eq!(
+        template
+            .render_string(&TemplateContext::factory(()).streaming(false))
             .await
             .unwrap(),
         expected

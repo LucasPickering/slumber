@@ -198,6 +198,10 @@ pub enum ValueError {
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
 
+    /// Error converting an i64 to a different numeric type
+    #[error("Integer out of range {expected}")]
+    IntegerRange { expected: String },
+
     /// Function expected one type but a value of a different type was given
     #[error("Expected {expected}")]
     Type { expected: Expected },

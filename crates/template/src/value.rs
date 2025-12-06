@@ -271,6 +271,27 @@ impl TryFromValue for i64 {
     }
 }
 
+impl TryFromValue for u32 {
+    fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
+        match &value {
+            Value::Integer(i) => (*i).try_into().map_err(|_| {
+                WithValue::new(
+                    value,
+                    ValueError::IntegerRange {
+                        expected: format!("[{}, {}]", u32::MIN, u32::MAX),
+                    },
+                )
+            }),
+            _ => Err(WithValue::new(
+                value,
+                ValueError::Type {
+                    expected: Expected::Integer,
+                },
+            )),
+        }
+    }
+}
+
 impl TryFromValue for String {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         // This will succeed for anything other than invalid UTF-8 bytes

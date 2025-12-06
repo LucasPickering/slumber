@@ -942,6 +942,51 @@ pub fn sensitive(
 }
 
 /// ```notrust
+/// description: Split a string on a delimiter
+/// parameters:
+///   delimiter:
+///     description: String to split on
+///   value:
+///     description: String to split
+///   n:
+///     description: Maximum number of times to split. If `null`, split as many times as
+///   possible
+///     default: "null"
+/// return: Array of separated string segments
+/// examples:
+///   - input: "'a,b,c' | split(',')"
+///     output: "['a', 'b', 'c']"
+///   - input: "'a,b,c' | split(',', n=1)"
+///     output: "['a', 'b,c']"
+///   - input: "'a,b,c' | split('')"
+///     output: "['', 'a', ',', 'b', ',', 'c', '']"
+///   - input: "'' | split(',')"
+///     output: "['']"
+/// ```
+#[template]
+pub fn split(
+    delimiter: String,
+    value: String,
+    #[kwarg] n: Option<u32>,
+) -> Vec<String> {
+    if let Some(n) = n {
+        // In splitn, n is the number of elements returned, therefore one more
+        // than the number of splits done. I think that's unintuitive
+        // though, so we have to do +1 to get the number of terms.
+        if n == 0 {
+            vec![value]
+        } else {
+            value
+                .splitn((n + 1) as usize, &delimiter)
+                .map(String::from)
+                .collect()
+        }
+    } else {
+        value.split(&delimiter).map(String::from).collect()
+    }
+}
+
+/// ```notrust
 /// description: Stringify a value. Any value can be converted to a string except for non-UTF-8 bytes
 /// parameters:
 ///   value:

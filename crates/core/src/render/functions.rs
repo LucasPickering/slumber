@@ -764,6 +764,24 @@ impl FromStr for JsonQueryMode {
 impl_try_from_value_str!(JsonQueryMode);
 
 /// ```notrust
+/// description: Convert a string to lowercase
+/// parameters:
+///   value:
+///     description: String to convert
+/// return: Lowercased string
+/// examples:
+///   - input: lower("HELLO")
+///     output: "hello"
+///   - input: lower("NÄGEMIST")
+///     output: "nägemist"
+///     comment: UTF-8 characters are converted as well
+/// ```
+#[template]
+pub fn lower(value: String) -> String {
+    value.to_lowercase()
+}
+
+/// ```notrust
 /// description: Prompt the user to enter a text value.
 /// parameters:
 ///   message:
@@ -1107,6 +1125,24 @@ pub fn trim(value: String, #[kwarg] mode: TrimMode) -> String {
         TrimMode::End => value.trim_end().to_string(),
         TrimMode::Both => value.trim().to_string(),
     }
+}
+
+/// ```notrust
+/// description: Convert a string to uppercase
+/// parameters:
+///   value:
+///     description: String to convert
+/// return: Uppercased string
+/// examples:
+///   - input: upper("hello")
+///     output: "HELLO"
+///   - input: lower("nägemist")
+///     output: "NÄGEMIST"
+///     comment: UTF-8 characters are converted as well
+/// ```
+#[template]
+pub fn upper(value: String) -> String {
+    value.to_uppercase()
 }
 
 fn mask_sensitive(context: &SingleRenderContext<'_>, value: String) -> String {

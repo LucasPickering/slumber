@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `split()` splits a string on a separator
   - `join()` joins an array on a separator
   - `slice()` slices a portion out of a string or array
+  - `upper()` and `lower()` convert strings to upper/lower case respectively
 
 ## [4.2.1] - 2025-11-26
 

@@ -278,6 +278,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "jq" => functions::jq(arguments),
             "json_parse" => functions::json_parse(arguments),
             "jsonpath" => functions::jsonpath(arguments),
+            "lower" => functions::lower(arguments),
             "prompt" => functions::prompt(arguments).await,
             "response" => functions::response(arguments).await,
             "response_header" => functions::response_header(arguments).await,
@@ -287,6 +288,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "split" => functions::split(arguments),
             "string" => functions::string(arguments),
             "trim" => functions::trim(arguments),
+            "upper" => functions::upper(arguments),
             _ => Err(RenderError::FunctionUnknown),
         }
     }

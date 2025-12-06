@@ -12,7 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add `default` keyword arg to `env()` [#652](https://github.com/LucasPickering/slumber/issues/652)
 - Add string maniuplation functions [#655](https://github.com/LucasPickering/slumber/issues/655)
-  - `split()` splits a string on a delimiter
+  - `split()` splits a string on a separator
+  - `join()` joins an array on a separator
 
 ## [4.2.1] - 2025-11-26
 

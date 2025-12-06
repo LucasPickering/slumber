@@ -415,6 +415,32 @@ async fn test_integer(
     );
 }
 
+/// `join()`
+#[rstest]
+// These are the inverse of the split() test cases
+#[case::empty_array(vec![] as Vec<&str>, ",", "")]
+#[case::empty_separator(vec!["", "a", "b", "c", ""], "", "abc")]
+#[case::empty_empty(vec!["", ""], "", "")]
+#[case::comma(vec!["a", "b", "c", ""], ",", "a,b,c,")]
+#[case::numbers(vec![1, 2, 3], ",", "1,2,3")]
+#[tokio::test]
+async fn test_join(
+    #[case] values: Vec<impl Into<Expression>>,
+    #[case] separator: &str,
+    #[case] expected: &str,
+) {
+    let values = values.into_iter().map(Into::into).collect();
+    let template =
+        Template::function_call("join", [separator.into(), values], []);
+    assert_eq!(
+        template
+            .render_string(&TemplateContext::factory(()).streaming(false))
+            .await
+            .unwrap(),
+        expected,
+    );
+}
+
 /// `jq()`
 #[rstest]
 // Default mode is auto
@@ -909,7 +935,7 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
 /// `split()`
 #[rstest]
 #[case::empty_string("", ",", None, Ok(vec![""]))]
-#[case::empty_delimiter("abc", "", None, Ok(vec!["", "a", "b", "c", ""]))]
+#[case::empty_separator("abc", "", None, Ok(vec!["", "a", "b", "c", ""]))]
 #[case::empty_empty("", "", None, Ok(vec!["", ""]))]
 #[case::comma("a,b,c,", ",", None, Ok(vec!["a", "b", "c", ""]))]
 #[case::n("a,b,c,", ",", Some(2), Ok(vec!["a", "b", "c,"]))]
@@ -917,17 +943,17 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
 #[case::n_over("a,b,c,", ",", Some(7), Ok(vec!["a", "b", "c", ""]))]
 #[case::n_invalid(
     "", ",", Some(-1), Err("argument n=-1: Integer out of range [0, 4294967295]"
-    ))]
+))]
 #[tokio::test]
 async fn test_split(
     #[case] value: &str,
-    #[case] delimiter: &str,
+    #[case] separator: &str,
     #[case] n: Option<i64>,
     #[case] expected: Result<Vec<&str>, &str>,
 ) {
     let template = Template::function_call(
         "split",
-        [delimiter.into(), value.into()],
+        [separator.into(), value.into()],
         [("n", n.map(Expression::from))],
     );
     assert_result(

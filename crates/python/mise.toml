@@ -1,7 +1,7 @@
 # Use uv for venv management and maturin to manage the Rust+Python glue
 
 [tools]
-"cargo:maturin" = "1.9"
+"github:PyO3/maturin" = "1.9"
 uv = "0.8"
 python = "3.10"
 

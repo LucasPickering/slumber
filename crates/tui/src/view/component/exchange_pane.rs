@@ -37,7 +37,7 @@ use strum::{EnumCount, EnumIter};
 /// between request and response. This is bound to a particular [RequestState],
 /// and should be recreated whenever the selected request changes state, or a
 /// new request is selected.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ExchangePane {
     id: ComponentId,
     state: State,

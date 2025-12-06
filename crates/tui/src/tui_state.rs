@@ -1,7 +1,9 @@
 use crate::{
     context::TuiContext,
     http::{RequestConfig, RequestState, RequestStore, TuiHttpProvider},
-    message::{Callback, Message, MessageSender, RecipeCopyTarget},
+    message::{
+        Callback, HttpMessage, Message, MessageSender, RecipeCopyTarget,
+    },
     util::{self, ResultReported},
     view::{PreviewPrompter, TuiPrompter, UpdateContext, View},
 };
@@ -347,22 +349,7 @@ impl LoadedState {
                 drop(file);
             }
             Message::Error { error } => self.view.error(error),
-            Message::HttpBeginRequest => self.send_request()?,
-            Message::HttpBuildingTriggered {
-                id,
-                profile_id,
-                recipe_id,
-            } => self.request_store.start(id, profile_id, recipe_id, None),
-            Message::HttpBuildError { error } => {
-                self.request_store.build_error(error);
-            }
-            Message::HttpLoading { request } => {
-                self.request_store.loading(request);
-            }
-            Message::HttpComplete(result) => self.complete_request(result),
-            Message::HttpCancel(request_id) => {
-                self.request_store.cancel(request_id);
-            }
+            Message::Http(message) => self.handle_http(message)?,
             Message::HttpGetLatest {
                 profile_id,
                 recipe_id,
@@ -576,7 +563,7 @@ impl LoadedState {
     }
 
     /// Launch an HTTP request in a separate task
-    fn send_request(&mut self) -> anyhow::Result<()> {
+    fn send_request(&mut self) -> anyhow::Result<RequestId> {
         let RequestConfig {
             profile_id,
             recipe_id,
@@ -603,21 +590,17 @@ impl LoadedState {
                 Ok(ticket) => ticket,
                 Err(error) => {
                     // Report the error, but don't actually return anything
-                    messages_tx.send(Message::HttpBuildError {
-                        error: error.into(),
-                    });
+                    messages_tx.send(HttpMessage::BuildError(error.into()));
                     return;
                 }
             };
 
             // Report liftoff
-            messages_tx.send(Message::HttpLoading {
-                request: Arc::clone(ticket.record()),
-            });
+            messages_tx.send(HttpMessage::Loading(Arc::clone(ticket.record())));
 
             // Send the request and report the result to the main thread
             let result = ticket.send().await.map_err(Arc::new);
-            messages_tx.send(Message::HttpComplete(result));
+            messages_tx.send(HttpMessage::Complete(result));
         });
 
         // Add the new request to the store. This has to go after spawning the
@@ -629,18 +612,14 @@ impl LoadedState {
             Some(join_handle.abort_handle()),
         );
 
-        // New requests should get shown in the UI
-        self.view
-            .select_request(&mut self.request_store, request_id);
-
-        Ok(())
+        Ok(request_id)
     }
 
     /// Process the result of an HTTP request
     fn complete_request(
         &mut self,
         result: Result<Exchange, Arc<RequestError>>,
-    ) {
+    ) -> &RequestState {
         match result {
             Ok(exchange) => {
                 // Persist in the DB if not disabled by global config or recipe
@@ -654,11 +633,9 @@ impl LoadedState {
                     let _ = self.database.insert_exchange(&exchange).traced();
                 }
 
-                self.request_store.response(exchange);
+                self.request_store.response(exchange)
             }
-            Err(error) => {
-                self.request_store.request_error(error);
-            }
+            Err(error) => self.request_store.request_error(error),
         }
     }
 
@@ -707,6 +684,46 @@ impl LoadedState {
             root_dir: self.collection_file.parent().to_owned(),
             state: Default::default(),
         }
+    }
+
+    /// Handle an [HttpMessage]
+    fn handle_http(&mut self, message: HttpMessage) -> anyhow::Result<()> {
+        let mut select = false;
+        let request_id = match message {
+            // Request was triggered by someone else
+            HttpMessage::Triggered {
+                request_id,
+                profile_id,
+                recipe_id,
+            } => self
+                .request_store
+                .start(request_id, profile_id, recipe_id, None)
+                .id(),
+            HttpMessage::Begin => {
+                select = true; // New requests should be shown immediately
+                self.send_request()?
+            }
+            HttpMessage::BuildError(error) => {
+                self.request_store.build_error(error).id()
+            }
+            HttpMessage::Loading(request) => {
+                self.request_store.loading(request).id()
+            }
+            HttpMessage::Complete(result) => self.complete_request(result).id(),
+            HttpMessage::Cancel(request_id) => {
+                self.request_store.cancel(request_id).id()
+            }
+        };
+
+        // Tell the UI about the state change. We have to refetch the request
+        // state from the store to enable partial borrowing. If we have the
+        // match block above return the state, the state's lifetime is attached
+        // to the lifetime of &self, meaning we can't get & mut to self.view
+        // below.
+        let request = self.request_store.get(request_id).unwrap();
+        self.view.update_request(request, select);
+
+        Ok(())
     }
 }
 

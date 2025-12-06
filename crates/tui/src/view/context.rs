@@ -111,7 +111,7 @@ impl ViewContext {
     }
 
     /// Send an async message on the channel
-    pub fn send_message(message: Message) {
+    pub fn send_message(message: impl Into<Message>) {
         Self::with(|context| context.messages_tx.send(message));
     }
 }

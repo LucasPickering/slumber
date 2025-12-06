@@ -67,15 +67,31 @@ pub struct PrimaryView {
 impl PrimaryView {
     pub fn new() -> Self {
         let view = PersistentStore::get(&ViewStateKey).unwrap_or_default();
+
+        let recipe_list = RecipeList::default();
+        let (recipe_id, recipe_node_type) = recipe_list
+            .selected()
+            .map(|(id, node_type)| (Some(id), Some(node_type)))
+            .unwrap_or((None, None));
+        let recipe_detail = Self::build_recipe_detail(recipe_id);
+
+        let profile_list = SidebarList::default();
+        let profile_detail = ProfileDetail::new(profile_list.selected_id());
+
+        // We don't have the request store here and there aren't any requests
+        // loaded into it yet anyway, so we can't fill out the request yet.
+        // There will be a message to load it immediately after though
+        let exchange_pane = ExchangePane::new(None, recipe_node_type);
+
         Self {
             id: ComponentId::default(),
             view,
 
-            recipe_list: RecipeList::default(),
-            recipe_detail: RecipeDetail::default(),
-            profile_list: SidebarList::default(),
-            profile_detail: ProfileDetail::default(),
-            exchange_pane: Default::default(),
+            recipe_list,
+            recipe_detail,
+            profile_list,
+            profile_detail,
+            exchange_pane,
             collection_select: Default::default(),
 
             global_actions_emitter: Default::default(),
@@ -164,6 +180,17 @@ impl PrimaryView {
             .map(RecipeNode::location)
             .cloned();
         ViewContext::send_message(Message::CollectionEdit { location });
+    }
+
+    fn build_recipe_detail(recipe_id: Option<&RecipeId>) -> RecipeDetail {
+        let collection = ViewContext::collection();
+        let node = recipe_id.and_then(|id| {
+            collection
+                .recipes
+                .try_get(id)
+                .reported(&ViewContext::messages_tx())
+        });
+        RecipeDetail::new(node)
     }
 }
 

@@ -238,6 +238,8 @@ pub enum Expected {
     Float,
     #[display("string")]
     String,
+    #[display("bytes")]
+    Bytes,
     /// Array of any type
     #[display("array")]
     Array,

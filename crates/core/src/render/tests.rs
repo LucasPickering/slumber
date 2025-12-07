@@ -680,26 +680,42 @@ async fn test_prompt(
 
 /// `replace()`
 #[rstest]
-#[case::non_overlapping("banana", "na", "ma", None, Ok("bamama"))]
-#[case::overlapping("bananan", "nan", "mam", None, Ok("bamaman"))]
-#[case::n_limited("banana", "na", "ma", Some(1), Ok("bamana"))]
-#[case::n_zero("banana", "na", "ma", Some(0), Ok("banana"))]
-#[case::n_over("banana", "na", "ma", Some(7), Ok("bamama"))]
+#[case::non_overlapping("banana", "na", "ma", false, None, Ok("bamama"))]
+#[case::overlapping("banana", "ana", "ama", false, None, Ok("bamana"))]
+#[case::regex("banana", "[ab]", "x", true, None, Ok("xxnxnx"))]
+#[case::regex_n("banana", "[ab]", "x", true, Some(2), Ok("xxnana"))]
+#[case::regex_overlapping("banana", "a.a", "axa", true, Some(3), Ok("baxana"))]
+#[case::n_limited("banana", "na", "ma", false, Some(1), Ok("bamana"))]
+#[case::n_zero("banana", "na", "ma", false, Some(0), Ok("banana"))]
+#[case::n_over("banana", "na", "ma", false, Some(7), Ok("bamama"))]
+#[case::n_over("banana", "na", "ma", false, Some(7), Ok("bamama"))]
 #[case::error_n_invalid(
-    "", "", "", Some(-1), Err("argument n=-1: Integer out of range [0, 4294967295]"
+    "", "", "", false, Some(-1), Err("Integer out of range [0, 4294967295]"
 ))]
+#[case::error_regex_invalid(
+    "banana",
+    "[a",
+    "",
+    true,
+    None,
+    Err("regex parse error")
+)]
 #[tokio::test]
 async fn test_replace(
     #[case] value: &str,
     #[case] from: &str,
     #[case] to: &str,
+    #[case] regex: bool,
     #[case] n: Option<i64>,
     #[case] expected: Result<&str, &str>,
 ) {
     let template = Template::function_call(
         "replace",
         [from.into(), to.into(), value.into()],
-        [("n", n.map(Expression::from))],
+        [
+            ("regex", Some(regex.into())),
+            ("n", n.map(Expression::from)),
+        ],
     );
     assert_result(
         template

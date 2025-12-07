@@ -388,22 +388,32 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
 ///     output: "null"
 ///   - input: "'nägemist' | index(1)"
 ///     output: "'ä'"
-///     comment: Indexes are in terms of characters. Multi-byte UTF-8 characters
-///       count as a single element
+///     comment: String indexes are in terms of characters. Multi-byte UTF-8
+///       characters count as a single element
+///   - input: "b'nägemist' | index(1)"
+///     output: "b'\xc3'"
+///     comment: Bytes indexes are in terms of bytes, not UTF-8 characters
 /// ```
 #[template]
 pub fn index(index: i64, sequence: Sequence) -> Option<Value> {
-    if index >= sequence.len() {
+    let index = sequence.wrap_index(index);
+    if index >= sequence.len() as usize {
         return None;
     }
 
-    let index = sequence.wrap_index(index);
-    match sequence {
-        Sequence::String(string) => {
-            string.chars().nth(index).map(|c| c.to_string().into())
-        }
-        Sequence::Array(mut array) => Some(array.swap_remove(index)),
-    }
+    let value = match sequence {
+        Sequence::String(string) => string
+            .chars()
+            .nth(index)
+            .unwrap()
+            // Safety: we checked index against len() above, and that length is
+            // based on the char length
+            .to_string()
+            .into(),
+        Sequence::Bytes(bytes) => bytes.slice(index..=index).into(),
+        Sequence::Array(mut array) => array.swap_remove(index),
+    };
+    Some(value)
 }
 
 /// ```notrust
@@ -1094,6 +1104,9 @@ pub fn sensitive(
 ///     output: "'äg'"
 ///     comment: Indexes are in terms of characters. Multi-byte UTF-8 characters
 ///       count as a single element
+///   - input: "b'nägemist' | slice(1, 3)"
+///     output: "b'\xc3\xa4'"
+///     comment: Bytes indexes are in terms of bytes, not UTF-8 characters
 /// ```
 #[template]
 pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
@@ -1110,6 +1123,7 @@ pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
     if stop < start {
         return match sequence {
             Sequence::String(_) => Sequence::String(String::new()),
+            Sequence::Bytes(_) => Sequence::Bytes(Bytes::new()),
             Sequence::Array(_) => Sequence::Array(vec![]),
         };
     }
@@ -1123,6 +1137,7 @@ pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
                 .collect::<String>();
             Sequence::String(string)
         }
+        Sequence::Bytes(bytes) => Sequence::Bytes(bytes.slice(start..stop)),
         Sequence::Array(mut array) => {
             let array = array.drain(start..stop).collect::<Vec<_>>();
             Sequence::Array(array)
@@ -1329,8 +1344,10 @@ impl TryFromValue for RecipeId {
 }
 
 /// A value that can be indexed and sliced
+#[derive(Debug)]
 enum Sequence {
     String(String),
+    Bytes(Bytes),
     Array(Vec<Value>),
 }
 
@@ -1342,6 +1359,7 @@ impl Sequence {
     fn len(&self) -> i64 {
         (match self {
             Self::String(string) => string.chars().count(),
+            Self::Bytes(bytes) => bytes.len(),
             Self::Array(array) => array.len(),
         }) as i64
     }
@@ -1363,12 +1381,14 @@ impl TryFromValue for Sequence {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         match value {
             Value::String(string) => Ok(Self::String(string)),
+            Value::Bytes(bytes) => Ok(Self::Bytes(bytes)),
             Value::Array(array) => Ok(Self::Array(array)),
             _ => Err(WithValue::new(
                 value,
                 ValueError::Type {
                     expected: Expected::OneOf(&[
                         &Expected::String,
+                        &Expected::Bytes,
                         &Expected::Array,
                     ]),
                 },
@@ -1381,6 +1401,7 @@ impl From<Sequence> for Value {
     fn from(value: Sequence) -> Self {
         match value {
             Sequence::String(string) => Value::String(string),
+            Sequence::Bytes(bytes) => Value::Bytes(bytes),
             Sequence::Array(array) => Value::Array(array),
         }
     }

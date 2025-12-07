@@ -385,16 +385,17 @@ async fn test_float(
 #[case::empty_string("".into(), 0, None)]
 #[case::empty_array(Vec::<&str>::new().into(), 0, None)]
 #[case::empty_negative("".into(), -1, None)] // Check for div by zero
-#[case::string("abc".into(), 1, "b".into())]
-#[case::array(vec!["a", "b", "c"].into(), 1, "b".into())]
-#[case::negative("abc".into(), -2, "b".into())]
-#[case::utf8_at("nägemist".into(), 1, "ä".into())]
-#[case::utf8_after("nägemist".into(), 2, "g".into())]
+#[case::string("abc".into(), 1, Some("b".into()))]
+#[case::array(vec!["a", "b", "c"].into(), 1, Some("b".into()))]
+#[case::negative("abc".into(), -2, Some("b".into()))]
+#[case::utf8_at("nägemist".into(), 1, Some("ä".into()))]
+#[case::utf8_after("nägemist".into(), 2, Some("g".into()))]
+#[case::utf8_bytes(b"n\xc3\xa4gemist".into(), 2, Some(b"\xa4".into()))]
 #[tokio::test]
 async fn test_index(
     #[case] value: Expression,
     #[case] index: i64,
-    #[case] expected: Option<&str>,
+    #[case] expected: Option<Value>,
 ) {
     let template = Template::function_call("index", [index.into(), value], []);
     assert_eq!(
@@ -1022,7 +1023,9 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
 #[case::stop_negative_wrap("abc".into(), 1, Some(-4), "b".into())] // -4 => -1
 #[case::stop_null("abc".into(), 1, None, "bc".into())]
 #[case::stop_high("abc".into(), 1, Some(5), "bc".into())]
-#[case::utf8_at("nägemist".into(), 1, Some(3), "äg".into())]
+#[case::utf8_string("nägemist".into(), 1, Some(3), "äg".into())]
+#[case::utf8_bytes_partial_char(b"n\xc3\xa4gemist".into(), 1, Some(2), b"\xc3".into())]
+#[case::utf8_bytes_full_char(b"n\xc3\xa4gemist".into(), 1, Some(3), "ä".into())]
 #[tokio::test]
 async fn test_slice(
     #[case] value: Expression,

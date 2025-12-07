@@ -37,6 +37,7 @@ use tracing::{Instrument, debug, debug_span};
 
 /// ```notrust
 /// description: Encode or decode content to/from base64
+/// tags: [string]
 /// parameters:
 ///   value:
 ///     description: Value to encode or decode
@@ -100,6 +101,7 @@ pub fn boolean(value: Value) -> bool {
 /// ```notrust
 /// description: Run a command in a subprocess and return its stdout output.
 ///   Supports streaming of stdout.
+/// tags: [input]
 /// parameters:
 ///   command:
 ///     description: Command to run, in the form [program, arg1, arg2, ...]
@@ -231,6 +233,7 @@ pub fn command(
 
 /// ```notrust
 /// description: Concatenate any number of strings together
+/// tags: [array, string]
 /// parameters:
 ///   elements:
 ///     description: Strings to concatenate together. Any non-string values will be stringified
@@ -267,7 +270,8 @@ pub fn debug(value: Value) -> Value {
 }
 
 /// ```notrust
-/// description: Get the value of an environment variable, or `""` if not set.
+/// description: Get the value of an environment variable, or `""` if not set
+/// tags: [input]
 /// parameters:
 ///   variable:
 ///     description: Name of the environment variable to read
@@ -289,8 +293,9 @@ pub fn env(variable: String, #[kwarg] default: String) -> String {
 }
 
 /// ```notrust
-/// description: Load contents of a file. Output is bytes but can be used as a string in most cases.
-///   Supports streaming for large/binary files.
+/// description: Load contents of a file. Output is bytes but can be used as a
+///   string in most cases. Supports streaming for large/binary files.
+/// tags: [input]
 /// parameters:
 ///   path:
 ///     description: Path to the file to read, relative to the collection file (`slumber.yml`). A leading `~` will be expanded to $HOME.
@@ -326,6 +331,7 @@ pub fn file(
 
 /// ```notrust
 /// description: Convert a value to a float
+/// tags: [number]
 /// parameters:
 ///   value:
 ///     description: Value to convert
@@ -372,6 +378,7 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
 ///   Get one element from a string, bytes, or array
 ///
 ///   For strings, the index is in terms of *characters*, not bytes.
+/// tags: [string, array]
 /// parameters:
 ///   index:
 ///     description: Index of the element to return, starting at 0.
@@ -421,6 +428,7 @@ pub fn index(index: i64, sequence: Sequence) -> Option<Value> {
 
 /// ```notrust
 /// description: Convert a value to an int
+/// tags: [number]
 /// parameters:
 ///   value:
 ///     description: Value to convert
@@ -468,6 +476,7 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
 ///
 ///   `join` is the inverse of [`split`](#split). `join(sep, split(sep, value))`
 ///   always yields `value`.
+/// tags: [string, array]
 /// parameters:
 ///   separator:
 ///     description: String to join with
@@ -488,6 +497,7 @@ pub fn join(separator: String, values: Vec<String>) -> String {
 
 /// ```notrust
 /// description: Transform a JSON value using a `jq` query. Uses the `jaq` Rust implementation.
+/// tags: [json]
 /// parameters:
 ///   query:
 ///     description: "`jq` query string"
@@ -622,7 +632,8 @@ impl FromStr for JaqQuery {
 impl_try_from_value_str!(JaqQuery);
 
 /// ```notrust
-/// description: Parse a JSON string to a template value.
+/// description: Parse a JSON string to a template value
+/// tags: [json]
 /// parameters:
 ///   value:
 ///     description: JSON string
@@ -641,7 +652,8 @@ pub fn json_parse(value: String) -> Result<serde_json::Value, FunctionError> {
 }
 
 /// ```notrust
-/// description: Transform a JSON value using a JSONPath query.
+/// description: Transform a JSON value using a JSONPath query
+/// tags: [json]
 /// parameters:
 ///   value:
 ///     description: JSON value to query. Strings/bytes will be parsed as JSON before querying.
@@ -818,6 +830,7 @@ impl_try_from_value_str!(JsonQueryMode);
 
 /// ```notrust
 /// description: Convert a string to lowercase
+/// tags: [string]
 /// parameters:
 ///   value:
 ///     description: String to convert
@@ -835,7 +848,8 @@ pub fn lower(value: String) -> String {
 }
 
 /// ```notrust
-/// description: Prompt the user to enter a text value.
+/// description: Prompt the user to enter a text value
+/// tags: [input]
 /// parameters:
 ///   message:
 ///     description: Optional prompt message to display to the user
@@ -888,6 +902,7 @@ pub async fn prompt(
 
 /// ```notrust
 /// description: Replace all occurrences of `from` in `value` with `to`
+/// tags: [string]
 /// parameters:
 ///   from:
 ///     description: Pattern to be replaced
@@ -945,7 +960,9 @@ pub fn replace(
 }
 
 /// ```notrust
-/// description: Load the most recent response body for the given recipe and current profile.
+/// description: Load the most recent response body for the given recipe and
+///   current profile
+/// tags: [input]
 /// parameters:
 ///   recipe_id:
 ///     description: ID (not name) of the recipe to load the response from
@@ -978,7 +995,9 @@ pub async fn response(
 }
 
 /// ```notrust
-/// description: Load a header value from the most recent response for a recipe and the current profile.
+/// description: Load a header value from the most recent response for a recipe
+///   and the current profile
+/// tags: [input]
 /// parameters:
 ///   recipe_id:
 ///     description: ID (not name) of the recipe to load the response from
@@ -1017,7 +1036,8 @@ pub async fn response_header(
 }
 
 /// ```notrust
-/// description: Ask the user to select a value from a list.
+/// description: Ask the user to select a value from a list
+/// tags: [input]
 /// parameters:
 ///   options:
 ///     description: List of options to choose from. Each option can be either a string or an object with "label" and "value".
@@ -1077,7 +1097,9 @@ impl TryFromValue for SelectOption {
 }
 
 /// ```notrust
-/// description: Mark a value as sensitive, masking it in template previews. No impact on requests sent.
+/// description: Mark a value as sensitive, masking it in template previews.
+///   No impact on requests sent.
+/// tags: [string]
 /// parameters:
 ///   value:
 ///     description: String to mask
@@ -1099,6 +1121,7 @@ pub fn sensitive(
 ///   Extract a portion of a string, bytes, or array
 ///
 ///   Indexes are zero-based and [inclusive, exclusive)
+/// tags: [string, array]
 /// parameters:
 ///   start:
 ///     description: Index of the first element to include, starting at 0.
@@ -1177,6 +1200,7 @@ pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
 
 /// ```notrust
 /// description: Split a string on a separator
+/// tags: [string]
 /// parameters:
 ///   separator:
 ///     description: String to split on
@@ -1221,7 +1245,9 @@ pub fn split(
 }
 
 /// ```notrust
-/// description: Stringify a value. Any value can be converted to a string except for non-UTF-8 bytes
+/// description: Stringify a value. Any value can be converted to a string
+///   except for non-UTF-8 bytes
+/// tags: [string]
 /// parameters:
 ///   value:
 ///     description: Value to stringify
@@ -1242,7 +1268,8 @@ pub fn string(value: Value) -> Result<String, ValueError> {
 }
 
 /// ```notrust
-/// description: Trim whitespace from the beginning and/or end of a string.
+/// description: Trim whitespace from the beginning and/or end of a string
+/// tags: [string]
 /// parameters:
 ///   value:
 ///     description: String to trim (typically piped in)
@@ -1269,6 +1296,7 @@ pub fn trim(value: String, #[kwarg] mode: TrimMode) -> String {
 
 /// ```notrust
 /// description: Convert a string to uppercase
+/// tags: [string]
 /// parameters:
 ///   value:
 ///     description: String to convert

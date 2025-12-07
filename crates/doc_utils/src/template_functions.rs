@@ -7,8 +7,8 @@ use quote::ToTokens;
 use serde::Deserialize;
 use std::{
     cell::LazyCell,
-    collections::HashMap,
-    fmt::{self, Display},
+    collections::{BTreeMap, HashMap},
+    fmt::{self, Display, Write},
     fs,
 };
 use syn::{
@@ -39,26 +39,57 @@ pub fn render() -> Result<String> {
     let ast = syn::parse_file(&content)
         .context(format!("Error reading {INPUT_FILE}"))?;
 
-    let functions = ast
+    let mut functions = ast
         .items
         .into_iter()
         .filter_map(|item| {
             if let syn::Item::Fn(func) = item
                 && has_template_attribute(&func.attrs)
             {
-                Some(TemplateFunctionMetadata::from_item_fn(func))
+                Some(FunctionMetadata::from_item_fn(func))
             } else {
                 None
             }
         })
         .collect::<Result<Vec<_>>>()?;
+    // Sort functions alphabetically. They *should* be sorted in the source
+    // file, but this is just to be safe.
+    functions.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Ok(functions.into_iter().join("\n"))
+    // Build the output string
+    let mut output = String::new();
+    let f = &mut output;
+
+    // Group functions by tag for easier navigation
+    writeln!(f, "## Tags\n")?;
+    writeln!(f, "Functions grouped by their application.")?;
+    // BTreeMap so entries are sorted by tag. Each tag's grouping will be sorted
+    // based on the ordering of `functions`, which is alphabetical already.
+    let by_tag: BTreeMap<&str, Vec<&FunctionMetadata>> =
+        functions.iter().fold(BTreeMap::new(), |mut acc, function| {
+            for tag in &function.documentation.tags {
+                acc.entry(tag.as_str()).or_default().push(function);
+            }
+            acc
+        });
+    for (tag, functions) in by_tag {
+        writeln!(f, "### {tag}\n")?;
+        for function in functions {
+            let name = &function.name;
+            writeln!(f, "- [`{name}`](#{name})")?;
+        }
+    }
+
+    writeln!(f, "## Functions\n")?;
+    for function in functions {
+        writeln!(f, "{function}")?;
+    }
+    Ok(output)
 }
 
 /// Information about a Rust function
 #[derive(Clone, Debug)]
-struct TemplateFunctionMetadata {
+struct FunctionMetadata {
     name: String,
     /// Documentation is YAML embedded in the doc comment. We enforce the
     /// format of the YAML to make sure every function has proper
@@ -68,7 +99,7 @@ struct TemplateFunctionMetadata {
     return_type: TypeDef,
 }
 
-impl TemplateFunctionMetadata {
+impl FunctionMetadata {
     /// Load function metadata from the given definition
     fn from_item_fn(func: ItemFn) -> Result<Self> {
         let name = func.sig.ident.to_string();
@@ -81,7 +112,7 @@ impl TemplateFunctionMetadata {
                     "Error parsing doc comment for function `{name}`"
                 ))?;
 
-        Ok(TemplateFunctionMetadata {
+        Ok(FunctionMetadata {
             name,
             documentation,
             parameters,
@@ -139,7 +170,7 @@ impl TemplateFunctionMetadata {
     }
 }
 
-impl Display for TemplateFunctionMetadata {
+impl Display for FunctionMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn fmt_parameters(parameters: &[ParameterMetadata]) -> String {
             // If the params get too long, overflow onto multiple lines
@@ -219,6 +250,9 @@ impl Display for ParameterMetadata {
 #[derive(Clone, Debug, Deserialize)]
 struct Documentation {
     description: String,
+    /// Optional tags to group related functions together (e.g. `string`)
+    #[serde(default)]
+    tags: Vec<String>,
     parameters: IndexMap<String, DocParameter>,
     #[serde(rename = "return")]
     return_description: String,

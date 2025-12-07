@@ -3461,6 +3461,7 @@ dependencies = [
  "pretty_assertions",
  "proptest",
  "proptest-derive",
+ "regex",
  "reqwest",
  "rstest",
  "rusqlite",

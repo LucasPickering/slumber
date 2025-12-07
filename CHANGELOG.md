@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `index()` gets a single element from a string or array
   - `slice()` slices a portion out of a string or array
   - `upper()` and `lower()` convert strings to upper/lower case respectively
-  - `replace()` replaces occurrences of one string with another
+  - `replace()` replaces occurrences of one string (or regex) with another
 
 ## [4.2.1] - 2025-11-26
 

@@ -11,6 +11,7 @@ use bytes::Bytes;
 use derive_more::FromStr;
 use futures::{FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::Itertools;
+use regex::Regex;
 use serde::{Deserialize, de::IntoDeserializer};
 use slumber_macros::template;
 use slumber_template::{
@@ -890,14 +891,26 @@ pub async fn prompt(
 ///     description: String to be replaced
 ///   value:
 ///     description: String to split
+///   regex:
+///     description: If `true`, `from` will be parsed as a
+///       [regular expression](https://en.wikipedia.org/wiki/Regular_expression)
+///       instead of a plain string.
+///     default: false
 ///   n:
 ///     description: Maximum number of replacements to make, starting from the
 ///       start of the string. If `null`, make all possible replacements
 ///     default: null
 /// return: Array of separated string segments
+/// errors:
+///   - If `regex=true` but `from` is not a valid regex
 /// examples:
 ///   - input: "'banana' | replace('na', 'ma')"
 ///     output: "'bamama'"
+///   - input: "'banana' | replace('[ab]', 'x', regex=true)"
+///     output: "'xxnxnx'"
+///     comment: Replace a or b with x
+///   - input: "'banana' | replace('na', 'ma', n=1)"
+///     output: "'bamana'"
 ///   - input: "'bananan' | replace('nan', 'mam')"
 ///     output: "'bamaman'"
 ///     comment: Overlapping instances of `to` are NOT all replaced
@@ -907,12 +920,23 @@ pub fn replace(
     from: String,
     to: String,
     value: String,
+    #[kwarg] regex: bool,
     #[kwarg] n: Option<u32>,
-) -> String {
-    if let Some(n) = n {
-        value.replacen(&from, &to, n as usize)
+) -> Result<String, FunctionError> {
+    if regex {
+        let regex = Regex::new(&from)?;
+        if let Some(n) = n {
+            Ok(regex.replacen(&value, n as usize, to).into_owned())
+        } else {
+            Ok(regex.replace_all(&value, to).into_owned())
+        }
     } else {
-        value.replace(&from, &to)
+        // Plain string replace
+        if let Some(n) = n {
+            Ok(value.replacen(&from, &to, n as usize))
+        } else {
+            Ok(value.replace(&from, &to))
+        }
     }
 }
 

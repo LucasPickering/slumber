@@ -541,6 +541,12 @@ pub enum FunctionError {
     #[error("Unknown recipe `{recipe_id}`")]
     RecipeUnknown { recipe_id: RecipeId },
 
+    /// Invalid regular expression given
+    ///
+    /// [regex::Error] is pretty descriptive so we don't need extra context.
+    #[error(transparent)]
+    Regex(#[from] regex::Error),
+
     /// Recipe for `response()`/`response_header()` has no history
     #[error("No response available")]
     ResponseMissing,

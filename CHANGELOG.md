@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add string maniuplation functions [#655](https://github.com/LucasPickering/slumber/issues/655)
   - `split()` splits a string on a separator
   - `join()` joins an array on a separator
+  - `index()` gets a single element from a string or array
   - `slice()` slices a portion out of a string or array
   - `upper()` and `lower()` convert strings to upper/lower case respectively
   - `replace()` replaces occurrences of one string with another

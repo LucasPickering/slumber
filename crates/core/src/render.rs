@@ -273,6 +273,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "env" => functions::env(arguments),
             "file" => functions::file(arguments),
             "float" => functions::float(arguments),
+            "index" => functions::index(arguments),
             "integer" => functions::integer(arguments),
             "join" => functions::join(arguments),
             "jq" => functions::jq(arguments),

@@ -369,13 +369,15 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
 
 /// ```notrust
 /// description: >-
-///   Get one element from a string or array
+///   Get one element from a string, bytes, or array
 ///
 ///   For strings, the index is in terms of *characters*, not bytes.
 /// parameters:
-///   start:
-///     description: Index of the first element to include, starting at 0.
+///   index:
+///     description: Index of the element to return, starting at 0.
 ///       Negative values count backwards from the end.
+///   sequence:
+///     description: String, bytes, or array to index into
 /// return: Value at `index`. If `index >= length`, return `null`
 /// examples:
 ///   - input: "[0, 1, 2] | index(1)"
@@ -467,14 +469,14 @@ pub fn integer(value: Value) -> Result<i64, ValueError> {
 ///   `join` is the inverse of [`split`](#split). `join(sep, split(sep, value))`
 ///   always yields `value`.
 /// parameters:
-///   delimiter:
-///     description: String to split on
-///   value:
-///     description: String to split
+///   separator:
+///     description: String to join with
+///   values:
+///     description: Array to join
 /// return: Joined string
 /// examples:
 ///   - input: "['a', 'b', 'c'] | join(',')"
-///     output: "'a,b,c''
+///     output: "'a,b,c'"
 ///   - input: "[1, 2, 3] | join(',')"
 ///     output: "'1,2,3'"
 ///     comment: Non-string values are coerced to strings
@@ -888,7 +890,9 @@ pub async fn prompt(
 /// description: Replace all occurrences of `from` in `value` with `to`
 /// parameters:
 ///   from:
-///     description: String to be replaced
+///     description: Pattern to be replaced
+///   to:
+///     description: String to replace each occurrence of `from` with
 ///   value:
 ///     description: String to split
 ///   regex:
@@ -899,7 +903,7 @@ pub async fn prompt(
 ///   n:
 ///     description: Maximum number of replacements to make, starting from the
 ///       start of the string. If `null`, make all possible replacements
-///     default: null
+///     default: "null"
 /// return: Array of separated string segments
 /// errors:
 ///   - If `regex=true` but `from` is not a valid regex
@@ -1092,7 +1096,7 @@ pub fn sensitive(
 
 /// ```notrust
 /// description: >-
-///   Extract a portion of a string or array
+///   Extract a portion of a string, bytes, or array
 ///
 ///   Indexes are zero-based and [inclusive, exclusive)
 /// parameters:
@@ -1103,6 +1107,8 @@ pub fn sensitive(
 ///     description: Index *after* the last element to include, starting at 0.
 ///       `null` will slice to the end. Negative values count backwards from the
 ///       end.
+///   sequence:
+///     description: String, bytes, or array to slice
 /// return: Subslice of the input string/array. If `stop < start`, return an
 ///   empty slice. If either index outside the range `[0, length]`, it will be
 ///   clamped to that range.
@@ -1178,7 +1184,7 @@ pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
 ///     description: String to split
 ///   n:
 ///     description: Maximum number of times to split. If `null`, split as many times as
-///   possible
+///       possible
 ///     default: "null"
 /// return: Array of separated string segments
 /// examples:

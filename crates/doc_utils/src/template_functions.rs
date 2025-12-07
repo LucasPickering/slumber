@@ -486,6 +486,7 @@ fn type_map() -> HashMap<Type, TypeDef> {
         (parse_quote!(bool), TypeDef::Boolean),
         (parse_quote!(f64), TypeDef::Float),
         (parse_quote!(i64), TypeDef::Integer),
+        (parse_quote!(u32), TypeDef::Integer),
         (parse_quote!(Bytes), TypeDef::Bytes),
         (
             parse_quote!(CommandOutputMode),
@@ -528,9 +529,10 @@ fn type_map() -> HashMap<Type, TypeDef> {
         (parse_quote!(serde_json::Value), TypeDef::Value),
         (parse_quote!(Vec<String>), TypeDef::List(&TypeDef::String)),
         (
-            parse_quote!(StringOrArray),
+            parse_quote!(Sequence),
             TypeDef::Union(&[
                 &TypeDef::String,
+                &TypeDef::Bytes,
                 &TypeDef::List(&TypeDef::Value),
             ]),
         ),

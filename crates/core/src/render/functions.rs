@@ -1090,6 +1090,10 @@ pub fn sensitive(
 ///   - input: "'abc' | slice(-2, null)"
 ///     output: "'bc'"
 ///     comment: Combine the two to get the last n elements
+///   - input: "'nägemist' | slice(1, 3)"
+///     output: "'äg'"
+///     comment: Indexes are in terms of characters. Multi-byte UTF-8 characters
+///       count as a single element
 /// ```
 #[template]
 pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
@@ -1111,8 +1115,12 @@ pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
     }
 
     match sequence {
-        Sequence::String(mut string) => {
-            let string = string.drain(start..stop).collect::<String>();
+        Sequence::String(string) => {
+            let string = string
+                .chars()
+                .skip(start)
+                .take(stop - start)
+                .collect::<String>();
             Sequence::String(string)
         }
         Sequence::Array(mut array) => {

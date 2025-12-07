@@ -1022,6 +1022,7 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
 #[case::stop_negative_wrap("abc".into(), 1, Some(-4), "b".into())] // -4 => -1
 #[case::stop_null("abc".into(), 1, None, "bc".into())]
 #[case::stop_high("abc".into(), 1, Some(5), "bc".into())]
+#[case::utf8_at("nägemist".into(), 1, Some(3), "äg".into())]
 #[tokio::test]
 async fn test_slice(
     #[case] value: Expression,

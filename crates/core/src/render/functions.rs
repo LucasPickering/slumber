@@ -1023,9 +1023,12 @@ pub fn sensitive(
 ///   Indexes are zero-based and [inclusive, exclusive)
 /// parameters:
 ///   start:
-///     description: Index of the first element to include, starting at 0
+///     description: Index of the first element to include, starting at 0.
+///       Negative values count backward from the end.
 ///   stop:
-///     description: Index *after* the last element to include, starting at 0
+///     description: Index *after* the last element to include, starting at 0.
+///       `null` will slice to the end. Negative values count backwards from the
+///       end.
 /// return: Subslice of the input string/array. If `stop < start`, return an
 ///   empty slice. If either index outside the range `[0, length]`, it will be
 ///   clamped to that range.
@@ -1038,20 +1041,46 @@ pub fn sensitive(
 ///     output: "'ab'"
 ///   - input: "'abc' | slice(0, 0)"
 ///     output: "''"
+///   - input: "'abc' | slice(1, null)"
+///     output: "'bc'"
+///     comment: Use `null` for `stop` to slice to the end
+///   - input: "'abc' | slice(1, -1)"
+///     output: "'b'"
+///     comment: Negative indexes count back from the end
+///   - input: "'abc' | slice(-2, null)"
+///     output: "'bc'"
+///     comment: Combine the two to get the last n elements
 /// ```
 #[template]
-pub fn slice(start: i64, stop: i64, value: StringOrArray) -> StringOrArray {
+pub fn slice(
+    start: i64,
+    stop: Option<i64>,
+    value: StringOrArray,
+) -> StringOrArray {
     let len = match &value {
         StringOrArray::String(string) => string.len(),
         StringOrArray::Array(array) => array.len(),
     } as i64;
-    let start = start.clamp(0, len) as usize;
-    let stop = stop.clamp(0, len) as usize;
+    // null => end of list
+    let stop = stop.unwrap_or(len);
+
+    // Wrap negative indexes to be
+    let fix = |index: i64| {
+        if index < 0 && len > 0 {
+            // Negative values wrap to the beginning
+            index.rem_euclid(len) as usize
+        } else {
+            // Values past the end do NOT wrap, they just get clamped
+            index.clamp(0, len) as usize
+        }
+    };
+    let start = fix(start);
+    let stop = fix(stop);
 
     // Special case - return empty
     if stop < start {
         return match value {
-            StringOrArray::String(_) => StringOrArray::String("".into()),
+            StringOrArray::String(_) => StringOrArray::String(String::new()),
             StringOrArray::Array(_) => StringOrArray::Array(vec![]),
         };
     }

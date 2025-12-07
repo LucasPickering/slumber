@@ -978,22 +978,27 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
 
 /// `slice()`
 #[rstest]
-#[case::string_zeroes("abc".into(), 0, 0, "".into())]
-#[case::string_len("abc".into(), 3, 3, "".into())]
-#[case::string_partial("abc".into(), 1, 3, "bc".into())]
-#[case::string_full("abc".into(), 0, 3, "abc".into())]
-#[case::array_zeroes(vec![0, 1, 2].into(), 0, 0, Vec::<i64>::new().into())]
-#[case::array_len(vec![0, 1, 2].into(), 3, 3, Vec::<i64>::new().into())]
-#[case::array_partial(vec![0, 1, 2].into(), 1, 3, vec![1, 2].into())]
-#[case::array_full(vec![0, 1, 2].into(), 0, 3, vec![0, 1, 2].into())]
-#[case::stop_less_than_start("abc".into(), 2, 1, "".into())]
-#[case::start_low("abc".into(), -1, 1, "a".into())]
-#[case::stop_high("abc".into(), 1, 5, "bc".into())]
+#[case::empty("".into(), 0, Some(0), "".into())]
+#[case::empty_negative("".into(), -1, None, "".into())] // Check for div by zero
+#[case::string_zeroes("abc".into(), 0, Some(0), "".into())]
+#[case::string_len("abc".into(), 3, Some(3), "".into())]
+#[case::string_partial("abc".into(), 1, Some(3), "bc".into())]
+#[case::string_full("abc".into(), 0, Some(3), "abc".into())]
+#[case::array_zeroes(vec![0, 1, 2].into(), 0, Some(0), Vec::<i64>::new().into())]
+#[case::array_len(vec![0, 1, 2].into(), 3, Some(3), Vec::<i64>::new().into())]
+#[case::array_partial(vec![0, 1, 2].into(), 1, Some(3), vec![1, 2].into())]
+#[case::array_full(vec![0, 1, 2].into(), 0, Some(3), vec![0, 1, 2].into())]
+#[case::stop_less_than_start("abc".into(), 2, Some(1), "".into())]
+#[case::start_negative("abc".into(), -2, Some(3), "bc".into())]
+#[case::stop_negative("abc".into(), 1, Some(-1), "b".into())]
+#[case::stop_negative_wrap("abc".into(), 1, Some(-4), "b".into())] // -4 => -1
+#[case::stop_null("abc".into(), 1, None, "bc".into())]
+#[case::stop_high("abc".into(), 1, Some(5), "bc".into())]
 #[tokio::test]
 async fn test_slice(
     #[case] value: Expression,
     #[case] start: i64,
-    #[case] stop: i64,
+    #[case] stop: Option<i64>,
     #[case] expected: Value,
 ) {
     let template = Template::function_call(

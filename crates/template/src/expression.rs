@@ -213,6 +213,18 @@ impl FromIterator<Expression> for Expression {
     }
 }
 
+/// Nullable values
+impl<T> From<Option<T>> for Expression
+where
+    Expression: From<T>,
+{
+    fn from(value: Option<T>) -> Self {
+        value
+            .map(Expression::from)
+            .unwrap_or(Expression::Literal(Literal::Null))
+    }
+}
+
 /// Literal primitive value
 #[derive(Clone, Debug, From, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]

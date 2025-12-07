@@ -367,6 +367,46 @@ pub fn float(value: Value) -> Result<f64, ValueError> {
 }
 
 /// ```notrust
+/// description: >-
+///   Get one element from a string or array
+///
+///   For strings, the index is in terms of *characters*, not bytes.
+/// parameters:
+///   start:
+///     description: Index of the first element to include, starting at 0.
+///       Negative values count backwards from the end.
+/// return: Value at `index`. If `index >= length`, return `null`
+/// examples:
+///   - input: "[0, 1, 2] | index(1)"
+///     output: "1"
+///   - input: "'abc' | index(1)"
+///     output: "'b'"
+///   - input: "'abc' | index(-1)"
+///     output: "'c'"
+///     comment: Negative indexes count back from the end
+///   - input: "'abc' | index(3)"
+///     output: "null"
+///   - input: "'nägemist' | index(1)"
+///     output: "'ä'"
+///     comment: Indexes are in terms of characters. Multi-byte UTF-8 characters
+///       count as a single element
+/// ```
+#[template]
+pub fn index(index: i64, sequence: Sequence) -> Option<Value> {
+    if index >= sequence.len() {
+        return None;
+    }
+
+    let index = sequence.wrap_index(index);
+    match sequence {
+        Sequence::String(string) => {
+            string.chars().nth(index).map(|c| c.to_string().into())
+        }
+        Sequence::Array(mut array) => Some(array.swap_remove(index)),
+    }
+}
+
+/// ```notrust
 /// description: Convert a value to an int
 /// parameters:
 ///   value:
@@ -1052,47 +1092,32 @@ pub fn sensitive(
 ///     comment: Combine the two to get the last n elements
 /// ```
 #[template]
-pub fn slice(
-    start: i64,
-    stop: Option<i64>,
-    value: StringOrArray,
-) -> StringOrArray {
-    let len = match &value {
-        StringOrArray::String(string) => string.len(),
-        StringOrArray::Array(array) => array.len(),
-    } as i64;
+pub fn slice(start: i64, stop: Option<i64>, sequence: Sequence) -> Sequence {
+    let len = sequence.len();
     // null => end of list
     let stop = stop.unwrap_or(len);
 
-    // Wrap negative indexes to be
-    let fix = |index: i64| {
-        if index < 0 && len > 0 {
-            // Negative values wrap to the beginning
-            index.rem_euclid(len) as usize
-        } else {
-            // Values past the end do NOT wrap, they just get clamped
-            index.clamp(0, len) as usize
-        }
-    };
-    let start = fix(start);
-    let stop = fix(stop);
+    // Clamp values to be no greated than len, then wrap negative indexes to be
+    // from the end. We don't want to grab values >len.
+    let start = sequence.wrap_index(start.min(len));
+    let stop = sequence.wrap_index(stop.min(len));
 
     // Special case - return empty
     if stop < start {
-        return match value {
-            StringOrArray::String(_) => StringOrArray::String(String::new()),
-            StringOrArray::Array(_) => StringOrArray::Array(vec![]),
+        return match sequence {
+            Sequence::String(_) => Sequence::String(String::new()),
+            Sequence::Array(_) => Sequence::Array(vec![]),
         };
     }
 
-    match value {
-        StringOrArray::String(mut string) => {
+    match sequence {
+        Sequence::String(mut string) => {
             let string = string.drain(start..stop).collect::<String>();
-            StringOrArray::String(string)
+            Sequence::String(string)
         }
-        StringOrArray::Array(mut array) => {
+        Sequence::Array(mut array) => {
             let array = array.drain(start..stop).collect::<Vec<_>>();
-            StringOrArray::Array(array)
+            Sequence::Array(array)
         }
     }
 }
@@ -1295,14 +1320,38 @@ impl TryFromValue for RecipeId {
     }
 }
 
-/// Strings and arrays share similar operations, so some functions take one or
-/// the other
-enum StringOrArray {
+/// A value that can be indexed and sliced
+enum Sequence {
     String(String),
     Array(Vec<Value>),
 }
 
-impl TryFromValue for StringOrArray {
+impl Sequence {
+    /// Get the length of the sequence. Most operations related to this operate
+    /// on `i64`s, so the value is converted.
+    ///
+    /// For strings, the length is the number of *characters*, not bytes.
+    fn len(&self) -> i64 {
+        (match self {
+            Self::String(string) => string.chars().count(),
+            Self::Array(array) => array.len(),
+        }) as i64
+    }
+
+    /// Coerce an index to be valid for this sequence. Negative values are
+    /// wrapped from the end.
+    fn wrap_index(&self, index: i64) -> usize {
+        let len = self.len();
+        if index < 0 && len > 0 {
+            // Negative values wrap to the beginning
+            index.rem_euclid(len) as usize
+        } else {
+            index as usize
+        }
+    }
+}
+
+impl TryFromValue for Sequence {
     fn try_from_value(value: Value) -> Result<Self, WithValue<ValueError>> {
         match value {
             Value::String(string) => Ok(Self::String(string)),
@@ -1320,11 +1369,11 @@ impl TryFromValue for StringOrArray {
     }
 }
 
-impl From<StringOrArray> for Value {
-    fn from(value: StringOrArray) -> Self {
+impl From<Sequence> for Value {
+    fn from(value: Sequence) -> Self {
         match value {
-            StringOrArray::String(string) => Value::String(string),
-            StringOrArray::Array(array) => Value::Array(array),
+            Sequence::String(string) => Value::String(string),
+            Sequence::Array(array) => Value::Array(array),
         }
     }
 }

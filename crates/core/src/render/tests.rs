@@ -380,6 +380,34 @@ async fn test_float(
     );
 }
 
+/// `index()`
+#[rstest]
+#[case::empty_string("".into(), 0, None)]
+#[case::empty_array(Vec::<&str>::new().into(), 0, None)]
+#[case::empty_negative("".into(), -1, None)] // Check for div by zero
+#[case::string("abc".into(), 1, "b".into())]
+#[case::array(vec!["a", "b", "c"].into(), 1, "b".into())]
+#[case::negative("abc".into(), -2, "b".into())]
+#[case::utf8_at("nägemist".into(), 1, "ä".into())]
+#[case::utf8_after("nägemist".into(), 2, "g".into())]
+#[tokio::test]
+async fn test_index(
+    #[case] value: Expression,
+    #[case] index: i64,
+    #[case] expected: Option<&str>,
+) {
+    let template = Template::function_call("index", [index.into(), value], []);
+    assert_eq!(
+        template
+            .render(&TemplateContext::factory(()).streaming(false))
+            .await
+            .try_collect_value()
+            .await
+            .unwrap(),
+        expected.into(),
+    );
+}
+
 /// `integer()`
 #[rstest]
 #[case::null(Expression::Literal(Literal::Null), Ok(0))]

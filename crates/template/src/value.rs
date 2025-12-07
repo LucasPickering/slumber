@@ -131,6 +131,15 @@ impl<const N: usize> From<&'static [u8; N]> for Value {
     }
 }
 
+impl<T> From<Option<T>> for Value
+where
+    Value: From<T>,
+{
+    fn from(value: Option<T>) -> Self {
+        value.map(Value::from).unwrap_or(Value::Null)
+    }
+}
+
 impl<T> From<Vec<T>> for Value
 where
     Value: From<T>,
@@ -513,12 +522,6 @@ where
 {
     fn into_result(self) -> Result<LazyValue, RenderError> {
         self.map(T::into).map_err(E::into)
-    }
-}
-
-impl<T: FunctionOutput> FunctionOutput for Option<T> {
-    fn into_result(self) -> Result<LazyValue, RenderError> {
-        self.map(T::into_result).unwrap_or(Ok(Value::Null.into()))
     }
 }
 

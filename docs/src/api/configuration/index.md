@@ -34,6 +34,10 @@ You can change the location of the config file by setting the environment variab
 SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 ```
 
+## Hidden Fields
+
+Any unknown field in the config file will be rejected, unless it is a **top-level** field beginning with `.`. You can combine this with [YAML anchors](https://yaml.org/spec/1.2.2/#anchors-and-aliases) to define reusable components in your config file.
+
 ## Fields
 
 The following fields are available in `config.yml`:
@@ -127,7 +131,3 @@ Visual customizations for the TUI. [More info](./theme.md)
 **Default:** `less` (Unix), `more` (Windows)
 
 Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md#paging)
-
-### Ignored Fields
-
-In addition to the above fields, any top-level field beginning with `.` will be ignored. This can be combined with [YAML anchors](https://yaml.org/spec/1.2.2/#anchors-and-aliases) to define reusable components in your config file.

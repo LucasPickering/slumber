@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `upper()` and `lower()` convert strings to upper/lower case respectively
   - `replace()` replaces occurrences of one string (or regex) with another
 
+### Changed
+
+- Default config file no longer contains all known configuration fields
+  - Instead it's just a single example field and a link to the docs now
+  - If you have an old default file, it will be replaced by the new one. Any file that's been modified from the default in any way (including just whitespace/comments) will **not** be modified
+  - See [#670](https://github.com/LucasPickering/slumber/pull/670) for more
+
 ## [4.2.1] - 2025-11-26
 
 <!-- ANCHOR: changelog -->

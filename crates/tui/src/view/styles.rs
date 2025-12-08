@@ -169,7 +169,7 @@ impl Styles {
                 disabled: Style::default().add_modifier(Modifier::DIM),
             },
             menu: MenuStyles {
-                border_type: BorderType::Plain,
+                border_type: BorderType::Rounded,
             },
             modal: ModalStyles {
                 border: Style::default(),
@@ -180,7 +180,7 @@ impl Styles {
                 border_selected: Style::default()
                     .fg(theme.primary_color)
                     .add_modifier(Modifier::BOLD),
-                border_type: BorderType::Plain,
+                border_type: BorderType::Rounded,
                 border_type_selected: BorderType::Double,
             },
             status_code: StatusCodeStyles {

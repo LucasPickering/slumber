@@ -2151,18 +2151,18 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "persisted"
-version = "1.0.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb59ed829d636cb56866440578f454fed049176c384df247242a094322735ce2"
+checksum = "40a281cefdac81d883f2ba0a65062e1ebcd47c0b960c14f64a5bae2001eb9c99"
 dependencies = [
  "persisted_derive",
 ]
 
 [[package]]
 name = "persisted_derive"
-version = "1.0.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f90ed5ec5260f88a1fef3dd6343ca95c682cb7744aae295e237218106069dd49"
+checksum = "112322d121814927877cd3ff46b2249e76f5a6bcb96dcb6184e7fbe390de75af"
 dependencies = [
  "quote",
  "syn 2.0.101",

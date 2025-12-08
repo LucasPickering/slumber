@@ -12,6 +12,7 @@ use slumber_config::Theme;
 pub struct Styles {
     pub form: FormStyles,
     pub list: ListStyles,
+    pub menu: MenuStyles,
     pub modal: ModalStyles,
     pub pane: PaneStyles,
     pub status_code: StatusCodeStyles,
@@ -41,6 +42,12 @@ pub struct ListStyles {
     pub highlight_inactive: Style,
     /// Disabled item in a list
     pub disabled: Style,
+}
+
+/// Styles for the action menu
+#[derive(Debug)]
+pub struct MenuStyles {
+    pub border_type: BorderType,
 }
 
 /// Styles for the Modal component
@@ -160,6 +167,9 @@ impl Styles {
                     .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
                 disabled: Style::default().add_modifier(Modifier::DIM),
+            },
+            menu: MenuStyles {
+                border_type: BorderType::Plain,
             },
             modal: ModalStyles {
                 border: Style::default(),

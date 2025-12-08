@@ -30,15 +30,17 @@ use slumber_util::{
 use std::{
     env,
     error::Error,
-    fs::File,
+    fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
 };
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 const PATH_ENV_VAR: &str = "SLUMBER_CONFIG_PATH";
 const FILE: &str = "config.yml";
+/// See [Config::replace_default]
+const DEFAULT_OLD: &str = include_str!("default_old.yml");
 
 /// App-level configuration, which is global across all sessions and
 /// collections. This is *not* meant to modifiable during a session. If changes
@@ -114,12 +116,15 @@ impl Config {
         let path = Self::path();
         info!(?path, "Loading configuration file");
 
+        // Replace pre-4.3.0 default file with the current one
+        Self::replace_default(&path);
+
         match yaml::deserialize_file::<Config>(&path) {
             Ok(config) => Ok(config),
             Err(error) => {
                 // Filesystem error shouldn't be fatal because it may be a
-                // weird fs error the user can't or doesn't want tofix. Just use
-                // a default config.
+                // weird fs error the user can't or doesn't want to fix. Just
+                // use a default config.
                 if let yaml::YamlErrorKind::Io { error, .. } = &error.kind {
                     error!(
                         error = error as &dyn Error,
@@ -175,7 +180,7 @@ impl Config {
             .and_then(|()| {
                 let mut file = File::create_new(path)?;
                 // Prepopulate with contents
-                file.write_all(&Self::default_content())?;
+                file.write_all(Self::default_content().as_bytes())?;
                 Ok(())
             })
             .map_err(|error| ConfigError::Create {
@@ -184,22 +189,46 @@ impl Config {
             })
     }
 
-    /// Pre-populated content for a new config file. Include all default values
-    /// for discoverability, as well as a comment to enable LSP completion based
-    /// on the schema
-    fn default_content() -> Vec<u8> {
-        // Write into a single byte buffer to minimize allocations
-        let mut bytes: Vec<u8> = format!(
-            "# yaml-language-server: $schema={schema}
-# This config has been prepopulated with default values. For documentation, see:
-# {doc}
-",
-            schema = git_link("schemas/config.json"),
-            doc = doc_link("api/configuration/index"),
-        )
-        .into_bytes();
-        serde_yaml::to_writer(&mut bytes, &Config::default()).unwrap();
-        bytes
+    /// Pre-populated content for a new config file. This includes:
+    ///
+    /// - A comment to enable LSP completion based on the JSON schema
+    /// - A link to the docs
+    /// - Some example fields
+    ///
+    /// This intentionally does **not** populate all available fields. That
+    /// makes it harder to change default values in the future.
+    fn default_content() -> String {
+        const SOURCE: &str = include_str!("default.yml");
+        /// This string will be replaced with the link to the schema file
+        const SCHEMA_REPLACEMENT: &str = "{{#schema}}";
+
+        SOURCE.replace(SCHEMA_REPLACEMENT, &git_link("schemas/config.json"))
+    }
+
+    /// Prior to version 4.3.0, the default content used to populate the config
+    /// file on first startup was just the YAML dump of the default value. This
+    /// was problematic because it made it harder to change default values.
+    /// Existing users would have the old value populated in the file already,
+    /// overwriting any new defaults.
+    ///
+    /// Since 4.3.0 we use a more minimal default file that doesn't populate
+    /// every field, allowing us to modify defaults and have those changes
+    /// propagate. This function migrates users with the old default file over
+    /// to the new one.
+    ///
+    /// This will overwrite the config file only if it contains *exactly* the
+    /// old default string. If the user has modified it with comments,
+    /// whitespace, etc., we do NOT want to replace that.
+    fn replace_default(path: &Path) {
+        if fs::read_to_string(path).is_ok_and(|content| content == DEFAULT_OLD)
+        {
+            warn!(
+                "Config file contains old default content. \
+                    Replacing with new defaults."
+            );
+
+            let _ = fs::write(path, Self::default_content()).traced();
+        }
     }
 }
 
@@ -335,19 +364,26 @@ mod tests {
     /// If the config file doesn't already exist, we'll create it
     #[rstest]
     fn test_load_file_does_not_exist_can_create(config_path: ConfigPath) {
-        // Ensure file does not exist
-        assert!(!config_path.path.exists());
+        let path = &config_path.path;
+        // File does not exist
+        assert!(!path.exists());
 
-        // Should be default values
         let config = Config::load().unwrap();
-        assert_eq!(config, Config::default());
 
-        // File should now exist
-        assert!(config_path.path.exists());
-
-        // Should contain default values
-        let config = Config::load().unwrap();
+        // File was written with the default content
+        let content = Config::default_content();
+        assert_eq!(fs::read_to_string(path).unwrap(), content);
+        // Default content parses to the default value
         assert_eq!(config, Config::default());
+        // Additional sanity checks on the default content, to make sure
+        // dynamic replacement is working
+        assert!(
+            content.starts_with(
+                "# yaml-language-server: $schema=\
+                https://raw.githubusercontent.com/LucasPickering/slumber/"
+            ),
+            "Default content missing schema link"
+        );
     }
 
     /// If the config file doesn't already exist, we'll attempt to create it.
@@ -379,6 +415,29 @@ mod tests {
         slumber_util::assert_err(
             Config::load(),
             "Unexpected field `fake_field`",
+        );
+    }
+
+    /// Previously, the prepopulated default file was dynamically generated from
+    /// [Config::default]. As of 4.3.0 it is now a static default. The old
+    /// default should be replaced with the new.
+    #[rstest]
+    fn test_replace_old_default_file(config_path: ConfigPath) {
+        let path = &config_path.path;
+
+        // Sanity check on the DEFAULT_OLD content. It would be nice to verify
+        // that it has every expected field, but there isn't a good way to do
+        // that without just redefining exactly what we expected it to contain.
+        assert!(DEFAULT_OLD.len() > 1000);
+        fs::write(path, DEFAULT_OLD).unwrap();
+
+        Config::load().unwrap();
+
+        // File was replaced with the default content, which is different from
+        // what we wrote above.
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            Config::default_content()
         );
     }
 }

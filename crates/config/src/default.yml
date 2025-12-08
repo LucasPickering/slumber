@@ -1,0 +1,9 @@
+# yaml-language-server: $schema={{#schema}}
+# ^ This enables schema validation and autocomplete in your editor
+# https://github.com/redhat-developer/yaml-language-server
+
+# For configuration options, see:
+# https://slumber.lucaspickering.me/api/configuration/index.html
+
+input_bindings:
+  submit: [enter]

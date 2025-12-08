@@ -5,6 +5,25 @@ on:
     tags:
       - "**[0-9]+.[0-9]+.[0-9]+*"
   pull_request:
+    # On PRs, only run for paths that can affect the Python build. This is the
+    # slowest CI step, and it's annoying to wait for it for PRs that only
+    # modify the CLI or TUI.
+    #
+    # There's a risk of false negatives here. We could use a paths-ignore filter
+    # instead, but that list is much longer. Worst case scenario, there's an
+    # error in the build that won't don't see until release time. Annoying, but
+    # we won't actually ship anything broken.
+    paths:
+      - ".github/workflows/python.yml"
+      - "crates/config/**"
+      - "crates/core/**"
+      - "crates/macros/**"
+      - "crates/python/**"
+      - "crates/template/**"
+      - "crates/util/**"
+      # Taking a risk here and excluding Cargo.lock. It's unlikely a change
+      # there will break the Python build, and it'll hit a lot of unrelated
+      # changes.
   workflow_dispatch:
 
 permissions:

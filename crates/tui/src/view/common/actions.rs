@@ -15,9 +15,11 @@ use crate::{
 };
 use itertools::Itertools;
 use ratatui::{
-    layout::{Constraint, Position},
+    layout::{Constraint, Offset, Position},
     prelude::Rect,
+    symbols::merge::MergeStrategy,
     text::Span,
+    widgets::{Block, Borders},
 };
 use slumber_config::Action;
 use std::fmt::{self, Display};
@@ -63,41 +65,29 @@ impl Portal for ActionMenu {
             return Rect::default();
         };
 
-        // Center just based on the first layer, so it doesn't shift when
-        // opening other layers
-        let first = content.stack.first().expect("Menu stack cannot be empty");
-        let Rect { x, y, .. } = canvas_area.centered(
-            Constraint::Length(content.layer_width(&content.stack[0])),
-            Constraint::Length(first.len() as u16),
+        // First, calculate the area for each item
+        let areas = content.areas(Position::default());
+
+        // Then shift them all to be centered on the *first* layer. We don't
+        // want them to shift when additional layers are opened
+        let first = areas.first().expect("Menu stack cannot be empty");
+        let centered = canvas_area.centered(
+            Constraint::Length(first.width),
+            Constraint::Length(first.height),
         );
+        // We know everything is relative to (0,0) to begin with
+        let offset = Offset {
+            x: centered.x.into(),
+            y: centered.y.into(),
+        };
 
-        // Each layer has a dynamic width, so sum them up
-        let width = content
-            .stack
-            .iter()
-            .map(|layer| content.layer_width(layer))
-            .sum();
-
-        // Calculate how far down the menus expand. Each menu is offset so that
-        // the first item lines up with the selected item in the parent
-        let mut offset_y = 0;
-        let height = content
-            .stack
-            .iter()
-            .map(|layer| {
-                let layer_height = offset_y + layer.len() as u16;
-                offset_y += layer.selected_index().unwrap_or(0) as u16;
-                layer_height
-            })
-            .max()
-            .unwrap_or(0);
-
-        Rect {
-            x,
-            y,
-            width,
-            height,
-        }
+        // The overall area is just the union of each layer's area. This will
+        // get the smallest possible area that contains all layers
+        areas
+            .into_iter()
+            .map(|area| area.offset(offset))
+            .reduce(Rect::union)
+            .unwrap_or_default()
     }
 }
 
@@ -271,15 +261,41 @@ impl ActionMenuContent {
         }
     }
 
-    /// Get the pixel width of a particular layer
-    fn layer_width(&self, layer: &Select<MenuItemDisplay>) -> u16 {
-        // Get the longest item
-        layer
-            .items()
-            .map(|item| item.to_string().width() as u16)
-            .max()
-            .unwrap_or(0)
-            + 1 // Padding between layers
+    /// Get the area for each open layer, starting from the given position
+    ///
+    /// Each area will include margin for a border. This is used by both
+    /// [Portal::area] and [Draw::draw] to get consistent area calculations.
+    fn areas(&self, position: Position) -> Vec<Rect> {
+        fn layer_width(layer: &Select<MenuItemDisplay>) -> u16 {
+            // Get the longest item
+            layer
+                .items()
+                .map(|item| item.to_string().width() as u16)
+                .max()
+                .unwrap_or(0)
+        }
+
+        // Accumulate x/y offset across all layers
+        let mut offset_x = 0;
+        let mut offset_y = 0;
+
+        self.stack
+            .iter()
+            .map(|layer| {
+                let area = Rect {
+                    width: layer_width(layer) + 2,
+                    height: layer.len() as u16 + 2,
+                    x: position.x + offset_x,
+                    y: position.y + offset_y,
+                };
+
+                // Add to the offsets for a potential child
+                offset_x += area.width - 1; // -1 to overlap borders
+                offset_y += layer.selected_index().unwrap_or(0) as u16;
+
+                area
+            })
+            .collect()
     }
 }
 
@@ -380,31 +396,22 @@ impl Component for ActionMenuContent {
 
 impl Draw for ActionMenuContent {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        // Accumulate x/y offset across all layers
-        let mut offset_x = 0;
-        let mut offset_y = 0;
+        let styles = &TuiContext::get().styles.menu;
+        let areas = self.areas(metadata.area().as_position());
+        for (i, (layer, area)) in self.stack.iter().zip(areas).enumerate() {
+            // Add border
+            let block = Block::new()
+                .borders(Borders::ALL)
+                .border_type(styles.border_type)
+                .merge_borders(MergeStrategy::Fuzzy);
+            let inner_area = block.inner(area);
+            canvas.render_widget(block, area);
 
-        for (i, layer) in self.stack.iter().enumerate() {
-            let width = self.layer_width(layer);
-            let area = Rect {
-                width,
-                height: layer.len() as u16,
-                x: metadata.area().x + offset_x,
-                y: metadata.area().y + offset_y,
+            let is_active = i == self.active_layer;
+            let props = SelectListProps {
+                scrollbar_margin: 0,
             };
-
-            // Add to the offsets for a potential child
-            offset_x += width + 1;
-            offset_y += layer.selected_index().unwrap_or(0) as u16;
-
-            canvas.draw(
-                layer,
-                SelectListProps {
-                    scrollbar_margin: 0,
-                },
-                area,
-                i == self.active_layer,
-            );
+            canvas.draw(layer, props, inner_area, is_active);
         }
     }
 }

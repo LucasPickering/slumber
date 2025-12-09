@@ -114,9 +114,9 @@ impl Prompter for TestPrompter {
                 // respond
                 let index = self.index.fetch_add(1, Ordering::Relaxed);
                 if let Some(value) = self.responses.get(index) {
-                    channel.respond(value.clone());
+                    channel.reply(value.clone());
                 } else if let Some(default) = default {
-                    channel.respond(default);
+                    channel.reply(default);
                 }
             }
             Prompt::Select { .. } => {
@@ -157,7 +157,7 @@ impl Prompter for TestSelectPrompter {
             } => {
                 let index = self.index.fetch_add(1, Ordering::Relaxed);
                 if let Some(value_index) = self.responses.get(index) {
-                    channel.respond(options.swap_remove(*value_index).value);
+                    channel.reply(options.swap_remove(*value_index).value);
                 }
             }
         }

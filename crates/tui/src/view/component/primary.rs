@@ -31,9 +31,8 @@ use ratatui::{
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{
-    collection::{ProfileId, RecipeId, RecipeNode, RecipeNodeType},
-    render::Prompt,
+use slumber_core::collection::{
+    ProfileId, RecipeId, RecipeNode, RecipeNodeType,
 };
 
 /// Primary TUI view, which shows request/response panes
@@ -130,11 +129,6 @@ impl PrimaryView {
             recipe_id,
             options,
         })
-    }
-
-    /// Prompt the user for input
-    pub fn prompt(&mut self, prompt: Prompt) {
-        self.recipe_detail.prompt(prompt);
     }
 
     /// Send a request for the currently selected recipe

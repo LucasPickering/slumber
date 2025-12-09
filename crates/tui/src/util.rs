@@ -4,7 +4,7 @@ pub use persistence::{PersistentKey, PersistentStore};
 
 use crate::{
     message::{Message, MessageSender},
-    view::{Confirm, ViewContext},
+    view::{Question, ViewContext},
 };
 use anyhow::{Context, bail};
 use bytes::Bytes;
@@ -13,7 +13,6 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{FutureExt, future};
-use slumber_core::render::Prompt;
 use slumber_util::{ResultTracedAnyhow, paths::expand_home};
 use std::{
     env,
@@ -307,7 +306,8 @@ pub async fn save_file(
 ) -> anyhow::Result<()> {
     // If the user closed the prompt, just exit
     let Some(path) =
-        prompt(&messages_tx, "Enter a path for the file", default_path).await
+        text_question(&messages_tx, "Enter a path for the file", default_path)
+            .await
     else {
         return Ok(());
     };
@@ -435,16 +435,15 @@ pub async fn run_command(
 
 /// Ask the user for some text input and wait for a response. Return `None` if
 /// the prompt is closed with no input.
-async fn prompt(
+async fn text_question(
     messages_tx: &MessageSender,
     message: impl ToString,
     default: Option<String>,
 ) -> Option<String> {
     let (tx, rx) = oneshot::channel();
-    messages_tx.send(Message::PromptStart(Prompt::Text {
+    messages_tx.send(Message::Question(Question::Text {
         message: message.to_string(),
         default,
-        sensitive: false,
         channel: tx.into(),
     }));
     // Error indicates no response, we can throw that away
@@ -457,11 +456,10 @@ pub async fn confirm(
     message: impl ToString,
 ) -> bool {
     let (tx, rx) = oneshot::channel();
-    let confirm = Confirm {
+    messages_tx.send(Message::Question(Question::Confirm {
         message: message.to_string(),
         channel: tx.into(),
-    };
-    messages_tx.send(Message::ConfirmStart(confirm));
+    }));
     // Error means we got ghosted :( RUDE!
     rx.await.unwrap_or_default()
 }
@@ -502,7 +500,9 @@ mod tests {
         // First we expect a prompt for the file path
         let (message, default, channel) = assert_matches!(
             harness.pop_message_wait().await,
-            Message::PromptStart(Prompt::Text { message, default, channel, .. }) => {
+            Message::Question(Question::Text {
+                message, default, channel, ..
+            }) => {
                 (message, default, channel)
             },
         );
@@ -512,18 +512,20 @@ mod tests {
 
         if exists {
             // Now we expect a confirmation prompt
-            let confirm = assert_matches!(
+            let (message, channel) = assert_matches!(
                 harness.pop_message_wait().await,
-                Message::ConfirmStart(confirm) => confirm,
+                Message::Question(Question::Confirm { message, channel }) => {
+                    (message,channel)
+                },
             );
             assert_eq!(
-                confirm.message,
+                message,
                 format!(
                     "`{}` already exists, overwrite?",
                     expected_path.display()
                 )
             );
-            confirm.channel.reply(overwrite);
+            channel.reply(overwrite);
         }
 
         // Now the file should be created

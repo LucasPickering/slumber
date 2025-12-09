@@ -132,6 +132,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     }
 
     /// Set the index that should be initially selected
+    #[cfg(test)]
     pub fn preselect_index(mut self, index: usize) -> Self {
         // If the index is invalid, it will be replaced by 0 in the build()
         self.preselect_index = index;

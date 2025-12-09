@@ -21,14 +21,22 @@ use slumber_core::{
 use std::io::Write;
 use tracing::trace;
 
-/// A data structure for representation a yes/no confirmation. This is similar
-/// to [Prompt], but it only asks a yes/no question.
+/// A question posed to the user. [Prompt] is used exclusively for request
+/// building, while this value is used for any other kind of input requested
+/// from the user.
 #[derive(Debug)]
-pub struct Confirm {
-    /// Question to ask the user
-    pub message: String,
-    /// A channel to pass back the user's response
-    pub channel: ReplyChannel<bool>,
+pub enum Question {
+    /// Yes/no question
+    Confirm {
+        message: String,
+        channel: ReplyChannel<bool>,
+    },
+    /// Question with text response
+    Text {
+        message: String,
+        default: Option<String>,
+        channel: ReplyChannel<String>,
+    },
 }
 
 /// Use the message stream to prompt the user for input when needed for a

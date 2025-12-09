@@ -12,7 +12,7 @@ mod util;
 pub use component::ComponentMap;
 pub use context::{UpdateContext, ViewContext};
 pub use styles::Styles;
-pub use util::{Confirm, PreviewPrompter, TuiPrompter};
+pub use util::{PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
     context::TuiContext,
@@ -160,9 +160,9 @@ impl View {
         self.root.update_request(state, select);
     }
 
-    /// Ask the user a yes/no question
-    pub fn confirm(&mut self, confirm: Confirm) {
-        self.root.confirm(confirm);
+    /// Ask the user a [Question]
+    pub fn question(&mut self, question: Question) {
+        self.root.question(question);
     }
 
     /// Display an error to the user in a modal

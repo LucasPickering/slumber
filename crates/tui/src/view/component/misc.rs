@@ -4,8 +4,12 @@
 use crate::{
     util::ResultReported,
     view::{
-        Generate, ViewContext,
-        common::{button::ButtonGroup, modal::Modal},
+        Generate, Question, ViewContext,
+        common::{
+            button::ButtonGroup,
+            modal::Modal,
+            text_box::{TextBox, TextBoxProps},
+        },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
@@ -23,6 +27,7 @@ use slumber_core::{
 };
 use std::fmt::Debug;
 use strum::{EnumCount, EnumIter};
+use unicode_width::UnicodeWidthStr;
 
 /// Modal to display an error. Typically the error is [anyhow::Error], but it
 /// could also be wrapped in a smart pointer.
@@ -82,66 +87,147 @@ impl ConfirmButton {
     }
 }
 
-/// Inner state for the prompt modal
+/// A modal to pose a question to the user
 #[derive(derive_more::Debug)]
-pub struct ConfirmModal {
-    id: ComponentId,
-    /// Modal title, from the prompt message
-    title: String,
-    buttons: ButtonGroup<ConfirmButton>,
-    /// Callback when the user responses
-    #[debug(skip)]
-    on_submit: Box<dyn 'static + FnOnce(bool)>,
+pub enum QuestionModal {
+    /// Yes/no question
+    Confirm {
+        id: ComponentId,
+        message: String,
+        buttons: ButtonGroup<ConfirmButton>,
+        /// Callback when the user replies
+        #[debug(skip)]
+        on_submit: Box<dyn 'static + FnOnce(bool)>,
+    },
+    /// Free-form text response
+    Text {
+        id: ComponentId,
+        message: String,
+        text_box: TextBox,
+        /// Callback when the user replies
+        #[debug(skip)]
+        on_submit: Box<dyn 'static + FnOnce(String)>,
+    },
 }
 
-impl ConfirmModal {
-    const MIN_WIDTH: u16 = 24;
-
-    pub fn new(title: String, on_submit: impl 'static + FnOnce(bool)) -> Self {
-        Self {
-            id: ComponentId::default(),
-            title,
-            buttons: Default::default(),
+impl QuestionModal {
+    /// Open a modal with a yes/no question
+    pub fn confirm(
+        message: String,
+        on_submit: impl 'static + FnOnce(bool),
+    ) -> Self {
+        Self::Confirm {
+            id: ComponentId::new(),
+            message,
+            buttons: ButtonGroup::default(),
             on_submit: Box::new(on_submit),
+        }
+    }
+
+    /// Open a modal to ask a question and get a text reply
+    pub fn text(
+        message: String,
+        default: Option<String>,
+        on_submit: impl 'static + FnOnce(String),
+    ) -> Self {
+        Self::Text {
+            id: ComponentId::new(),
+            message,
+            text_box: TextBox::default()
+                .default_value(default.unwrap_or_default()),
+            on_submit: Box::new(on_submit),
+        }
+    }
+
+    /// Build a new modal to ask a [Question]
+    pub fn from_question(question: Question) -> Self {
+        match question {
+            Question::Confirm { message, channel } => {
+                Self::confirm(message, move |reply| channel.reply(reply))
+            }
+            Question::Text {
+                message,
+                default,
+                channel,
+            } => {
+                Self::text(message, default, move |reply| channel.reply(reply))
+            }
         }
     }
 }
 
-impl Modal for ConfirmModal {
+impl Modal for QuestionModal {
     fn title(&self) -> Line<'_> {
-        self.title.as_str().into()
+        match self {
+            QuestionModal::Confirm { message, .. }
+            | QuestionModal::Text { message, .. } => message.as_str().into(),
+        }
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (
-            // Add some arbitrary padding
-            Constraint::Length(
-                Self::MIN_WIDTH.max((self.title.len() + 4) as u16),
-            ),
-            Constraint::Length(1),
-        )
+        let width = match self {
+            QuestionModal::Confirm { message, .. } => {
+                // Add some arbitrary padding and a min width
+                Constraint::Length((message.width() as u16 + 4).max(24))
+            }
+            QuestionModal::Text { .. } => Constraint::Percentage(60),
+        };
+        (width, Constraint::Length(1))
     }
 
-    fn on_submit(self, _context: &mut UpdateContext) {
-        // When user selects a button, send the response before closing
-        let answer = self.buttons.selected().to_bool();
-        (self.on_submit)(answer);
+    fn on_submit(self, _: &mut UpdateContext) {
+        match self {
+            QuestionModal::Confirm {
+                buttons, on_submit, ..
+            } => {
+                on_submit(buttons.selected().to_bool());
+            }
+            QuestionModal::Text {
+                text_box,
+                on_submit,
+                ..
+            } => {
+                on_submit(text_box.into_text());
+            }
+        }
     }
 }
 
-impl Component for ConfirmModal {
+impl Component for QuestionModal {
     fn id(&self) -> ComponentId {
-        self.id
+        match self {
+            QuestionModal::Confirm { id, .. }
+            | QuestionModal::Text { id, .. } => *id,
+        }
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.buttons.to_child_mut()]
+        match self {
+            QuestionModal::Confirm { buttons, .. } => {
+                vec![buttons.to_child_mut()]
+            }
+            QuestionModal::Text { text_box, .. } => {
+                vec![text_box.to_child_mut()]
+            }
+        }
     }
 }
 
-impl Draw for ConfirmModal {
+impl Draw for QuestionModal {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        canvas.draw(&self.buttons, (), metadata.area(), true);
+        match self {
+            QuestionModal::Confirm { buttons, .. } => {
+                canvas.draw(buttons, (), metadata.area(), true);
+            }
+            QuestionModal::Text { text_box, .. } => {
+                canvas.draw(
+                    text_box,
+                    TextBoxProps::default(),
+                    metadata.area(),
+                    true,
+                );
+            }
+        }
     }
 }
 
@@ -169,10 +255,7 @@ impl Modal for DeleteRequestModal {
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (
-            Constraint::Length(ConfirmModal::MIN_WIDTH),
-            Constraint::Length(1),
-        )
+        (Constraint::Length(24), Constraint::Length(1))
     }
 
     fn on_submit(self, context: &mut UpdateContext) {

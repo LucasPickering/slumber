@@ -369,8 +369,7 @@ impl LoadedState {
             }
             Message::Input(event) => self.view.handle_input(event),
             Message::Notify(message) => self.view.notify(message),
-            Message::PromptStart(prompt) => todo!(),
-            Message::ConfirmStart(confirm) => self.view.confirm(confirm),
+            Message::Question(question) => self.view.question(question),
             Message::TemplatePreview {
                 template,
                 can_stream,

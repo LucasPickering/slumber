@@ -3,7 +3,7 @@ use crate::{
     message::{HttpMessage, Message},
     util::{PersistentKey, PersistentStore, ResultReported},
     view::{
-        Component, Confirm, ViewContext,
+        Component, Question, ViewContext,
         common::{actions::ActionMenu, modal::ModalQueue},
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
@@ -11,7 +11,7 @@ use crate::{
             help::Help,
             history::History,
             internal::ComponentExt,
-            misc::{ConfirmModal, DeleteRecipeRequestsModal, ErrorModal},
+            misc::{DeleteRecipeRequestsModal, ErrorModal, QuestionModal},
             primary::PrimaryView,
         },
         context::UpdateContext,
@@ -42,10 +42,9 @@ pub struct Root {
     // multiple modals at a time if the trigger is from the background (e.g.
     // errors or prompts).
     actions: ActionMenu,
-    cancel_request_confirm: ModalQueue<ConfirmModal>,
     /// Confirmation modal to delete all requests for a recipe
     delete_requests_confirm: ModalQueue<DeleteRecipeRequestsModal>,
-    confirms: ModalQueue<ConfirmModal>,
+    questions: ModalQueue<QuestionModal>,
     errors: ModalQueue<ErrorModal>,
     history: ModalQueue<History>,
 }
@@ -72,20 +71,16 @@ impl Root {
             footer: Footer::default(),
             help: Help::default(),
             actions: ActionMenu::default(),
-            cancel_request_confirm: ModalQueue::default(),
             delete_requests_confirm: ModalQueue::default(),
-            confirms: ModalQueue::default(),
+            questions: ModalQueue::default(),
             errors: ModalQueue::default(),
             history: ModalQueue::default(),
         }
     }
 
     /// Ask the user a yes/no question
-    pub fn confirm(&mut self, confirm: Confirm) {
-        self.confirms
-            .open(ConfirmModal::new(confirm.message, |response| {
-                confirm.channel.reply(response);
-            }));
+    pub fn question(&mut self, question: Question) {
+        self.questions.open(QuestionModal::from_question(question));
     }
 
     /// Display an error to the user
@@ -226,7 +221,7 @@ impl Root {
         if let Some(request_id) = self.selected_request_id
             && context.request_store.can_cancel(request_id)
         {
-            self.cancel_request_confirm.open(ConfirmModal::new(
+            self.questions.open(QuestionModal::confirm(
                 "Cancel request?".into(),
                 move |response| {
                     if response {
@@ -308,9 +303,8 @@ impl Component for Root {
             self.errors.to_child_mut(),
             // Rest of the modals
             self.actions.to_child_mut(),
-            self.cancel_request_confirm.to_child_mut(),
             self.delete_requests_confirm.to_child_mut(),
-            self.confirms.to_child_mut(),
+            self.questions.to_child_mut(),
             self.history.to_child_mut(),
             // Non-modals
             self.primary_view.to_child_mut(),
@@ -349,9 +343,8 @@ impl Draw for Root {
 
         // Modals
         canvas.draw_portal(&self.actions, (), true);
-        canvas.draw_portal(&self.cancel_request_confirm, (), true);
         canvas.draw_portal(&self.delete_requests_confirm, (), true);
-        canvas.draw_portal(&self.confirms, (), true);
+        canvas.draw_portal(&self.questions, (), true);
         canvas.draw_portal(&self.history, (), true);
         // Errors render last because they're drawn on top (highest priority)
         canvas.draw_portal(&self.errors, (), true);

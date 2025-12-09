@@ -5,7 +5,7 @@ use crate::{
     http::{PromptId, PromptReply},
     input::InputEvent,
     util::TempFile,
-    view::Confirm,
+    view::Question,
 };
 use anyhow::Context;
 use derive_more::From;
@@ -69,10 +69,6 @@ pub enum Message {
     /// TUI session for the new collection
     CollectionSelect(PathBuf),
 
-    /// Show a yes/no confirmation to the user. Use the included channel to
-    /// return the value.
-    ConfirmStart(Confirm),
-
     /// Render request URL from a recipe, then copy rendered URL
     CopyRecipe(RecipeCopyTarget),
     /// Copy some text to the clipboard
@@ -116,10 +112,12 @@ pub enum Message {
     /// Send an informational notification to the user
     Notify(String),
 
-    /// Show a prompt to the user to get some input for a request build. Use the
-    /// included channel in the [Prompt] to return the value.
-    /// TODO
-    PromptStart(Prompt),
+    /// Ask the user for input to some [Question]. Use the included channel to
+    /// return the value.
+    ///
+    /// This is *not* used for request building; that uses
+    /// [HttpMessage::Prompt].
+    Question(Question),
 
     /// Exit the program
     Quit,

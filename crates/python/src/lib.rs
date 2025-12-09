@@ -334,7 +334,7 @@ impl Prompter for PythonPrompter {
                 channel,
             } => {
                 if let Ok(response) = Self::text(message, default, sensitive) {
-                    channel.respond(response);
+                    channel.reply(response);
                 }
             }
             Prompt::Select {
@@ -343,7 +343,7 @@ impl Prompter for PythonPrompter {
                 channel,
             } => {
                 if let Ok(response) = Self::select(message, options) {
-                    channel.respond(response);
+                    channel.reply(response);
                 }
             }
         }

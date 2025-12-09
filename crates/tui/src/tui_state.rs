@@ -365,11 +365,11 @@ impl LoadedState {
                     .reported(&self.messages_tx)
                     .flatten()
                     .cloned();
-                channel.respond(exchange);
+                channel.reply(exchange);
             }
             Message::Input(event) => self.view.handle_input(event),
             Message::Notify(message) => self.view.notify(message),
-            Message::PromptStart(prompt) => self.view.prompt(prompt),
+            Message::PromptStart(prompt) => todo!(),
             Message::ConfirmStart(confirm) => self.view.confirm(confirm),
             Message::TemplatePreview {
                 template,
@@ -510,8 +510,10 @@ impl LoadedState {
             recipe_id,
             options,
         } = self.request_config()?;
-        let context = self.template_context(profile_id, false);
         let seed = RequestSeed::new(recipe_id, options);
+        // Even though this isn't a real request, we use a real request ID
+        // because we may need to show prompts to the user under that ID
+        let context = self.template_context(profile_id, Some(seed.id));
 
         let future = render(context, seed);
         util::spawn_result(async move {
@@ -576,11 +578,11 @@ impl LoadedState {
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let template_context = self.template_context(profile_id.clone(), false);
-        let messages_tx = self.messages_tx();
-
         let seed = RequestSeed::new(recipe_id.clone(), options);
         let request_id = seed.id;
+        let template_context =
+            self.template_context(profile_id.clone(), Some(request_id));
+        let messages_tx = self.messages_tx();
 
         // Don't use spawn_result here, because errors are handled specially for
         // requests
@@ -653,7 +655,7 @@ impl LoadedState {
         can_stream: bool,
         on_complete: Callback<RenderedOutput>,
     ) {
-        let context = self.template_context(profile_id, true);
+        let context = self.template_context(profile_id, None);
         util::spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render(&context.streaming(can_stream)).await;
@@ -667,15 +669,20 @@ impl LoadedState {
     fn template_context(
         &self,
         profile_id: Option<ProfileId>,
-        is_preview: bool,
+        // ID of the request being built is needed to group prompts that are
+        // generated
+        request_id: Option<RequestId>,
     ) -> TemplateContext {
         let collection = &self.collection;
+        // If request_id is given, it's a request build. Otherwise it's a
+        // preview
+        let is_preview = request_id.is_none();
         let http_provider =
             TuiHttpProvider::new(self.messages_tx(), is_preview);
-        let prompter: Box<dyn Prompter> = if is_preview {
-            Box::new(PreviewPrompter)
+        let prompter: Box<dyn Prompter> = if let Some(request_id) = request_id {
+            Box::new(TuiPrompter::new(request_id, self.messages_tx()))
         } else {
-            Box::new(TuiPrompter::new(self.messages_tx()))
+            Box::new(PreviewPrompter)
         };
 
         TemplateContext {
@@ -707,6 +714,13 @@ impl LoadedState {
                 select = true; // New requests should be shown immediately
                 self.send_request()?
             }
+            HttpMessage::Prompt { request_id, prompt } => {
+                self.request_store.prompt(request_id, prompt).id()
+            }
+            HttpMessage::FormSubmit {
+                request_id,
+                replies: responses,
+            } => self.request_store.submit_form(request_id, responses).id(),
             HttpMessage::BuildError(error) => {
                 self.request_store.build_error(error).id()
             }

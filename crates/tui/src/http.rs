@@ -9,6 +9,8 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
+use derive_more::derive::Display;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use reqwest::StatusCode;
 use slumber_core::{
@@ -19,8 +21,9 @@ use slumber_core::{
         RequestError, RequestId, RequestRecord, RequestSeed,
         StoredRequestError, TriggeredRequestError,
     },
-    render::{HttpProvider, TemplateContext},
+    render::{HttpProvider, Prompt, TemplateContext},
 };
+use slumber_template::Value;
 use std::{
     collections::{HashMap, hash_map::Entry},
     fmt::Debug,
@@ -30,6 +33,7 @@ use std::{
 use strum::EnumDiscriminants;
 use tokio::{sync::oneshot, task::AbortHandle};
 use tracing::warn;
+use uuid::Uuid;
 
 /// Configuration that defines how to render a request
 #[derive(Debug)]
@@ -144,12 +148,66 @@ impl RequestStore {
             start_time: Utc::now(),
             profile_id,
             recipe_id,
+            prompts: IndexMap::new(), // Collect prompts later, as they come in
             abort_handle,
         };
         match self.requests.entry(id) {
             Entry::Vacant(entry) => entry.insert(state),
             Entry::Occupied(_) => panic!("Request {id} started twice"),
         }
+    }
+
+    /// Add a prompt to a building request. The request will remain in the
+    /// building state.
+    pub fn prompt(
+        &mut self,
+        request_id: RequestId,
+        prompt: Prompt,
+    ) -> &RequestState {
+        self.replace(request_id, |mut state| {
+            if let RequestState::Building { prompts, .. } = &mut state {
+                prompts.insert(PromptId::new(), prompt);
+            } else {
+                warn!(
+                    request = ?state,
+                    "Cannot add prompt: not in building state"
+                );
+            }
+            state
+        })
+    }
+
+    /// Send responses to one or more of this request's prompts. This replies to
+    /// the HTTP engine so it can continue building, but does *not* transition
+    /// out of the building state yet.
+    pub fn submit_form(
+        &mut self,
+        request_id: RequestId,
+        responses: Vec<(PromptId, PromptReply)>,
+    ) -> &RequestState {
+        self.replace(request_id, |mut state| {
+            if let RequestState::Building { prompts, .. } = &mut state {
+                for (id, response) in responses {
+                    // Prompts can only be replied to once. If a prompt is not
+                    // in the map, it was probably already replied to which is
+                    // a UI bug.
+                    let prompt = prompts
+                        .shift_remove(&id)
+                        .unwrap_or_else(|| panic!("Prompt {id} not in map"));
+                    response.reply_to(prompt);
+                }
+                // The prompt list is probably empty now, but not necessarily.
+                // Additional prompts may have been added between the form
+                // being submitted and this function being called. In that case,
+                // we expected an additional submission in the future.
+            } else {
+                warn!(
+                    request = ?state,
+                    "Cannot submit prompts: not in building state",
+                );
+            }
+            state
+        })
     }
 
     /// Mark a request as loading. Return the updated state.
@@ -244,6 +302,7 @@ impl RequestStore {
                 start_time,
                 profile_id,
                 recipe_id,
+                prompts: _, // Drop all prompts
                 abort_handle: Some(abort_handle),
             } => {
                 abort_handle.abort();
@@ -568,6 +627,12 @@ pub enum RequestState {
         /// request. `None` for triggered requests, because they don't run at
         /// the root of a task and therefore can't be aborted independently.
         abort_handle: Option<AbortHandle>,
+        /// Any prompts sent by the HTTP engine to be shown to the user. This
+        /// is empty when the request first starts building, and we'll insert
+        /// as prompts are received by the main loop. The UI will show an input
+        /// form with these visible, and upon form submission these will be
+        /// drained out as the responses are forwarded.
+        prompts: IndexMap<PromptId, Prompt>,
     },
 
     /// Something went wrong during the build :(
@@ -719,6 +784,7 @@ impl PartialEq for RequestState {
                     profile_id: l_profile_id,
                     recipe_id: l_recipe_id,
                     abort_handle: _,
+                    prompts: _,
                 },
                 Self::Building {
                     id: r_id,
@@ -726,6 +792,7 @@ impl PartialEq for RequestState {
                     profile_id: r_profile_id,
                     recipe_id: r_recipe_id,
                     abort_handle: _,
+                    prompts: _,
                 },
             ) => {
                 l_id == r_id
@@ -944,6 +1011,51 @@ impl From<&RequestState> for RequestStateSummary {
                 start_time: error.start_time,
                 end_time: error.end_time,
             },
+        }
+    }
+}
+
+/// Unique ID for a single prompt from a request
+///
+/// This is used to correlate a prompt in the request store with an input field
+/// in the UI.
+#[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
+pub struct PromptId(Uuid);
+
+impl PromptId {
+    /// Generate a new unique prompt ID
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+/// A UI-provided reply to a prompt. This is the data passed from the UI back
+/// to the request store, to be forwarded via channel to the HTTP engine.
+#[derive(Debug, PartialEq)]
+pub enum PromptReply {
+    Text(String),
+    Select(Value),
+}
+
+impl PromptReply {
+    /// Send this reply to the given prompt. The reply and prompt should be of
+    /// the same input type, otherwise this will panic.
+    fn reply_to(self, prompt: Prompt) {
+        match (prompt, self) {
+            (Prompt::Text { channel, .. }, Self::Text(text)) => {
+                channel.reply(text);
+            }
+            (Prompt::Select { channel, .. }, Self::Select(value)) => {
+                channel.reply(value);
+            }
+            // Prompt/response mismatch. Bug in the prompt form
+            (prompt @ Prompt::Text { .. }, response @ Self::Select(_))
+            | (prompt @ Prompt::Select { .. }, response @ Self::Text(_)) => {
+                panic!(
+                    "Incorrect prompt response type {response:?} \
+                    for prompt {prompt:?}"
+                );
+            }
         }
     }
 }

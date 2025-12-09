@@ -431,7 +431,6 @@ mod tests {
         component
             .int()
             .drain_draw() // Draw so children are visible
-            .send_key(KeyCode::Char('e')) // Edit
             .send_text("123") // Modify username
             .inspect(|component| {
                 assert!(component.editing);
@@ -439,11 +438,11 @@ mod tests {
             })
             .send_key(KeyCode::Tab) // Switch to species - still editing
             .send_key(KeyCode::Down) // Select 2nd option
-            .send_key_modifiers(KeyCode::Tab, KeyModifiers::SHIFT) // Go back
+            // Exit edit mode, nav w/ arrow keys, then re-enter edit
+            .send_keys([KeyCode::Esc, KeyCode::Up, KeyCode::Char('e')])
             .send_text("4") // Modify username again
-            .send_key(KeyCode::Up) // We can navigate with arrow keys too
+            .send_key_modifiers(KeyCode::Up, KeyModifiers::SHIFT) // Wrap to pw
             .send_text("456") // Modify password
-            .send_key(KeyCode::Enter) // Done editing
             .send_key(KeyCode::Enter) // Submit
             .assert_empty();
 
@@ -506,7 +505,6 @@ mod tests {
         component
             .int()
             .drain_draw() // Draw so children are visible
-            .send_key(KeyCode::Char('e')) // Edit
             .send_text("12") // Modify username
             .send_key(KeyCode::Tab) // Switch to password
             .send_text("2") // Modify password
@@ -573,7 +571,7 @@ mod tests {
         component
             .int()
             .drain_draw() // Draw so children are visible
-            .send_keys([KeyCode::Char('e'), KeyCode::Down])
+            .send_key(KeyCode::Down)
             .assert_empty();
 
         // Check terminal contents
@@ -588,11 +586,7 @@ mod tests {
         ]);
 
         // Submit
-        component
-            .int()
-            // Done editing, then submit
-            .send_keys([KeyCode::Enter, KeyCode::Enter])
-            .assert_empty();
+        component.int().send_key(KeyCode::Enter).assert_empty();
         let replies = assert_matches!(
             harness.pop_message_now(),
             Message::Http(HttpMessage::FormSubmit {

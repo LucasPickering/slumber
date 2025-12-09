@@ -413,22 +413,22 @@ pub enum Prompt {
         /// Should the value the user is typing be masked? E.g. password input
         sensitive: bool,
         /// How the prompter will pass the answer back
-        channel: ResponseChannel<String>,
+        channel: ReplyChannel<String>,
     },
     /// Ask the user to pick a value from a list
     Select {
         /// Tell the user what we're asking for
         message: String,
-        /// List of choices the user can pick from
+        /// List of choices the user can pick from. This will never be empty.
         options: Vec<SelectOption>,
         /// How the prompter will pass the answer back. The returned value is
         /// the `value` field from the selected [SelectOption]
-        channel: ResponseChannel<Value>,
+        channel: ReplyChannel<Value>,
     },
 }
 
 /// An entry in a `select()` list
-#[derive(Debug, Display, Deserialize)]
+#[derive(Clone, Debug, Display, Deserialize)]
 #[display("{label}")]
 pub struct SelectOption {
     /// Label to display to the user for this option
@@ -438,18 +438,18 @@ pub struct SelectOption {
     pub value: Value,
 }
 
-/// Channel used to return a response to a one-time request. This is its own
-/// type so we can provide wrapping functionality
+/// Channel used to return a reply to a one-time request. This is its own type
+/// so we can provide wrapping functionality
 #[derive(Debug, From)]
-pub struct ResponseChannel<T>(oneshot::Sender<T>);
+pub struct ReplyChannel<T>(oneshot::Sender<T>);
 
-impl<T> ResponseChannel<T> {
+impl<T> ReplyChannel<T> {
     /// Return the value that the user gave
-    pub fn respond(self, response: T) {
+    pub fn reply(self, reply: T) {
         // This error *shouldn't* ever happen, because the templating task
-        // stays open until it gets a response
-        if self.0.send(response).is_err() {
-            error!("Response listener dropped");
+        // stays open until it gets a reply
+        if self.0.send(reply).is_err() {
+            error!("Reply listener dropped");
         }
     }
 }

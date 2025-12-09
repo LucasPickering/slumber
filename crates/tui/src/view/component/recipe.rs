@@ -3,7 +3,6 @@
 mod authentication;
 mod body;
 mod override_template;
-mod prompt_form;
 mod recipe;
 mod table;
 mod url;
@@ -18,7 +17,7 @@ use crate::{
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            recipe::{prompt_form::PromptForm, recipe::RecipeDisplay},
+            recipe::recipe::RecipeDisplay,
             sidebar_list::{
                 SidebarList, SidebarListEvent, SidebarListItem,
                 SidebarListProps, SidebarListState,
@@ -42,7 +41,6 @@ use slumber_core::{
         Folder, HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType,
     },
     http::BuildOptions,
-    render::Prompt,
 };
 use slumber_util::doc_link;
 use std::{borrow::Cow, collections::HashSet};
@@ -360,10 +358,6 @@ pub struct RecipeDetail {
     /// UI state derived from the selected node+profile. When either changes,
     /// the component has to be rebuilt
     state: RecipeNodeState,
-    /// A form for answering prompts from the request render engine. This
-    /// receives prompts from the render tasks via messages, and whenever there
-    /// is at least one prompt, we show this in place of the recipe node detail
-    prompt_form: PromptForm,
 }
 
 impl RecipeDetail {
@@ -385,9 +379,6 @@ impl RecipeDetail {
             id: ComponentId::new(),
             actions_emitter: Emitter::default(),
             state,
-            // Intentionally reset the form whenever the pane changes. This will
-            // cancel the active request by closing the form channels.
-            prompt_form: PromptForm::default(),
         }
     }
 
@@ -400,11 +391,6 @@ impl RecipeDetail {
                 Some(display.build_options())
             }
         }
-    }
-
-    /// Prompt the user for input
-    pub fn prompt(&mut self, prompt: Prompt) {
-        self.prompt_form.prompt(prompt);
     }
 }
 
@@ -425,13 +411,14 @@ impl Component for RecipeDetail {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        let recipe_display = match &mut self.state {
+        match &mut self.state {
             RecipeNodeState::None | RecipeNodeState::Folder { .. } => {
-                Child::None
+                vec![]
             }
-            RecipeNodeState::Recipe { display, .. } => display.to_child_mut(),
-        };
-        vec![self.prompt_form.to_child_mut(), recipe_display]
+            RecipeNodeState::Recipe { display, .. } => {
+                vec![display.to_child_mut()]
+            }
+        }
     }
 }
 
@@ -455,13 +442,6 @@ impl Draw for RecipeDetail {
         };
         let mut block = block.generate();
         let inner_area = block.inner(metadata.area());
-
-        // If there are prompts available, render that instead
-        if self.prompt_form.has_prompts() {
-            canvas.render_widget(block, metadata.area());
-            canvas.draw(&self.prompt_form, (), inner_area, true);
-            return;
-        }
 
         // Include the folder/recipe ID in the header
         match &self.state {

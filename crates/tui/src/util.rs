@@ -508,7 +508,7 @@ mod tests {
         );
         assert_eq!(&message, "Enter a path for the file");
         assert_eq!(default.as_deref(), Some("default.txt"));
-        channel.respond(expected_path.to_str().unwrap().to_owned());
+        channel.reply(expected_path.to_str().unwrap().to_owned());
 
         if exists {
             // Now we expect a confirmation prompt
@@ -523,7 +523,7 @@ mod tests {
                     expected_path.display()
                 )
             );
-            confirm.channel.respond(overwrite);
+            confirm.channel.reply(overwrite);
         }
 
         // Now the file should be created

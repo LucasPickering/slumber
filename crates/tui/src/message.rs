@@ -1,7 +1,12 @@
 //! Async message passing! This is how inputs and other external events trigger
 //! state updates.
 
-use crate::{input::InputEvent, util::TempFile, view::Confirm};
+use crate::{
+    http::{PromptId, PromptReply},
+    input::InputEvent,
+    util::TempFile,
+    view::Confirm,
+};
 use anyhow::Context;
 use derive_more::From;
 use mime::Mime;
@@ -10,7 +15,7 @@ use slumber_core::{
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
-    render::{Prompt, ResponseChannel},
+    render::{Prompt, ReplyChannel},
 };
 use slumber_template::{RenderedOutput, Template};
 use slumber_util::{ResultTracedAnyhow, yaml::SourceLocation};
@@ -102,7 +107,7 @@ pub enum Message {
     HttpGetLatest {
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
-        channel: ResponseChannel<Option<Exchange>>,
+        channel: ReplyChannel<Option<Exchange>>,
     },
 
     /// User input from the terminal
@@ -111,8 +116,9 @@ pub enum Message {
     /// Send an informational notification to the user
     Notify(String),
 
-    /// Show a prompt to the user, asking for some input. Use the included
-    /// channel to return the value.
+    /// Show a prompt to the user to get some input for a request build. Use the
+    /// included channel in the [Prompt] to return the value.
+    /// TODO
     PromptStart(Prompt),
 
     /// Exit the program
@@ -163,6 +169,18 @@ pub enum HttpMessage {
         request_id: RequestId,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
+    },
+    /// A prompt is being rendered in a template, and we need a reply from the
+    /// user
+    Prompt {
+        request_id: RequestId,
+        prompt: Prompt,
+    },
+    /// User has submitted their prompt form in the UI. Replies should be sent
+    /// back to the render engine.
+    FormSubmit {
+        request_id: RequestId,
+        replies: Vec<(PromptId, PromptReply)>,
     },
     /// Request failed to build
     ///

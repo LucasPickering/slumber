@@ -3,7 +3,7 @@
 pub mod highlight;
 
 use crate::{
-    message::{Message, MessageSender},
+    message::{HttpMessage, Message, MessageSender},
     util::{ResultReported, TempFile},
     view::ViewContext,
 };
@@ -14,7 +14,10 @@ use chrono::{
 use itertools::Itertools;
 use mime::Mime;
 use ratatui::text::{Line, Text};
-use slumber_core::render::{Prompt, Prompter, ResponseChannel};
+use slumber_core::{
+    http::RequestId,
+    render::{Prompt, Prompter, ReplyChannel},
+};
 use std::io::Write;
 use tracing::trace;
 
@@ -25,7 +28,7 @@ pub struct Confirm {
     /// Question to ask the user
     pub message: String,
     /// A channel to pass back the user's response
-    pub channel: ResponseChannel<bool>,
+    pub channel: ReplyChannel<bool>,
 }
 
 /// Use the message stream to prompt the user for input when needed for a
@@ -33,18 +36,28 @@ pub struct Confirm {
 /// and the given returner will be used to send the submitted value back.
 #[derive(Debug)]
 pub struct TuiPrompter {
+    /// Request being built with this prompter. Each request gets its own
+    /// TemplateContext, which gets new prompter. This allows us to group the
+    /// prompts by request in the UI
+    request_id: RequestId,
     messages_tx: MessageSender,
 }
 
 impl TuiPrompter {
-    pub fn new(messages_tx: MessageSender) -> Self {
-        Self { messages_tx }
+    pub fn new(request_id: RequestId, messages_tx: MessageSender) -> Self {
+        Self {
+            request_id,
+            messages_tx,
+        }
     }
 }
 
 impl Prompter for TuiPrompter {
     fn prompt(&self, prompt: Prompt) {
-        self.messages_tx.send(Message::PromptStart(prompt));
+        self.messages_tx.send(HttpMessage::Prompt {
+            request_id: self.request_id,
+            prompt,
+        });
     }
 }
 
@@ -60,10 +73,10 @@ impl Prompter for PreviewPrompter {
                 default, channel, ..
             } => {
                 let value = default.unwrap_or_else(|| "<prompt>".into());
-                channel.respond(value);
+                channel.reply(value);
             }
             Prompt::Select { channel, .. } => {
-                channel.respond("<select>".into());
+                channel.reply("<select>".into());
             }
         }
     }

@@ -8,6 +8,7 @@ mod internal;
 mod misc;
 mod primary;
 mod profile;
+mod prompt_form;
 mod queryable_body;
 mod recipe;
 mod request_view;

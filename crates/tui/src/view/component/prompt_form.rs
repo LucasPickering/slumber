@@ -1,7 +1,9 @@
 use crate::{
     context::TuiContext,
+    http::{PromptId, PromptReply},
+    message::HttpMessage,
     view::{
-        Generate, UpdateContext,
+        Generate, UpdateContext, ViewContext,
         common::{
             component_select::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
@@ -15,7 +17,7 @@ use crate::{
         event::{Event, EventMatch},
     },
 };
-use itertools::Itertools;
+use indexmap::IndexMap;
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
     prelude::{Buffer, Rect},
@@ -23,8 +25,10 @@ use ratatui::{
     widgets::Widget,
 };
 use slumber_config::Action;
-use slumber_core::render::{Prompt, ResponseChannel, SelectOption};
-use slumber_template::Value;
+use slumber_core::{
+    http::RequestId,
+    render::{Prompt, SelectOption},
+};
 use std::{borrow::Cow, cmp, mem};
 
 /// A form displaying prompts for the recipe builder
@@ -33,9 +37,11 @@ use std::{borrow::Cow, cmp, mem};
 /// prompts here via the message queue. Whenever this has at least one prompt,
 /// it should be shown. When the form is submitted, all prompts are submitted
 /// together, clearing the queue.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PromptForm {
     id: ComponentId,
+    /// Request being built
+    request_id: RequestId,
     /// All inputs in the form. We use a select for this to manage the focus
     /// on one input at a time
     select: ComponentSelect<PromptInput>,
@@ -46,26 +52,40 @@ pub struct PromptForm {
 }
 
 impl PromptForm {
-    /// Prompt the user for input
-    pub fn prompt(&mut self, prompt: Prompt) {
-        // Selects are immutable, so we have to rebuild with the new prompt
-        // appended
-        let select = mem::take(&mut self.select).into_select();
-        let selected_index = select.selected_index().unwrap_or(0);
-        let mut items = select.into_items().collect_vec();
-        items.push(PromptInput::new(prompt));
-        self.select = Select::builder(items)
-            // Carry over the previous selected index. It's possible for
-            // additional prompts to come in during the edit, and we don't want
-            // to reset select state in that case
-            .preselect_index(selected_index)
-            .build()
-            .into();
+    /// Create a new prompt form with one input for each prompt. A form should
+    /// correspond to a single request.
+    pub fn new(
+        request_id: RequestId,
+        prompts: &IndexMap<PromptId, Prompt>,
+    ) -> Self {
+        let inputs = prompts
+            .iter()
+            .map(|(id, prompt)| PromptInput::new(*id, prompt))
+            .collect();
+        Self {
+            id: ComponentId::new(),
+            request_id,
+            select: Select::builder(inputs).build().into(),
+            editing: true,
+        }
     }
 
-    /// Are there any prompts in the queue? When this is true, we show the form
-    pub fn has_prompts(&self) -> bool {
-        !self.select.is_empty()
+    /// Send a message with a reply for every prompt in the form
+    fn submit(&mut self) {
+        // We can take the select list without cloning, because this component
+        // will be trashed on the update triggered by the message we send. This
+        // is much simpler than using an emitted message to do this submission
+        // in the parent, where the entire component is actually trashed.
+        let select = mem::take(&mut self.select);
+        let replies = select
+            .into_select()
+            .into_items()
+            .map(|input| (input.prompt_id(), input.into_reply()))
+            .collect();
+        ViewContext::send_message(HttpMessage::FormSubmit {
+            request_id: self.request_id,
+            replies,
+        });
     }
 }
 
@@ -93,18 +113,7 @@ impl Component for PromptForm {
                     self.select = ComponentSelect::default();
                 }
             }
-            Action::Submit => {
-                if self.editing {
-                    // If editing, just exit editing
-                    self.editing = false;
-                } else {
-                    // Tell each input to submit its response to its channel
-                    let select = mem::take(&mut self.select).into_select();
-                    for input in select.into_items() {
-                        input.submit();
-                    }
-                }
-            }
+            Action::Submit => self.submit(),
             _ => propagate.set(),
         })
     }
@@ -116,6 +125,12 @@ impl Component for PromptForm {
 
 impl Draw for PromptForm {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        if self.select.is_empty() {
+            // No prompts visible
+            canvas.render_widget("Building...", metadata.area());
+            return;
+        }
+
         let [form_area, help_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
@@ -157,46 +172,45 @@ enum PromptInput {
     /// Prompt the user for text input
     Text {
         id: ComponentId,
+        /// Use this to correlate the submission to the original prompt
+        prompt_id: PromptId,
         message: String,
         text_box: TextBox,
-        channel: ResponseChannel<String>,
     },
     /// Prompt the user to select an item from a list
     Select {
         id: ComponentId,
+        /// Use this to correlate the submission to the original prompt
+        prompt_id: PromptId,
         message: String,
         /// List of options to present to the user
         select: Select<SelectOption>,
-        channel: ResponseChannel<Value>,
     },
 }
 
 impl PromptInput {
-    fn new(prompt: Prompt) -> Self {
+    fn new(prompt_id: PromptId, prompt: &Prompt) -> Self {
         match prompt {
             Prompt::Text {
                 message,
                 default,
                 sensitive,
-                channel,
+                ..
             } => Self::Text {
                 id: ComponentId::default(),
-                message,
-
+                prompt_id,
+                message: message.clone(),
                 text_box: TextBox::default()
-                    .sensitive(sensitive)
-                    .default_value(default.unwrap_or_default()),
-                channel,
+                    .sensitive(*sensitive)
+                    .default_value(default.clone().unwrap_or_default()),
             },
             Prompt::Select {
-                message,
-                options,
-                channel,
+                message, options, ..
             } => Self::Select {
                 id: ComponentId::default(),
-                message,
-                select: Select::builder(options).build(),
-                channel,
+                prompt_id,
+                message: message.clone(),
+                select: Select::builder(options.clone()).build(),
             },
         }
     }
@@ -217,21 +231,26 @@ impl PromptInput {
         content_height + 1
     }
 
-    /// Submit the current input/selection to the response channel
-    fn submit(self) {
+    /// Unique ID for this prompt, which will tie it back to the request store
+    fn prompt_id(&self) -> PromptId {
         match self {
-            PromptInput::Text {
-                text_box, channel, ..
-            } => {
-                channel.respond(text_box.into_text());
+            PromptInput::Text { prompt_id, .. }
+            | PromptInput::Select { prompt_id, .. } => *prompt_id,
+        }
+    }
+
+    /// Extract the current value as a reply to be sent back to the request
+    /// store.
+    fn into_reply(self) -> PromptReply {
+        match self {
+            Self::Text { text_box, .. } => {
+                PromptReply::Text(text_box.into_text())
             }
-            PromptInput::Select {
-                select, channel, ..
-            } => {
-                // Empty select should be prevented by the render engine
-                if let Some(option) = select.into_selected() {
-                    channel.respond(option.value);
-                }
+            Self::Select { select, .. } => {
+                // Non-empty select is enforced by the select() function
+                let option =
+                    select.into_selected().expect("Select cannot be empty");
+                PromptReply::Select(option.value)
             }
         }
     }
@@ -343,8 +362,8 @@ impl Widget for InputTitle<'_> {
             let input_engine = &TuiContext::get().input_engine;
             let hint = if self.editing {
                 format!(
-                    " Done {}",
-                    input_engine.binding_display(Action::Submit)
+                    " Exit {}",
+                    input_engine.binding_display(Action::Cancel)
                 )
             } else {
                 format!(" Edit {}", input_engine.binding_display(Action::Edit))
@@ -375,34 +394,39 @@ impl Generate for &SelectOption {
 mod tests {
     use super::*;
     use crate::{
+        message::Message,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
+    use itertools::Itertools;
     use ratatui::style::{Style, Styled};
     use rstest::rstest;
+    use slumber_template::Value;
+    use slumber_util::assert_matches;
     use terminput::{KeyCode, KeyModifiers};
-    use tokio::sync::oneshot::{self, Receiver, error::TryRecvError};
+    use tokio::sync::oneshot;
 
     /// Navigate between multiple fields and submit
     #[rstest]
-    fn test_navigation(harness: TestHarness, terminal: TestTerminal) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, PromptForm::default());
-        let (username_prompt, mut username_rx) =
-            text("Username", Some("user"), false);
-        component.prompt(username_prompt);
-        let (species_prompt, mut species_rx) = select(
-            "Species",
-            vec![
-                ("holy shit what is that thing", 1.into()),
-                ("it's a baby fuckin wheel!", 2.into()),
-                ("look at that thing jay!", 3.into()),
-            ],
+    fn test_navigation(mut harness: TestHarness, terminal: TestTerminal) {
+        let request_id = RequestId::new();
+        let prompts = IndexMap::from_iter([
+            text("Username", Some("user"), false),
+            select(
+                "Species",
+                vec![
+                    ("holy shit what is that thing", 1.into()),
+                    ("it's a baby fuckin wheel!", 2.into()),
+                    ("look at that thing jay!", 3.into()),
+                ],
+            ),
+            text("Password", Some("hunter2"), true),
+        ]);
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PromptForm::new(request_id, &prompts),
         );
-        component.prompt(species_prompt);
-        let (password_prompt, mut password_rx) =
-            text("Password", Some("hunter2"), true);
-        component.prompt(password_prompt);
 
         component
             .int()
@@ -423,18 +447,35 @@ mod tests {
             .send_key(KeyCode::Enter) // Submit
             .assert_empty();
 
-        assert_eq!(username_rx.try_recv().unwrap(), "user1234");
-        assert_eq!(species_rx.try_recv().unwrap(), 2.into());
-        assert_eq!(password_rx.try_recv().unwrap(), "hunter2456");
+        let (actual_request_id, replies) = assert_matches!(
+            harness.pop_message_now(),
+            Message::Http(HttpMessage::FormSubmit {
+                request_id,
+                replies,
+            }) => (request_id, replies)
+        );
+        assert_eq!(actual_request_id, request_id);
+        let prompt_ids = prompts.keys().copied().collect_vec();
+        assert_eq!(
+            replies,
+            vec![
+                (prompt_ids[0], PromptReply::Text("user1234".into())),
+                (prompt_ids[1], PromptReply::Select(2.into())),
+                (prompt_ids[2], PromptReply::Text("hunter2456".into())),
+            ]
+        );
     }
 
     /// Cancelling should drop all the responders, triggering errors
     #[rstest]
-    fn test_cancel(harness: TestHarness, terminal: TestTerminal) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, PromptForm::default());
-        let (prompt, mut rx) = text("Username", Some("user"), false);
-        component.prompt(prompt);
+    fn test_cancel(mut harness: TestHarness, terminal: TestTerminal) {
+        let prompts =
+            IndexMap::from_iter([text("Username", Some("user"), false)]);
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PromptForm::new(RequestId::new(), &prompts),
+        );
 
         component
             .int()
@@ -442,21 +483,25 @@ mod tests {
             .send_key(KeyCode::Esc)
             .assert_empty();
 
-        // Channel was closed
-        assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+        // Message was *not* sent
+        harness.assert_messages_empty();
     }
 
     /// Text input field
     #[rstest]
-    fn test_text(harness: TestHarness, #[with(8, 5)] terminal: TestTerminal) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, PromptForm::default());
-        let (username_prompt, mut username_rx) =
-            text("Username", Some("user"), false);
-        component.prompt(username_prompt);
-        let (password_prompt, mut password_rx) =
-            text("Password", Some("hunter"), true);
-        component.prompt(password_prompt);
+    fn test_text(
+        mut harness: TestHarness,
+        #[with(8, 5)] terminal: TestTerminal,
+    ) {
+        let prompts = IndexMap::from_iter([
+            text("Username", Some("user"), false),
+            text("Password", Some("hunter"), true),
+        ]);
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PromptForm::new(RequestId::new(), &prompts),
+        );
 
         component
             .int()
@@ -488,24 +533,42 @@ mod tests {
             // Done editing, then submit
             .send_keys([KeyCode::Enter, KeyCode::Enter])
             .assert_empty();
-        assert_eq!(username_rx.try_recv().unwrap(), "user12");
-        assert_eq!(password_rx.try_recv().unwrap(), "hunter2");
+        let replies = assert_matches!(
+            harness.pop_message_now(),
+            Message::Http(HttpMessage::FormSubmit {
+                request_id,
+                replies,
+            }) => replies
+        );
+        let prompt_ids = prompts.keys().copied().collect_vec();
+        assert_eq!(
+            replies,
+            vec![
+                (prompt_ids[0], PromptReply::Text("user12".into())),
+                (prompt_ids[1], PromptReply::Text("hunter2".into())),
+            ]
+        );
     }
 
     /// Select input field
     #[rstest]
-    fn test_select(harness: TestHarness, #[with(7, 5)] terminal: TestTerminal) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, PromptForm::default());
-        let (prompt, mut rx) = select(
+    fn test_select(
+        mut harness: TestHarness,
+        #[with(7, 5)] terminal: TestTerminal,
+    ) {
+        let prompts = IndexMap::from_iter([select(
             "Species",
             vec![
                 ("holy shit what is that thing", 1.into()),
                 ("it's a baby fuckin wheel!", 2.into()),
                 ("look at that thing jay!", 3.into()),
             ],
+        )]);
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PromptForm::new(RequestId::new(), &prompts),
         );
-        component.prompt(prompt);
 
         component
             .int()
@@ -530,31 +593,18 @@ mod tests {
             // Done editing, then submit
             .send_keys([KeyCode::Enter, KeyCode::Enter])
             .assert_empty();
-        assert_eq!(rx.try_recv().unwrap(), 2.into());
-    }
-
-    /// When a new field is added to the form, whatever field was previously
-    /// selected should remain selected
-    #[rstest]
-    fn test_retain_selected_field(
-        harness: TestHarness,
-        terminal: TestTerminal,
-    ) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, PromptForm::default());
-        component.prompt(text("Username", Some("user"), false).0);
-        component.prompt(select("Select", vec![]).0);
-
-        component
-            .int()
-            .drain_draw() // Draw so children are visible
-            .send_key(KeyCode::Tab)
-            .assert_empty();
-        assert_eq!(component.select.selected_index(), Some(1));
-
-        component.prompt(text("Password", Some("hunter2"), true).0);
-        // Selection state is *not* lost
-        assert_eq!(component.select.selected_index(), Some(1));
+        let replies = assert_matches!(
+            harness.pop_message_now(),
+            Message::Http(HttpMessage::FormSubmit {
+                request_id,
+                replies,
+            }) => replies
+        );
+        let prompt_ids = prompts.keys().copied().collect_vec();
+        assert_eq!(
+            replies,
+            vec![(prompt_ids[0], PromptReply::Select(2.into()))]
+        );
     }
 
     /// Create a text prompt
@@ -562,23 +612,23 @@ mod tests {
         message: &str,
         default: Option<&str>,
         sensitive: bool,
-    ) -> (Prompt, Receiver<String>) {
-        let (tx, rx) = oneshot::channel();
+    ) -> (PromptId, Prompt) {
+        let (tx, _) = oneshot::channel();
         let prompt = Prompt::Text {
             message: message.into(),
             default: default.map(String::from),
             sensitive,
             channel: tx.into(),
         };
-        (prompt, rx)
+        (PromptId::new(), prompt)
     }
 
     /// Create a select prompt
     fn select(
         message: &str,
         options: Vec<(&str, Value)>,
-    ) -> (Prompt, Receiver<Value>) {
-        let (tx, rx) = oneshot::channel();
+    ) -> (PromptId, Prompt) {
+        let (tx, _) = oneshot::channel();
         let prompt = Prompt::Select {
             message: message.into(),
             options: options
@@ -590,6 +640,6 @@ mod tests {
                 .collect(),
             channel: tx.into(),
         };
-        (prompt, rx)
+        (PromptId::new(), prompt)
     }
 }

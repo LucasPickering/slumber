@@ -21,7 +21,7 @@ use crate::{
 use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{collection::ProfileId, http::RequestId, render::Prompt};
+use slumber_core::{collection::ProfileId, http::RequestId};
 
 /// The root view component
 #[derive(Debug)]
@@ -84,7 +84,7 @@ impl Root {
     pub fn confirm(&mut self, confirm: Confirm) {
         self.confirms
             .open(ConfirmModal::new(confirm.message, |response| {
-                confirm.channel.respond(response);
+                confirm.channel.reply(response);
             }));
     }
 
@@ -96,11 +96,6 @@ impl Root {
     /// Display an informational message to the user
     pub fn notify(&mut self, message: String) {
         self.footer.notify(message);
-    }
-
-    /// Prompt the user for input
-    pub fn prompt(&mut self, prompt: Prompt) {
-        self.primary_view.prompt(prompt);
     }
 
     /// ID of the selected profile. `None` iff the list is empty

@@ -37,7 +37,6 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
-    render::Prompt,
 };
 use std::{
     fmt::{Debug, Display},
@@ -174,11 +173,6 @@ impl View {
     /// Display an informational notification to the user
     pub fn notify(&mut self, message: impl ToString) {
         self.root.notify(message.to_string());
-    }
-
-    /// Prompt the user for text input
-    pub fn prompt(&mut self, prompt: Prompt) {
-        self.root.prompt(prompt);
     }
 
     /// Queue an event to update the view according to an input event from the

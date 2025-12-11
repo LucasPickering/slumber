@@ -1,6 +1,6 @@
-mod persistence;
+mod persistent;
 
-pub use persistence::{PersistentKey, PersistentStore};
+pub use persistent::{PersistentKey, PersistentStore};
 
 use crate::{
     message::{Message, MessageSender},

@@ -34,6 +34,7 @@ fn test_edit() {
     let (mut command, _) = common::slumber();
     command.env("EDITOR", "cat").args(["config", "--edit"]);
     // `cat` should just print out the file, which is the default content
-    let expected = String::from_utf8(Config::default_content()).unwrap();
+    let expected =
+        String::from_utf8(Config::default_content().into_bytes()).unwrap();
     command.assert().success().stdout(predicate::eq(expected));
 }

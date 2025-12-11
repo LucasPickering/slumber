@@ -598,11 +598,11 @@ mod tests {
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         harness.set_persisted_session(
-            &RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+            RecipeOverrideKey::query_param(recipe_id.clone(), 0),
             "p0".into(),
         );
         harness.set_persisted_session(
-            &RecipeOverrideKey::query_param(recipe_id.clone(), 1),
+            RecipeOverrideKey::query_param(recipe_id.clone(), 1),
             "p1".into(),
         );
         let rows = [

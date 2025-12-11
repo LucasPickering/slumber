@@ -261,7 +261,7 @@ impl Component for Root {
                 Action::OpenActions => {
                     // Walk down the component tree and collect actions from
                     // all visible+focused components
-                    let actions = self.primary_view.collect_actions();
+                    let actions = self.primary_view.collect_actions(context);
                     // Actions can be empty if a modal is already open
                     if !actions.is_empty() {
                         self.actions.open(actions);

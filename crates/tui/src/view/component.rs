@@ -16,7 +16,7 @@ mod root;
 mod sidebar_list;
 
 pub use internal::{
-    Canvas, Child, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
-    Portal, ToChild,
+    Canvas, Child, Component, ComponentExt, ComponentId, ComponentMap, Draw,
+    DrawMetadata, Portal, ToChild,
 };
 pub use root::Root;

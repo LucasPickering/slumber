@@ -5,7 +5,7 @@ use crate::{
         Callback, HttpMessage, Message, MessageSender, RecipeCopyTarget,
     },
     util::{self, ResultReported},
-    view::{PreviewPrompter, TuiPrompter, UpdateContext, View},
+    view::{ComponentMap, PreviewPrompter, TuiPrompter, UpdateContext, View},
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
@@ -148,6 +148,7 @@ impl TuiState {
         match &mut self.0 {
             TuiStateInner::Loaded(state) => {
                 let handled = state.view.handle_events(UpdateContext {
+                    component_map: &state.component_map,
                     request_store: &mut state.request_store,
                 });
                 // Persist state after changes
@@ -162,10 +163,10 @@ impl TuiState {
     }
 
     /// Draw the view onto the screen
-    pub fn draw(&self, frame: &mut Frame) {
-        match &self.0 {
+    pub fn draw(&mut self, frame: &mut Frame) {
+        match &mut self.0 {
             TuiStateInner::Loaded(state) => {
-                state.view.draw(frame);
+                state.component_map = state.view.draw(frame);
             }
             TuiStateInner::Error {
                 collection_file,
@@ -240,6 +241,8 @@ struct LoadedState {
     database: CollectionDatabase,
     /// Sender for the mpsc message queue
     messages_tx: MessageSender,
+    /// A map of all components drawn in the most recent draw phase
+    component_map: ComponentMap,
     /// In-memory store of request state. This tracks state for requests that
     /// are in progress, and also serves as a cache for requests from the DB.
     request_store: RequestStore,
@@ -272,6 +275,7 @@ impl LoadedState {
             collection,
             database,
             messages_tx,
+            component_map: ComponentMap::default(),
             request_store,
             view,
             _watcher: watcher,

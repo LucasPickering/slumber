@@ -6,7 +6,7 @@ use crate::{
     test_util::{TestHarness, TestTerminal},
     util::PersistentStore,
     view::{
-        UpdateContext,
+        ComponentMap, UpdateContext,
         common::actions::{ActionMenu, MenuItem},
         component::{
             Canvas, Child, Component, ComponentExt, ComponentId, Draw,
@@ -47,6 +47,8 @@ pub struct TestComponent<'term, T> {
     /// Terminal to draw to
     terminal: &'term TestTerminal,
     request_store: Rc<RefCell<RequestStore>>,
+    /// Output of the most recent draw phase
+    component_map: ComponentMap,
     /// The area the component will be drawn to. This defaults to the whole
     /// terminal but can be modified to test things like resizes, using
     /// [Self::set_area]
@@ -140,8 +142,14 @@ where
         T: Draw<Props>,
     {
         self.terminal.draw(|frame| {
-            let mut canvas = Canvas::new(frame.buffer_mut());
-            canvas.draw(&self.component, props, self.area, self.has_focus);
+            // Each draw gets a new canvas, as the Lord intended
+            self.component_map = Canvas::draw_all_area(
+                frame,
+                &self.component,
+                props,
+                self.area,
+                self.has_focus,
+            );
         });
     }
 
@@ -151,13 +159,14 @@ where
     fn drain_events(&mut self) -> Vec<Event> {
         // Safety check, prevent annoying bugs
         assert!(
-            self.component.is_visible(),
+            self.component_map.is_visible(&self.component),
             "Component {component:?} is not visible, it can't handle events",
             component = self.component
         );
 
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
+            component_map: &self.component_map,
             request_store: &mut self.request_store.borrow_mut(),
         };
         while let Some(event) = ViewContext::pop_event() {
@@ -236,6 +245,7 @@ where
         let mut component = TestComponent {
             terminal: self.terminal,
             request_store: self.request_store,
+            component_map: ComponentMap::default(),
             area: self.area,
             component: self.component,
             has_focus: true,
@@ -310,6 +320,13 @@ where
         });
         ViewContext::push_event(event);
         self.drain_draw()
+    }
+
+    /// Run a function with access to the component. Useful for debugging and
+    /// assertions in the middle of an interaction chain.
+    pub fn inspect(self, f: impl FnOnce(&Comp)) -> Self {
+        f(self.component_data());
+        self
     }
 
     /// Push a terminal input event onto the event queue, then drain events and
@@ -419,7 +436,13 @@ where
             (steps, item)
         }
 
-        let items = self.component.component.collect_actions();
+        let items = {
+            let context = UpdateContext {
+                component_map: &self.component.component_map,
+                request_store: &mut self.component.request_store.borrow_mut(),
+            };
+            self.component.component.collect_actions(&context)
+        };
         // Open the menu
         self = self.send_key(KeyCode::Char('x'));
 
@@ -514,14 +537,18 @@ impl<T: Component> Component for TestWrapper<T> {
         self.inner.id()
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
         event.m().action(|action, propagate| match action {
             // Unfortunately we have to duplicate this with Root because the
             // child component is different
             Action::OpenActions => {
                 // Walk down the component tree and collect actions from
                 // all visible+focused components
-                let actions = self.inner.collect_actions();
+                let actions = self.inner.collect_actions(context);
                 self.actions.open(actions);
             }
             _ => propagate.set(),

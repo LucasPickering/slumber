@@ -199,15 +199,19 @@ impl Component for PrimaryView {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
         event
             .m()
             .click(|position, _| {
-                if self.recipe_detail.contains(position) {
+                if self.recipe_detail.contains(context, position) {
                     self.view.select_recipe_pane();
-                } else if self.profile_detail.contains(position) {
+                } else if self.profile_detail.contains(context, position) {
                     self.view.select_profile_pane();
-                } else if self.exchange_pane.contains(position) {
+                } else if self.exchange_pane.contains(context, position) {
                     self.view.select_exchange_pane();
                 }
             })

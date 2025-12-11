@@ -8,12 +8,11 @@ mod tests;
 
 use crate::{
     collection::{CollectionFile, ProfileId, RecipeId},
-    database::convert::{CollectionPath, JsonEncoded, SqlWrap},
+    database::convert::{CollectionPath, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
 };
 use chrono::Utc;
 use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
-use serde::{Serialize, de::DeserializeOwned};
 use slumber_util::{ResultTraced, paths};
 use std::{
     borrow::Cow,
@@ -677,15 +676,11 @@ impl CollectionDatabase {
 
     /// Get the value of a UI state field. Key type is included as part of the
     /// key, to disambiguate between keys of identical structure
-    pub fn get_ui<K, V>(
+    pub fn get_ui(
         &self,
         key_type: &str,
-        key: K,
-    ) -> Result<Option<V>, DatabaseError>
-    where
-        K: Debug + Serialize,
-        V: Debug + DeserializeOwned,
-    {
+        key: &str,
+    ) -> Result<Option<String>, DatabaseError> {
         let value = self
             .database
             .connection()
@@ -697,12 +692,9 @@ impl CollectionDatabase {
                 named_params! {
                     ":collection_id": self.collection_id,
                     ":key_type": key_type,
-                    ":key": JsonEncoded(&key),
+                    ":key": &key,
                 },
-                |row| {
-                    let value: JsonEncoded<V> = row.get("value")?;
-                    Ok(value.0)
-                },
+                |row| row.get("value"),
             )
             .optional()
             .map_err(DatabaseError::add_context(format!(
@@ -714,16 +706,12 @@ impl CollectionDatabase {
     }
 
     /// Set the value of a UI state field
-    pub fn set_ui<K, V>(
+    pub fn set_ui(
         &self,
         key_type: &str,
-        key: K,
-        value: V,
-    ) -> Result<(), DatabaseError>
-    where
-        K: Debug + Serialize,
-        V: Debug + Serialize,
-    {
+        key: &str,
+        value: &str,
+    ) -> Result<(), DatabaseError> {
         debug!(?key, ?value, "Setting UI state");
         self.database
             .connection()
@@ -735,8 +723,8 @@ impl CollectionDatabase {
                 named_params! {
                     ":collection_id": self.collection_id,
                     ":key_type": key_type,
-                    ":key": JsonEncoded(&key),
-                    ":value": JsonEncoded(value),
+                    ":key": &key,
+                    ":value": value,
                 },
             )
             .map_err({

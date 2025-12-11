@@ -1,20 +1,18 @@
-use crate::{
-    util::PersistentKey,
-    view::{
-        Component,
-        common::{fixed_select::FixedSelect, tabs::Tabs},
-        component::{
-            Canvas, ComponentId, Draw, DrawMetadata,
-            internal::{Child, ToChild},
-            recipe::{
-                authentication::AuthenticationDisplay,
-                body::RecipeBodyDisplay,
-                override_template::RecipeOverrideKey,
-                table::{RecipeFieldTable, RecipeFieldTableProps},
-                url::UrlDisplay,
-            },
+use crate::view::{
+    Component,
+    common::{fixed_select::FixedSelect, tabs::Tabs},
+    component::{
+        Canvas, ComponentId, Draw, DrawMetadata,
+        internal::{Child, ToChild},
+        recipe::{
+            authentication::AuthenticationDisplay,
+            body::RecipeBodyDisplay,
+            override_template::RecipeOverrideKey,
+            table::{RecipeFieldTable, RecipeFieldTableProps},
+            url::UrlDisplay,
         },
     },
+    util::persistent::PersistentKey,
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph};

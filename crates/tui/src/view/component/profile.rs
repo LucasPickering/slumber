@@ -2,7 +2,7 @@
 
 use crate::{
     context::TuiContext,
-    util::{PersistentKey, ResultReported},
+    util::ResultReported,
     view::{
         Generate, ViewContext,
         common::{Pane, table::Table, template_preview::TemplatePreview},
@@ -10,6 +10,7 @@ use crate::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             sidebar_list::{SidebarListItem, SidebarListState},
         },
+        util::persistent::PersistentKey,
     },
 };
 use anyhow::anyhow;

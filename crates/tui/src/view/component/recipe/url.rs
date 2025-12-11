@@ -102,10 +102,7 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::recipe::override_template::RecipeOverrideStore,
-            test_util::TestComponent,
-        },
+        view::test_util::TestComponent,
     };
     use rstest::rstest;
     use slumber_util::Factory;
@@ -178,9 +175,9 @@ mod tests {
     #[rstest]
     fn test_persisted_load(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::set(
+        harness.set_persisted_session(
             &RecipeOverrideKey::url(recipe_id.clone()),
-            &"persisted/url".into(),
+            "persisted/url".into(),
         );
         let component = TestComponent::new(
             &harness,

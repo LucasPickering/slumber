@@ -1,12 +1,12 @@
 use crate::{
     context::TuiContext,
-    util::{PersistentKey, PersistentStore},
     view::{
         Generate,
         common::scrollbar::Scrollbar,
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
+        util::persistent::{PersistentKey, PersistentStore},
     },
 };
 use itertools::Itertools;

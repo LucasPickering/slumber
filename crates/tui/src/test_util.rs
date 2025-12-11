@@ -4,8 +4,7 @@ use crate::{
     context::TuiContext,
     http::RequestStore,
     message::{Message, MessageSender},
-    util::{PersistentKey, PersistentStore},
-    view::ViewContext,
+    view::{PersistentKey, PersistentStore, SessionKey, ViewContext},
 };
 use ratatui::{
     Frame, Terminal,
@@ -71,6 +70,15 @@ impl TestHarness {
     /// restoration.
     pub fn set_persisted<K: PersistentKey>(&self, key: &K, value: &K::Value) {
         PersistentStore::new(&self.database).set(key, value);
+    }
+
+    /// Persist a value in the [session store](PersistentStore)
+    pub fn set_persisted_session<K: SessionKey>(
+        &self,
+        key: &K,
+        value: K::Value,
+    ) {
+        PersistentStore::new(&self.database).set_session(key, value);
     }
 
     /// Get the message sender

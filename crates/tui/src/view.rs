@@ -12,6 +12,8 @@ mod util;
 pub use component::ComponentMap;
 pub use context::{UpdateContext, ViewContext};
 pub use styles::Styles;
+#[cfg(test)]
+pub use util::persistent::{PersistentKey, PersistentStore, SessionKey};
 pub use util::{PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
@@ -19,7 +21,6 @@ use crate::{
     http::{RequestConfig, RequestState},
     input::InputEvent,
     message::MessageSender,
-    util::PersistentStore,
     view::{
         component::{Canvas, Component, ComponentExt, Root},
         debug::DebugMonitor,
@@ -140,7 +141,8 @@ impl View {
     /// This takes `&mut self` because we dynamically load children, and those
     /// are always mutable.
     pub fn persist(&mut self, database: &CollectionDatabase) {
-        self.root.persist_all(&mut PersistentStore::new(database));
+        self.root
+            .persist_all(&mut util::persistent::PersistentStore::new(database));
     }
 
     /// ID of the selected profile. `None` iff the list is empty

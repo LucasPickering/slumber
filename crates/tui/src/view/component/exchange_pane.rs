@@ -1,7 +1,6 @@
 use crate::{
     context::TuiContext,
     http::{RequestMetadata, ResponseMetadata},
-    util::PersistentKey,
     view::{
         Generate, RequestState,
         common::{
@@ -18,7 +17,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        util::format_byte_size,
+        util::{format_byte_size, persistent::PersistentKey},
     },
 };
 use derive_more::Display;

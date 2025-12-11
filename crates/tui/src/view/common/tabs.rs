@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    util::{PersistentKey, PersistentStore},
     view::{
         common::fixed_select::{
             FixedSelect, FixedSelectBuilder, FixedSelectItem,
@@ -8,6 +7,7 @@ use crate::{
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, EventMatch},
+        util::persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{style::Style, text::Line};

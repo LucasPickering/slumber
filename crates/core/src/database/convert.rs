@@ -21,7 +21,6 @@ use rusqlite::{
     Row, ToSql,
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
 };
-use serde::{Serialize, de::DeserializeOwned};
 use slumber_util::{ResultTraced, paths};
 use std::{
     env,
@@ -229,27 +228,6 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for CollectionMetadata {
             path: row.get::<_, CollectionPath>("path")?.0,
             name: row.get("name")?,
         })
-    }
-}
-
-/// A wrapper to serialize/deserialize a value as JSON for DB storage
-#[derive(Debug)]
-pub struct JsonEncoded<T>(pub T);
-
-impl<T: Serialize> ToSql for JsonEncoded<T> {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let s = serde_json::to_string(&self.0).map_err(|err| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(err))
-        })?;
-        Ok(ToSqlOutput::Owned(s.into()))
-    }
-}
-
-impl<T: DeserializeOwned> FromSql for JsonEncoded<T> {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let s = value.as_str()?;
-        let value: T = serde_json::from_str(s).map_err(error_other)?;
-        Ok(Self(value))
     }
 }
 

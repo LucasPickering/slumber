@@ -176,7 +176,7 @@ mod tests {
     fn test_persisted_load(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         harness.set_persisted_session(
-            &RecipeOverrideKey::url(recipe_id.clone()),
+            RecipeOverrideKey::url(recipe_id.clone()),
             "persisted/url".into(),
         );
         let component = TestComponent::new(

@@ -1,13 +1,11 @@
-use crate::{
-    util::PersistentKey,
-    view::{
-        common::select::{
-            Select, SelectBuilder, SelectEvent, SelectItem, SelectState,
-        },
-        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
+use crate::view::{
+    common::select::{
+        Select, SelectBuilder, SelectEvent, SelectItem, SelectState,
     },
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+    context::UpdateContext,
+    event::{Emitter, Event, EventMatch, ToEmitter},
+    util::persistent::PersistentKey,
 };
 use itertools::Itertools;
 use ratatui::widgets::ListState;

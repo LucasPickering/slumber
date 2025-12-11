@@ -4,12 +4,11 @@
 
 use crate::{
     input::InputEvent,
-    util::PersistentStore,
     view::{
         common::actions::MenuItem,
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::format_type_name,
+        util::{format_type_name, persistent::PersistentStore},
     },
 };
 use derive_more::Display;

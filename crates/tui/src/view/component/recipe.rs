@@ -10,7 +10,6 @@ mod url;
 use crate::{
     context::TuiContext,
     message::{Message, RecipeCopyTarget},
-    util::{PersistentKey, PersistentStore},
     view::{
         Component, Generate, ViewContext,
         common::{Pane, actions::MenuItem},
@@ -25,6 +24,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
+        util::persistent::{PersistentKey, PersistentStore},
     },
 };
 use itertools::{Itertools, Position};

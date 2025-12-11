@@ -5,7 +5,7 @@ mod view_state;
 use crate::{
     http::{RequestConfig, RequestState},
     message::{HttpMessage, Message},
-    util::{PersistentKey, PersistentStore, ResultReported},
+    util::ResultReported,
     view::{
         Component, ViewContext,
         common::{actions::MenuItem, modal::ModalQueue},
@@ -23,6 +23,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
+        util::persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{

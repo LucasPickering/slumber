@@ -3,7 +3,6 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    util::PersistentKey,
     view::{
         Component, ViewContext,
         common::header_table::HeaderTable,
@@ -13,7 +12,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::view_text,
+        util::{persistent::PersistentKey, view_text},
     },
 };
 use mime::Mime;

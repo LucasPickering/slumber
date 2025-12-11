@@ -1,75 +1,23 @@
 //! Overridable templates and single-session persistence for those overrides
 
-use crate::{
-    util::PersistentStore,
-    view::{
-        UpdateContext,
-        common::{
-            template_preview::TemplatePreview,
-            text_box::{TextBox, TextBoxEvent, TextBoxProps},
-        },
-        component::{
-            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        },
-        event::{Event, EventMatch, ToEmitter},
+use crate::view::{
+    UpdateContext,
+    common::{
+        template_preview::TemplatePreview,
+        text_box::{TextBox, TextBoxEvent, TextBoxProps},
     },
+    component::{
+        Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+    },
+    event::{Event, EventMatch, ToEmitter},
+    util::persistent::{PersistentStore, SessionKey},
 };
+use derive_more::derive::Display;
+use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::content_type::ContentType};
 use slumber_template::Template;
-use std::{cell::RefCell, collections::HashMap, fmt::Debug};
-use tracing::debug;
-
-/// Special single-session persistence store just for edited recipe templates.
-/// This is to discourage users from making long-term overrides. We push them
-/// toward modifying the YAML instead because:
-/// - It keeps it as a single source of truth
-/// - Changes will be shared if using version control
-/// - Overrides may be more brittle/fragile than the user realizes
-///
-/// "Single-session persistence" sounds like an oxymoron; why persist at all?
-/// We need this to maintain overrides when the collection file is modified.
-/// It's possible someone has a few overrides in place, then modifies the YAML
-/// file. That triggers a rebuild of the entire view, but we don't want to wipe
-/// out the template overrides! That could be frustrating. We want them to only
-/// clear when the entire process exits.
-///
-/// This is public just for getting/setting values in component tests.
-#[derive(Debug, Default)]
-pub(super) struct RecipeOverrideStore(HashMap<RecipeOverrideKey, Template>);
-
-impl RecipeOverrideStore {
-    thread_local! {
-        /// Static instance for the store. Persistence is handled in the main
-        /// view thread. We could potentially put this in the view context, but
-        /// isolating it here limits what we need to borrow from the cell to
-        /// just what we need. It also prevents external access to the store.
-        static INSTANCE: RefCell<RecipeOverrideStore> = RefCell::default();
-    }
-
-    /// Get a persisted value from the store
-    pub fn get(key: &RecipeOverrideKey) -> Option<Template> {
-        Self::INSTANCE
-            .with_borrow(|store| store.0.get(key).cloned())
-            .inspect(|template| {
-                debug!(?key, ?template, "Loaded persisted recipe override");
-            })
-    }
-
-    /// Set a persisted value in the store
-    pub fn set(key: &RecipeOverrideKey, template: &Template) {
-        debug!(?key, ?template, "Persisting recipe override");
-        Self::INSTANCE.with_borrow_mut(|store| {
-            store.0.insert(key.clone(), template.clone());
-        });
-    }
-
-    /// Remove a persisted value from the store
-    fn remove(key: &RecipeOverrideKey) {
-        debug!(?key, "Resetting recipe override");
-        Self::INSTANCE.with_borrow_mut(|store| store.0.remove(key));
-    }
-}
+use std::fmt::Debug;
 
 /// A template that can be previewed, overridden, and persisted. Parent is
 /// responsible for implementing the override behavior, and calling
@@ -98,7 +46,7 @@ impl OverrideTemplate {
         content_type: Option<ContentType>,
         can_stream: bool,
     ) -> Self {
-        let override_template = RecipeOverrideStore::get(&persistent_key);
+        let override_template = PersistentStore::get_session(&persistent_key);
         let preview = TemplatePreview::new(
             override_template.as_ref().unwrap_or(&template).clone(),
             content_type,
@@ -170,12 +118,14 @@ impl Component for OverrideTemplate {
         self.id
     }
 
-    fn persist(&self, _store: &mut PersistentStore) {
-        // We persist to our local store instead of the DB
+    fn persist(&self, store: &mut PersistentStore) {
+        // Persist to the session store. Overrides are meant to be temporary, so
+        // we don't want to encourage users to rely on them long-term. They
+        // should be making edits to their YAML file instead.
         if let Some(template) = &self.override_template {
-            RecipeOverrideStore::set(&self.persistent_key, template);
+            store.set_session(&self.persistent_key, template.clone());
         } else {
-            RecipeOverrideStore::remove(&self.persistent_key);
+            store.remove_session(&self.persistent_key);
         }
     }
 }
@@ -321,7 +271,8 @@ impl Draw for EditableTemplate {
 
 /// Persisted key for anything that goes in [RecipeOverrideStore]. This uniquely
 /// identifies any piece of a recipe that can be overridden.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Display, Eq, Hash, PartialEq, Serialize)]
+#[display("{recipe_id}:{kind}")] // For session persistence
 pub struct RecipeOverrideKey {
     kind: RecipeOverrideKeyKind,
     recipe_id: RecipeId,
@@ -394,9 +345,13 @@ impl RecipeOverrideKey {
     }
 }
 
+impl SessionKey for RecipeOverrideKey {
+    type Value = Template;
+}
+
 /// Different kinds of recipe fields that can be persisted. This is exposed only
 /// through methods on [RecipeOverrideKey] to make usage a bit terser.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Display, Eq, Hash, PartialEq, Serialize)]
 enum RecipeOverrideKeyKind {
     Url,
     Body,
@@ -425,7 +380,7 @@ mod tests {
     fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         let key = RecipeOverrideKey::url(recipe_id);
-        RecipeOverrideStore::set(&key, &"persisted".into());
+        harness.set_persisted_session(&key, "persisted".into());
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -445,12 +400,12 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(component.template(), &"override".into());
-        assert_eq!(RecipeOverrideStore::get(&key), Some("override".into()));
+        assert_eq!(PersistentStore::get_session(&key), Some("override".into()));
 
         // Clear the override; should be removed from the store
         component.int().send_key(KeyCode::Char('z')).assert_empty();
         component.persist(&mut PersistentStore::new(&harness.database));
         assert_eq!(component.template(), &"default".into());
-        assert_eq!(RecipeOverrideStore::get(&key), None);
+        assert_eq!(PersistentStore::get_session(&key), None);
     }
 }

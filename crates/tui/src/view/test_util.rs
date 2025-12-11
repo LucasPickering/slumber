@@ -4,7 +4,6 @@ use crate::{
     context::TuiContext,
     http::RequestStore,
     test_util::{TestHarness, TestTerminal},
-    util::PersistentStore,
     view::{
         ComponentMap, UpdateContext,
         common::actions::{ActionMenu, MenuItem},
@@ -14,6 +13,7 @@ use crate::{
         },
         context::ViewContext,
         event::{Event, EventMatch, LocalEvent, ToEmitter},
+        util::persistent::PersistentStore,
     },
 };
 use itertools::Itertools;

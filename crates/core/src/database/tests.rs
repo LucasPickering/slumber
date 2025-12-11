@@ -107,7 +107,7 @@ fn test_collection_delete(collection_file: CollectionFile) {
     // Sanity checks
     assert_eq!(collection.get_all_requests().unwrap().len(), 1);
     assert_eq!(
-        collection.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        collection.get_ui(key_type, ui_key).unwrap(),
         Some("value1".into())
     );
     assert_eq!(collection.get_commands("jq").unwrap().len(), 1);
@@ -120,10 +120,7 @@ fn test_collection_delete(collection_file: CollectionFile) {
     // All gone!
     assert_eq!(database.get_collections().unwrap(), []);
     assert_eq!(database.get_all_requests().unwrap(), []);
-    assert_eq!(
-        collection.get_ui::<_, String>(key_type, ui_key).unwrap(),
-        None
-    );
+    assert_eq!(collection.get_ui(key_type, ui_key).unwrap(), None);
     assert_eq!(collection.get_commands("jq").unwrap(), [""; 0]);
 }
 
@@ -170,7 +167,7 @@ fn test_collection_merge(
         exchange1.id
     );
     assert_eq!(
-        target.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        target.get_ui(key_type, ui_key).unwrap(),
         Some("value1".into())
     );
     assert_eq!(target.get_commands("jq").unwrap(), ["jq ."]);
@@ -184,7 +181,7 @@ fn test_collection_merge(
         exchange2.id
     );
     assert_eq!(
-        source.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        source.get_ui(key_type, ui_key).unwrap(),
         Some("value2".into())
     );
     assert_eq!(source.get_commands("jq").unwrap(), ["jq .data", "jq ."]);
@@ -204,7 +201,7 @@ fn test_collection_merge(
         exchange2.id
     );
     assert_eq!(
-        target.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        target.get_ui(key_type, ui_key).unwrap(),
         Some("value2".into())
     );
     assert_eq!(target.get_commands("jq").unwrap(), ["jq .data", "jq ."]);
@@ -402,11 +399,11 @@ fn test_ui_state(
     collection2.set_ui(key_type, ui_key, "value2").unwrap();
 
     assert_eq!(
-        collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        collection1.get_ui(key_type, ui_key).unwrap(),
         Some("value1".into())
     );
     assert_eq!(
-        collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
+        collection2.get_ui(key_type, ui_key).unwrap(),
         Some("value2".into())
     );
 }

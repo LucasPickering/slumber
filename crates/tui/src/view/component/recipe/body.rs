@@ -1,6 +1,6 @@
 use crate::{
     message::{Message, RecipeCopyTarget},
-    util::{PersistentKey, ResultReported, TempFile},
+    util::{ResultReported, TempFile},
     view::{
         Component, ViewContext,
         common::{
@@ -17,7 +17,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        util::view_text,
+        util::{persistent::PersistentKey, view_text},
     },
 };
 use anyhow::Context;
@@ -385,10 +385,7 @@ mod tests {
     use crate::{
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::recipe::override_template::RecipeOverrideStore,
-            test_util::TestComponent,
-        },
+        view::{test_util::TestComponent, util::persistent::PersistentStore},
     };
     use ratatui::{
         style::{Color, Styled},
@@ -448,7 +445,7 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = RecipeOverrideStore::get(&RecipeOverrideKey::body(
+        let persisted = PersistentStore::get_session(&RecipeOverrideKey::body(
             recipe.id.clone(),
         ));
         assert_eq!(persisted, Some("goodbye!".into()));
@@ -517,7 +514,7 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = RecipeOverrideStore::get(&RecipeOverrideKey::body(
+        let persisted = PersistentStore::get_session(&RecipeOverrideKey::body(
             recipe.id.clone(),
         ));
         assert_eq!(persisted, Some(override_text.into()));
@@ -537,9 +534,9 @@ mod tests {
             body: Some(RecipeBody::Raw("".into())),
             ..Recipe::factory(())
         };
-        RecipeOverrideStore::set(
+        harness.set_persisted_session(
             &RecipeOverrideKey::body(recipe.id.clone()),
-            &"hello!".into(),
+            "hello!".into(),
         );
 
         let component = TestComponent::new(

@@ -535,7 +535,7 @@ mod tests {
             ..Recipe::factory(())
         };
         harness.set_persisted_session(
-            &RecipeOverrideKey::body(recipe.id.clone()),
+            RecipeOverrideKey::body(recipe.id.clone()),
             "hello!".into(),
         );
 

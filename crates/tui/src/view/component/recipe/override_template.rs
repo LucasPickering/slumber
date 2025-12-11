@@ -12,7 +12,6 @@ use crate::view::{
     event::{Event, EventMatch, ToEmitter},
     util::persistent::{PersistentStore, SessionKey},
 };
-use derive_more::derive::Display;
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::content_type::ContentType};
@@ -123,7 +122,7 @@ impl Component for OverrideTemplate {
         // we don't want to encourage users to rely on them long-term. They
         // should be making edits to their YAML file instead.
         if let Some(template) = &self.override_template {
-            store.set_session(&self.persistent_key, template.clone());
+            store.set_session(self.persistent_key.clone(), template.clone());
         } else {
             store.remove_session(&self.persistent_key);
         }
@@ -271,8 +270,7 @@ impl Draw for EditableTemplate {
 
 /// Persisted key for anything that goes in [RecipeOverrideStore]. This uniquely
 /// identifies any piece of a recipe that can be overridden.
-#[derive(Clone, Debug, Display, Eq, Hash, PartialEq, Serialize)]
-#[display("{recipe_id}:{kind}")] // For session persistence
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecipeOverrideKey {
     kind: RecipeOverrideKeyKind,
     recipe_id: RecipeId,
@@ -351,7 +349,7 @@ impl SessionKey for RecipeOverrideKey {
 
 /// Different kinds of recipe fields that can be persisted. This is exposed only
 /// through methods on [RecipeOverrideKey] to make usage a bit terser.
-#[derive(Clone, Debug, Display, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 enum RecipeOverrideKeyKind {
     Url,
     Body,
@@ -380,7 +378,7 @@ mod tests {
     fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         let key = RecipeOverrideKey::url(recipe_id);
-        harness.set_persisted_session(&key, "persisted".into());
+        harness.set_persisted_session(key.clone(), "persisted".into());
         let mut component = TestComponent::new(
             &harness,
             &terminal,

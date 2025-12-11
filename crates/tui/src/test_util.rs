@@ -75,7 +75,7 @@ impl TestHarness {
     /// Persist a value in the [session store](PersistentStore)
     pub fn set_persisted_session<K: SessionKey>(
         &self,
-        key: &K,
+        key: K,
         value: K::Value,
     ) {
         PersistentStore::new(&self.database).set_session(key, value);

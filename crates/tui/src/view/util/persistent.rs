@@ -9,7 +9,6 @@ use slumber_util::ResultTracedAnyhow;
 use std::{
     any::{self, Any},
     cell::RefCell,
-    collections::HashMap,
     fmt::Debug,
 };
 use tracing::error;
@@ -33,8 +32,8 @@ use tracing::error;
 /// DB.
 ///
 /// Unlike the DB store, the session store doesn't serialize the key and value.
-/// The key is stored as a string (via [ToString]) and the value is a trait
-/// object. This is possible because we're storing it in a thread local.
+/// The key and value are both stored as`Box<dyn Any>`. This is possible because
+/// we're storing it in a thread local.
 pub struct PersistentStore<'a> {
     database: &'a CollectionDatabase,
 }
@@ -46,8 +45,7 @@ impl<'a> PersistentStore<'a> {
         /// potentially put this in the view context, but isolating it here
         /// limits what we need to borrow from the cell to just what we need.
         /// It also prevents external access to the store.
-        static SESSION: RefCell<HashMap<String, Box<dyn Any>>> =
-            RefCell::default();
+        static SESSION: RefCell<Vec<SessionEntry>> = RefCell::default();
     }
 
     /// Create a new store from a database. This is a cheap operation, as it
@@ -91,9 +89,11 @@ impl<'a> PersistentStore<'a> {
     /// Get a value from the session store
     pub fn get_session<K: SessionKey>(key: &K) -> Option<K::Value> {
         Self::SESSION.with_borrow(|store| {
-            let value = store.get(&key.to_string())?;
+            // Find the correct entry by key
+            let index = SessionEntry::position(store, key)?;
+            let entry = &store[index];
 
-            if let Some(value) = value.downcast_ref::<K::Value>() {
+            if let Some(value) = entry.value.downcast_ref::<K::Value>() {
                 Some(value.clone())
             } else {
                 // Keys should be unique and only bound to a single value
@@ -108,16 +108,29 @@ impl<'a> PersistentStore<'a> {
     }
 
     /// Insert a value into the session store
-    pub fn set_session<K: SessionKey>(&mut self, key: &K, value: K::Value) {
+    pub fn set_session<K: SessionKey>(&mut self, key: K, value: K::Value) {
+        let value: Box<dyn Any> = Box::new(value);
         Self::SESSION.with_borrow_mut(|store| {
-            store.insert(key.to_string(), Box::new(value));
+            if let Some(index) = SessionEntry::position(store, &key) {
+                // Key is already in the map - replace the value
+                store[index].value = value;
+            } else {
+                // Key is new - insert
+                store.push(SessionEntry {
+                    key: Box::new(key),
+                    value,
+                });
+            }
         });
     }
 
     /// Remove a value from the session store
     pub fn remove_session<K: SessionKey>(&mut self, key: &K) {
         Self::SESSION.with_borrow_mut(|store| {
-            store.remove(&key.to_string());
+            if let Some(index) = SessionEntry::position(store, key) {
+                // Order doesn't matter in this vec so we can swap
+                store.swap_remove(index);
+            }
         });
     }
 
@@ -150,9 +163,30 @@ pub trait PersistentKey: Serialize {
 
 /// A key that can be used to persist and restore a value in the **session**
 /// store
-pub trait SessionKey: Debug + ToString {
+pub trait SessionKey: 'static + Any + Debug + PartialEq {
     /// Type of value associated with this key. Values are stored as trait
     /// objects, so they must implement `Any`. The value is cloned out of the
     /// store when restored, so it must implement `Clone`.
     type Value: Any + Clone;
+}
+
+/// Keys and values are both stored as trait objects. To find a key of
+/// type `K` in the map, we iterate over it and downcast each key to
+/// type `K` then compare against the lookup key (requiring
+/// `K: PartialEq`). This means we can't use a `HashMap`, because
+/// there's no way to propagate the type `K` to the inner `eq` calls.
+struct SessionEntry {
+    key: Box<dyn Any>,
+    value: Box<dyn Any>,
+}
+
+impl SessionEntry {
+    /// Get the index of the key in the store, or `None` if not present
+    fn position<K: SessionKey>(store: &[Self], key: &K) -> Option<usize> {
+        store.iter().position(|entry| {
+            // We need to downcast to access the PartialEq impl. If the downcast
+            // fails, it's the wrong type
+            entry.key.downcast_ref() == Some(key)
+        })
+    }
 }

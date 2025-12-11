@@ -19,9 +19,14 @@ use ratatui::{
     layout::{Position, Rect},
     widgets::{StatefulWidget, Widget},
 };
-use std::{any, cell::RefCell, collections::HashMap, mem};
+use std::{
+    any,
+    cell::RefCell,
+    collections::HashMap,
+    mem,
+    sync::atomic::{AtomicU64, Ordering},
+};
 use tracing::{instrument, trace, trace_span, warn};
-use uuid::Uuid;
 
 thread_local! {
     /// All components that were drawn during the last draw phase. The purpose
@@ -567,16 +572,21 @@ fn has_focus(component: &dyn Component) -> bool {
 /// [ComponentId::new] or [ComponentId::default]) and use the same ID for its
 /// entire lifespan. This ID should be returned from [Component::id].
 #[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
-pub struct ComponentId(Uuid);
+pub struct ComponentId(u64);
 
 impl ComponentId {
-    /// Get a random component ID
+    /// Get a new unique component ID
     pub fn new() -> Self {
-        Self(Uuid::new_v4())
+        // We use an incrementing integer because:
+        // 1. They're more human-readable than UUIDs
+        // 2. IDs are consistent across test runs (helpful for debugging)
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        Self(id)
     }
 }
 
-/// Generate a new random ID
+/// Generate a new unique component ID
 impl Default for ComponentId {
     fn default() -> Self {
         Self::new()

@@ -2,7 +2,6 @@ use crate::{
     context::TuiContext,
     message::Message,
     util,
-    util::{PersistentKey, PersistentStore},
     view::{
         Component, Generate, ViewContext,
         common::{
@@ -16,7 +15,11 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         state::Identified,
-        util::{highlight, str_to_text},
+        util::{
+            highlight,
+            persistent::{PersistentKey, PersistentStore},
+            str_to_text,
+        },
     },
 };
 use anyhow::Context;

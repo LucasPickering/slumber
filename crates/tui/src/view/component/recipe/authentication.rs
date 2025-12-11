@@ -333,10 +333,7 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::recipe::override_template::RecipeOverrideStore,
-            test_util::TestComponent,
-        },
+        view::test_util::TestComponent,
     };
     use rstest::rstest;
     use slumber_util::Factory;
@@ -490,13 +487,13 @@ mod tests {
     #[rstest]
     fn test_persisted_load_basic(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::set(
+        harness.set_persisted_session(
             &RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
-            &"user".into(),
+            "user".into(),
         );
-        RecipeOverrideStore::set(
+        harness.set_persisted_session(
             &RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
-            &"hunter2".into(),
+            "hunter2".into(),
         );
         let authentication = Authentication::Basic {
             username: "".into(),
@@ -524,9 +521,9 @@ mod tests {
         terminal: TestTerminal,
     ) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::set(
+        harness.set_persisted_session(
             &RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
-            &"token".into(),
+            "token".into(),
         );
         let authentication = Authentication::Bearer { token: "".into() };
         let component = TestComponent::new(

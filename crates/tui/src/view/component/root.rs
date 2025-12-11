@@ -1,7 +1,7 @@
 use crate::{
     http::{RequestConfig, RequestState, RequestStore},
     message::{HttpMessage, Message},
-    util::{PersistentKey, PersistentStore, ResultReported},
+    util::ResultReported,
     view::{
         Component, Question, ViewContext,
         common::{actions::ActionMenu, modal::ModalQueue},
@@ -16,6 +16,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
+        util::persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{layout::Layout, prelude::Constraint};

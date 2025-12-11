@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    util::{PersistentKey, PersistentStore},
     view::{
         common::{
             Checkbox,
@@ -17,6 +16,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
+        util::persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{
@@ -385,10 +385,7 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::recipe::override_template::RecipeOverrideStore,
-            test_util::TestComponent,
-        },
+        view::test_util::TestComponent,
     };
     use rstest::rstest;
     use serde::Serialize;
@@ -600,13 +597,13 @@ mod tests {
     #[rstest]
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::set(
+        harness.set_persisted_session(
             &RecipeOverrideKey::query_param(recipe_id.clone(), 0),
-            &"p0".into(),
+            "p0".into(),
         );
-        RecipeOverrideStore::set(
+        harness.set_persisted_session(
             &RecipeOverrideKey::query_param(recipe_id.clone(), 1),
-            &"p1".into(),
+            "p1".into(),
         );
         let rows = [
             (

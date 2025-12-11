@@ -1,7 +1,3 @@
-mod persistent;
-
-pub use persistent::{PersistentKey, PersistentStore};
-
 use crate::{
     message::{Message, MessageSender},
     view::{Question, ViewContext},

@@ -1,7 +1,10 @@
 use crate::{
     http::RequestStore,
     message::{Message, MessageSender},
-    view::event::{Event, EventQueue},
+    view::{
+        component::ComponentMap,
+        event::{Event, EventQueue},
+    },
 };
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use std::{cell::RefCell, sync::Arc};
@@ -133,6 +136,9 @@ impl ViewContext {
 /// data that cannot be held in [ViewContext], typically because of borrowing
 /// reasons.
 pub struct UpdateContext<'a> {
+    /// Visible components from the last draw phase
+    pub component_map: &'a ComponentMap,
+    /// Request state
     pub request_store: &'a mut RequestStore,
 }
 

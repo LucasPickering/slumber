@@ -9,6 +9,7 @@ mod styles;
 pub mod test_util;
 mod util;
 
+pub use component::ComponentMap;
 pub use context::{UpdateContext, ViewContext};
 pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter, TuiPrompter};
@@ -86,21 +87,21 @@ impl View {
 
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
-    pub fn draw<'f>(&'f self, frame: &'f mut Frame) {
+    #[must_use]
+    pub fn draw<'f>(&'f self, frame: &'f mut Frame) -> ComponentMap {
         // If the screen is too small to render anything, don't try. This avoids
         // panics within ratatui from trying to render borders and margins
         // outside the buffer area
         if frame.area().width <= 1 || frame.area().height <= 1 {
-            return;
+            return ComponentMap::default();
         }
 
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
-            debug_monitor.draw(frame, |frame| {
-                Canvas::draw_all(frame, &self.root, ());
-            });
+            debug_monitor
+                .draw(frame, |frame| Canvas::draw_all(frame, &self.root, ()))
         } else {
-            Canvas::draw_all(frame, &self.root, ());
+            Canvas::draw_all(frame, &self.root, ())
         }
     }
 
@@ -194,7 +195,7 @@ impl View {
         // If we haven't done first render yet, don't drain the queue. This can
         // happen after a collection reload, because of the structure of the
         // main loop
-        if !self.root.is_visible() {
+        if !context.component_map.is_visible(&self.root) {
             return false;
         }
 
@@ -287,18 +288,21 @@ mod tests {
         );
 
         // Events should *still* be in the queue, because we haven't drawn yet
+        let mut component_map = ComponentMap::default();
         let mut request_store = harness.request_store.borrow_mut();
         view.handle_events(UpdateContext {
+            component_map: &component_map,
             request_store: &mut request_store,
         });
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // Nothing new
-        terminal.draw(|frame| view.draw(frame));
+        terminal.draw(|frame| component_map = view.draw(frame));
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // *Now* the queue is drained
         view.handle_events(UpdateContext {
+            component_map: &component_map,
             request_store: &mut request_store,
         });
         assert_events!();

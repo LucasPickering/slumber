@@ -242,13 +242,17 @@ impl<K: PersistentKey<Value = String>> Component for QueryableBody<K> {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
         event
             .m()
             .click(|position, _| {
                 // Focus the query text box when clicked. No need to check for
                 // clicks on the export box since it isn't drawn unless focused
-                if self.query_text_box.contains(position) {
+                if self.query_text_box.contains(context, position) {
                     self.focus(CommandFocus::Query);
                 }
             })
@@ -707,7 +711,11 @@ mod tests {
 
         // Error should be sent as a message. Testing that the error is actually
         // displayed is someone else's problem!!
-        component.int().send_text("bad!").assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char(':'))
+            .send_text("bad!")
+            .assert_empty();
         run_local(async {
             component.int().send_key(KeyCode::Enter).assert_empty();
         })

@@ -4,9 +4,7 @@ use crate::{
     view::{
         Generate,
         common::scrollbar::Scrollbar,
-        component::{
-            Canvas, Component, ComponentExt, ComponentId, Draw, DrawMetadata,
-        },
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
     },
@@ -463,7 +461,11 @@ where
     }
 
     // Handle input events to cycle between items
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
         event
             .m()
             .click(|position, propagate| {
@@ -472,7 +474,7 @@ where
                 //
                 // Area should always be Some because this can't receive events
                 // if it's not visible, but check to be safe
-                if let Some(area) = self.area() {
+                if let Some(area) = context.component_map.area(self) {
                     let clicked_index = (position.y - area.y) as usize;
                     if clicked_index < self.items.len() {
                         self.select_index(clicked_index);

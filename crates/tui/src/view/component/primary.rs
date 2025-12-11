@@ -161,6 +161,15 @@ impl PrimaryView {
             selected_request,
             self.selected_recipe_node().map(|(_, node_type)| node_type),
         );
+
+        // There are new prompts, jump to the prompt form
+        let has_prompts = matches!(
+            selected_request,
+            Some(RequestState::Building { prompts, .. }) if !prompts.is_empty(),
+        );
+        if has_prompts {
+            self.view.select_exchange_pane();
+        }
     }
 
     /// Send a message to open the collection file to the selected

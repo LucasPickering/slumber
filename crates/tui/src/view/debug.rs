@@ -18,10 +18,14 @@ pub struct DebugMonitor {
 impl DebugMonitor {
     /// Draw the view using the given closure, then render computed metrics on
     /// top at the end.
-    pub fn draw(&self, frame: &mut Frame, draw_fn: impl FnOnce(&mut Frame)) {
+    pub fn draw<T>(
+        &self,
+        frame: &mut Frame,
+        draw_fn: impl FnOnce(&mut Frame) -> T,
+    ) -> T {
         // Track elapsed time for the draw function
         let start = Instant::now();
-        draw_fn(frame);
+        let output = draw_fn(frame);
         let duration = start.elapsed();
         let fps = 1.0 / (start - self.last_draw_start.get()).as_secs_f32();
         self.last_draw_start.set(start);
@@ -39,6 +43,7 @@ impl DebugMonitor {
             Paragraph::new(text).alignment(Alignment::Right),
             area,
         );
+        output
     }
 }
 

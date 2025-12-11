@@ -156,6 +156,7 @@ impl TestTerminal {
         self.0.borrow().backend().assert_buffer_lines(expected);
     }
 
+    /// Draw to the frame
     pub fn draw(&self, f: impl FnOnce(&mut Frame)) {
         self.0.borrow_mut().draw(f).unwrap();
     }

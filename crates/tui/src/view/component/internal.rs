@@ -21,30 +21,11 @@ use ratatui::{
 };
 use std::{
     any,
-    cell::RefCell,
     collections::HashMap,
     mem,
     sync::atomic::{AtomicU64, Ordering},
 };
 use tracing::{instrument, trace, trace_span, warn};
-
-thread_local! {
-    /// All components that were drawn during the last draw phase. The purpose
-    /// of this is to allow each component to return an exhaustive list of its
-    /// children during event handling, then we can automatically filter that
-    /// list down to just the ones that are visible. This prevents the need to
-    /// duplicate visibility logic in both the draw and the children getters.
-    ///
-    /// This is cleared at the start of each draw, then retained through the
-    /// next draw.
-    ///
-    /// For each drawn component, this stores metadata related to its last draw.
-    /// We store this data out-of-band because it simplifies what each
-    /// individual component has to store, and centralizes the interior
-    /// mutability.
-    static VISIBLE_COMPONENTS: RefCell<HashMap<ComponentId, DrawMetadata>> =
-        Default::default();
-}
 
 /// A UI element that can handle user/async input.
 ///
@@ -88,9 +69,12 @@ pub trait Component: ToChild {
     /// for this position. This should typically not be overridden. The default
     /// implementation checks if the component's last draw area contains the
     /// point.
-    fn contains(&self, position: Position) -> bool {
+    fn contains(&self, context: &UpdateContext, position: Position) -> bool {
         // By default, we want to receive any mouse event in our draw area
-        self.area().is_some_and(|area| area.contains(position))
+        context
+            .component_map
+            .area(self)
+            .is_some_and(|area| area.contains(position))
     }
 
     /// Provide a list of actions that are accessible from the actions menu.
@@ -139,18 +123,11 @@ pub trait Component: ToChild {
 /// that does not need to be (or cannot be) overridden by implementors of
 /// [Component] should be defined here instead.
 pub trait ComponentExt: Component {
-    /// Was this component drawn to the screen during the previous draw phase?
-    fn is_visible(&self) -> bool;
-
-    /// Get the area that this component was last drawn to. Return `None` if
-    /// not visible
-    fn area(&self) -> Option<Rect>;
-
     /// Collect all available menu actions from all **focused** descendents of
     /// this component (including this component). This takes a mutable
     /// reference so we don't have to duplicate the code that provides children;
     /// it will *not* mutate anything.
-    fn collect_actions(&mut self) -> Vec<MenuItem>
+    fn collect_actions(&mut self, context: &UpdateContext) -> Vec<MenuItem>
     where
         Self: Sized;
 
@@ -172,35 +149,28 @@ pub trait ComponentExt: Component {
 }
 
 impl<T: Component + ?Sized> ComponentExt for T {
-    fn is_visible(&self) -> bool {
-        VISIBLE_COMPONENTS.with_borrow(|map| map.contains_key(&self.id()))
-    }
-
-    fn area(&self) -> Option<Rect> {
-        VISIBLE_COMPONENTS.with_borrow(|map| {
-            let metadata = map.get(&self.id())?;
-            Some(metadata.area)
-        })
-    }
-
-    fn collect_actions(&mut self) -> Vec<MenuItem>
+    fn collect_actions(&mut self, context: &UpdateContext) -> Vec<MenuItem>
     where
         Self: Sized,
     {
-        fn inner(items: &mut Vec<MenuItem>, component: &mut dyn Component) {
-            // Only include actions from visible+focused components
-            if component.is_visible() && has_focus(component) {
+        fn inner(
+            context: &UpdateContext,
+            items: &mut Vec<MenuItem>,
+            component: &mut dyn Component,
+        ) {
+            // Only include actions from focused components
+            if context.component_map.has_focus(component) {
                 items.extend(component.menu());
                 for mut child in component.children() {
                     if let Some(component) = child.component() {
-                        inner(items, component);
+                        inner(context, items, component);
                     }
                 }
             }
         }
 
         let mut items = Vec::new();
-        inner(&mut items, self);
+        inner(context, &mut items, self);
         items
     }
 
@@ -256,6 +226,10 @@ pub struct Canvas<'buf> {
     /// If there are multiple portals, the *later* rendered portals take
     /// priority.
     portals: Vec<Buffer>,
+    /// Throughout a draw, we track which components are drawn and where. At
+    /// the end of the draw, this is returned to the caller so it can be used
+    /// during the subsequent update phase.
+    components: ComponentMap,
 }
 
 impl<'buf> Canvas<'buf> {
@@ -264,24 +238,47 @@ impl<'buf> Canvas<'buf> {
         Self {
             buffer,
             portals: vec![],
+            components: ComponentMap::default(),
         }
     }
 
-    /// Draw an entire component tree to the canvas
-    pub fn draw_all<T, Props>(frame: &'buf mut Frame, root: &T, props: Props)
+    /// Create a new canvas and draw an entire component tree to it. Returns the
+    /// [ComponentMap] of all drawn components.
+    #[must_use]
+    pub fn draw_all<T, Props>(
+        frame: &'buf mut Frame,
+        root: &T,
+        props: Props,
+    ) -> ComponentMap
     where
         T: Component + Draw<Props>,
     {
-        // Clear the set of visible components so we can start fresh
-        VISIBLE_COMPONENTS.with_borrow_mut(HashMap::clear);
+        Self::draw_all_area(frame, root, props, frame.area(), true)
+    }
 
+    /// [Self::draw_all], but the caller determines the area and focus of the
+    /// root component. Called directly only for tests, where those need to be
+    /// configured.
+    #[must_use]
+    pub fn draw_all_area<T, Props>(
+        frame: &'buf mut Frame,
+        root: &T,
+        props: Props,
+        area: Rect,
+        has_focus: bool,
+    ) -> ComponentMap
+    where
+        T: Component + Draw<Props>,
+    {
         let mut canvas = Self::new(frame.buffer_mut());
-        canvas.draw(root, props, canvas.area(), true);
+        canvas.draw(root, props, area, has_focus);
 
         // Merge portaled buffers into the main buffer
         for portal_buffer in &canvas.portals {
             canvas.buffer.merge(portal_buffer);
         }
+
+        canvas.components
     }
 
     /// Draw a component to the screen
@@ -304,9 +301,7 @@ impl<'buf> Canvas<'buf> {
         let metadata = DrawMetadata { area, has_focus };
 
         // Mark this component as visible so it can receive events
-        VISIBLE_COMPONENTS.with_borrow_mut(|visible_components| {
-            visible_components.insert(component.id(), metadata);
-        });
+        self.components.0.insert(component.id(), metadata);
 
         component.draw(self, props, metadata);
     }
@@ -369,6 +364,43 @@ impl<'buf> Canvas<'buf> {
         W: StatefulWidget,
     {
         widget.render(area, self.buffer, state);
+    }
+
+    /// This is a shitty fix. To be reverted soon(tm)
+    pub fn merge_components(&mut self, other: Canvas) {
+        self.components.0.extend(other.components.0);
+    }
+}
+
+/// All components that were drawn during the last draw phase. The purpose
+/// of this is to allow each component to return an exhaustive list of its
+/// children during event handling, then we can automatically filter that
+/// list down to just the ones that are visible. This prevents the need to
+/// duplicate visibility logic in both the draw and the children getters.
+/// For each drawn component, this stores metadata related to its last
+/// draw.
+///
+/// A new map is built for each [Canvas], which means a new map every draw
+/// frame.
+#[derive(Debug, Default)]
+pub struct ComponentMap(HashMap<ComponentId, DrawMetadata>);
+
+impl ComponentMap {
+    /// Was this component drawn to the screen during the previous draw phase?
+    pub fn is_visible<T: Component + ?Sized>(&self, component: &T) -> bool {
+        self.0.contains_key(&component.id())
+    }
+
+    /// Get the area that the component was drawn to. Return `None` iff the
+    /// component is not visible.
+    pub fn area<T: Component + ?Sized>(&self, component: &T) -> Option<Rect> {
+        self.0.get(&component.id()).map(|metadata| metadata.area())
+    }
+
+    /// Was this component in focus during the previous draw phase?
+    fn has_focus<T: Component + ?Sized>(&self, component: &T) -> bool {
+        let metadata = self.0.get(&component.id());
+        metadata.is_some_and(|metadata| metadata.has_focus())
     }
 }
 
@@ -482,7 +514,7 @@ fn update_all(
     // that parents don't have to propagate their focus state down the tree
     // manually
     if let Event::Input(InputEvent::Key { .. } | InputEvent::Paste) = &event
-        && !has_focus(component)
+        && !context.component_map.has_focus(component)
     {
         return Some(event);
     }
@@ -521,7 +553,7 @@ fn update_all(
         Event::Input(
             InputEvent::Click { position, .. }
             | InputEvent::Scroll { position, .. },
-        ) => component.contains(*position),
+        ) => component.contains(context, *position),
         _ => true,
     };
     if should_receive {
@@ -555,15 +587,6 @@ fn persist_all(store: &mut PersistentStore, component: &mut dyn Component) {
             persist_all(store, component);
         }
     }
-}
-
-/// Was this component in focus during the previous draw phase?
-fn has_focus(component: &dyn Component) -> bool {
-    // If the component isn't in the map, that means it's not visible
-    VISIBLE_COMPONENTS.with_borrow(|map| {
-        let metadata = map.get(&component.id());
-        metadata.is_some_and(|metadata| metadata.has_focus())
-    })
 }
 
 /// Unique ID to refer to a single component
@@ -843,44 +866,52 @@ mod tests {
         terminal: TestTerminal,
         mut component: Root,
     ) {
-        let update_assert = |component: &mut Root, recipient: Recipient| {
-            let mut update_context = UpdateContext {
-                request_store: &mut harness.request_store.borrow_mut(),
+        let draw_update_assert =
+            |component: &mut Root,
+             props: Option<RootProps>,
+             recipient: Recipient| {
+                let mut component_map = ComponentMap::default();
+                if let Some(props) = props {
+                    terminal.draw(|frame| {
+                        component_map =
+                            Canvas::draw_all(frame, component, props);
+                    });
+                }
+
+                let mut update_context = UpdateContext {
+                    component_map: &component_map,
+                    request_store: &mut harness.request_store.borrow_mut(),
+                };
+
+                component.update_all(&mut update_context, key_event());
+                component.branch.assert_received(recipient);
+                component.branch.reset(); // Reset for the next assertion
             };
 
-            component.update_all(&mut update_context, key_event());
-            component.branch.assert_received(recipient);
-            component.branch.reset(); // Reset for the next assertion
-        };
-
         // Initial event handling - nothing is visible so nothing should consume
-        update_assert(&mut component, Recipient::None);
+        draw_update_assert(&mut component, None, Recipient::None);
 
         // Visible components get events
-        terminal.draw(|frame| {
-            Canvas::draw_all(frame, &component, RootProps::fvh());
-        });
-        update_assert(&mut component, Recipient::A);
+
+        draw_update_assert(
+            &mut component,
+            Some(RootProps::fvh()),
+            Recipient::A,
+        );
 
         // Switch things up, make sure new state is reflected
-        terminal.draw(|frame| {
-            Canvas::draw_all(
-                frame,
-                &component,
-                RootProps::new(Focused, Visible, Hidden, Focused),
-            );
-        });
-        update_assert(&mut component, Recipient::C);
+        draw_update_assert(
+            &mut component,
+            Some(RootProps::new(Focused, Visible, Hidden, Focused)),
+            Recipient::C,
+        );
 
         // Hide all children, root should eat everything
-        terminal.draw(|frame| {
-            Canvas::draw_all(
-                frame,
-                &component,
-                RootProps::new(Focused, Hidden, Hidden, Hidden),
-            );
-        });
-        update_assert(&mut component, Recipient::Branch);
+        draw_update_assert(
+            &mut component,
+            Some(RootProps::new(Focused, Hidden, Hidden, Hidden)),
+            Recipient::Branch,
+        );
     }
 
     /// Render a simple component tree and test that events are propagated as
@@ -922,9 +953,13 @@ mod tests {
         #[case] props: RootProps,
         #[case] expected_recipient: Recipient,
     ) {
-        terminal.draw(|frame| Canvas::draw_all(frame, &component, props));
+        let mut component_map = ComponentMap::default();
+        terminal.draw(|frame| {
+            component_map = Canvas::draw_all(frame, &component, props);
+        });
 
         let mut update_context = UpdateContext {
+            component_map: &component_map,
             request_store: &mut harness.request_store.borrow_mut(),
         };
 

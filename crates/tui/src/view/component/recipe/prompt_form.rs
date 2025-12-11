@@ -409,6 +409,10 @@ mod tests {
             .drain_draw() // Draw so children are visible
             .send_key(KeyCode::Char('e')) // Edit
             .send_text("123") // Modify username
+            .inspect(|component| {
+                assert!(component.editing);
+                assert_eq!(component.select.selected_index(), Some(0));
+            })
             .send_key(KeyCode::Tab) // Switch to species - still editing
             .send_key(KeyCode::Down) // Select 2nd option
             .send_key_modifiers(KeyCode::Tab, KeyModifiers::SHIFT) // Go back

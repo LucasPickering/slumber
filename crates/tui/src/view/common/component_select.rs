@@ -254,6 +254,7 @@ where
             "Source buffer content length does not match area"
         );
         canvas.buffer_mut().merge(&buffer);
+        canvas.merge_components(virtual_canvas);
     }
 }
 

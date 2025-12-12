@@ -3,6 +3,7 @@ mod component;
 mod context;
 mod debug;
 mod event;
+pub mod persistent;
 mod state;
 mod styles;
 #[cfg(test)]
@@ -12,8 +13,6 @@ mod util;
 pub use component::ComponentMap;
 pub use context::{UpdateContext, ViewContext};
 pub use styles::Styles;
-#[cfg(test)]
-pub use util::persistent::{PersistentKey, PersistentStore, SessionKey};
 pub use util::{PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
@@ -140,9 +139,9 @@ impl View {
     ///
     /// This takes `&mut self` because we dynamically load children, and those
     /// are always mutable.
-    pub fn persist(&mut self, database: &CollectionDatabase) {
+    pub fn persist(&mut self, database: CollectionDatabase) {
         self.root
-            .persist_all(&mut util::persistent::PersistentStore::new(database));
+            .persist_all(&mut persistent::PersistentStore::new(database));
     }
 
     /// ID of the selected profile. `None` iff the list is empty
@@ -285,9 +284,11 @@ mod tests {
 
         // Events should *still* be in the queue, because we haven't drawn yet
         let mut component_map = ComponentMap::default();
+        let mut persisent_store = harness.persistent_store();
         let mut request_store = harness.request_store.borrow_mut();
         view.handle_events(UpdateContext {
             component_map: &component_map,
+            persistent_store: &mut persisent_store,
             request_store: &mut request_store,
         });
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
@@ -299,6 +300,7 @@ mod tests {
         // *Now* the queue is drained
         view.handle_events(UpdateContext {
             component_map: &component_map,
+            persistent_store: &mut persisent_store,
             request_store: &mut request_store,
         });
         assert_events!();

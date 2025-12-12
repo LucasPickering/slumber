@@ -8,7 +8,8 @@ use crate::{
         common::actions::MenuItem,
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::{format_type_name, persistent::PersistentStore},
+        persistent::PersistentStore,
+        util::format_type_name,
     },
 };
 use derive_more::Display;
@@ -879,6 +880,7 @@ mod tests {
 
                 let mut update_context = UpdateContext {
                     component_map: &component_map,
+                    persistent_store: &mut harness.persistent_store(),
                     request_store: &mut harness.request_store.borrow_mut(),
                 };
 
@@ -959,6 +961,7 @@ mod tests {
 
         let mut update_context = UpdateContext {
             component_map: &component_map,
+            persistent_store: &mut harness.persistent_store(),
             request_store: &mut harness.request_store.borrow_mut(),
         };
 

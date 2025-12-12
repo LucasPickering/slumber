@@ -5,7 +5,7 @@ use crate::view::{
     component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
     context::UpdateContext,
     event::{Emitter, Event, EventMatch, ToEmitter},
-    util::persistent::PersistentKey,
+    persistent::PersistentKey,
 };
 use itertools::Itertools;
 use ratatui::widgets::ListState;

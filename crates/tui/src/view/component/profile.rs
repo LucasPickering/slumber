@@ -10,7 +10,7 @@ use crate::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             sidebar_list::{SidebarListItem, SidebarListState},
         },
-        util::persistent::PersistentKey,
+        persistent::PersistentKey,
     },
 };
 use anyhow::anyhow;

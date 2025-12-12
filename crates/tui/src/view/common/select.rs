@@ -6,7 +6,7 @@ use crate::{
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        util::persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use itertools::Itertools;
@@ -132,7 +132,6 @@ impl<Item, State> SelectBuilder<Item, State> {
     }
 
     /// Set the index that should be initially selected
-    #[cfg(test)]
     pub fn preselect_index(mut self, index: usize) -> Self {
         // If the index is invalid, it will be replaced by 0 in the build()
         self.preselect_index = index;
@@ -1152,7 +1151,7 @@ mod tests {
             }
         }
 
-        harness.set_persisted(&Key, &persisted_id.into());
+        harness.persistent_store().set(&Key, &persisted_id.into());
 
         // Second profile should be pre-selected because of persistence
         let select: Select<ProfileItem> = Select::builder(vec![

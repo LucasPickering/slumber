@@ -16,7 +16,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        util::persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{
@@ -597,11 +597,11 @@ mod tests {
     #[rstest]
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        harness.set_persisted_session(
+        harness.persistent_store().set_session(
             RecipeOverrideKey::query_param(recipe_id.clone(), 0),
             "p0".into(),
         );
-        harness.set_persisted_session(
+        harness.persistent_store().set_session(
             RecipeOverrideKey::query_param(recipe_id.clone(), 1),
             "p1".into(),
         );

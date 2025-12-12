@@ -13,12 +13,13 @@ use crate::{
         },
         context::ViewContext,
         event::{Event, EventMatch, LocalEvent, ToEmitter},
-        util::persistent::PersistentStore,
+        persistent::PersistentStore,
     },
 };
 use itertools::Itertools;
 use ratatui::layout::Rect;
 use slumber_config::Action;
+use slumber_core::database::CollectionDatabase;
 use std::{
     cell::RefCell,
     fmt::Debug,
@@ -46,6 +47,7 @@ use tracing::trace_span;
 pub struct TestComponent<'term, T> {
     /// Terminal to draw to
     terminal: &'term TestTerminal,
+    database: CollectionDatabase,
     request_store: Rc<RefCell<RequestStore>>,
     /// Output of the most recent draw phase
     component_map: ComponentMap,
@@ -74,6 +76,7 @@ where
     {
         TestComponentBuilder {
             terminal,
+            database: harness.database.clone(),
             request_store: Rc::clone(&harness.request_store),
             area: terminal.area(),
             component: TestWrapper::new(data),
@@ -164,9 +167,11 @@ where
             component = self.component
         );
 
+        let mut persistent_store = PersistentStore::new(self.database.clone());
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
             component_map: &self.component_map,
+            persistent_store: &mut persistent_store,
             request_store: &mut self.request_store.borrow_mut(),
         };
         while let Some(event) = ViewContext::pop_event() {
@@ -180,9 +185,7 @@ where
 
         // Persist values in the store after the update. This mimics what the
         // event loop does
-        ViewContext::with_database(|db| {
-            self.component.persist_all(&mut PersistentStore::new(db));
-        });
+        self.component.persist_all(&mut persistent_store);
 
         propagated
     }
@@ -206,6 +209,7 @@ impl<T> DerefMut for TestComponent<'_, T> {
 /// Helper for customizing a [TestComponent] before its initial draw
 pub struct TestComponentBuilder<'term, T, Props> {
     terminal: &'term TestTerminal,
+    database: CollectionDatabase,
     request_store: Rc<RefCell<RequestStore>>,
     area: Rect,
     component: TestWrapper<T>,
@@ -244,6 +248,7 @@ where
     pub fn build(self) -> TestComponent<'term, T> {
         let mut component = TestComponent {
             terminal: self.terminal,
+            database: self.database,
             request_store: self.request_store,
             component_map: ComponentMap::default(),
             area: self.area,
@@ -439,6 +444,9 @@ where
         let items = {
             let context = UpdateContext {
                 component_map: &self.component.component_map,
+                persistent_store: &mut PersistentStore::new(
+                    self.component.database.clone(),
+                ),
                 request_store: &mut self.component.request_store.borrow_mut(),
             };
             self.component.component.collect_actions(&context)

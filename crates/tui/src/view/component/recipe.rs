@@ -24,7 +24,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        util::persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use itertools::{Itertools, Position};

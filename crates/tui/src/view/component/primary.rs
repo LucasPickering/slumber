@@ -23,7 +23,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
-        util::persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{
@@ -595,7 +595,7 @@ mod tests {
         let mut view = ViewState::default();
         view.select_exchange_pane();
         view.toggle_fullscreen();
-        harness.set_persisted(&ViewStateKey, &view);
+        harness.persistent_store().set(&ViewStateKey, &view);
 
         let component = create_component(&mut harness, &terminal);
         assert_eq!(component.view, view);

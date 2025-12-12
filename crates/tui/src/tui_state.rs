@@ -5,7 +5,10 @@ use crate::{
         Callback, HttpMessage, Message, MessageSender, RecipeCopyTarget,
     },
     util::{self, ResultReported},
-    view::{ComponentMap, PreviewPrompter, TuiPrompter, UpdateContext, View},
+    view::{
+        ComponentMap, PreviewPrompter, TuiPrompter, UpdateContext, View,
+        persistent::PersistentStore,
+    },
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
@@ -149,11 +152,14 @@ impl TuiState {
             TuiStateInner::Loaded(state) => {
                 let handled = state.view.handle_events(UpdateContext {
                     component_map: &state.component_map,
+                    persistent_store: &mut PersistentStore::new(
+                        state.database.clone(),
+                    ),
                     request_store: &mut state.request_store,
                 });
                 // Persist state after changes
                 if handled {
-                    state.view.persist(&state.database);
+                    state.view.persist(state.database.clone());
                 }
                 handled
             }

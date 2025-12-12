@@ -17,7 +17,8 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        util::{format_byte_size, persistent::PersistentKey},
+        persistent::PersistentKey,
+        util::format_byte_size,
     },
 };
 use derive_more::Display;

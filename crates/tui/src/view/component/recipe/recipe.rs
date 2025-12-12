@@ -12,7 +12,7 @@ use crate::view::{
             url::UrlDisplay,
         },
     },
-    util::persistent::PersistentKey,
+    persistent::PersistentKey,
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph};

@@ -12,7 +12,8 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::{persistent::PersistentKey, view_text},
+        persistent::PersistentKey,
+        util::view_text,
     },
 };
 use mime::Mime;

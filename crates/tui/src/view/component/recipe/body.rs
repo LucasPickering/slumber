@@ -17,7 +17,8 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        util::{persistent::PersistentKey, view_text},
+        persistent::PersistentKey,
+        util::view_text,
     },
 };
 use anyhow::Context;
@@ -385,7 +386,7 @@ mod tests {
     use crate::{
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{test_util::TestComponent, util::persistent::PersistentStore},
+        view::{persistent::PersistentStore, test_util::TestComponent},
     };
     use ratatui::{
         style::{Color, Styled},
@@ -534,7 +535,7 @@ mod tests {
             body: Some(RecipeBody::Raw("".into())),
             ..Recipe::factory(())
         };
-        harness.set_persisted_session(
+        harness.persistent_store().set_session(
             RecipeOverrideKey::body(recipe.id.clone()),
             "hello!".into(),
         );

@@ -32,13 +32,13 @@ use tracing::error;
 /// DB.
 ///
 /// Unlike the DB store, the session store doesn't serialize the key and value.
-/// The key and value are both stored as`Box<dyn Any>`. This is possible because
-/// we're storing it in a thread local.
-pub struct PersistentStore<'a> {
-    database: &'a CollectionDatabase,
+/// The key and value are both stored as `Box<dyn Any>`. This is possible
+/// because we're storing it in a thread local.
+pub struct PersistentStore {
+    database: CollectionDatabase,
 }
 
-impl<'a> PersistentStore<'a> {
+impl PersistentStore {
     thread_local! {
         /// Static instance for the session store. Persistence is handled in the
         /// main view thread, so we only even need this in one thread. We could
@@ -48,10 +48,10 @@ impl<'a> PersistentStore<'a> {
         static SESSION: RefCell<Vec<SessionEntry>> = RefCell::default();
     }
 
-    /// Create a new store from a database. This is a cheap operation, as it
-    /// just requires a reference to the database. The store should be recreated
+    /// Create a new store from a database. This is a cheap operation, as the
+    /// database connection is reference-counted. The store should be recreated
     /// for each update phase.
-    pub fn new(database: &'a CollectionDatabase) -> Self {
+    pub fn new(database: CollectionDatabase) -> Self {
         Self { database }
     }
 

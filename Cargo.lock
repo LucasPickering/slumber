@@ -818,7 +818,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "doc_utils"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3370,7 +3370,7 @@ dependencies = [
 
 [[package]]
 name = "slumber"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "anyhow",
  "console-subscriber",
@@ -3384,7 +3384,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_cli"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3417,7 +3417,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_config"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "derive_more 1.0.0",
  "dirs",
@@ -3442,7 +3442,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_core"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3490,7 +3490,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_import"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3522,7 +3522,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_macros"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3531,7 +3531,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_python"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "async-trait",
  "dialoguer",
@@ -3544,7 +3544,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_template"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "bytes",
  "derive_more 1.0.0",
@@ -3571,7 +3571,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_tui"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3613,7 +3613,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_util"
-version = "4.2.1"
+version = "4.3.0"
 dependencies = [
  "derive_more 1.0.0",
  "dirs",

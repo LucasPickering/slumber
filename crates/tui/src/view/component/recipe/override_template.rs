@@ -10,7 +10,7 @@ use crate::view::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
     event::{Event, EventMatch, ToEmitter},
-    util::persistent::{PersistentStore, SessionKey},
+    persistent::{PersistentStore, SessionKey},
 };
 use serde::Serialize;
 use slumber_config::Action;
@@ -378,7 +378,9 @@ mod tests {
     fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         let key = RecipeOverrideKey::url(recipe_id);
-        harness.set_persisted_session(key.clone(), "persisted".into());
+        harness
+            .persistent_store()
+            .set_session(key.clone(), "persisted".into());
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -402,7 +404,7 @@ mod tests {
 
         // Clear the override; should be removed from the store
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        component.persist(&mut PersistentStore::new(&harness.database));
+        component.persist(&mut PersistentStore::new(harness.database));
         assert_eq!(component.template(), &"default".into());
         assert_eq!(PersistentStore::get_session(&key), None);
     }

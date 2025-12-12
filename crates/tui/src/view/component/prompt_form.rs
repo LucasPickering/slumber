@@ -15,6 +15,7 @@ use crate::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         event::{Event, EventMatch},
+        persistent::{PersistentStore, SessionKey},
     },
 };
 use indexmap::IndexMap;
@@ -30,6 +31,7 @@ use slumber_core::{
     render::{Prompt, SelectOption},
 };
 use std::{borrow::Cow, cmp, mem};
+use tracing::error;
 
 /// A form displaying prompts for the recipe builder
 ///
@@ -71,17 +73,23 @@ impl PromptForm {
     }
 
     /// Send a message with a reply for every prompt in the form
-    fn submit(&mut self) {
+    fn submit(&mut self, store: &mut PersistentStore) {
         // We can take the select list without cloning, because this component
         // will be trashed on the update triggered by the message we send. This
         // is much simpler than using an emitted message to do this submission
         // in the parent, where the entire component is actually trashed.
         let select = mem::take(&mut self.select);
-        let replies = select
+        let replies: Vec<(PromptId, PromptReply)> = select
             .into_select()
             .into_items()
             .map(|input| (input.prompt_id(), input.into_reply()))
             .collect();
+
+        // Clear these values from the session store
+        for (prompt_id, _) in &replies {
+            store.remove_session(prompt_id);
+        }
+
         ViewContext::send_message(HttpMessage::FormSubmit {
             request_id: self.request_id,
             replies,
@@ -96,7 +104,7 @@ impl Component for PromptForm {
 
     fn update(
         &mut self,
-        _context: &mut UpdateContext,
+        context: &mut UpdateContext,
         event: Event,
     ) -> EventMatch {
         event.m().action(|action, propagate| match action {
@@ -113,7 +121,7 @@ impl Component for PromptForm {
                     self.select = ComponentSelect::default();
                 }
             }
-            Action::Submit => self.submit(),
+            Action::Submit => self.submit(context.persistent_store),
             _ => propagate.set(),
         })
     }
@@ -190,27 +198,44 @@ enum PromptInput {
 
 impl PromptInput {
     fn new(prompt_id: PromptId, prompt: &Prompt) -> Self {
+        let persisted = PersistentStore::get_session(&prompt_id);
+
         match prompt {
             Prompt::Text {
                 message,
                 default,
                 sensitive,
                 ..
-            } => Self::Text {
-                id: ComponentId::default(),
-                prompt_id,
-                message: message.clone(),
-                text_box: TextBox::default()
-                    .sensitive(*sensitive)
-                    .default_value(default.clone().unwrap_or_default()),
-            },
+            } => {
+                // If we have a persisted value from a previous life, use it
+                let default = persisted
+                    .and_then(PromptValue::into_text)
+                    // Otherwise use the default
+                    .or_else(|| default.clone())
+                    .unwrap_or_default();
+                Self::Text {
+                    id: ComponentId::default(),
+                    prompt_id,
+                    message: message.clone(),
+                    text_box: TextBox::default()
+                        .sensitive(*sensitive)
+                        .default_value(default),
+                }
+            }
             Prompt::Select {
                 message, options, ..
             } => Self::Select {
                 id: ComponentId::default(),
                 prompt_id,
                 message: message.clone(),
-                select: Select::builder(options.clone()).build(),
+                select: Select::builder(options.clone())
+                    .preselect_index(
+                        // Preselect index from a previous life
+                        persisted
+                            .and_then(PromptValue::into_select)
+                            .unwrap_or(0),
+                    )
+                    .build(),
             },
         }
     }
@@ -262,6 +287,23 @@ impl Component for PromptInput {
             PromptInput::Text { id, .. } | PromptInput::Select { id, .. } => {
                 *id
             }
+        }
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        // Prompt values are persisted **within a single session**. There's no
+        // reason to persist across sessions because any unbuilt requests will
+        // be deleted when the program exits
+        let value = match self {
+            Self::Text { text_box, .. } => {
+                Some(PromptValue::Text(text_box.text().to_owned()))
+            }
+            Self::Select { select, .. } => {
+                select.selected_index().map(PromptValue::Select)
+            }
+        };
+        if let Some(value) = value {
+            store.set_session(self.prompt_id(), value);
         }
     }
 
@@ -390,6 +432,44 @@ impl Generate for &SelectOption {
     }
 }
 
+/// Persist incomplete prompt responses in the session store
+impl SessionKey for PromptId {
+    type Value = PromptValue;
+}
+
+/// Persisted value for a prompt
+#[derive(Clone, Debug, PartialEq)]
+pub enum PromptValue {
+    Text(String),
+    Select(usize),
+}
+
+impl PromptValue {
+    /// Extract a text prompt value
+    fn into_text(self) -> Option<String> {
+        match self {
+            PromptValue::Text(text) => Some(text),
+            PromptValue::Select(_) => {
+                // Prompts can't change type, so this indicates a bug
+                error!(?self, "Incorrect prompt type; expected text");
+                None
+            }
+        }
+    }
+
+    /// Extract a selected index prompt value
+    fn into_select(self) -> Option<usize> {
+        match self {
+            PromptValue::Select(index) => Some(index),
+            PromptValue::Text(_) => {
+                // Prompts can't change type, so this indicates a bug
+                error!(?self, "Incorrect prompt type; expected select");
+                None
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,6 +564,75 @@ mod tests {
 
         // Message was *not* sent
         harness.assert_messages_empty();
+    }
+
+    /// If you open a prompt, edit the value, then navigate away from the form
+    /// without submitting, the values should be persisted. This is possible
+    /// if you change requests, change view, etc. and the prompt form is
+    /// hidden temporarily. We should retain the form state when the user
+    /// navigates back
+    #[rstest]
+    fn test_persistence(
+        mut harness: TestHarness,
+        #[with(8, 2)] terminal: TestTerminal,
+    ) {
+        let request_id = RequestId::new();
+        let prompts = IndexMap::from_iter([
+            text("Text", None, false),
+            select("Select", vec![("a", 0.into()), ("b", 1.into())]),
+        ]);
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PromptForm::new(request_id, &prompts),
+        );
+
+        // Test every kind of prompt
+        component
+            .int()
+            .send_text("user") // Enter username
+            .send_key(KeyCode::Tab) // Switch to Select
+            .send_key(KeyCode::Down) // Select second item
+            .assert_empty();
+
+        // Values should be in the session store
+        assert_eq!(
+            PersistentStore::get_session(&prompts.keys()[0]),
+            Some(PromptValue::Text("user".into()))
+        );
+        assert_eq!(
+            PersistentStore::get_session(&prompts.keys()[1]),
+            Some(PromptValue::Select(1))
+        );
+
+        // Rebuild the component and the values are restored
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PromptForm::new(request_id, &prompts),
+        );
+        component.int().send_key(KeyCode::Enter).assert_empty();
+
+        // Our previous values were submitted
+        let replies = assert_matches!(
+            harness.pop_message_now(),
+            Message::Http(HttpMessage::FormSubmit {
+                replies,
+                ..
+            }) => replies
+        );
+        let prompt_ids = prompts.keys().copied().collect_vec();
+        assert_eq!(
+            replies,
+            vec![
+                (prompt_ids[0], PromptReply::Text("user".into())),
+                (prompt_ids[1], PromptReply::Select(1.into())),
+            ]
+        );
+
+        // Values were cleared out of the session store
+        assert_eq!(PersistentStore::get_session(&prompts.keys()[0]), None);
+        assert_eq!(PersistentStore::get_session(&prompts.keys()[1]), None);
     }
 
     /// Text input field

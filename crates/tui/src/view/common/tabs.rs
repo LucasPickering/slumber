@@ -7,7 +7,7 @@ use crate::{
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{style::Style, text::Line};

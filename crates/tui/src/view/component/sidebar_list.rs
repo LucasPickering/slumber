@@ -11,7 +11,7 @@ use crate::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         event::{Emitter, Event, EventMatch, ToEmitter},
-        util::persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{

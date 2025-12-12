@@ -16,7 +16,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::{layout::Layout, prelude::Constraint};
@@ -417,7 +417,9 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
-        harness.set_persisted(&SelectedRequestKey, &old_exchange.id);
+        harness
+            .persistent_store()
+            .set(&SelectedRequestKey, &old_exchange.id);
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());
@@ -451,7 +453,9 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
         // Put a random ID in the DB
-        harness.set_persisted(&SelectedRequestKey, &RequestId::new());
+        harness
+            .persistent_store()
+            .set(&SelectedRequestKey, &RequestId::new());
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());

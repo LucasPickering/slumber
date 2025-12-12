@@ -14,12 +14,9 @@ use crate::{
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
+        persistent::{PersistentKey, PersistentStore},
         state::Identified,
-        util::{
-            highlight,
-            persistent::{PersistentKey, PersistentStore},
-            str_to_text,
-        },
+        util::{highlight, str_to_text},
     },
 };
 use anyhow::Context;
@@ -606,7 +603,9 @@ mod tests {
         response: Arc<ResponseRecord>,
     ) {
         // Add initial query to the DB
-        harness.set_persisted(&Key, &"head -c 1".to_owned());
+        harness
+            .persistent_store()
+            .set(&Key, &"head -c 1".to_owned());
 
         // On init, we'll start executing the command in a local task. Wait for
         // that to finish
@@ -657,7 +656,7 @@ mod tests {
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
-        harness.set_persisted(&Key, &String::new());
+        harness.persistent_store().set(&Key, &String::new());
 
         // Local task is spawned to execute the initial subprocess
         let component = run_local(async {

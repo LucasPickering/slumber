@@ -111,16 +111,8 @@ impl Component for PromptForm {
             Action::PreviousPane => self.select.up(),
             Action::NextPane => self.select.down(),
             Action::Edit if !self.editing => self.editing = true,
-            Action::Cancel => {
-                if self.editing {
-                    // If editing, just exit editing
-                    self.editing = false;
-                } else {
-                    // Clear out all inputs. This will drop all the prompts,
-                    // triggering an error in the request
-                    self.select = ComponentSelect::default();
-                }
-            }
+            // If not editing, we'll propagate this to cancel the request
+            Action::Cancel if self.editing => self.editing = false,
             Action::Submit => self.submit(context.persistent_store),
             _ => propagate.set(),
         })
@@ -543,27 +535,6 @@ mod tests {
                 (prompt_ids[2], PromptReply::Text("hunter2456".into())),
             ]
         );
-    }
-
-    /// Cancelling should drop all the responders, triggering errors
-    #[rstest]
-    fn test_cancel(mut harness: TestHarness, terminal: TestTerminal) {
-        let prompts =
-            IndexMap::from_iter([text("Username", Some("user"), false)]);
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            PromptForm::new(RequestId::new(), &prompts),
-        );
-
-        component
-            .int()
-            .drain_draw() // Draw so children are visible
-            .send_key(KeyCode::Esc)
-            .assert_empty();
-
-        // Message was *not* sent
-        harness.assert_messages_empty();
     }
 
     /// If you open a prompt, edit the value, then navigate away from the form

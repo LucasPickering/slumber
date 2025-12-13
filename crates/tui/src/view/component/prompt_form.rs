@@ -72,6 +72,10 @@ impl PromptForm {
         }
     }
 
+    pub fn request_id(&self) -> RequestId {
+        self.request_id
+    }
+
     /// Send a message with a reply for every prompt in the form
     fn submit(&mut self, store: &mut PersistentStore) {
         // We can take the select list without cloning, because this component

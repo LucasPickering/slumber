@@ -434,7 +434,7 @@ impl Draw for RecipeDetail {
                     "Recipe"
                 }
             },
-            Action::SelectRecipe,
+            Action::SelectTopPane,
         );
         let block = Pane {
             title: &title,

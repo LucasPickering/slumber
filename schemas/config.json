@@ -150,23 +150,20 @@
         "search_history": [
           "ctrl r"
         ],
+        "select_bottom_pane": [
+          "2"
+        ],
         "select_collection": [
           "f3"
         ],
         "select_profile_list": [
-          "1"
-        ],
-        "select_profile": [
           "p"
         ],
         "select_recipe_list": [
-          "2"
-        ],
-        "select_recipe": [
-          "c"
-        ],
-        "select_response": [
           "r"
+        ],
+        "select_top_pane": [
+          "1"
         ]
       }
     },
@@ -296,23 +293,20 @@
         "search_history": [
           "ctrl r"
         ],
+        "select_bottom_pane": [
+          "2"
+        ],
         "select_collection": [
           "f3"
         ],
         "select_profile_list": [
-          "1"
-        ],
-        "select_profile": [
           "p"
         ],
         "select_recipe_list": [
-          "2"
-        ],
-        "select_recipe": [
-          "c"
-        ],
-        "select_response": [
           "r"
+        ],
+        "select_top_pane": [
+          "1"
         ]
       },
       "theme": {

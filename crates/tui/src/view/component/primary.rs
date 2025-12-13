@@ -227,10 +227,9 @@ impl Component for PrimaryView {
 
                 // Pane hotkeys
                 Action::SelectProfileList => self.view.open_profile_list(),
-                Action::SelectProfile => self.view.select_profile_pane(),
                 Action::SelectRecipeList => self.view.open_recipe_list(),
-                Action::SelectRecipe => self.view.select_recipe_pane(),
-                Action::SelectResponse => self.view.select_exchange_pane(),
+                Action::SelectTopPane => self.view.select_top_pane(),
+                Action::SelectBottomPane => self.view.select_bottom_pane(),
                 Action::SelectCollection => {
                     self.collection_select.open(CollectionSelect::new());
                 }
@@ -648,7 +647,7 @@ mod tests {
 
         component
             .int()
-            .send_key(KeyCode::Char('c')) // Select recipe detail
+            .send_key(KeyCode::Char('1')) // Select recipe detail
             .action(&["Copy", label])
             .assert_empty();
 
@@ -660,7 +659,7 @@ mod tests {
 
         component
             .int()
-            .send_key(KeyCode::Char('2')) // Select recipe list
+            .send_key(KeyCode::Char('r')) // Select recipe list
             .action(&["Copy", label])
             .assert_empty();
 

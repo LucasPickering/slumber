@@ -35,6 +35,14 @@ impl ViewState {
         });
     }
 
+    /// Are we in a layout with the sidebar open?
+    pub fn is_sidebar_open(&self) -> bool {
+        match self.layout {
+            PrimaryLayout::Default(_) => false,
+            PrimaryLayout::Profile(_) | PrimaryLayout::Recipe(_) => true,
+        }
+    }
+
     /// Close the sidebar and return to the default view
     pub fn close_sidebar(&mut self) {
         self.layout = PrimaryLayout::Default(DefaultPane::Recipe);
@@ -64,7 +72,7 @@ impl ViewState {
         });
     }
 
-    /// Move focus to the TODO
+    /// Move focus to the upper pane in the layout
     pub fn select_top_pane(&mut self) {
         self.modify_layout(|layout| match layout {
             PrimaryLayout::Default(pane) => *pane = DefaultPane::Recipe,
@@ -73,7 +81,7 @@ impl ViewState {
         });
     }
 
-    /// Move focus to the TODO
+    /// Move focus to the lower pane in the layout
     pub fn select_bottom_pane(&mut self) {
         self.modify_layout(|layout| match layout {
             PrimaryLayout::Default(pane) => *pane = DefaultPane::Exchange,

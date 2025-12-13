@@ -91,8 +91,6 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 ]);
 
-// TODO update docs with new actions
-
 /// An input action from the user. This is context-agnostic; the action may not
 /// actually mean something in the current app context. This type is just an
 /// abstraction to map all possible input events to the things we actually
@@ -178,9 +176,10 @@ pub enum Action {
     /// Search command history in query text box
     #[display("Search Command History")]
     SearchHistory,
-    /// TODO
-    /// TODO serde alias
-    #[serde(alias = "select_request")] // Backward compatibility
+    /// Select the lower pane in the current layout
+    ///
+    /// Aliases provide backward compatibility
+    #[serde(alias = "select_request", alias = "select_response")]
     SelectBottomPane,
     /// Open collection selection modal (unbound by default)
     #[display("Select Collection")]
@@ -189,8 +188,10 @@ pub enum Action {
     SelectProfileList,
     /// Select recipe list pane
     SelectRecipeList,
-    /// TODO
-    /// TODO serde alias
+    /// Select the upper pane in the current layout
+    ///
+    /// Aliases provide backward compatibility
+    #[serde(alias = "select_recipe")]
     SelectTopPane,
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }

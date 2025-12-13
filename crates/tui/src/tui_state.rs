@@ -6,8 +6,8 @@ use crate::{
     },
     util::{self, ResultReported},
     view::{
-        ComponentMap, PreviewPrompter, TuiPrompter, UpdateContext, View,
-        persistent::PersistentStore,
+        ComponentMap, PreviewPrompter, RequestDisposition, TuiPrompter,
+        UpdateContext, View, persistent::PersistentStore,
     },
 };
 use anyhow::{Context, anyhow, bail};
@@ -704,7 +704,7 @@ impl LoadedState {
 
     /// Handle an [HttpMessage]
     fn handle_http(&mut self, message: HttpMessage) -> anyhow::Result<()> {
-        let mut select = false;
+        let mut disposition = None;
         let request_id = match message {
             // Request was triggered by someone else
             HttpMessage::Triggered {
@@ -716,10 +716,14 @@ impl LoadedState {
                 .start(request_id, profile_id, recipe_id, None)
                 .id(),
             HttpMessage::Begin => {
-                select = true; // New requests should be shown immediately
+                // New requests should be shown immediately
+                disposition = Some(RequestDisposition::Select);
                 self.send_request()?
             }
             HttpMessage::Prompt { request_id, prompt } => {
+                // For any new prompt, jump to the form. This may potentially
+                // be annoying for delayed prompts. If so we can change it :)
+                disposition = Some(RequestDisposition::OpenForm);
                 self.request_store.prompt(request_id, prompt).id()
             }
             HttpMessage::FormSubmit {
@@ -744,7 +748,7 @@ impl LoadedState {
         // to the lifetime of &self, meaning we can't get & mut to self.view
         // below.
         let request = self.request_store.get(request_id).unwrap();
-        self.view.update_request(request, select);
+        self.view.update_request(request, disposition);
 
         Ok(())
     }

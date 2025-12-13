@@ -30,7 +30,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::collection::RecipeNodeType;
+use slumber_core::{collection::RecipeNodeType, http::RequestId};
 use std::{error::Error, sync::Arc};
 use strum::{EnumCount, EnumIter};
 
@@ -52,6 +52,15 @@ impl ExchangePane {
         Self {
             id: Default::default(),
             state: State::new(selected_request, selected_recipe_kind),
+        }
+    }
+
+    /// Get the ID of the displayed request
+    pub fn request_id(&self) -> Option<RequestId> {
+        match &self.state {
+            State::None | State::Folder | State::NoHistory => None,
+            State::Building { form } => Some(form.request_id()),
+            State::Content { metadata, .. } => Some(metadata.request.id),
         }
     }
 }
@@ -77,8 +86,8 @@ impl Component for ExchangePane {
 impl Draw for ExchangePane {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let input_engine = &TuiContext::get().input_engine;
-        let title =
-            input_engine.add_hint("Request / Response", Action::SelectResponse);
+        let title = input_engine
+            .add_hint("Request / Response", Action::SelectBottomPane);
         let mut block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),

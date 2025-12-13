@@ -176,20 +176,23 @@ pub enum Action {
     /// Search command history in query text box
     #[display("Search Command History")]
     SearchHistory,
+    /// Select the lower pane in the current layout
+    ///
+    /// Aliases provide backward compatibility
+    #[serde(alias = "select_request", alias = "select_response")]
+    SelectBottomPane,
     /// Open collection selection modal (unbound by default)
     #[display("Select Collection")]
     SelectCollection,
     /// Select profile list pane
     SelectProfileList,
-    /// Select profile detail pane
-    SelectProfile,
     /// Select recipe list pane
     SelectRecipeList,
-    /// Select recipe detail pane
-    SelectRecipe,
-    /// Select response pane
-    #[serde(alias = "select_request")] // Backward compatibility
-    SelectResponse,
+    /// Select the upper pane in the current layout
+    ///
+    /// Aliases provide backward compatibility
+    #[serde(alias = "select_recipe")]
+    SelectTopPane,
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }
 
@@ -209,8 +212,8 @@ impl Action {
             | Action::End
             | Action::SelectProfileList
             | Action::SelectRecipeList
-            | Action::SelectRecipe
-            | Action::SelectResponse => false,
+            | Action::SelectTopPane
+            | Action::SelectBottomPane => false,
             // Most actions should not be hidden
             _ => true,
         }
@@ -517,12 +520,11 @@ impl Default for InputMap {
                 code: KeyCode::Char('r'),
                 modifiers: KeyModifiers::CTRL,
             }.into(),
+            Action::SelectBottomPane => KeyCode::Char('2').into(),
             Action::SelectCollection => KeyCode::F(3).into(),
-            Action::SelectProfileList => KeyCode::Char('1').into(),
-            Action::SelectProfile => KeyCode::Char('p').into(),
-            Action::SelectRecipeList => KeyCode::Char('2').into(),
-            Action::SelectRecipe => KeyCode::Char('c').into(),
-            Action::SelectResponse => KeyCode::Char('r').into(),
+            Action::SelectProfileList => KeyCode::Char('p').into(),
+            Action::SelectRecipeList => KeyCode::Char('r').into(),
+            Action::SelectTopPane => KeyCode::Char('1').into(),
             // ^^^^^ If making changes, make sure to update the docs ^^^^^
         })
     }

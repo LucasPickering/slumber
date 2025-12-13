@@ -31,45 +31,45 @@ input_bindings:
 
 ## Actions
 
-| Action                | Default Binding | Description                                           |
-| --------------------- | --------------- | ----------------------------------------------------- |
-| `scroll_up`           | `shift up`      | Scroll up one line in the current list/view           |
-| `scroll_down`         | `shift down`    | Scroll up one line in the current list/view           |
-| `scroll_left`         | `shift left`    | Scroll left one column in the current view            |
-| `scroll_right`        | `shift right`   | Scroll right one column in the current view           |
-| `quit`                | `q`             | Exit current dialog, or the entire app                |
-| `force_quit`          | `ctrl c`        | Exit the app, regardless                              |
-| `previous_pane`       | `shift tab`     | Select previous pane/form field in the cycle          |
-| `next_pane`           | `tab`           | Select next pane/form field in the cycle              |
-| `up`                  | `up`            | Navigate up                                           |
-| `down`                | `down`          | Navigate down                                         |
-| `left`                | `left`          | Navigate left                                         |
-| `right`               | `right`         | Navigate right                                        |
-| `page_up`             | `pgup`          | Scroll up by one page                                 |
-| `page_down`           | `pgdn`          | Scroll down by one page                               |
-| `home`                | `home`          | Move to the start of a line of text                   |
-| `end`                 | `end`           | Move to the end of a line of text                     |
-| `submit`              | `enter`         | Send a request, submit a text box, etc.               |
-| `toggle`              | `space`         | Toggle a checkbox on/off                              |
-| `cancel`              | `esc`           | Cancel current dialog or request                      |
-| `delete`              | `delete`        | Delete the selected object (e.g. a request)           |
-| `edit`                | `e`             | Edit a template or form field                         |
-| `reset`               | `r`             | Reset temporary recipe override to its default        |
-| `view`                | `v`             | Open the selected content (e.g. body) in your pager   |
-| `history`             | `h`             | Open request history for a recipe                     |
-| `search`              | `/`             | Open/select search for current pane                   |
-| `export`              | `:`             | Enter command for exporting response data             |
-| `reload_collection`   | `f5`            | Force reload collection file                          |
-| `fullscreen`          | `f`             | Fullscreen current pane                               |
-| `open_actions`        | `x`             | Open actions menu                                     |
-| `open_help`           | `?`             | Open help page                                        |
-| `search_history`      | `ctrl r`        | Search command history in query/export text box       |
-| `select_collection`   | `f3`            | Open collection select dialog                         |
-| `select_profile_list` | `p`             | Open Profile List dialog                              |
-| `select_recipe_list`  | `l`             | Select Recipe List pane                               |
-| `select_recipe`       | `c`             | Select Recipe pane                                    |
-| `select_response`     | `s`             | Select Request/Response pane                          |
-| `select_request`      | `r`             | Select Request/Response pane (backward compatibility) |
+| Action                | Default Binding | Description                                                                                                                       |
+| --------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `scroll_up`           | `shift up`      | Scroll up one line in the current list/view                                                                                       |
+| `scroll_down`         | `shift down`    | Scroll up one line in the current list/view                                                                                       |
+| `scroll_left`         | `shift left`    | Scroll left one column in the current view                                                                                        |
+| `scroll_right`        | `shift right`   | Scroll right one column in the current view                                                                                       |
+| `quit`                | `q`             | Exit current dialog, or the entire app                                                                                            |
+| `force_quit`          | `ctrl c`        | Exit the app, regardless                                                                                                          |
+| `previous_pane`       | `shift tab`     | Select previous pane/form field in the cycle                                                                                      |
+| `next_pane`           | `tab`           | Select next pane/form field in the cycle                                                                                          |
+| `up`                  | `up`            | Navigate up                                                                                                                       |
+| `down`                | `down`          | Navigate down                                                                                                                     |
+| `left`                | `left`          | Navigate left                                                                                                                     |
+| `right`               | `right`         | Navigate right                                                                                                                    |
+| `page_up`             | `pgup`          | Scroll up by one page                                                                                                             |
+| `page_down`           | `pgdn`          | Scroll down by one page                                                                                                           |
+| `home`                | `home`          | Move to the start of a line of text                                                                                               |
+| `end`                 | `end`           | Move to the end of a line of text                                                                                                 |
+| `submit`              | `enter`         | Send a request, submit a text box, etc.                                                                                           |
+| `toggle`              | `space`         | Toggle a checkbox on/off                                                                                                          |
+| `cancel`              | `esc`           | Cancel current dialog or request                                                                                                  |
+| `delete`              | `delete`        | Delete the selected object (e.g. a request)                                                                                       |
+| `edit`                | `e`             | Edit a template or form field                                                                                                     |
+| `reset`               | `r`             | Reset temporary recipe override to its default                                                                                    |
+| `view`                | `v`             | Open the selected content (e.g. body) in your pager                                                                               |
+| `history`             | `h`             | Open request history for a recipe                                                                                                 |
+| `search`              | `/`             | Open/select search for current pane                                                                                               |
+| `export`              | `:`             | Enter command for exporting response data                                                                                         |
+| `reload_collection`   | `f5`            | Force reload collection file                                                                                                      |
+| `fullscreen`          | `f`             | Fullscreen current pane                                                                                                           |
+| `open_actions`        | `x`             | Open actions menu                                                                                                                 |
+| `open_help`           | `?`             | Open help page                                                                                                                    |
+| `search_history`      | `ctrl r`        | Search command history in query/export text box                                                                                   |
+| `select_bottom_pane`  | `2`             | Select the lower pane (Request/Response or Profile). Aliased to `select_request` and `select_response` for backward compatibility |
+| `select_collection`   | `f3`            | Open collection select dialog                                                                                                     |
+| `select_profile_list` | `p`             | Open Profile List dialog                                                                                                          |
+| `select_recipe_list`  | `r`             | Select Recipe List pane                                                                                                           |
+| `select_recipe`       | `c`             | Select Recipe pane                                                                                                                |
+| `select_top_pane`     | `1`             | Select the upper pane (the recipe pane). Aliased to `select_recipe` for backward compatibility                                    |
 
 ## Key Combinations
 

@@ -240,6 +240,11 @@ impl Component for PrimaryView {
                 Action::Cancel if self.view.is_fullscreen() => {
                     self.view.exit_fullscreen();
                 }
+                // Close sidebar if it's open, regardless of the selected pane
+                // TODO this shouldn't take priority over request cancellation
+                Action::Cancel if self.view.is_sidebar_open() => {
+                    self.view.close_sidebar();
+                }
                 _ => propagate.set(),
             })
             .emitted(self.recipe_list.to_emitter(), |event| match event {

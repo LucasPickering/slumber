@@ -77,8 +77,8 @@ impl Component for ExchangePane {
 impl Draw for ExchangePane {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let input_engine = &TuiContext::get().input_engine;
-        let title =
-            input_engine.add_hint("Request / Response", Action::SelectResponse);
+        let title = input_engine
+            .add_hint("Request / Response", Action::SelectBottomPane);
         let mut block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),

@@ -149,7 +149,7 @@ impl Draw for ProfileDetail {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let title = TuiContext::get()
             .input_engine
-            .add_hint("Profile", Action::SelectProfile);
+            .add_hint("Profile", Action::SelectBottomPane);
         let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),

@@ -268,7 +268,7 @@ impl Draw for EditableTemplate {
     }
 }
 
-/// Persisted key for anything that goes in [RecipeOverrideStore]. This uniquely
+/// Persisted key for override templates in the session store. This uniquely
 /// identifies any piece of a recipe that can be overridden.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecipeOverrideKey {

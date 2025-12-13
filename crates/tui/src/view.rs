@@ -157,8 +157,12 @@ impl View {
 
     /// Update the UI to reflect the current state of an HTTP request. If
     /// `select` is `true`, select the request too.
-    pub fn update_request(&mut self, state: &RequestState, select: bool) {
-        self.root.update_request(state, select);
+    pub fn update_request(
+        &mut self,
+        state: &RequestState,
+        disposition: Option<RequestDisposition>,
+    ) {
+        self.root.update_request(state, disposition);
     }
 
     /// Ask the user a [Question]
@@ -254,6 +258,17 @@ where
     {
         self.to_string().into()
     }
+}
+
+/// Hint to the view about how state should be updated according to a change in
+/// request state
+#[derive(Debug, PartialEq)]
+pub enum RequestDisposition {
+    /// Updated request should be selected as the active request. Use this when
+    /// a new request is created or a new recipe/profile was selected.
+    Select,
+    /// Select the prompt form pane. Use this when a new prompt is visible.
+    OpenForm,
 }
 
 #[cfg(test)]

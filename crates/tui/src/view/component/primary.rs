@@ -3,7 +3,7 @@
 mod view_state;
 
 use crate::{
-    http::{RequestConfig, RequestState},
+    http::{RequestConfig, RequestState, RequestStore},
     message::{HttpMessage, Message},
     util::ResultReported,
     view::{
@@ -196,6 +196,19 @@ impl PrimaryView {
         });
         RecipeDetail::new(node)
     }
+
+    /// Should a cancel action close the sidebar?
+    fn can_close_sidebar(&self, request_store: &RequestStore) -> bool {
+        // If the sidebar is open and the request is *not* cancellable. We want
+        // request cancelling to take priority over closing the sidebar, but
+        // our parent has to handle the cancel action because that's where the
+        // necessary context is.
+        self.view.is_sidebar_open()
+            && self
+                .exchange_pane
+                .request_id()
+                .is_some_and(|request_id| !request_store.can_cancel(request_id))
+    }
 }
 
 impl Component for PrimaryView {
@@ -241,8 +254,9 @@ impl Component for PrimaryView {
                     self.view.exit_fullscreen();
                 }
                 // Close sidebar if it's open, regardless of the selected pane
-                // TODO this shouldn't take priority over request cancellation
-                Action::Cancel if self.view.is_sidebar_open() => {
+                Action::Cancel
+                    if self.can_close_sidebar(context.request_store) =>
+                {
                     self.view.close_sidebar();
                 }
                 _ => propagate.set(),

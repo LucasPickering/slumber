@@ -64,6 +64,24 @@ impl ViewState {
         });
     }
 
+    /// Move focus to the TODO
+    pub fn select_top_pane(&mut self) {
+        self.modify_layout(|layout| match layout {
+            PrimaryLayout::Default(pane) => *pane = DefaultPane::Recipe,
+            PrimaryLayout::Profile(pane) => *pane = ProfileSelectPane::Recipe,
+            PrimaryLayout::Recipe(pane) => *pane = RecipeSelectPane::Recipe,
+        });
+    }
+
+    /// Move focus to the TODO
+    pub fn select_bottom_pane(&mut self) {
+        self.modify_layout(|layout| match layout {
+            PrimaryLayout::Default(pane) => *pane = DefaultPane::Exchange,
+            PrimaryLayout::Profile(pane) => *pane = ProfileSelectPane::Profile,
+            PrimaryLayout::Recipe(pane) => *pane = RecipeSelectPane::Exchange,
+        });
+    }
+
     /// Move focus to the Recipe pane
     pub fn select_recipe_pane(&mut self) {
         self.modify_layout(|layout| match layout {

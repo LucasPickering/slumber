@@ -497,7 +497,7 @@ mod tests {
         // Select the second recipe
         component
             .int()
-            .send_keys([KeyCode::Char('2'), KeyCode::Down])
+            .send_keys([KeyCode::Char('r'), KeyCode::Down])
             .assert_empty();
         assert_eq!(component.selected_request_id, Some(exchange2.id));
     }
@@ -532,7 +532,7 @@ mod tests {
         // Select the second profile
         component
             .int()
-            .send_keys([KeyCode::Char('1'), KeyCode::Down, KeyCode::Enter])
+            .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
         // The exchange from profile2 should be selected now
         assert_eq!(component.selected_request_id, Some(exchange2.id));
@@ -607,7 +607,7 @@ mod tests {
         component
             .int()
             .drain_draw()
-            .send_key(KeyCode::Char('r'))
+            .send_key(KeyCode::Char('2'))
             .assert_empty();
 
         // Sanity check for initial state
@@ -626,7 +626,6 @@ mod tests {
 
         component
             .int()
-            .send_key(KeyCode::Char('r'))
             .action(&["Delete Request"])
             // Confirm
             .send_keys([KeyCode::Enter])

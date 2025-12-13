@@ -140,8 +140,9 @@ pub struct UpdateContext<'a> {
     /// Visible components from the last draw phase
     pub component_map: &'a ComponentMap,
     /// Access to the persistent and session stores. Most interactions with
-    /// this are done in [Component::persist], but sometimes components
-    /// need to directly modify the store.
+    /// this are done in
+    /// [Component::persist](super::component::Component::persist), but
+    /// sometimes components need to directly modify the store.
     pub persistent_store: &'a mut PersistentStore,
     /// Request state
     pub request_store: &'a mut RequestStore,

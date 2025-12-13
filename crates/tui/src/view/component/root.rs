@@ -3,7 +3,7 @@ use crate::{
     message::{HttpMessage, Message},
     util::ResultReported,
     view::{
-        Component, Question, ViewContext,
+        Component, Question, RequestDisposition, ViewContext,
         common::{actions::ActionMenu, modal::ModalQueue},
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
@@ -151,7 +151,7 @@ impl Root {
         };
 
         if let Some(state) = state {
-            self.update_request(state, true);
+            self.update_request(state, Some(RequestDisposition::Select));
         } else {
             // We switch to a recipe with no request, or just deleted the last
             // request for a recipe
@@ -163,10 +163,13 @@ impl Root {
 
     /// Update the UI to reflect the current state of an HTTP request. If
     /// `select` is `true`, select the request too.
-    pub fn update_request(&mut self, state: &RequestState, select: bool) {
-        // If we're being told to select a request but it's not for the current
-        // profile/recipe, then we say: NO. YOU'RE NOT MY REAL MOM.
-        if select
+    pub fn update_request(
+        &mut self,
+        state: &RequestState,
+        disposition: Option<RequestDisposition>,
+    ) {
+        // Select it if requested and we're on the current recipe/profile
+        if disposition == Some(RequestDisposition::Select)
             && state.profile_id() == self.selected_profile_id()
             && Some(state.recipe_id()) == self.primary_view.selected_recipe_id()
         {
@@ -175,7 +178,7 @@ impl Root {
 
         // If the updated request is the one in view, rebuild the view
         if Some(state.id()) == self.selected_request_id {
-            self.primary_view.refresh_request(Some(state));
+            self.primary_view.set_request(Some(state), disposition);
         }
     }
 
@@ -183,7 +186,7 @@ impl Root {
     /// no request available
     fn clear_request(&mut self) {
         self.selected_request_id = None;
-        self.primary_view.refresh_request(None);
+        self.primary_view.set_request(None, None);
     }
 
     /// Open the history modal for current recipe+profile

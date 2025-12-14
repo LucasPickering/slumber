@@ -271,8 +271,12 @@ impl LoadedState {
     ) -> Self {
         let collection = Arc::new(collection);
         let request_store = RequestStore::new(database.clone());
-        let view =
-            View::new(&collection, database.clone(), messages_tx.clone());
+        let view = View::new(
+            &collection,
+            database.clone(),
+            messages_tx.clone(),
+            &request_store,
+        );
         let watcher =
             watch_collection(collection_file.path(), messages_tx.clone()).ok();
 
@@ -423,6 +427,7 @@ impl LoadedState {
             &self.collection,
             self.database.clone(),
             self.messages_tx(),
+            &self.request_store,
         );
         self.view.notify("Reloaded collection");
     }

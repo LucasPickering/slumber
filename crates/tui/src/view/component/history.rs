@@ -7,17 +7,19 @@ use crate::{
         common::{
             Pane,
             button::ButtonGroup,
-            select::{Select, SelectEvent, SelectEventType, SelectListProps},
+            select::{Select, SelectEventType, SelectListProps},
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             misc::ConfirmButton,
         },
-        event::{Event, EventMatch, ToEmitter},
+        event::{Event, EventMatch},
+        persistent::PersistentKey,
     },
 };
 use ratatui::text::{Line, Span, Text};
+use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
@@ -38,23 +40,26 @@ pub struct History {
 }
 
 impl History {
-    /// Construct a new history modal with the given list of requests. Parent
-    /// is responsible for loading the list from the request store.
+    /// TODO
     pub fn new(
-        recipe_id: &RecipeId,
+        recipe_id: Option<&RecipeId>,
         profile_id: Option<&ProfileId>,
         request_store: &RequestStore,
-        selected_request_id: Option<RequestId>,
     ) -> Self {
         // Make sure all requests for this profile+recipe are loaded
-        let requests = request_store
-            .load_summaries(profile_id, recipe_id)
-            .reported(&ViewContext::messages_tx())
+
+        let requests = recipe_id
+            // If there is no recipe selected, just use an empty list
+            .and_then(|recipe_id| {
+                request_store
+                    .load_summaries(profile_id, recipe_id)
+                    .reported(&ViewContext::messages_tx())
+            })
             .map(Vec::from_iter)
             .unwrap_or_default();
         let select = Select::builder(requests)
             .subscribe([SelectEventType::Select])
-            .preselect_opt(selected_request_id.as_ref())
+            .persisted(&SelectedRequestKey)
             .build();
 
         Self {
@@ -63,6 +68,16 @@ impl History {
             deleting: false,
             delete_confirm_buttons: Default::default(),
         }
+    }
+
+    /// TODO
+    pub fn selected_request_id(&self) -> Option<RequestId> {
+        self.select.selected().map(RequestStateSummary::id)
+    }
+
+    /// TODO
+    pub fn select_request(&mut self, request_id: RequestId) {
+        self.select.select(&request_id);
     }
 
     /// Delete the selected request from the request store and our own list
@@ -75,11 +90,7 @@ impl History {
                 .reported(&ViewContext::messages_tx());
         }
         self.select.delete_selected();
-        if self.select.is_empty() {
-            // Let the root know there's nothing left. This is necessary because
-            // the select doesn't emit an event when the final item is deleted
-            ViewContext::push_event(Event::HttpSelectRequest(None));
-        }
+        // TODO make sure the visible item is wiped out
     }
 }
 
@@ -93,33 +104,24 @@ impl Component for History {
         context: &mut UpdateContext,
         event: Event,
     ) -> EventMatch {
-        event
-            .m()
-            .action(|action, propagate| match action {
-                Action::Delete => {
-                    if self.select.selected().is_some() {
-                        // Morph into a confirmation modal
-                        self.deleting = true;
-                    }
+        event.m().action(|action, propagate| match action {
+            Action::Delete => {
+                if self.select.selected().is_some() {
+                    // Morph into a confirmation modal
+                    self.deleting = true;
                 }
-                // Only consume submission if we're in delete confirmation
-                Action::Submit if self.deleting => {
-                    if self.delete_confirm_buttons.selected().to_bool() {
-                        self.delete_selected(context.request_store);
-                    }
-                    // Reset state for next time
-                    self.deleting = false;
-                    self.delete_confirm_buttons = Default::default();
+            }
+            // Only consume submission if we're in delete confirmation
+            Action::Submit if self.deleting => {
+                if self.delete_confirm_buttons.selected().to_bool() {
+                    self.delete_selected(context.request_store);
                 }
-                _ => propagate.set(),
-            })
-            .emitted(self.select.to_emitter(), |event| {
-                if let SelectEvent::Select(index) = event {
-                    ViewContext::push_event(Event::HttpSelectRequest(Some(
-                        self.select[index].id(),
-                    )));
-                }
-            })
+                // Reset state for next time
+                self.deleting = false;
+                self.delete_confirm_buttons = Default::default();
+            }
+            _ => propagate.set(),
+        })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -192,11 +194,14 @@ impl Generate for &RequestStateSummary {
     }
 }
 
-/// Allow selection by ID
-impl PartialEq<RequestId> for RequestStateSummary {
-    fn eq(&self, id: &RequestId) -> bool {
-        &self.id() == id
-    }
+/// Persistence key for the selected request
+///
+/// Exported for testing in the root component
+#[derive(Debug, Serialize)]
+pub struct SelectedRequestKey;
+
+impl PersistentKey for SelectedRequestKey {
+    type Value = RequestId;
 }
 
 #[cfg(test)]
@@ -209,7 +214,7 @@ mod tests {
     use itertools::Itertools;
     use rstest::rstest;
     use slumber_core::http::Exchange;
-    use slumber_util::{Factory, assert_matches};
+    use slumber_util::Factory;
     use terminput::KeyCode;
 
     /// Test that we can browse requests, and selecting one updates root state
@@ -234,26 +239,19 @@ mod tests {
             &harness,
             &terminal,
             History::new(
-                recipe_id,
+                Some(recipe_id),
                 Some(profile_id),
                 &harness.request_store.borrow_mut(),
-                None,
             ),
         );
 
         // Initial state
-        let selected = assert_matches!(
-            component.int().drain_draw().into_propagated().as_slice(),
-            &[Event::HttpSelectRequest(Some(selected))] => selected,
-        );
-        assert_eq!(selected, exchanges[0].id);
+        component.int().drain_draw().assert_empty();
+        assert_eq!(component.selected_request_id(), Some(exchanges[0].id));
 
         // Select the next one
-        let selected = assert_matches!(
-            component.int().send_key(KeyCode::Down).into_propagated().as_slice(),
-            &[Event::HttpSelectRequest(Some(selected))] => selected,
-        );
-        assert_eq!(selected, exchanges[1].id);
+        component.int().drain_draw().assert_empty();
+        assert_eq!(component.selected_request_id(), Some(exchanges[1].id));
     }
 
     /// Test that we can delete requests from the store
@@ -278,39 +276,29 @@ mod tests {
             &harness,
             &terminal,
             History::new(
-                recipe_id,
+                Some(recipe_id),
                 Some(profile_id),
                 &harness.request_store.borrow_mut(),
-                None,
             ),
         );
 
         // Initial state
-        let selected = assert_matches!(
-            component.int().drain_draw().into_propagated().as_slice(),
-            &[Event::HttpSelectRequest(Some(selected))] => selected,
-        );
-        assert_eq!(selected, exchanges[0].id);
+        component.int().drain_draw().assert_empty();
+        assert_eq!(component.selected_request_id(), Some(exchanges[0].id));
 
         // Delete the first. Second is now selected
-        let selected = assert_matches!(
-            component
-                .int()
-                .send_keys([KeyCode::Delete, KeyCode::Enter])
-                .into_propagated().as_slice(),
-            &[Event::HttpSelectRequest(Some(selected))] => selected,
-        );
-        assert_eq!(selected, exchanges[1].id);
+        component
+            .int()
+            .send_keys([KeyCode::Delete, KeyCode::Enter])
+            .assert_empty();
+        assert_eq!(component.selected_request_id(), Some(exchanges[1].id));
 
         // Delete the second. Nothing selected now
-        assert_matches!(
-            component
-                .int()
-                .send_keys([KeyCode::Delete, KeyCode::Enter])
-                .into_propagated()
-                .as_slice(),
-            &[Event::HttpSelectRequest(None)],
-        );
+        component
+            .int()
+            .send_keys([KeyCode::Delete, KeyCode::Enter])
+            .assert_empty();
+        assert_eq!(component.selected_request_id(), None);
 
         // Make sure both the request store and the DB were updated
         let requests = harness

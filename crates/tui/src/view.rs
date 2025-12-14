@@ -17,7 +17,7 @@ pub use util::{PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
     context::TuiContext,
-    http::{RequestConfig, RequestState},
+    http::{RequestConfig, RequestState, RequestStore},
     input::InputEvent,
     message::MessageSender,
     view::{
@@ -71,6 +71,7 @@ impl View {
         collection: &Arc<Collection>,
         database: CollectionDatabase,
         messages_tx: MessageSender,
+        request_store: &RequestStore,
     ) -> Self {
         ViewContext::init(Arc::clone(collection), database, messages_tx);
 
@@ -81,7 +82,7 @@ impl View {
         };
 
         Self {
-            root: Root::new(),
+            root: Root::new(request_store),
             debug_monitor,
         }
     }
@@ -296,6 +297,7 @@ mod tests {
             &collection.into(),
             harness.database.clone(),
             harness.messages_tx().clone(),
+            &harness.request_store.borrow(),
         );
 
         // Initial events

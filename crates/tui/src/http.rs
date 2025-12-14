@@ -1023,6 +1023,13 @@ impl From<&RequestState> for RequestStateSummary {
     }
 }
 
+// TODO
+impl PartialEq<RequestId> for RequestStateSummary {
+    fn eq(&self, id: &RequestId) -> bool {
+        self.id() == *id
+    }
+}
+
 /// Unique ID for a single prompt from a request
 ///
 /// This is used to correlate a prompt in the request store with an input field

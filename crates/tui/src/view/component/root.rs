@@ -1,7 +1,6 @@
 use crate::{
     http::{RequestConfig, RequestState, RequestStore},
     message::{HttpMessage, Message},
-    util::ResultReported,
     view::{
         Component, Question, RequestDisposition, ViewContext,
         common::{actions::ActionMenu, modal::ModalQueue},
@@ -15,12 +14,10 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        persistent::{PersistentKey, PersistentStore},
     },
 };
 use indexmap::IndexMap;
 use ratatui::{layout::Layout, prelude::Constraint};
-use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{collection::ProfileId, http::RequestId};
 use slumber_template::Template;
@@ -30,8 +27,6 @@ use slumber_template::Template;
 pub struct Root {
     // ===== Own State =====
     id: ComponentId,
-    /// Which request are we showing in the request/response panel?
-    selected_request_id: Option<RequestId>,
 
     // ==== Children =====
     primary_view: PrimaryView,
@@ -51,24 +46,12 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new() -> Self {
-        // Restore the selected request via an event. When selecting the
-        // request we need to load it into the request store as well, and we
-        // don't have access to that here
-        if let Some(selected_request_id) =
-            PersistentStore::get(&SelectedRequestKey)
-        {
-            ViewContext::push_event(Event::HttpSelectRequest(Some(
-                selected_request_id,
-            )));
-        }
-
+    pub fn new(request_store: &RequestStore) -> Self {
         Self {
             id: ComponentId::default(),
-            selected_request_id: None,
 
             // Children
-            primary_view: PrimaryView::new(),
+            primary_view: PrimaryView::new(request_store),
             footer: Footer::default(),
             help: Help::default(),
             actions: ActionMenu::default(),
@@ -114,8 +97,13 @@ impl Root {
         &self,
         request_store: &'a RequestStore,
     ) -> Option<&'a RequestState> {
-        self.selected_request_id
+        self.selected_request_id()
             .and_then(|id| request_store.get(id))
+    }
+
+    /// TODO
+    fn selected_request_id(&self) -> Option<RequestId> {
+        self.primary_view.selected_request_id()
     }
 
     /// Load a request from the store and select it
@@ -172,25 +160,13 @@ impl Root {
         state: &RequestState,
         disposition: Option<RequestDisposition>,
     ) {
-        // Select it if requested and we're on the current recipe/profile
-        if disposition == Some(RequestDisposition::Select)
-            && state.profile_id() == self.selected_profile_id()
-            && Some(state.recipe_id()) == self.primary_view.selected_recipe_id()
-        {
-            self.selected_request_id = Some(state.id());
-        }
-
-        // If the updated request is the one in view, rebuild the view
-        if Some(state.id()) == self.selected_request_id {
-            self.primary_view.set_request(Some(state), disposition);
-        }
+        self.primary_view.update_request(Some(state), disposition);
     }
 
     /// Clear the selected request. Call this when switching to a state that has
     /// no request available
     fn clear_request(&mut self) {
-        self.selected_request_id = None;
-        self.primary_view.set_request(None, None);
+        self.primary_view.update_request(None, None);
     }
 
     /// Open a modal to confirm deletion of all requests for the selected recipe
@@ -205,7 +181,7 @@ impl Root {
 
     /// Cancel the active request
     fn cancel_request(&mut self, context: &mut UpdateContext<'_>) {
-        if let Some(request_id) = self.selected_request_id
+        if let Some(request_id) = self.selected_request_id()
             && context.request_store.can_cancel(request_id)
         {
             self.questions.open(QuestionModal::confirm(
@@ -245,14 +221,6 @@ impl Component for Root {
                     }
                 }
                 Action::OpenHelp => self.help.open(),
-                Action::History => {
-                    // We have to handle this event here because we have the
-                    // selected request ID
-                    self.primary_view.open_history(
-                        context.request_store,
-                        self.selected_request_id,
-                    );
-                }
                 Action::Cancel => self.cancel_request(context),
                 Action::Quit => ViewContext::send_message(Message::Quit),
                 Action::ReloadCollection => {
@@ -277,24 +245,10 @@ impl Component for Root {
                 // it
                 Event::Emitted { .. } => Some(event),
 
-                // Set selected request, and load it from the DB if needed
-                Event::HttpSelectRequest(request_id) => {
-                    self.load_and_select_request(
-                        context.request_store,
-                        request_id,
-                    )
-                    .reported(&ViewContext::messages_tx());
-                    None
-                }
-
                 // Any other unhandled input event should *not* log an error,
                 // because it is probably just unmapped input, and not a bug
                 Event::Input { .. } => None,
             })
-    }
-
-    fn persist(&self, store: &mut PersistentStore) {
-        store.set_opt(&SelectedRequestKey, self.selected_request_id.as_ref());
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -350,20 +304,14 @@ impl Draw for Root {
     }
 }
 
-/// Persistence key for the selected request
-#[derive(Debug, Serialize)]
-struct SelectedRequestKey;
-
-impl PersistentKey for SelectedRequestKey {
-    type Value = RequestId;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        view::{
+            component::history::SelectedRequestKey, test_util::TestComponent,
+        },
     };
     use rstest::rstest;
     use slumber_core::{
@@ -385,15 +333,18 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         component.int().drain_draw().assert_empty();
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = &component.primary_view;
         assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
         assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
-        assert_eq!(component.selected_request_id, Some(exchange.id));
+        assert_eq!(component.selected_request_id(), Some(exchange.id));
 
         // It'd be nice to assert on the view but it's just too complicated to
         // be worth mocking the whole thing out
@@ -419,8 +370,11 @@ mod tests {
             .persistent_store()
             .set(&SelectedRequestKey, &old_exchange.id);
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         component.int().drain_draw().assert_empty();
 
         // Make sure everything was preselected correctly
@@ -432,7 +386,7 @@ mod tests {
             component.primary_view.selected_recipe_id(),
             Some(recipe_id)
         );
-        assert_eq!(component.selected_request_id, Some(old_exchange.id));
+        assert_eq!(component.selected_request_id(), Some(old_exchange.id));
     }
 
     /// Test that if the persisted request ID isn't in the DB, we'll fall back
@@ -455,11 +409,14 @@ mod tests {
             .persistent_store()
             .set(&SelectedRequestKey, &RequestId::new());
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
     }
 
     /// Test that when the selected recipe changes, the selected request changes
@@ -483,18 +440,21 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(component.selected_request_id, Some(exchange1.id));
+        assert_eq!(component.selected_request_id(), Some(exchange1.id));
 
         // Select the second recipe
         component
             .int()
             .send_keys([KeyCode::Char('r'), KeyCode::Down])
             .assert_empty();
-        assert_eq!(component.selected_request_id, Some(exchange2.id));
+        assert_eq!(component.selected_request_id(), Some(exchange2.id));
     }
 
     /// Test that when the selected profile changes, the selected request
@@ -518,11 +478,14 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(component.selected_request_id, Some(exchange1.id));
+        assert_eq!(component.selected_request_id(), Some(exchange1.id));
 
         // Select the second profile
         component
@@ -530,7 +493,7 @@ mod tests {
             .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
         // The exchange from profile2 should be selected now
-        assert_eq!(component.selected_request_id, Some(exchange2.id));
+        assert_eq!(component.selected_request_id(), Some(exchange2.id));
     }
 
     /// Test "Delete Requests" action via both the recipe pane
@@ -548,8 +511,11 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         // Select recipe pane
         component
             .int()
@@ -558,7 +524,7 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         // Select "Delete Requests" but decline the confirmation
         component
@@ -569,7 +535,7 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         // Select "Delete Requests" and accept. I don't feel like testing Delete
         // for All Profiles
@@ -580,7 +546,7 @@ mod tests {
             .send_keys([KeyCode::Enter])
             .assert_empty();
 
-        assert_eq!(component.selected_request_id, None);
+        assert_eq!(component.selected_request_id(), None);
     }
 
     /// Test "Delete Request" action, which is available via the
@@ -596,8 +562,11 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         // Select exchange pane
         component
             .int()
@@ -606,7 +575,7 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         // Select "Delete Request" but decline the confirmation
         component
@@ -617,7 +586,7 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(component.selected_request_id(), Some(new_exchange.id));
 
         component
             .int()
@@ -627,15 +596,18 @@ mod tests {
             .assert_empty();
 
         // New exchange is gone
-        assert_eq!(component.selected_request_id, Some(old_exchange.id));
+        assert_eq!(component.selected_request_id(), Some(old_exchange.id));
         assert_eq!(harness.request_store.borrow().get(new_exchange.id), None);
     }
 
     /// Open and close the help page
     #[rstest]
     fn test_help(harness: TestHarness, terminal: TestTerminal) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.request_store.borrow()),
+        );
         assert!(!component.help.is_open());
 
         // Open help

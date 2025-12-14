@@ -64,7 +64,7 @@ pub struct PrimaryView {
     /// etc.) so we don't need to handle that here.
     exchange_pane: ExchangePane,
     /// List of all past requests for the current recipe/profile
-    history: Option<History>,
+    history: History,
     /// Modal to select a different collection file
     collection_select: ModalQueue<CollectionSelect>,
 
@@ -72,7 +72,7 @@ pub struct PrimaryView {
 }
 
 impl PrimaryView {
-    pub fn new() -> Self {
+    pub fn new(request_store: &RequestStore) -> Self {
         let view = PersistentStore::get(&ViewStateKey).unwrap_or_default();
 
         let recipe_list = RecipeList::default();
@@ -91,6 +91,8 @@ impl PrimaryView {
         // There will be a message to load it immediately after though
         let exchange_pane = ExchangePane::new(None, recipe_node_type);
 
+        let history = History::new(recipe_id, profile_id, request_store);
+
         Self {
             id: ComponentId::default(),
             view,
@@ -100,7 +102,7 @@ impl PrimaryView {
             profile_list,
             profile_detail,
             exchange_pane,
-            history: None,
+            history,
             collection_select: Default::default(),
 
             global_actions_emitter: Default::default(),
@@ -126,6 +128,11 @@ impl PrimaryView {
 
     fn selected_recipe_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
         self.recipe_list.selected()
+    }
+
+    /// TODO
+    pub fn selected_request_id(&self) -> Option<RequestId> {
+        self.history.selected_request_id()
     }
 
     /// Get a definition of the request that should be sent from the current
@@ -163,58 +170,53 @@ impl PrimaryView {
                     .reported(&ViewContext::messages_tx())
             });
         self.recipe_detail = RecipeDetail::new(selected_recipe_node);
-
-        // When the recipe/profile changes, we want to select the most recent
-        // recipe for that combo as well
-        ViewContext::push_event(Event::HttpSelectRequest(None));
+        // TODO select request for recipe
     }
 
     /// Update the Exchange pane with the selected request. Call this whenever
     /// a new request is selected or the selected request changes.
-    pub fn set_request(
+    ///
+    /// TODO
+    pub fn update_request(
         &mut self,
         selected_request: Option<&RequestState>,
         disposition: Option<RequestDisposition>,
     ) {
-        self.exchange_pane = ExchangePane::new(
-            selected_request,
-            self.selected_recipe_node().map(|(_, node_type)| node_type),
-        );
+        let Some(request) = selected_request else {
+            todo!()
+        };
 
-        // If there's a new prompt, select the form pane
-        if disposition == Some(RequestDisposition::OpenForm) {
-            self.view.select_exchange_pane();
+        // If the request is for a different recipe/profile, we can ignore it
+        if Some(request.recipe_id()) != self.selected_recipe_id()
+            || request.profile_id() != self.selected_profile_id()
+        {
+            return;
         }
-    }
 
-    /// Open the history sidebar for current recipe+profile
-    pub fn open_history(
-        &mut self,
-        request_store: &RequestStore,
-        selected_request_id: Option<RequestId>,
-    ) {
-        if let Some(recipe_id) = self.selected_recipe_id() {
-            self.history = Some(History::new(
-                recipe_id,
-                self.selected_profile_id(),
-                request_store,
-                selected_request_id,
-            ));
-            self.view.open_sidebar(Sidebar::History);
+        match disposition {
+            Some(RequestDisposition::Select) => {
+                // New requests get selected
+                self.history.select_request(request.id());
+            }
+            Some(RequestDisposition::OpenForm) => {
+                // If a new prompt form is being shown, select its pane
+                self.view.select_exchange_pane();
+            }
+            None => {}
         }
-    }
 
-    /// Send a message to open the collection file to the specified location, or
-    /// the top of the file if `None`.
-    fn edit_collection(&self, location: Option<SourceLocation>) {
-        let collection = ViewContext::collection();
-        // Get the source location of the selected folder/recipe
-        let location = self
-            .selected_recipe_node()
-            .and_then(|(id, _)| collection.recipes.get(id))
-            .map(RecipeNode::location)
-            .cloned();
-        ViewContext::send_message(Message::CollectionEdit { location });
+        // If we're showing this request, update the Exchange pane. This could
+        // be a new request that we just switched to, or an update to an
+        // existing request. We'll ignore updates to requests that
+        // aren't being shown
+        if self.selected_request_id() == Some(request.id()) {
+            self.exchange_pane = ExchangePane::new(
+                selected_request,
+                self.selected_recipe_node().map(|(_, node_type)| node_type),
+            );
+        }
+
+        // TODO update history list
     }
 
     fn build_recipe_detail(recipe_id: Option<&RecipeId>) -> RecipeDetail {
@@ -256,11 +258,7 @@ impl PrimaryView {
                 Sidebar::Recipe => {
                     canvas.draw(&self.recipe_list, sidebar_props, area, true);
                 }
-                Sidebar::History => {
-                    if let Some(history) = &self.history {
-                        canvas.draw(history, (), area, true);
-                    }
-                }
+                Sidebar::History => canvas.draw(&self.history, (), area, true),
             },
             // Top Pane - always Recipe
             PrimaryLayout::Default(DefaultPane::Top)
@@ -400,9 +398,7 @@ impl PrimaryView {
                 sidebar_selected,
             ),
             Sidebar::History => {
-                if let Some(history) = &self.history {
-                    canvas.draw(history, (), sidebar_area, sidebar_selected);
-                }
+                canvas.draw(&self.history, (), sidebar_area, sidebar_selected);
             }
         }
 
@@ -465,6 +461,7 @@ impl Component for PrimaryView {
                 Action::SelectCollection => {
                     self.collection_select.open(CollectionSelect::new());
                 }
+                Action::History => self.view.open_sidebar(Sidebar::History),
 
                 // Toggle fullscreen
                 Action::Fullscreen => self.view.toggle_fullscreen(),
@@ -503,7 +500,9 @@ impl Component for PrimaryView {
             .emitted(self.global_actions_emitter, |menu_action| {
                 match menu_action {
                     PrimaryMenuAction::EditCollection(location) => {
-                        self.edit_collection(location);
+                        ViewContext::send_message(Message::CollectionEdit {
+                            location,
+                        });
                     }
                 }
             })
@@ -628,16 +627,10 @@ mod tests {
         harness: &mut TestHarness,
         terminal: &'term TestTerminal,
     ) -> TestComponent<'term, PrimaryView> {
-        let mut component =
-            TestComponent::new(harness, terminal, PrimaryView::new());
-        // Initial events
-        assert_matches!(
-            component.int().drain_draw().into_propagated().as_slice(),
-            // The profile and recipe lists each trigger this once
-            &[
-                Event::HttpSelectRequest(None),
-                Event::HttpSelectRequest(None)
-            ]
+        let component = TestComponent::new(
+            harness,
+            terminal,
+            PrimaryView::new(&harness.request_store.borrow()),
         );
         // Clear template preview messages so we can test what we want
         harness.clear_messages();

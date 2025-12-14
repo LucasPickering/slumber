@@ -117,6 +117,7 @@ mod tests {
             name: Some("My Collection".into()),
             profiles: by_id([Profile {
                 id: "example".into(),
+                location: SourceLocation::default(),
                 name: Some("Example Profile".into()),
                 default: false,
                 data: indexmap! {

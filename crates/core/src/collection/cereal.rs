@@ -116,9 +116,11 @@ impl DeserializeYaml for Profile {
         yaml: SourcedYaml,
         source_map: &SourceMap,
     ) -> yaml::Result<Self> {
+        let location = yaml.location.resolve(source_map);
         let mut deserializer = StructDeserializer::new(yaml)?;
         let profile = Self {
             id: ProfileId::default(), // Will be set by parent based on key
+            location,
             name: deserializer.get(Field::new("name").opt(), source_map)?,
             default: deserializer
                 .get(Field::new("default").opt(), source_map)?,

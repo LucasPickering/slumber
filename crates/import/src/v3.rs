@@ -118,6 +118,7 @@ impl IntoV4 for v3::Profile {
         let data = self.data.into_v4(chains)?;
         Ok(v4::Profile {
             id: self.id,
+            location: SourceLocation::default(),
             name: self.name,
             default: self.default,
             data,

@@ -91,10 +91,25 @@ impl Collection {
             .expect("Collection has no recipes")
     }
 
+    /// Get the first **recipe** (not recipe node) in the list. Panic if empty.
+    /// This is useful because the default collection factory includes one
+    /// recipe.
+    pub fn first_recipe(&self) -> &Recipe {
+        let id = self.first_recipe_id();
+        self.recipes.get_recipe(id).unwrap()
+    }
+
     /// Get the ID of the first profile in the list. Panic if empty. This is
     /// useful because the default collection factory includes one profile.
     pub fn first_profile_id(&self) -> &ProfileId {
         self.profiles.first().expect("Collection has no profiles").0
+    }
+
+    /// Get the first profile in the list. Panic if empty. This is useful
+    /// because the default collection factory includes one profile.
+    pub fn first_profile(&self) -> &Profile {
+        let id = self.first_profile_id();
+        self.profiles.get(id).unwrap()
     }
 }
 
@@ -126,6 +141,9 @@ impl slumber_util::Factory for Collection {
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
+    /// Location where this profile is defined in YAML
+    #[serde(skip)]
+    pub location: SourceLocation,
     pub name: Option<String>,
     /// For the CLI, use this profile when no `--profile` flag is passed. For
     /// the TUI, select this profile by default from the list. Only one profile
@@ -153,6 +171,12 @@ impl slumber_util::Factory for Profile {
     fn factory((): ()) -> Self {
         Self {
             id: ProfileId::factory(()),
+
+            location: SourceLocation {
+                source: "memory".into(),
+                line: 5,
+                column: 4,
+            },
             name: None,
             default: false,
             data: IndexMap::new(),
@@ -224,7 +248,11 @@ impl slumber_util::Factory for Folder {
     fn factory((): ()) -> Self {
         Self {
             id: RecipeId::factory(()),
-            location: SourceLocation::default(),
+            location: SourceLocation {
+                source: "memory".into(),
+                line: 10,
+                column: 4,
+            },
             name: None,
             children: IndexMap::new(),
         }
@@ -338,7 +366,11 @@ impl slumber_util::Factory for Recipe {
     fn factory((): ()) -> Self {
         Self {
             id: RecipeId::factory(()),
-            location: SourceLocation::default(),
+            location: SourceLocation {
+                source: "memory".into(),
+                line: 20,
+                column: 4,
+            },
             persist: true,
             name: None,
             method: HttpMethod::Get,

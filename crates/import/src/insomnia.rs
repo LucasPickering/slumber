@@ -477,6 +477,7 @@ fn build_profiles(
                 id.clone(),
                 Profile {
                     id,
+                    location: SourceLocation::default(),
                     name: Some(environment.name),
                     default: false,
                     data,

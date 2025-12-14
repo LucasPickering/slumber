@@ -314,7 +314,7 @@ impl<K: PersistentKey<Value = String>> Component for QueryableBody<K> {
     }
 }
 
-impl<K> Draw for QueryableBody<K> {
+impl<K: PersistentKey<Value = String>> Draw for QueryableBody<K> {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let [body_area, query_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])

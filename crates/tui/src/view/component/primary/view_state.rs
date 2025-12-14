@@ -8,7 +8,7 @@ use strum::{EnumIter, IntoEnumIterator};
 /// Invalid view states are unrepresentable with this type.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ViewState {
-    /// Which panes should be shown?
+    /// What panes are currently visible?
     layout: PrimaryLayout,
     /// If `true`, the selected pane should take up the entire screen, and
     /// other panes are not visible.
@@ -16,36 +16,36 @@ pub struct ViewState {
 }
 
 impl ViewState {
-    /// Get the current layout
+    /// Get the current sidebar/pane layout
     pub fn layout(&self) -> PrimaryLayout {
         self.layout
+    }
+
+    /// Get the open sidebar, or `None` if the sidebar is closed
+    pub fn sidebar(&self) -> Option<Sidebar> {
+        match self.layout {
+            PrimaryLayout::Default(_) => None,
+            PrimaryLayout::Sidebar { sidebar, .. } => Some(sidebar),
+        }
     }
 
     /// Open the profile list in the sidebar
     pub fn open_profile_list(&mut self) {
         self.modify_layout(|layout| {
-            *layout = PrimaryLayout::Profile(ProfileSelectPane::List);
+            *layout = PrimaryLayout::sidebar(Sidebar::Profile);
         });
     }
 
     /// Open the recipe list in the sidebar
     pub fn open_recipe_list(&mut self) {
         self.modify_layout(|layout| {
-            *layout = PrimaryLayout::Recipe(RecipeSelectPane::List);
+            *layout = PrimaryLayout::sidebar(Sidebar::Recipe);
         });
-    }
-
-    /// Are we in a layout with the sidebar open?
-    pub fn is_sidebar_open(&self) -> bool {
-        match self.layout {
-            PrimaryLayout::Default(_) => false,
-            PrimaryLayout::Profile(_) | PrimaryLayout::Recipe(_) => true,
-        }
     }
 
     /// Close the sidebar and return to the default view
     pub fn close_sidebar(&mut self) {
-        self.layout = PrimaryLayout::Default(DefaultPane::Recipe);
+        self.layout = PrimaryLayout::Default(DefaultPane::Top);
     }
 
     /// Select the previous pane in the cycle
@@ -55,8 +55,10 @@ impl ViewState {
         }
         self.modify_layout(|layout| match layout {
             PrimaryLayout::Default(pane) => *pane = previous(*pane),
-            PrimaryLayout::Profile(pane) => *pane = previous(*pane),
-            PrimaryLayout::Recipe(pane) => *pane = previous(*pane),
+            PrimaryLayout::Sidebar {
+                selected_pane: pane,
+                ..
+            } => *pane = previous(*pane),
         });
     }
 
@@ -67,53 +69,67 @@ impl ViewState {
         }
         self.modify_layout(|layout| match layout {
             PrimaryLayout::Default(pane) => *pane = next(*pane),
-            PrimaryLayout::Profile(pane) => *pane = next(*pane),
-            PrimaryLayout::Recipe(pane) => *pane = next(*pane),
+            PrimaryLayout::Sidebar {
+                selected_pane: pane,
+                ..
+            } => *pane = next(*pane),
         });
     }
 
     /// Move focus to the upper pane in the layout
     pub fn select_top_pane(&mut self) {
         self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = DefaultPane::Recipe,
-            PrimaryLayout::Profile(pane) => *pane = ProfileSelectPane::Recipe,
-            PrimaryLayout::Recipe(pane) => *pane = RecipeSelectPane::Recipe,
+            PrimaryLayout::Default(pane) => *pane = DefaultPane::Top,
+            PrimaryLayout::Sidebar {
+                selected_pane: pane,
+                ..
+            } => *pane = SidebarPane::Top,
         });
     }
 
     /// Move focus to the lower pane in the layout
     pub fn select_bottom_pane(&mut self) {
         self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = DefaultPane::Exchange,
-            PrimaryLayout::Profile(pane) => *pane = ProfileSelectPane::Profile,
-            PrimaryLayout::Recipe(pane) => *pane = RecipeSelectPane::Exchange,
+            PrimaryLayout::Default(pane) => *pane = DefaultPane::Bottom,
+            PrimaryLayout::Sidebar {
+                selected_pane: pane,
+                ..
+            } => *pane = SidebarPane::Bottom,
         });
     }
 
     /// Move focus to the Recipe pane
     pub fn select_recipe_pane(&mut self) {
-        self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = DefaultPane::Recipe,
-            PrimaryLayout::Profile(pane) => *pane = ProfileSelectPane::Recipe,
-            PrimaryLayout::Recipe(pane) => *pane = RecipeSelectPane::Recipe,
-        });
+        self.select_top_pane();
     }
 
     /// Move focus to the Profile pane. If it's not in this view, do nothing
     pub fn select_profile_pane(&mut self) {
         self.modify_layout(|layout| match layout {
-            PrimaryLayout::Profile(pane) => *pane = ProfileSelectPane::Profile,
-            // Profile pane isn't visible in these layouts
-            PrimaryLayout::Default(_) | PrimaryLayout::Recipe(_) => {}
+            PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Profile,
+                selected_pane: pane,
+            } => *pane = SidebarPane::Bottom,
+            PrimaryLayout::Default(_)
+            | PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Recipe,
+                ..
+            } => {}
         });
     }
 
     /// Move focus to the Exchange pane. If it's not in this view, do nothing
     pub fn select_exchange_pane(&mut self) {
         self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = DefaultPane::Exchange,
-            PrimaryLayout::Profile(_) => {} // Pane not visible
-            PrimaryLayout::Recipe(pane) => *pane = RecipeSelectPane::Exchange,
+            PrimaryLayout::Default(pane) => *pane = DefaultPane::Bottom,
+            PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Recipe,
+                selected_pane: pane,
+            } => *pane = SidebarPane::Bottom,
+            PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Profile,
+                ..
+            } => {}
         });
     }
 
@@ -147,7 +163,7 @@ impl ViewState {
 impl Default for ViewState {
     fn default() -> Self {
         ViewState {
-            layout: PrimaryLayout::Default(DefaultPane::Recipe),
+            layout: PrimaryLayout::Default(DefaultPane::Top),
             fullscreen: false,
         }
     }
@@ -158,33 +174,43 @@ impl Default for ViewState {
 pub enum PrimaryLayout {
     /// Default layout: all sidebars are collapsed
     Default(DefaultPane),
-    /// Profile list is open in the sidebar
-    Profile(ProfileSelectPane),
-    /// Recipe list is open in the sidebar
-    Recipe(RecipeSelectPane),
+    /// Sidebar is open
+    Sidebar {
+        sidebar: Sidebar,
+        selected_pane: SidebarPane,
+    },
+}
+
+impl PrimaryLayout {
+    /// Open a sidebar layout
+    fn sidebar(sidebar: Sidebar) -> Self {
+        Self::Sidebar {
+            sidebar,
+            selected_pane: SidebarPane::Sidebar,
+        }
+    }
 }
 
 /// Selectable pane in [PrimaryLayout::Default]
 #[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
 pub enum DefaultPane {
-    Recipe,
-    Exchange,
+    Top,
+    Bottom,
 }
 
 /// Selectable pane in [PrimaryLayout::Profile]
 #[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
-pub enum ProfileSelectPane {
-    List,
-    Recipe,
-    Profile,
+pub enum SidebarPane {
+    Sidebar,
+    Top,
+    Bottom,
 }
 
-/// Selectable pane in [PrimaryLayout::Recipe]
-#[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
-pub enum RecipeSelectPane {
-    List,
+/// List content that can be displayed in the sidebar
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Sidebar {
+    Profile,
     Recipe,
-    Exchange,
 }
 
 /// Get the item after `value` in the iterator
@@ -207,7 +233,7 @@ mod tests {
     #[test]
     fn test_fullscreen() {
         let mut state = ViewState {
-            layout: PrimaryLayout::Default(DefaultPane::Recipe),
+            layout: PrimaryLayout::Default(DefaultPane::Top),
             fullscreen: true,
         };
 
@@ -231,31 +257,31 @@ mod tests {
     /// Changing pane focus should exit fullscreen
     #[rstest]
     #[case::open_profile_list(
-        PrimaryLayout::Default(DefaultPane::Recipe),
+        PrimaryLayout::Default(DefaultPane::Top),
         ViewState::open_profile_list
     )]
     #[case::open_recipe_list(
-        PrimaryLayout::Default(DefaultPane::Recipe),
+        PrimaryLayout::Default(DefaultPane::Top),
         ViewState::open_recipe_list
     )]
     #[case::select_recipe_pane(
-        PrimaryLayout::Default(DefaultPane::Exchange),
+        PrimaryLayout::Default(DefaultPane::Bottom),
         ViewState::select_recipe_pane
     )]
     #[case::select_profile_pane(
-        PrimaryLayout::Profile(ProfileSelectPane::List),
+        PrimaryLayout::sidebar(Sidebar::Profile),
         ViewState::select_profile_pane
     )]
     #[case::select_exchange_pane(
-        PrimaryLayout::Default(DefaultPane::Recipe),
+        PrimaryLayout::Default(DefaultPane::Top),
         ViewState::select_exchange_pane
     )]
     #[case::previous_pane(
-        PrimaryLayout::Default(DefaultPane::Recipe),
+        PrimaryLayout::Default(DefaultPane::Top),
         ViewState::previous_pane
     )]
     #[case::next_pane(
-        PrimaryLayout::Default(DefaultPane::Recipe),
+        PrimaryLayout::Default(DefaultPane::Top),
         ViewState::next_pane
     )]
     fn test_fullscreen_switch_panes(

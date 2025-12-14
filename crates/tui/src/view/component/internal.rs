@@ -206,7 +206,7 @@ impl<T: Component + ?Sized> ComponentExt for T {
 /// some component types (e.g. `Select`) that have multiple `Draw` impls.
 /// Using an associated type also makes prop types with lifetimes much less
 /// ergonomic.
-pub trait Draw<Props = ()> {
+pub trait Draw<Props = ()>: Component {
     /// Draw the component into the frame.
     ///
     /// This is what each component will implement itself, but this **should not

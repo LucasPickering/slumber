@@ -334,6 +334,8 @@ where
 
 impl<RowToggleKey> Draw<RecipeFieldTableRowProps>
     for RecipeFieldTableRow<RowToggleKey>
+where
+    RowToggleKey: PersistentKey<Value = bool>,
 {
     fn draw(
         &self,

@@ -14,8 +14,7 @@ use crate::{
             collection_select::CollectionSelect,
             exchange_pane::ExchangePane,
             primary::view_state::{
-                DefaultPane, PrimaryLayout, ProfileSelectPane,
-                RecipeSelectPane, ViewState,
+                DefaultPane, PrimaryLayout, Sidebar, SidebarPane, ViewState,
             },
             profile::{ProfileDetail, ProfileListState},
             recipe::{RecipeDetail, RecipeList},
@@ -27,8 +26,8 @@ use crate::{
     },
 };
 use ratatui::{
-    layout::{Layout, Spacing},
-    prelude::{Constraint, Rect},
+    layout::{Layout, Rect, Spacing},
+    prelude::Constraint,
 };
 use serde::Serialize;
 use slumber_config::Action;
@@ -36,6 +35,7 @@ use slumber_core::collection::{
     ProfileId, RecipeId, RecipeNode, RecipeNodeType,
 };
 use slumber_util::yaml::SourceLocation;
+use std::iter;
 
 /// Primary TUI view, which shows request/response panes
 #[derive(Debug)]
@@ -197,11 +197,176 @@ impl PrimaryView {
         // request cancelling to take priority over closing the sidebar, but
         // our parent has to handle the cancel action because that's where the
         // necessary context is.
-        self.view.is_sidebar_open()
+        self.view.sidebar().is_some()
             && self
                 .exchange_pane
                 .request_id()
                 .is_some_and(|request_id| !request_store.can_cancel(request_id))
+    }
+
+    /// Draw the selected pane in fullscreen mode
+    fn draw_fullscreen(&self, canvas: &mut Canvas, area: Rect) {
+        let sidebar_props = SidebarListProps::list();
+        match self.view.layout() {
+            // Sidebar
+            PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Profile,
+                selected_pane: SidebarPane::Sidebar,
+            } => canvas.draw(&self.profile_list, sidebar_props, area, true),
+            PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Recipe,
+                selected_pane: SidebarPane::Sidebar,
+            } => canvas.draw(&self.recipe_list, sidebar_props, area, true),
+            // Top Pane - always Recipe
+            PrimaryLayout::Default(DefaultPane::Top)
+            | PrimaryLayout::Sidebar {
+                selected_pane: SidebarPane::Top,
+                ..
+            } => canvas.draw(&self.recipe_detail, (), area, true),
+            // Bottom Pane - Exchange or Profile, depending on sidebar
+            PrimaryLayout::Default(DefaultPane::Bottom)
+            | PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Recipe,
+                selected_pane: SidebarPane::Bottom,
+            } => canvas.draw(&self.exchange_pane, (), area, true),
+            PrimaryLayout::Sidebar {
+                sidebar: Sidebar::Profile,
+                selected_pane: SidebarPane::Bottom,
+            } => canvas.draw(&self.profile_detail, (), area, true),
+        }
+    }
+
+    /// Draw the default layout
+    ///
+    /// +---------+
+    /// | HEADERS |
+    /// +---------+
+    /// |         |
+    /// |   TOP   |
+    /// +---------+
+    /// |         |
+    /// | BOTTOM  |
+    /// +---------+
+    fn draw_default(
+        &self,
+        canvas: &mut Canvas,
+        area: Rect,
+        selected_pane: DefaultPane,
+    ) {
+        let headers: &[&dyn Draw<_>] = &[&self.profile_list, &self.recipe_list];
+
+        let [headers_area, top_area, bottom_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Fill(1),
+            Constraint::Fill(1),
+        ])
+        .spacing(Spacing::Overlap(1))
+        .areas(area);
+        let headers_areas = Layout::horizontal(iter::repeat_n(
+            Constraint::Fill(1),
+            headers.len(),
+        ))
+        .spacing(Spacing::Overlap(1))
+        .split(headers_area);
+
+        // Header
+        for (header, area) in headers.iter().zip(&*headers_areas) {
+            let header_props = SidebarListProps::header();
+            canvas.draw(*header, header_props, *area, false);
+        }
+
+        // Panes
+        canvas.draw(
+            &self.recipe_detail,
+            (),
+            top_area,
+            selected_pane == DefaultPane::Top,
+        );
+        canvas.draw(
+            &self.exchange_pane,
+            (),
+            bottom_area,
+            selected_pane == DefaultPane::Bottom,
+        );
+    }
+
+    /// Draw the sidebar layout
+    ///
+    /// +---+---------+
+    /// | S | HEADERS |
+    /// | I +---------+
+    /// | D |         |
+    /// | E |   TOP   |
+    /// | B +---------+
+    /// | A |         |
+    /// | R | BOTTOM  |
+    /// +---+---------+
+    fn draw_sidebar(
+        &self,
+        canvas: &mut Canvas,
+        area: Rect,
+        sidebar: Sidebar,
+        selected_pane: SidebarPane,
+    ) {
+        let headers: &[&dyn Draw<_>] = match sidebar {
+            Sidebar::Profile => &[&self.recipe_list],
+            Sidebar::Recipe => &[&self.profile_list],
+        };
+
+        // Split the areas
+        let [sidebar_area, rest] =
+            Layout::horizontal([Constraint::Length(30), Constraint::Fill(1)])
+                .spacing(Spacing::Overlap(1))
+                .areas(area);
+        let [headers_area, top_area, bottom_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Fill(1),
+            Constraint::Fill(1),
+        ])
+        .spacing(Spacing::Overlap(1))
+        .areas(rest);
+        let headers_areas = Layout::horizontal(iter::repeat_n(
+            Constraint::Fill(1),
+            headers.len(),
+        ))
+        .spacing(Spacing::Overlap(1))
+        .split(headers_area);
+
+        // Header
+        for (header, area) in headers.iter().zip(&*headers_areas) {
+            let header_props = SidebarListProps::header();
+            canvas.draw(*header, header_props, *area, false);
+        }
+
+        // Sidebar
+        let sidebar_comp: &dyn Draw<_> = match sidebar {
+            Sidebar::Profile => &self.profile_list,
+            Sidebar::Recipe => &self.recipe_list,
+        };
+        canvas.draw(
+            sidebar_comp,
+            SidebarListProps::list(),
+            sidebar_area,
+            selected_pane == SidebarPane::Sidebar,
+        );
+
+        // Panes
+        canvas.draw(
+            &self.recipe_detail,
+            (),
+            top_area,
+            selected_pane == SidebarPane::Top,
+        );
+        let bottom: &dyn Draw = match sidebar {
+            Sidebar::Profile => &self.profile_detail,
+            Sidebar::Recipe => &self.exchange_pane,
+        };
+        canvas.draw(
+            bottom,
+            (),
+            bottom_area,
+            selected_pane == SidebarPane::Bottom,
+        );
     }
 }
 
@@ -339,148 +504,22 @@ impl Component for PrimaryView {
 impl Draw for PrimaryView {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
-        let fullscreen = self.view.is_fullscreen();
-        match self.view.layout() {
-            // Sidebar is closed
-            PrimaryLayout::Default(pane) if fullscreen => match pane {
-                DefaultPane::Recipe => {
-                    canvas.draw(&self.recipe_detail, (), area, true);
+
+        if self.view.is_fullscreen() {
+            // Fullscreen - just a single pane
+            self.draw_fullscreen(canvas, area);
+        } else {
+            // Multi-pane layouts
+            match self.view.layout() {
+                PrimaryLayout::Default(selected_pane) => {
+                    self.draw_default(canvas, area, selected_pane);
                 }
-                DefaultPane::Exchange => {
-                    canvas.draw(&self.exchange_pane, (), area, true);
+                PrimaryLayout::Sidebar {
+                    sidebar,
+                    selected_pane,
+                } => {
+                    self.draw_sidebar(canvas, area, sidebar, selected_pane);
                 }
-            },
-            PrimaryLayout::Default(selected_pane) => {
-                let areas = DefaultAreas::new(area);
-
-                // Header
-                let [profile_list_area, recipe_list_area] = areas.headers;
-                canvas.draw(
-                    &self.profile_list,
-                    SidebarListProps::header(),
-                    profile_list_area,
-                    false,
-                );
-                canvas.draw(
-                    &self.recipe_list,
-                    SidebarListProps::header(),
-                    recipe_list_area,
-                    false,
-                );
-
-                // Panes
-                canvas.draw(
-                    &self.recipe_detail,
-                    (),
-                    areas.top_pane,
-                    selected_pane == DefaultPane::Recipe,
-                );
-                canvas.draw(
-                    &self.exchange_pane,
-                    (),
-                    areas.bottom_pane,
-                    selected_pane == DefaultPane::Exchange,
-                );
-            }
-
-            // Profile list is open in sidebar
-            PrimaryLayout::Profile(pane) if fullscreen => match pane {
-                ProfileSelectPane::List => canvas.draw(
-                    &self.profile_list,
-                    SidebarListProps::list(),
-                    area,
-                    true,
-                ),
-                ProfileSelectPane::Recipe => {
-                    canvas.draw(&self.recipe_detail, (), area, true);
-                }
-                ProfileSelectPane::Profile => {
-                    canvas.draw(&self.profile_detail, (), area, true);
-                }
-            },
-            PrimaryLayout::Profile(selected_pane) => {
-                let areas = SidebarAreas::new(area);
-
-                // Header
-                let [recipe_list_area] = areas.headers;
-                canvas.draw(
-                    &self.recipe_list,
-                    SidebarListProps::header(),
-                    recipe_list_area,
-                    false,
-                );
-
-                // Sidebar
-                canvas.draw(
-                    &self.profile_list,
-                    SidebarListProps::list(),
-                    areas.sidebar,
-                    selected_pane == ProfileSelectPane::List,
-                );
-
-                // Panes
-                canvas.draw(
-                    &self.recipe_detail,
-                    (),
-                    areas.top_pane,
-                    selected_pane == ProfileSelectPane::Recipe,
-                );
-                canvas.draw(
-                    &self.profile_detail,
-                    (),
-                    areas.bottom_pane,
-                    selected_pane == ProfileSelectPane::Profile,
-                );
-            }
-
-            // Recipe list is open in sidebar
-            PrimaryLayout::Recipe(pane) if fullscreen => match pane {
-                RecipeSelectPane::List => canvas.draw(
-                    &self.recipe_list,
-                    SidebarListProps::list(),
-                    area,
-                    true,
-                ),
-                RecipeSelectPane::Recipe => {
-                    canvas.draw(&self.recipe_detail, (), area, true);
-                }
-                RecipeSelectPane::Exchange => {
-                    canvas.draw(&self.exchange_pane, (), area, true);
-                }
-            },
-            PrimaryLayout::Recipe(selected_pane) => {
-                let areas = SidebarAreas::new(area);
-
-                // Header
-                let [profile_list_area] = areas.headers;
-                canvas.draw(
-                    &self.profile_list,
-                    SidebarListProps::header(),
-                    profile_list_area,
-                    false,
-                );
-
-                // Sidebar
-                canvas.draw(
-                    &self.recipe_list,
-                    SidebarListProps::list(),
-                    areas.sidebar,
-                    selected_pane == RecipeSelectPane::List,
-                );
-
-                // Panes
-                canvas.draw(
-                    &self.recipe_detail,
-                    (),
-                    areas.top_pane,
-                    selected_pane == RecipeSelectPane::Recipe,
-                );
-                canvas.draw(
-                    &self.exchange_pane,
-                    (),
-                    areas.bottom_pane,
-                    selected_pane == RecipeSelectPane::Exchange,
-                );
             }
         }
 
@@ -503,91 +542,6 @@ enum PrimaryMenuAction {
     /// Open the collection file in an external editor, jumping to the
     /// specified location (if any)
     EditCollection(Option<SourceLocation>),
-}
-
-/// Screen areas when the sidebar is *not* visible
-///
-/// +---------+
-/// | HEADERS |
-/// +---------+
-/// |         |
-/// |   TOP   |
-/// +---------+
-/// |         |
-/// | BOTTOM  |
-/// +---------+
-struct DefaultAreas {
-    /// Evenly divided top row to contain all collapsed lists
-    headers: [Rect; 2],
-    top_pane: Rect,
-    bottom_pane: Rect,
-}
-
-impl DefaultAreas {
-    /// Split the area into the default layout
-    fn new(area: Rect) -> Self {
-        let [headers, top_pane, bottom_pane] = Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-        ])
-        .spacing(Spacing::Overlap(1))
-        .areas(area);
-        let headers = Layout::horizontal([Constraint::Fill(1); 2])
-            .spacing(Spacing::Overlap(1))
-            .areas(headers);
-        Self {
-            headers,
-            top_pane,
-            bottom_pane,
-        }
-    }
-}
-
-/// Screen areas when the sidebar is visible
-///
-/// +---+---------+
-/// | S | HEADERS |
-/// | I +---------+
-/// | D |         |
-/// | E |   TOP   |
-/// | B +---------+
-/// | A |         |
-/// | R | BOTTOM  |
-/// +---+---------+
-struct SidebarAreas {
-    /// Evenly divided top row to contain all the collapsed lists, which
-    /// excludes the one list that is expanded in the sidebar.
-    headers: [Rect; 1],
-    sidebar: Rect,
-    top_pane: Rect,
-    bottom_pane: Rect,
-}
-
-impl SidebarAreas {
-    /// Split the area into the sidebar layout
-    fn new(area: Rect) -> Self {
-        let [side_bar, area] =
-            Layout::horizontal([Constraint::Length(30), Constraint::Fill(1)])
-                .spacing(Spacing::Overlap(1))
-                .areas(area);
-        let [headers, top_pane, bottom_pane] = Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-        ])
-        .spacing(Spacing::Overlap(1))
-        .areas(area);
-        let headers = Layout::horizontal([Constraint::Fill(1); 1])
-            .spacing(Spacing::Overlap(1))
-            .areas(headers);
-        Self {
-            headers,
-            sidebar: side_bar,
-            top_pane,
-            bottom_pane,
-        }
-    }
 }
 
 #[cfg(test)]

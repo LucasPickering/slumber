@@ -15,7 +15,6 @@ use crate::{
             internal::{Child, ToChild},
         },
         context::UpdateContext,
-        event::Event,
     },
 };
 use derive_more::Display;
@@ -264,7 +263,6 @@ impl Modal for DeleteRequestModal {
                 .request_store
                 .delete_request(self.request_id)
                 .reported(&ViewContext::messages_tx());
-            ViewContext::push_event(Event::HttpSelectRequest(None));
         }
     }
 }
@@ -336,7 +334,6 @@ impl Modal for DeleteRecipeRequestsModal {
                 .request_store
                 .delete_recipe_requests(profile_filter, &self.recipe_id)
                 .reported(&ViewContext::messages_tx());
-            ViewContext::push_event(Event::HttpSelectRequest(None));
         }
     }
 }

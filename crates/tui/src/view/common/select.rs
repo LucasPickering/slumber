@@ -322,6 +322,16 @@ impl<Item, State: SelectState> Select<Item, State> {
         }
     }
 
+    /// Select an item by value
+    pub fn select<T>(&mut self, value: &T)
+    where
+        Item: PartialEq<T>,
+    {
+        if let Some(index) = find_index(&self.items, value) {
+            self.select_index(index);
+        }
+    }
+
     /// Select the item above the selected item. For top-to-bottom lists, this
     /// is the previous item. For bottom-to-top, it's the next.
     pub fn up(&mut self) {

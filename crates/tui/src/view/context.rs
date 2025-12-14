@@ -159,12 +159,12 @@ mod tests {
     fn test_event_queue(_harness: TestHarness) {
         assert_events!(); // Start empty
 
-        ViewContext::push_event(Event::HttpSelectRequest(None));
-        assert_events!(Event::HttpSelectRequest(None));
+        ViewContext::push_event(Event::DeleteRecipeRequests);
+        assert_events!(Event::DeleteRecipeRequests);
 
         assert_matches!(
             ViewContext::pop_event(),
-            Some(Event::HttpSelectRequest(None))
+            Some(Event::DeleteRecipeRequests)
         );
         assert_events!(); // Empty again
     }

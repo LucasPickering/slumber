@@ -8,7 +8,6 @@ use crate::{
 };
 use ratatui::layout::Position;
 use slumber_config::Action;
-use slumber_core::http::RequestId;
 use std::{
     any::{self, Any},
     collections::VecDeque,
@@ -73,15 +72,6 @@ pub enum Event {
         emitter_type: String,
         event: Box<dyn LocalEvent>,
     },
-
-    /// Load a request from the database. If the ID is given, load that
-    /// specific request. If not, get the most recent for the current
-    /// profile+recipe.
-    ///
-    /// This is a top-level event because it's send from multiple different
-    /// components throughout the tree, such that using emitted events would be
-    /// excessively complicated.
-    HttpSelectRequest(Option<RequestId>),
 
     /// Input from the user, which may or may not be bound to an action. Most
     /// components just care about the action, but some require raw input

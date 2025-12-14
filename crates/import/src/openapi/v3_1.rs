@@ -62,6 +62,7 @@ fn build_profiles(servers: Vec<Server>) -> IndexMap<ProfileId, Profile> {
                 id.clone(),
                 Profile {
                     id,
+                    location: SourceLocation::default(),
                     // We could just omit this and fall back to the ID which
                     // will be the same value, but we provide it for
                     // discoverability; the user may want to rename it

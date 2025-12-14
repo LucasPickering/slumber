@@ -343,6 +343,7 @@ requests:
                         "host".into() => "https://httpbin.org".into(),
 
                     },
+                    ..Profile::factory(())
                 },
                 Profile {
                     id: "profile2".into(),
@@ -351,6 +352,7 @@ requests:
                     data: indexmap! {
                         "host".into() => "https://httpbin.org".into(),
                     },
+                    ..Profile::factory(())
                 },
             ]),
             recipes: by_id([

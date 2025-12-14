@@ -200,6 +200,7 @@ fn build_profile_map(
     let profile_id: ProfileId = flavor_id.into();
     let default_profile = Profile {
         id: profile_id.clone(),
+        location: SourceLocation::default(),
         name: Some(flavor_name),
         default: true,
         data: build_slumber_templates(variables),

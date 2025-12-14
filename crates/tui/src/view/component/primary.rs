@@ -35,6 +35,7 @@ use slumber_config::Action;
 use slumber_core::collection::{
     ProfileId, RecipeId, RecipeNode, RecipeNodeType,
 };
+use slumber_util::yaml::SourceLocation;
 
 /// Primary TUI view, which shows request/response panes
 #[derive(Debug)]
@@ -173,16 +174,9 @@ impl PrimaryView {
         }
     }
 
-    /// Send a message to open the collection file to the selected
-    /// recipe/folder. If there are no recipes, just open to the start
-    fn edit_collection(&self) {
-        let collection = ViewContext::collection();
-        // Get the source location of the selected folder/recipe
-        let location = self
-            .selected_recipe_node()
-            .and_then(|(id, _)| collection.recipes.get(id))
-            .map(RecipeNode::location)
-            .cloned();
+    /// Send a message to open the collection file to the specified location, or
+    /// the top of the file if `None`.
+    fn edit_collection(&self, location: Option<SourceLocation>) {
         ViewContext::send_message(Message::CollectionEdit { location });
     }
 
@@ -279,8 +273,8 @@ impl Component for PrimaryView {
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {
                 match menu_action {
-                    PrimaryMenuAction::EditCollection => {
-                        self.edit_collection();
+                    PrimaryMenuAction::EditCollection(location) => {
+                        self.edit_collection(location);
                     }
                 }
             })
@@ -288,16 +282,40 @@ impl Component for PrimaryView {
 
     fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.global_actions_emitter;
-        let edit_collection_name = match self.selected_recipe_node() {
-            None => "Edit Collection",
-            Some((_, RecipeNodeType::Folder)) => "Edit Folder",
-            Some((_, RecipeNodeType::Recipe)) => "Edit Recipe",
+        let collection = ViewContext::collection();
+        let selected_recipe_node = self
+            .selected_recipe_node()
+            .and_then(|(id, _)| collection.recipes.get(id));
+        let edit_recipe = match selected_recipe_node {
+            None => emitter.menu(
+                PrimaryMenuAction::EditCollection(None),
+                "Edit Collection",
+            ),
+            Some(RecipeNode::Folder(folder)) => emitter.menu(
+                PrimaryMenuAction::EditCollection(Some(
+                    folder.location.clone(),
+                )),
+                "Edit Folder",
+            ),
+            Some(RecipeNode::Recipe(recipe)) => emitter.menu(
+                PrimaryMenuAction::EditCollection(Some(
+                    recipe.location.clone(),
+                )),
+                "Edit Recipe",
+            ),
         };
-        vec![
-            emitter
-                .menu(PrimaryMenuAction::EditCollection, edit_collection_name)
-                .into(),
-        ]
+        let profile_location = self.selected_profile_id().and_then(|id| {
+            let profile = collection.profiles.get(id)?;
+            Some(&profile.location)
+        });
+        let edit_profile = emitter
+            .menu(
+                PrimaryMenuAction::EditCollection(profile_location.cloned()),
+                "Edit Profile",
+            )
+            .enable(profile_location.is_some());
+
+        vec![edit_recipe.into(), edit_profile.into()]
     }
 
     fn persist(&self, store: &mut PersistentStore) {
@@ -480,11 +498,11 @@ impl PersistentKey for ViewStateKey {
 }
 
 /// Menu actions available in all contexts
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 enum PrimaryMenuAction {
-    /// Open the collection file in an external editor, jumping to whatever
-    /// recipe/folder is currently selected
-    EditCollection,
+    /// Open the collection file in an external editor, jumping to the
+    /// specified location (if any)
+    EditCollection(Option<SourceLocation>),
 }
 
 /// Screen areas when the sidebar is *not* visible
@@ -636,17 +654,35 @@ mod tests {
     fn test_edit_recipe(mut harness: TestHarness, terminal: TestTerminal) {
         let mut component = create_component(&mut harness, &terminal);
         component.int().drain_draw().assert_empty();
-
         harness.clear_messages(); // Clear init junk
+        let expected_location =
+            harness.collection.first_recipe().location.clone();
 
         component.int().action(&["Edit Recipe"]).assert_empty();
         // Event should be converted into a message appropriately
-        assert_matches!(
+        let location = assert_matches!(
             harness.pop_message_now(),
-            // The actual location is unimportant because the collection was
-            // generated in memory, but make sure it's populated
-            Message::CollectionEdit { location: Some(_) }
+            Message::CollectionEdit { location: Some(location) } => location
         );
+        assert_eq!(location, expected_location);
+    }
+
+    /// Test "Edit Profile" action
+    #[rstest]
+    fn test_edit_profile(mut harness: TestHarness, terminal: TestTerminal) {
+        let mut component = create_component(&mut harness, &terminal);
+        component.int().drain_draw().assert_empty();
+        harness.clear_messages(); // Clear init junk
+        let expected_location =
+            harness.collection.first_profile().location.clone();
+
+        component.int().action(&["Edit Profile"]).assert_empty();
+        // Event should be converted into a message appropriately
+        let location = assert_matches!(
+            harness.pop_message_now(),
+            Message::CollectionEdit { location: Some(location) } => location
+        );
+        assert_eq!(location, expected_location);
     }
 
     /// Test actions under the "Copy" submenu. This should be available in

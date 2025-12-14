@@ -9,7 +9,6 @@ use crate::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
             help::Help,
-            history::History,
             internal::ComponentExt,
             misc::{DeleteRecipeRequestsModal, ErrorModal, QuestionModal},
             primary::PrimaryView,
@@ -49,7 +48,6 @@ pub struct Root {
     delete_requests_confirm: ModalQueue<DeleteRecipeRequestsModal>,
     questions: ModalQueue<QuestionModal>,
     errors: ModalQueue<ErrorModal>,
-    history: ModalQueue<History>,
 }
 
 impl Root {
@@ -77,7 +75,6 @@ impl Root {
             delete_requests_confirm: ModalQueue::default(),
             questions: ModalQueue::default(),
             errors: ModalQueue::default(),
-            history: ModalQueue::default(),
         }
     }
 
@@ -196,27 +193,6 @@ impl Root {
         self.primary_view.set_request(None, None);
     }
 
-    /// Open the history modal for current recipe+profile
-    fn open_history(&mut self, request_store: &mut RequestStore) {
-        if let Some(recipe_id) = self.primary_view.selected_recipe_id() {
-            // Make sure all requests for this profile+recipe are loaded
-            let requests = request_store
-                .load_summaries(
-                    self.primary_view.selected_profile_id(),
-                    recipe_id,
-                )
-                .reported(&ViewContext::messages_tx())
-                .map(Vec::from_iter)
-                .unwrap_or_default();
-
-            self.history.open(History::new(
-                recipe_id,
-                requests,
-                self.selected_request_id,
-            ));
-        }
-    }
-
     /// Open a modal to confirm deletion of all requests for the selected recipe
     fn delete_requests(&mut self) {
         if let Some(recipe_id) = self.primary_view.selected_recipe_id().cloned()
@@ -269,7 +245,14 @@ impl Component for Root {
                     }
                 }
                 Action::OpenHelp => self.help.open(),
-                Action::History => self.open_history(context.request_store),
+                Action::History => {
+                    // We have to handle this event here because we have the
+                    // selected request ID
+                    self.primary_view.open_history(
+                        context.request_store,
+                        self.selected_request_id,
+                    );
+                }
                 Action::Cancel => self.cancel_request(context),
                 Action::Quit => ViewContext::send_message(Message::Quit),
                 Action::ReloadCollection => {
@@ -323,7 +306,6 @@ impl Component for Root {
             self.actions.to_child_mut(),
             self.delete_requests_confirm.to_child_mut(),
             self.questions.to_child_mut(),
-            self.history.to_child_mut(),
             // Non-modals
             self.primary_view.to_child_mut(),
             self.footer.to_child_mut(),
@@ -363,7 +345,6 @@ impl Draw for Root {
         canvas.draw_portal(&self.actions, (), true);
         canvas.draw_portal(&self.delete_requests_confirm, (), true);
         canvas.draw_portal(&self.questions, (), true);
-        canvas.draw_portal(&self.history, (), true);
         // Errors render last because they're drawn on top (highest priority)
         canvas.draw_portal(&self.errors, (), true);
     }

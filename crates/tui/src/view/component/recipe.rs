@@ -435,11 +435,11 @@ impl Draw for RecipeDetail {
             },
             Action::SelectTopPane,
         );
-        let block = Pane {
+        let mut block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),
-        };
-        let mut block = block.generate();
+        }
+        .generate();
         let inner_area = block.inner(metadata.area());
 
         // Include the folder/recipe ID in the header

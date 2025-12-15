@@ -19,10 +19,12 @@ use crate::{
         persistent::{PersistentKey, PersistentStore},
     },
 };
+use indexmap::IndexMap;
 use ratatui::{layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{collection::ProfileId, http::RequestId};
+use slumber_template::Template;
 
 /// The root view component
 #[derive(Debug)]
@@ -103,6 +105,11 @@ impl Root {
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
         self.primary_view.request_config()
+    }
+
+    /// Get a map of overridden profile fields
+    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+        self.primary_view.profile_overrides()
     }
 
     /// Extract the currently selected request from the store
@@ -273,6 +280,13 @@ impl Component for Root {
             .any(|event| match event {
                 Event::DeleteRecipeRequests => {
                     self.delete_requests();
+                    None
+                }
+
+                Event::RefreshPreviews => {
+                    // This is broadcast to all template previews. They all
+                    // propagate to allow their friends to view it; we eat it
+                    // here just so it doesn't trigger a warning.
                     None
                 }
 

@@ -4,10 +4,10 @@ use crate::view::{
     component::{
         Canvas, ComponentId, Draw, DrawMetadata,
         internal::{Child, ToChild},
+        override_template::TemplateOverrideKey,
         recipe::{
             authentication::AuthenticationDisplay,
             body::RecipeBodyDisplay,
-            override_template::RecipeOverrideKey,
             table::{RecipeFieldTable, RecipeFieldTableProps},
             url::UrlDisplay,
         },
@@ -70,7 +70,7 @@ impl RecipeDisplay {
                         (
                             param.to_owned(),
                             value.clone(),
-                            RecipeOverrideKey::query_param(
+                            TemplateOverrideKey::query_param(
                                 recipe.id.clone(),
                                 i,
                             ),
@@ -91,7 +91,7 @@ impl RecipeDisplay {
                         (
                             header.clone(),
                             value.clone(),
-                            RecipeOverrideKey::header(recipe.id.clone(), i),
+                            TemplateOverrideKey::header(recipe.id.clone(), i),
                             HeaderRowToggleKey {
                                 recipe_id: recipe.id.clone(),
                                 header: header.clone(),
@@ -187,7 +187,7 @@ impl Draw for RecipeDisplay {
 
         // First line: Method + URL
         canvas.render_widget(Paragraph::new(method), method_area);
-        canvas.render_widget(self.url.preview(), url_area);
+        canvas.draw(self.url.preview(), (), url_area, false);
 
         // Navigation tabs
         canvas.draw(&self.tabs, (), tabs_area, true);

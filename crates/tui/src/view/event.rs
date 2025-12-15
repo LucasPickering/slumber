@@ -86,6 +86,13 @@ pub enum Event {
     /// Input from the user, which may or may not be bound to an action. Most
     /// components just care about the action, but some require raw input
     Input(InputEvent),
+
+    /// Rerender **all** template previews. This is a **broadcast event**,
+    /// meaning it should not be consumed by anyone except the root. This
+    /// notifies all existing previews of a potential change that could affect
+    /// their content. This is sent out when a profile field is modified,
+    /// because any template could contain that profile field.
+    RefreshPreviews,
 }
 
 impl Event {

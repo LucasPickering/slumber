@@ -2,7 +2,6 @@
 
 mod authentication;
 mod body;
-mod override_template;
 mod recipe;
 mod table;
 mod url;

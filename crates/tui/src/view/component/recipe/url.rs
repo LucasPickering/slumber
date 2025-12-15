@@ -3,7 +3,7 @@ use crate::view::{
     common::{actions::MenuItem, template_preview::TemplatePreview},
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        recipe::override_template::{EditableTemplate, RecipeOverrideKey},
+        override_template::{EditableTemplate, TemplateOverrideKey},
     },
     event::{Emitter, Event, EventMatch},
 };
@@ -25,9 +25,9 @@ pub struct UrlDisplay {
 impl UrlDisplay {
     pub fn new(recipe_id: RecipeId, url: Template) -> Self {
         let url = EditableTemplate::new(
-            RecipeOverrideKey::url(recipe_id),
+            TemplateOverrideKey::url(recipe_id),
             url,
-            None,
+            false,
             false,
         );
         Self {
@@ -176,7 +176,7 @@ mod tests {
     fn test_persisted_load(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
-            RecipeOverrideKey::url(recipe_id.clone()),
+            TemplateOverrideKey::url(recipe_id.clone()),
             "persisted/url".into(),
         );
         let component = TestComponent::new(

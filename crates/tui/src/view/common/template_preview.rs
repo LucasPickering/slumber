@@ -1,14 +1,17 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    view::{Generate, ViewContext, state::Identified, util::highlight},
+    view::{
+        UpdateContext, ViewContext,
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+        event::{Event, EventMatch},
+        state::Identified,
+        util::highlight,
+    },
 };
 use ratatui::{
-    buffer::Buffer,
-    prelude::Rect,
     style::{Style, Styled},
     text::{Line, Span, Text},
-    widgets::Widget,
 };
 use slumber_core::http::content_type::ContentType;
 use slumber_template::{LazyValue, RenderedChunk, RenderedOutput, Template};
@@ -21,6 +24,18 @@ use std::{
 /// rendered version. The global config is used to enable/disable previews.
 #[derive(Debug)]
 pub struct TemplatePreview {
+    id: ComponentId,
+    template: Template,
+    /// Content-Type of the output, which can be used to apply syntax
+    /// highlighting
+    content_type: Option<ContentType>,
+    /// Has the template been overridden by the user in the current session?
+    /// Applies additional styling
+    overridden: bool,
+    /// Does this component of the recipe support streaming? If so, the
+    /// template will be rendered to a stream if possible and its metadata will
+    /// be displayed rather than the resolved value.
+    can_stream: bool,
     /// Text to display, which could be either the raw template, or the
     /// rendered template. Either way, it may or may not be syntax
     /// highlighted. On init we send a message which will trigger a task to
@@ -59,13 +74,6 @@ impl TemplatePreview {
         overridden: bool,
         can_stream: bool,
     ) -> Self {
-        let tui_context = TuiContext::get();
-        let style = if overridden {
-            tui_context.styles.text.edited
-        } else {
-            Style::default()
-        };
-
         // Calculate raw text
         let text: Identified<Text> = highlight::highlight_if(
             content_type,
@@ -76,16 +84,41 @@ impl TemplatePreview {
             // self-referential
             template.display().into_owned().into(),
         )
-        .set_style(style)
+        .set_style(Self::style(overridden))
         .into();
         let text = Arc::new(Mutex::new(text));
 
+        let mut slf = Self {
+            id: ComponentId::new(),
+            template,
+            content_type,
+            overridden,
+            can_stream,
+            text,
+        };
+        slf.render_preview();
+        slf
+    }
+
+    pub fn text(&self) -> impl '_ + Deref<Target = Identified<Text<'static>>> {
+        self.text
+            .lock()
+            .expect("Template preview text lock is poisoned")
+    }
+
+    /// Send a message triggering a render of this template. The rendered
+    /// preview will be stored back in our lock. Used for both initial render
+    /// and refreshes.
+    fn render_preview(&mut self) {
         // Trigger a task to render the preview and write the answer back into
         // the mutex. If the template is static (has no dynamic chunks), there's
         // no need to do this. We'll display the raw template text by default,
         // which will be equivalent to the rendered text
-        if tui_context.config.tui.preview_templates && template.is_dynamic() {
-            let destination = Arc::clone(&text);
+        let config = &TuiContext::get().config;
+        if config.tui.preview_templates && self.template.is_dynamic() {
+            let destination = Arc::clone(&self.text);
+            let content_type = self.content_type;
+            let style = Self::style(self.overridden);
             let on_complete = move |c| {
                 Self::calculate_rendered_text(
                     c,
@@ -96,19 +129,11 @@ impl TemplatePreview {
             };
 
             ViewContext::send_message(Message::TemplatePreview {
-                template,
-                can_stream,
+                template: self.template.clone(),
+                can_stream: self.can_stream,
                 on_complete: Box::new(on_complete),
             });
         }
-
-        Self { text }
-    }
-
-    pub fn text(&self) -> impl '_ + Deref<Target = Identified<Text<'static>>> {
-        self.text
-            .lock()
-            .expect("Template preview text lock is poisoned")
     }
 
     /// Generate text from the rendered template, and replace the text in the
@@ -125,6 +150,15 @@ impl TemplatePreview {
             .lock()
             .expect("Template preview text lock is poisoned") = text.into();
     }
+
+    /// Get styling for the preview, based on overridden state
+    fn style(overridden: bool) -> Style {
+        if overridden {
+            TuiContext::get().styles.text.edited
+        } else {
+            Style::default()
+        }
+    }
 }
 
 impl From<Template> for TemplatePreview {
@@ -133,24 +167,29 @@ impl From<Template> for TemplatePreview {
     }
 }
 
-/// Clone internal text. Only call this for small pieces of text
-impl Generate for &TemplatePreview {
-    type Output<'this>
-        = Text<'this>
-    where
-        Self: 'this;
+impl Component for TemplatePreview {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
 
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        self.text().clone()
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
+        event.m().any(|event| {
+            if let Event::RefreshPreviews = event {
+                self.render_preview();
+            }
+            // Refresh must be send to all previews, so *don't* consume!!
+            Some(event)
+        })
     }
 }
 
-impl Widget for &TemplatePreview {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        (&**self.text()).render(area, buf);
+impl Draw for TemplatePreview {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        canvas.render_widget(&**self.text(), metadata.area());
     }
 }
 

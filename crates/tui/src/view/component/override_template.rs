@@ -1,7 +1,7 @@
 //! Overridable templates and single-session persistence for those overrides
 
 use crate::view::{
-    UpdateContext,
+    UpdateContext, ViewContext,
     common::{
         template_preview::TemplatePreview,
         text_box::{TextBox, TextBoxEvent, TextBoxProps},
@@ -14,7 +14,10 @@ use crate::view::{
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{collection::RecipeId, http::content_type::ContentType};
+use slumber_core::{
+    collection::{ProfileId, RecipeId},
+    http::content_type::ContentType,
+};
 use slumber_template::Template;
 use std::fmt::Debug;
 
@@ -24,7 +27,7 @@ use std::fmt::Debug;
 #[derive(Debug)]
 pub struct OverrideTemplate {
     id: ComponentId,
-    persistent_key: RecipeOverrideKey,
+    persistent_key: TemplateOverrideKey,
     /// The template from the collection
     original_template: Template,
     /// Temporary override entered by the user
@@ -40,7 +43,7 @@ pub struct OverrideTemplate {
 
 impl OverrideTemplate {
     pub fn new(
-        persistent_key: RecipeOverrideKey,
+        persistent_key: TemplateOverrideKey,
         template: Template,
         content_type: Option<ContentType>,
         can_stream: bool,
@@ -127,11 +130,15 @@ impl Component for OverrideTemplate {
             store.remove_session(&self.persistent_key);
         }
     }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.preview.to_child_mut()]
+    }
 }
 
 impl Draw for OverrideTemplate {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        canvas.render_widget(self.preview(), metadata.area());
+        canvas.draw(self.preview(), (), metadata.area(), false);
     }
 }
 
@@ -145,24 +152,43 @@ pub struct EditableTemplate {
     /// An inline text box for editing the override template. `Some` only when
     /// editing.
     edit_text_box: Option<TextBox>,
+    /// After a new valie template is submitted, should we send
+    /// [Event::RefreshPreviews]? Use for profile fields, because those can
+    /// affect other templates
+    refresh_on_edit: bool,
 }
 
 impl EditableTemplate {
+    /// Construct a new template that can be edited inline.
+    ///
+    /// ## Params
+    ///
+    /// - `persistent_key`: Key to store the override in the *session* store
+    /// - `template`: Template being edited
+    /// - `can_stream`: Is it possible for the output of this template to be
+    ///   streamed? If `true`, the template will not be fully rendered in the
+    ///   preview, as the output may be very large.
+    /// - `refresh_on_edit`: Should all previews in the app be refreshed after
+    ///   this template is modified? Use this for profile field templates,
+    ///   because those can have downstream effects.
     pub fn new(
-        persistent_key: RecipeOverrideKey,
+        persistent_key: TemplateOverrideKey,
         template: Template,
-        content_type: Option<ContentType>,
         can_stream: bool,
+        refresh_on_edit: bool,
     ) -> Self {
         Self {
             id: ComponentId::default(),
             template: OverrideTemplate::new(
                 persistent_key,
                 template,
-                content_type,
+                // The only template that uses content_type is the body, and
+                // that doesn't use inline editing so we don't have to support
+                None,
                 can_stream,
             ),
             edit_text_box: None,
+            refresh_on_edit,
         }
     }
 
@@ -218,6 +244,9 @@ impl EditableTemplate {
         // toss the edits
         if let Ok(template) = text_box.into_text().parse::<Template>() {
             self.set_override(template);
+            if self.refresh_on_edit {
+                ViewContext::push_event(Event::RefreshPreviews);
+            }
         }
     }
 }
@@ -258,12 +287,17 @@ impl Draw for EditableTemplate {
         if let Some(edit_text_box) = &self.edit_text_box {
             canvas.draw(
                 edit_text_box,
-                TextBoxProps::default(),
+                TextBoxProps {
+                    // This template is generally shown in a table, where the
+                    // scrollbar can cover up other rows
+                    scrollbar: false,
+                    ..TextBoxProps::default()
+                },
                 metadata.area(),
                 true,
             );
         } else {
-            canvas.render_widget(self.preview(), metadata.area());
+            canvas.draw(self.preview(), (), metadata.area(), false);
         }
     }
 }
@@ -271,43 +305,55 @@ impl Draw for EditableTemplate {
 /// Persisted key for override templates in the session store. This uniquely
 /// identifies any piece of a recipe that can be overridden.
 #[derive(Clone, Debug, PartialEq)]
-pub struct RecipeOverrideKey {
-    kind: RecipeOverrideKeyKind,
-    recipe_id: RecipeId,
+pub enum TemplateOverrideKey {
+    /// A profile field is overridden
+    Profile {
+        profile_id: ProfileId,
+        field: String,
+    },
+    /// A piece of a recipe is overridden
+    Recipe {
+        recipe_id: RecipeId,
+        kind: TemplateOverrideKeyKind,
+    },
 }
 
-impl RecipeOverrideKey {
+impl TemplateOverrideKey {
+    pub fn profile(profile_id: ProfileId, field: String) -> Self {
+        Self::Profile { profile_id, field }
+    }
+
     pub fn url(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::Url,
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::Url,
             recipe_id,
         }
     }
 
     pub fn body(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::Body,
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::Body,
             recipe_id,
         }
     }
 
     pub fn auth_basic_username(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::AuthenticationBasicUsername,
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::AuthenticationBasicUsername,
             recipe_id,
         }
     }
 
     pub fn auth_basic_password(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::AuthenticationBasicPassword,
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::AuthenticationBasicPassword,
             recipe_id,
         }
     }
 
     pub fn auth_bearer_token(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::AuthenticationBearerToken,
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::AuthenticationBearerToken,
             recipe_id,
         }
     }
@@ -316,8 +362,8 @@ impl RecipeOverrideKey {
     /// param name because it's only used within one session, and params can't
     /// be added/reordered/removed without reloading the collection.
     pub fn query_param(recipe_id: RecipeId, index: usize) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::QueryParam(index),
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::QueryParam(index),
             recipe_id,
         }
     }
@@ -326,8 +372,8 @@ impl RecipeOverrideKey {
     /// param name because it's only used within one session, and params can't
     /// be added/reordered/removed without reloading the collection.
     pub fn header(recipe_id: RecipeId, index: usize) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::Header(index),
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::Header(index),
             recipe_id,
         }
     }
@@ -336,21 +382,21 @@ impl RecipeOverrideKey {
     /// param name because it's only used within one session, and params can't
     /// be added/reordered/removed without reloading the collection.
     pub fn form_field(recipe_id: RecipeId, index: usize) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::FormField(index),
+        Self::Recipe {
+            kind: TemplateOverrideKeyKind::FormField(index),
             recipe_id,
         }
     }
 }
 
-impl SessionKey for RecipeOverrideKey {
+impl SessionKey for TemplateOverrideKey {
     type Value = Template;
 }
 
 /// Different kinds of recipe fields that can be persisted. This is exposed only
 /// through methods on [RecipeOverrideKey] to make usage a bit terser.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
-enum RecipeOverrideKeyKind {
+pub enum TemplateOverrideKeyKind {
     Url,
     Body,
     AuthenticationBasicUsername,
@@ -377,14 +423,14 @@ mod tests {
     #[rstest]
     fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        let key = RecipeOverrideKey::url(recipe_id);
+        let key = TemplateOverrideKey::url(recipe_id);
         harness
             .persistent_store()
             .set_session(key.clone(), "persisted".into());
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            EditableTemplate::new(key.clone(), "default".into(), None, false),
+            EditableTemplate::new(key.clone(), "default".into(), false, false),
         );
 
         // Persisted value is loaded on creation

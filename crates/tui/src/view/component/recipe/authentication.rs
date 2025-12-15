@@ -11,7 +11,7 @@ use crate::{
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
-            recipe::override_template::{EditableTemplate, RecipeOverrideKey},
+            override_template::{EditableTemplate, TemplateOverrideKey},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
@@ -43,9 +43,9 @@ impl AuthenticationDisplay {
             }
             Authentication::Bearer { token } => State::Bearer {
                 token: EditableTemplate::new(
-                    RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
+                    TemplateOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
-                    None,
+                    false,
                     false,
                 ),
             },
@@ -214,15 +214,15 @@ impl BasicAuthentication {
         password: Template,
     ) -> Self {
         let username = EditableTemplate::new(
-            RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
+            TemplateOverrideKey::auth_basic_username(recipe_id.clone()),
             username,
-            None,
+            false,
             false,
         );
         let password = EditableTemplate::new(
-            RecipeOverrideKey::auth_basic_password(recipe_id),
+            TemplateOverrideKey::auth_basic_password(recipe_id),
             password,
-            None,
+            false,
             false,
         );
         let select = Select::builder(vec![
@@ -488,11 +488,11 @@ mod tests {
     fn test_persisted_load_basic(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
-            RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
+            TemplateOverrideKey::auth_basic_username(recipe_id.clone()),
             "user".into(),
         );
         harness.persistent_store().set_session(
-            RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
+            TemplateOverrideKey::auth_basic_password(recipe_id.clone()),
             "hunter2".into(),
         );
         let authentication = Authentication::Basic {
@@ -522,7 +522,7 @@ mod tests {
     ) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
-            RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
+            TemplateOverrideKey::auth_bearer_token(recipe_id.clone()),
             "token".into(),
         );
         let authentication = Authentication::Bearer { token: "".into() };

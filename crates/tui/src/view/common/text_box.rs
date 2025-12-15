@@ -288,7 +288,7 @@ impl Draw<TextBoxProps> for TextBox {
 
             // Show scroll bar. We only show this while focused so we don't
             // cover up anyone else's scrollbar, e.g. in the queryable body
-            if text_stats.text_width as u16 > area.width {
+            if props.scrollbar && text_stats.text_width as u16 > area.width {
                 canvas.render_widget(
                     Scrollbar {
                         content_length: text_stats.text_width,
@@ -304,9 +304,21 @@ impl Draw<TextBoxProps> for TextBox {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TextBoxProps {
+    /// Show error styling?
     pub has_error: bool,
+    /// Show a horizontal scrollbar if the content overflows?
+    pub scrollbar: bool,
+}
+
+impl Default for TextBoxProps {
+    fn default() -> Self {
+        Self {
+            has_error: false,
+            scrollbar: true,
+        }
+    }
 }
 
 /// Encapsulation of text/cursor state. Encapsulating this makes reading and
@@ -555,7 +567,8 @@ mod tests {
                     KeyCode::Char('W'),
                     KeyModifiers::CTRL | KeyModifiers::SHIFT,
                 )
-                .propagated(),
+                .into_propagated()
+                .as_slice(),
             &[Event::Input { .. }]
         );
         assert_state(&component.state, "hi!W", 4);

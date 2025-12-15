@@ -16,6 +16,7 @@ use slumber_core::{
     },
     render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
 };
+use slumber_template::Template;
 use std::{
     error::Error,
     fmt::{self, Display},
@@ -137,6 +138,11 @@ impl Collection {
             http_engine: self.http_engine.clone(),
             trigger_dependencies: trigger,
         };
+        let overrides = overrides
+            .into_iter()
+            // Don't support templates in overrides (yet)
+            .map(|(field, value)| (field, Template::raw(value)))
+            .collect();
         let context = TemplateContext {
             collection: Arc::clone(&self.collection),
             selected_profile,

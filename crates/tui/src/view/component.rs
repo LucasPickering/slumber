@@ -6,6 +6,7 @@ mod help;
 mod history;
 mod internal;
 mod misc;
+mod override_template;
 mod primary;
 mod profile;
 mod prompt_form;

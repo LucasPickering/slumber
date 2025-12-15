@@ -12,7 +12,7 @@ use crate::{
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
             internal::Child,
-            recipe::override_template::{EditableTemplate, RecipeOverrideKey},
+            override_template::{EditableTemplate, TemplateOverrideKey},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
@@ -59,7 +59,7 @@ where
         noun: &'static str,
         select_key: RowSelectKey,
         rows: impl IntoIterator<
-            Item = (String, Template, RecipeOverrideKey, RowToggleKey),
+            Item = (String, Template, TemplateOverrideKey, RowToggleKey),
         >,
         can_stream: bool,
     ) -> Self {
@@ -73,8 +73,8 @@ where
                     EditableTemplate::new(
                         override_key,
                         template.clone(),
-                        None,
                         can_stream,
+                        false,
                     ),
                     toggle_key,
                 )
@@ -420,7 +420,7 @@ mod tests {
             (
                 "row0".into(),
                 "value0".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+                TemplateOverrideKey::query_param(recipe_id.clone(), 0),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row0".into(),
@@ -429,7 +429,7 @@ mod tests {
             (
                 "row1".into(),
                 "value1".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
+                TemplateOverrideKey::query_param(recipe_id.clone(), 1),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row1".into(),
@@ -491,7 +491,7 @@ mod tests {
             (
                 "row0".into(),
                 "value0".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+                TemplateOverrideKey::query_param(recipe_id.clone(), 0),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row0".into(),
@@ -500,7 +500,7 @@ mod tests {
             (
                 "row1".into(),
                 "value1".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
+                TemplateOverrideKey::query_param(recipe_id.clone(), 1),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row1".into(),
@@ -564,7 +564,7 @@ mod tests {
         let rows = [(
             "row0".into(),
             "value0".into(),
-            RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+            TemplateOverrideKey::query_param(recipe_id.clone(), 0),
             TestRowToggleKey {
                 recipe_id: recipe_id.clone(),
                 key: "row0".into(),
@@ -600,18 +600,18 @@ mod tests {
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
-            RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+            TemplateOverrideKey::query_param(recipe_id.clone(), 0),
             "p0".into(),
         );
         harness.persistent_store().set_session(
-            RecipeOverrideKey::query_param(recipe_id.clone(), 1),
+            TemplateOverrideKey::query_param(recipe_id.clone(), 1),
             "p1".into(),
         );
         let rows = [
             (
                 "row0".into(),
                 "".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+                TemplateOverrideKey::query_param(recipe_id.clone(), 0),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row0".into(),
@@ -620,7 +620,7 @@ mod tests {
             (
                 "row1".into(),
                 "".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
+                TemplateOverrideKey::query_param(recipe_id.clone(), 1),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row1".into(),

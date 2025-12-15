@@ -695,7 +695,7 @@ impl LoadedState {
             collection: Arc::clone(collection),
             http_provider: Box::new(http_provider),
             prompter,
-            overrides: Default::default(),
+            overrides: self.view.profile_overrides(),
             show_sensitive: !is_preview,
             root_dir: self.collection_file.parent().to_owned(),
             state: Default::default(),

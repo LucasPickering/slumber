@@ -10,10 +10,8 @@ use crate::{
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            recipe::{
-                override_template::{OverrideTemplate, RecipeOverrideKey},
-                table::{RecipeFieldTable, RecipeFieldTableProps},
-            },
+            override_template::{OverrideTemplate, TemplateOverrideKey},
+            recipe::table::{RecipeFieldTable, RecipeFieldTableProps},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
@@ -81,7 +79,7 @@ impl RecipeBodyDisplay {
                 (
                     field.clone(),
                     value.clone(),
-                    RecipeOverrideKey::form_field(recipe_id.clone(), i),
+                    TemplateOverrideKey::form_field(recipe_id.clone(), i),
                     FormRowToggleKey {
                         recipe_id: recipe_id.clone(),
                         field: field.clone(),
@@ -185,7 +183,7 @@ impl TextBody {
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
             body: OverrideTemplate::new(
-                RecipeOverrideKey::body(recipe.id.clone()),
+                TemplateOverrideKey::body(recipe.id.clone()),
                 template,
                 content_type,
                 true,
@@ -446,7 +444,7 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = PersistentStore::get_session(&RecipeOverrideKey::body(
+        let persisted = PersistentStore::get_session(&TemplateOverrideKey::body(
             recipe.id.clone(),
         ));
         assert_eq!(persisted, Some("goodbye!".into()));
@@ -515,7 +513,7 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = PersistentStore::get_session(&RecipeOverrideKey::body(
+        let persisted = PersistentStore::get_session(&TemplateOverrideKey::body(
             recipe.id.clone(),
         ));
         assert_eq!(persisted, Some(override_text.into()));
@@ -536,7 +534,7 @@ mod tests {
             ..Recipe::factory(())
         };
         harness.persistent_store().set_session(
-            RecipeOverrideKey::body(recipe.id.clone()),
+            TemplateOverrideKey::body(recipe.id.clone()),
             "hello!".into(),
         );
 

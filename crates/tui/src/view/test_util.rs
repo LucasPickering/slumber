@@ -516,8 +516,8 @@ where
     }
 
     /// Get propagated events as a slice
-    pub fn propagated(&self) -> &[Event] {
-        &self.propagated
+    pub fn into_propagated(self) -> Vec<Event> {
+        self.propagated
     }
 }
 

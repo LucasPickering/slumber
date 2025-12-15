@@ -353,6 +353,7 @@ impl<K: PersistentKey<Value = String>> Draw for QueryableBody<K> {
                         self.query_state,
                         CommandState::Error(_)
                     ),
+                    ..TextBoxProps::default()
                 },
                 query_area,
                 self.command_focus == CommandFocus::Query,

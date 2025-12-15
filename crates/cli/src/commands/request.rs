@@ -19,6 +19,7 @@ use slumber_core::{
     render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
 };
+use slumber_template::Template;
 use slumber_util::{ResultTraced, ResultTracedAnyhow};
 use std::{
     error::Error,
@@ -209,7 +210,12 @@ impl BuildRequestCommand {
         });
 
         // Build the request
-        let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
+        let overrides: IndexMap<_, _> = self
+            .overrides
+            .into_iter()
+            // Don't support templates in overrides (yet)
+            .map(|(field, value)| (field, Template::raw(value)))
+            .collect();
         let template_context = TemplateContext {
             selected_profile,
             collection: collection.into(),

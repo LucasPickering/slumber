@@ -25,6 +25,7 @@ use crate::{
         persistent::{PersistentKey, PersistentStore},
     },
 };
+use indexmap::IndexMap;
 use ratatui::{
     layout::{Layout, Rect, Spacing},
     prelude::Constraint,
@@ -34,6 +35,7 @@ use slumber_config::Action;
 use slumber_core::collection::{
     ProfileId, RecipeId, RecipeNode, RecipeNodeType,
 };
+use slumber_template::Template;
 use slumber_util::yaml::SourceLocation;
 use std::iter;
 
@@ -131,6 +133,11 @@ impl PrimaryView {
             recipe_id,
             options,
         })
+    }
+
+    /// Get a map of overridden profile fields
+    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+        self.profile_detail.overrides()
     }
 
     /// Send a request for the currently selected recipe
@@ -567,7 +574,7 @@ mod tests {
             TestComponent::new(harness, terminal, PrimaryView::new());
         // Initial events
         assert_matches!(
-            component.int().drain_draw().propagated(),
+            component.int().drain_draw().into_propagated().as_slice(),
             // The profile and recipe lists each trigger this once
             &[
                 Event::HttpSelectRequest(None),

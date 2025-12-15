@@ -5,21 +5,31 @@ use crate::{
     util::ResultReported,
     view::{
         Generate, ViewContext,
-        common::{Pane, table::Table, template_preview::TemplatePreview},
+        common::{
+            Pane,
+            component_select::{
+                ComponentSelect, ComponentSelectProps, SelectStyles,
+            },
+            select::Select,
+        },
         component::{
-            Canvas, Component, ComponentId, Draw, DrawMetadata,
+            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+            override_template::{EditableTemplate, TemplateOverrideKey},
             sidebar_list::{SidebarListItem, SidebarListState},
         },
-        persistent::PersistentKey,
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use anyhow::anyhow;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use ratatui::layout::{Constraint, Layout, Spacing};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::collection::{Profile, ProfileId};
-use std::borrow::Cow;
+use slumber_template::Template;
+use std::{borrow::Cow, iter};
+use unicode_width::UnicodeWidthStr;
 
 /// State for a list of profiles. Use with
 /// [SidebarList](super::sidebar_list::SidebarList) for display.
@@ -89,8 +99,8 @@ impl PersistentKey for SelectedProfileKey {
 #[derive(Debug)]
 pub struct ProfileDetail {
     id: ComponentId,
-    /// Precomputed field previews
-    fields: Vec<(String, TemplatePreview)>,
+    /// Navigable list of profile fields
+    select: ComponentSelect<ProfileField>,
 }
 
 impl ProfileDetail {
@@ -98,50 +108,81 @@ impl ProfileDetail {
     /// selected profile changes, because the entire contents of the pane
     /// changes too.
     pub fn new(profile_id: Option<&ProfileId>) -> Self {
+        let Some(profile_id) = profile_id else {
+            // No profile selected - empty state
+            return Self {
+                id: ComponentId::new(),
+                select: ComponentSelect::default(),
+            };
+        };
+
         let collection = ViewContext::collection();
         let default = IndexMap::new();
-        let profile_data = profile_id
-            .and_then(|profile_id| {
-                let profile = collection
-                    .profiles
-                    .get(profile_id)
-                    // Failure is a logic error
-                    .ok_or_else(|| anyhow!("No profile with ID `{profile_id}`"))
-                    .reported(&ViewContext::messages_tx())?;
-                Some(&profile.data)
-            })
+        let profile_data = collection
+            .profiles
+            .get(profile_id)
+            // Failure is a logic error
+            .ok_or_else(|| anyhow!("No profile with ID `{profile_id}`"))
+            .reported(&ViewContext::messages_tx())
+            .map(|profile| &profile.data)
             .unwrap_or(&default);
 
-        // Start a preview render for each field
-        let fields = profile_data
+        // Create an editable template for each field
+        let items = profile_data
             .iter()
-            .map(|(key, template)| {
-                (
-                    key.clone(),
-                    TemplatePreview::new(
-                        template.clone(),
-                        None,
-                        false,
-                        // We don't know how this value will be used, so
-                        // let's say we *do*
-                        // support streaming to prevent loading
-                        // some huge streams
-                        true,
-                    ),
+            .map(|(field, template)| {
+                ProfileField::new(
+                    profile_id.clone(),
+                    field.clone(),
+                    template.clone(),
                 )
             })
             .collect_vec();
+        let select = Select::builder(items)
+            .persisted(&SelectedProfileFieldKey)
+            .build()
+            .into();
 
         Self {
             id: ComponentId::new(),
-            fields,
+            select,
         }
+    }
+
+    /// Get a map of overridden profile fields
+    pub fn overrides(&self) -> IndexMap<String, Template> {
+        self.select
+            .items()
+            .filter_map(|field| {
+                // Only include modified templates
+                if field.template.is_overridden() {
+                    Some((
+                        field.field.clone(),
+                        field.template.template().clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
 impl Component for ProfileDetail {
     fn id(&self) -> ComponentId {
         self.id
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        // Persist selected row
+        store.set_opt(
+            &SelectedProfileFieldKey,
+            self.select.selected().map(|row| &row.field),
+        );
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.select.to_child_mut()]
     }
 }
 
@@ -158,16 +199,164 @@ impl Draw for ProfileDetail {
         let area = block.inner(metadata.area());
         canvas.render_widget(block, metadata.area());
 
-        let table = Table {
-            header: Some(["Field", "Value"]),
-            rows: self
-                .fields
-                .iter()
-                .map(|(key, value)| [key.as_str().into(), value.generate()])
-                .collect_vec(),
-            alternate_row_style: true,
-            ..Default::default()
+        // Find the widest field so we know how to size the field column
+        let field_column_width = iter::once("Field")
+            .chain(self.select.items().map(|row| row.field.as_str()))
+            .map(UnicodeWidthStr::width)
+            .max()
+            .unwrap_or(0) as u16
+            + 1; // Padding!
+
+        let [header_area, rows_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+                .areas(area);
+        let [key_header_area, value_header_area] = Layout::horizontal([
+            Constraint::Length(field_column_width),
+            Constraint::Min(1),
+        ])
+        .areas(header_area);
+
+        // Draw header
+        canvas.render_widget("Field", key_header_area);
+        canvas.render_widget("Value", value_header_area);
+
+        // Draw rows
+        canvas.draw(
+            &self.select,
+            ComponentSelectProps {
+                styles: SelectStyles::table(),
+                spacing: Spacing::default(),
+                item_props: Box::new(move |_, _| {
+                    (ProfileFieldProps { field_column_width }, 1)
+                }),
+            },
+            rows_area,
+            true,
+        );
+    }
+}
+
+/// Persistence key for selected row in the [ProfileDetail] table
+#[derive(Debug, Serialize)]
+struct SelectedProfileFieldKey;
+
+impl PersistentKey for SelectedProfileFieldKey {
+    /// Store the field name
+    type Value = String;
+}
+
+/// A single field in the Profile detail table
+#[derive(Debug)]
+struct ProfileField {
+    id: ComponentId,
+    field: String,
+    template: EditableTemplate,
+}
+
+impl ProfileField {
+    fn new(profile_id: ProfileId, field: String, template: Template) -> Self {
+        let template = EditableTemplate::new(
+            TemplateOverrideKey::profile(profile_id, field.clone()),
+            template,
+            // We don't know how this value will be used, so let's say we *do*
+            // support streaming to prevent loading some huge streams
+            true,
+            // This edit could have downstream changes, so refresh after edit
+            true,
+        );
+        Self {
+            id: ComponentId::new(),
+            field,
+            template,
+        }
+    }
+}
+
+impl Component for ProfileField {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![self.template.to_child_mut()]
+    }
+}
+
+impl Draw<ProfileFieldProps> for ProfileField {
+    fn draw(
+        &self,
+        canvas: &mut Canvas,
+        props: ProfileFieldProps,
+        metadata: DrawMetadata,
+    ) {
+        let [field_area, template_area] = Layout::horizontal([
+            Constraint::Length(props.field_column_width),
+            Constraint::Min(1),
+        ])
+        .areas(metadata.area());
+
+        canvas.render_widget(self.field.as_str(), field_area);
+        canvas.draw(&self.template, (), template_area, true);
+    }
+}
+
+// Compare against field name for persistence
+impl PartialEq<String> for ProfileField {
+    fn eq(&self, other: &String) -> bool {
+        &self.field == other
+    }
+}
+
+/// Props for a single row in the field table
+#[derive(Copy, Clone, Debug)]
+struct ProfileFieldProps {
+    /// Width of the left column
+    field_column_width: u16,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_util::{TestHarness, TestTerminal, terminal},
+        view::{event::Event, test_util::TestComponent},
+    };
+    use indexmap::indexmap;
+    use rstest::rstest;
+    use slumber_core::{collection::Collection, test_util::by_id};
+    use slumber_util::{Factory, assert_matches};
+    use terminput::KeyCode;
+
+    #[rstest]
+    fn test_edit_template(terminal: TestTerminal) {
+        let profile_id = ProfileId::from("profile1");
+        let collection = Collection {
+            profiles: by_id([Profile {
+                id: profile_id.clone(),
+                data: indexmap! {
+                    "field1".into() => "abc".into(),
+                    "field2".into() => "def".into(),
+                },
+                ..Profile::factory(())
+            }]),
+            ..Collection::factory(())
         };
-        canvas.render_widget(table, area);
+        let harness = TestHarness::new(collection);
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            ProfileDetail::new(Some(&profile_id)),
+        );
+
+        let propagated = component
+            .int()
+            .send_keys([KeyCode::Down, KeyCode::Char('e')])
+            .send_text("123")
+            .send_key(KeyCode::Enter)
+            .into_propagated();
+        // Tell all other previews to re-render
+        assert_matches!(propagated.as_slice(), &[Event::RefreshPreviews]);
+        let field = &component.select[1];
+        assert_eq!(field.template.template(), &"def123".into());
     }
 }

@@ -911,14 +911,14 @@ mod tests {
 
         // Select item by click. Click is always propagated
         assert_matches!(
-            component.int().click(0, 1).propagated(),
+            component.int().click(0, 1).into_propagated().as_slice(),
             &[Event::Input(InputEvent::Click { .. })]
         );
         assert_eq!(component.selected_index(), Some(1));
 
         // Click outside the select - does nothing
         assert_matches!(
-            component.int().click(0, 3).propagated(),
+            component.int().click(0, 3).into_propagated().as_slice(),
             &[Event::Input(InputEvent::Click { .. })]
         );
         assert_eq!(component.selected_index(), Some(1));
@@ -933,14 +933,22 @@ mod tests {
         let mut component = TestComponent::new(&harness, &terminal, select);
 
         assert_matches!(
-            component.int().send_key(KeyCode::Enter).propagated(),
+            component
+                .int()
+                .send_key(KeyCode::Enter)
+                .into_propagated()
+                .as_slice(),
             &[Event::Input(InputEvent::Key {
                 action: Some(Action::Submit),
                 ..
             })]
         );
         assert_matches!(
-            component.int().send_key(KeyCode::Char(' ')).propagated(),
+            component
+                .int()
+                .send_key(KeyCode::Char(' '))
+                .into_propagated()
+                .as_slice(),
             &[Event::Input(InputEvent::Key {
                 action: Some(Action::Toggle),
                 ..

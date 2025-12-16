@@ -298,12 +298,6 @@ impl<Item, State: SelectState> Select<Item, State> {
             .map(|item| &item.value)
     }
 
-    /// Get a mutable reference to the currently selected item (if any)
-    pub fn selected_mut(&mut self) -> Option<&mut Item> {
-        let index = self.selected_index()?;
-        self.items.get_mut(index).map(|item| &mut item.value)
-    }
-
     /// Move the selected item out of the list, if there is any
     pub fn into_selected(mut self) -> Option<Item> {
         let index = self.selected_index()?;

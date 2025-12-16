@@ -74,10 +74,6 @@ pub enum Message {
     /// Copy some text to the clipboard
     CopyText(String),
 
-    /// Trigger a redraw. This should be called whenever we have reason to
-    /// believe the UI may have changed due to a background task
-    Draw,
-
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
 

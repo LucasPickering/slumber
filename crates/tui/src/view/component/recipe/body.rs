@@ -195,7 +195,7 @@ impl TextBody {
 
     /// Open rendered body in the pager
     fn view_body(&self) {
-        view_text(&self.body.preview().text(), self.mime.clone());
+        view_text(self.body.preview().text(), self.mime.clone());
     }
 
     /// Send a message to open the body in an external editor. We have to write
@@ -311,9 +311,7 @@ impl Draw for TextBody {
         canvas.draw(
             &self.text_window,
             TextWindowProps {
-                // Do *not* call generate, because that clones the text and
-                // we only need a reference
-                text: &self.body.preview().text(),
+                text: self.body.preview().text(),
                 margins: ScrollbarMargins {
                     right: 1,
                     bottom: 1,
@@ -444,9 +442,9 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = PersistentStore::get_session(&TemplateOverrideKey::body(
-            recipe.id.clone(),
-        ));
+        let persisted = PersistentStore::get_session(
+            &TemplateOverrideKey::body(recipe.id.clone()),
+        );
         assert_eq!(persisted, Some("goodbye!".into()));
 
         // Reset edited state
@@ -513,9 +511,9 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = PersistentStore::get_session(&TemplateOverrideKey::body(
-            recipe.id.clone(),
-        ));
+        let persisted = PersistentStore::get_session(
+            &TemplateOverrideKey::body(recipe.id.clone()),
+        );
         assert_eq!(persisted, Some(override_text.into()));
 
         // Reset edited state

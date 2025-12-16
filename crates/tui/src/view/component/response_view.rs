@@ -297,8 +297,6 @@ mod tests {
                 // component
             })
             .await;
-            // Background task sends a message to redraw
-            assert_matches!(harness.pop_message_now(), Message::Draw);
             component.int().drain_draw().assert_empty();
         }
 

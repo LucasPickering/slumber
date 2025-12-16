@@ -4,7 +4,7 @@ use crate::{
     view::{
         UpdateContext, ViewContext,
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        event::{Event, EventMatch},
+        event::{Emitter, Event, EventMatch},
         state::Identified,
         util::highlight,
     },
@@ -15,16 +15,15 @@ use ratatui::{
 };
 use slumber_core::http::content_type::ContentType;
 use slumber_template::{LazyValue, RenderedChunk, RenderedOutput, Template};
-use std::{
-    ops::Deref,
-    sync::{Arc, Mutex},
-};
+use std::ops::Deref;
 
 /// A preview of a template string, which can show either the raw text or the
 /// rendered version. The global config is used to enable/disable previews.
 #[derive(Debug)]
 pub struct TemplatePreview {
     id: ComponentId,
+    /// Emitter for rendered text from the preview task
+    callback_emitter: Emitter<Identified<Text<'static>>>,
     template: Template,
     /// Content-Type of the output, which can be used to apply syntax
     /// highlighting
@@ -39,16 +38,9 @@ pub struct TemplatePreview {
     /// Text to display, which could be either the raw template, or the
     /// rendered template. Either way, it may or may not be syntax
     /// highlighted. On init we send a message which will trigger a task to
-    /// start the render. When the task is done, it'll call a callback to set
-    /// generate the text and cache it here. This means we don't have to
-    /// restitch the chunks or reapply highlighting on every render. Arc is
-    /// needed to make the callback 'static.
-    ///
-    /// This should only ever be written to once, but we can't use `OnceLock`
-    /// because it also gets an initial value. There should be effectively zero
-    /// contention on the mutex because of the single write, and reads being
-    /// single-threaded.
-    text: Arc<Mutex<Identified<Text<'static>>>>,
+    /// start the render. When the task is done, it'll emit an event to set the
+    /// text.
+    text: Identified<Text<'static>>,
 }
 
 impl TemplatePreview {
@@ -86,10 +78,10 @@ impl TemplatePreview {
         )
         .set_style(Self::style(overridden))
         .into();
-        let text = Arc::new(Mutex::new(text));
 
         let mut slf = Self {
             id: ComponentId::new(),
+            callback_emitter: Emitter::default(),
             template,
             content_type,
             overridden,
@@ -100,10 +92,8 @@ impl TemplatePreview {
         slf
     }
 
-    pub fn text(&self) -> impl '_ + Deref<Target = Identified<Text<'static>>> {
-        self.text
-            .lock()
-            .expect("Template preview text lock is poisoned")
+    pub fn text(&self) -> &Identified<Text<'static>> {
+        &self.text
     }
 
     /// Send a message triggering a render of this template. The rendered
@@ -116,16 +106,18 @@ impl TemplatePreview {
         // which will be equivalent to the rendered text
         let config = &TuiContext::get().config;
         if config.tui.preview_templates && self.template.is_dynamic() {
-            let destination = Arc::clone(&self.text);
             let content_type = self.content_type;
             let style = Self::style(self.overridden);
-            let on_complete = move |c| {
-                Self::calculate_rendered_text(
-                    c,
-                    &destination,
-                    content_type,
-                    style,
-                );
+            let emitter = self.callback_emitter;
+            let on_complete = move |output| {
+                // Stitch the output together into Text, then apply highlighting
+                let text = TextStitcher::stitch_chunks(output);
+                let text = highlight::highlight_if(content_type, text)
+                    .set_style(style);
+                // We can emit the event directly from the callback because
+                // the task is run on a local set. This is maybe a bit jank and
+                // it should be routed through Message instead?
+                emitter.emit(text.into());
             };
 
             ViewContext::send_message(Message::TemplatePreview {
@@ -134,21 +126,6 @@ impl TemplatePreview {
                 on_complete: Box::new(on_complete),
             });
         }
-    }
-
-    /// Generate text from the rendered template, and replace the text in the
-    /// mutex
-    fn calculate_rendered_text(
-        chunks: RenderedOutput,
-        destination: &Mutex<Identified<Text<'static>>>,
-        content_type: Option<ContentType>,
-        style: Style,
-    ) {
-        let text = TextStitcher::stitch_chunks(chunks);
-        let text = highlight::highlight_if(content_type, text).set_style(style);
-        *destination
-            .lock()
-            .expect("Template preview text lock is poisoned") = text.into();
     }
 
     /// Get styling for the preview, based on overridden state
@@ -177,13 +154,17 @@ impl Component for TemplatePreview {
         _context: &mut UpdateContext,
         event: Event,
     ) -> EventMatch {
-        event.m().any(|event| {
-            if let Event::RefreshPreviews = event {
-                self.render_preview();
-            }
-            // Refresh must be send to all previews, so *don't* consume!!
-            Some(event)
-        })
+        event
+            .m()
+            // Update text with emitted event from the preview task
+            .emitted(self.callback_emitter, |text| self.text = text)
+            .any(|event| {
+                if let Event::RefreshPreviews = event {
+                    self.render_preview();
+                }
+                // Refresh must be send to all previews, so *don't* consume!!
+                Some(event)
+            })
     }
 }
 

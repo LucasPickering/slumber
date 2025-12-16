@@ -180,11 +180,6 @@ pub fn yield_terminal(
     initialize_terminal()?; // Take it back over
     drop(span);
 
-    // Redraw immediately. The main loop will probably be in the tick
-    // timeout when we go back to it, so that adds a 250ms delay to
-    // redrawing the screen that we want to skip.
-    messages_tx.send(Message::Draw);
-
     command_result
 }
 
@@ -271,11 +266,7 @@ pub async fn signals() -> anyhow::Result<()> {
 pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
     task::spawn_local(async move {
         select! {
-            () = future => {
-                // Assume the task updated _something_ visible to the user,
-                // so trigger a redraw here
-                ViewContext::messages_tx().send(Message::Draw);
-            },
+            () = future => {},
             () = CANCEL_TOKEN.cancelled() => {},
         }
     })

@@ -198,7 +198,7 @@ pub enum DefaultPane {
     Bottom,
 }
 
-/// Selectable pane in [PrimaryLayout::Profile]
+/// Selectable pane in [PrimaryLayout::Sidebar]
 #[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
 pub enum SidebarPane {
     Sidebar,

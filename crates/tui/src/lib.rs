@@ -218,9 +218,6 @@ impl Tui {
                 Ok(())
             }
 
-            // This message exists just to trigger a draw
-            Message::Draw => Ok(()),
-
             // Force quit short-circuits the view/message cycle, to make sure
             // it doesn't get ate by text boxes
             Message::Input(InputEvent::Key {

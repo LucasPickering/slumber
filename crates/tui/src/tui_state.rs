@@ -398,8 +398,7 @@ impl LoadedState {
             // get here
             Message::CollectionSelect(_)
             | Message::ClearTerminal
-            | Message::Quit
-            | Message::Draw => {
+            | Message::Quit => {
                 panic!(
                     "Unexpected message in TuiState; should have been handled \
                     by parent: {message:?}"

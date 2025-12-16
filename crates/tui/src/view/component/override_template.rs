@@ -3,13 +3,14 @@
 use crate::view::{
     UpdateContext, ViewContext,
     common::{
+        actions::MenuItem,
         template_preview::TemplatePreview,
         text_box::{TextBox, TextBoxEvent, TextBoxProps},
     },
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
-    event::{Event, EventMatch, ToEmitter},
+    event::{Emitter, Event, EventMatch, ToEmitter},
     persistent::{PersistentStore, SessionKey},
 };
 use serde::Serialize;
@@ -148,6 +149,9 @@ impl Draw for OverrideTemplate {
 #[derive(Debug)]
 pub struct EditableTemplate {
     id: ComponentId,
+    /// Descriptor for the *type* of template being shown, e.g. "Header"
+    noun: &'static str,
+    actions_emitter: Emitter<EditableTemplateMenuAction>,
     template: OverrideTemplate,
     /// An inline text box for editing the override template. `Some` only when
     /// editing.
@@ -172,6 +176,7 @@ impl EditableTemplate {
     ///   this template is modified? Use this for profile field templates,
     ///   because those can have downstream effects.
     pub fn new(
+        noun: &'static str,
         persistent_key: TemplateOverrideKey,
         template: Template,
         can_stream: bool,
@@ -179,6 +184,8 @@ impl EditableTemplate {
     ) -> Self {
         Self {
             id: ComponentId::default(),
+            noun,
+            actions_emitter: Emitter::default(),
             template: OverrideTemplate::new(
                 persistent_key,
                 template,
@@ -264,6 +271,10 @@ impl Component for EditableTemplate {
                 Action::Reset => self.reset_override(),
                 _ => propagate.set(),
             })
+            .emitted(self.actions_emitter, |menu_action| match menu_action {
+                EditableTemplateMenuAction::Edit => self.edit(),
+                EditableTemplateMenuAction::Reset => self.reset_override(),
+            })
             .emitted_opt(
                 self.edit_text_box.as_ref().map(ToEmitter::to_emitter),
                 |event| match event {
@@ -272,6 +283,24 @@ impl Component for EditableTemplate {
                     TextBoxEvent::Submit => self.submit_edit(),
                 },
             )
+    }
+
+    fn menu(&self) -> Vec<MenuItem> {
+        let noun = self.noun;
+        vec![
+            self.actions_emitter
+                .menu(EditableTemplateMenuAction::Edit, format!("Edit {noun}"))
+                .shortcut(Some(Action::Edit))
+                .into(),
+            self.actions_emitter
+                .menu(
+                    EditableTemplateMenuAction::Reset,
+                    format!("Reset {noun}"),
+                )
+                .enable(self.is_overridden())
+                .shortcut(Some(Action::Reset))
+                .into(),
+        ]
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -300,6 +329,15 @@ impl Draw for EditableTemplate {
             canvas.draw(self.preview(), (), metadata.area(), false);
         }
     }
+}
+
+/// Menu action for [EditableTemplate]
+#[derive(Copy, Clone, Debug)]
+enum EditableTemplateMenuAction {
+    /// Edit the override
+    Edit,
+    /// Wipe ou the current override
+    Reset,
 }
 
 /// Persisted key for override templates in the session store. This uniquely
@@ -430,7 +468,13 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            EditableTemplate::new(key.clone(), "default".into(), false, false),
+            EditableTemplate::new(
+                "Item",
+                key.clone(),
+                "default".into(),
+                false,
+                false,
+            ),
         );
 
         // Persisted value is loaded on creation

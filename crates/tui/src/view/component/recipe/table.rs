@@ -3,7 +3,6 @@ use crate::{
     view::{
         common::{
             Checkbox,
-            actions::MenuItem,
             component_select::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
@@ -15,7 +14,7 @@ use crate::{
             override_template::{EditableTemplate, TemplateOverrideKey},
         },
         context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
+        event::{Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, PersistentStore},
     },
 };
@@ -23,7 +22,6 @@ use ratatui::{
     layout::{Constraint, Layout, Spacing},
     widgets::Block,
 };
-use slumber_config::Action;
 use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
 use slumber_template::Template;
 use std::iter;
@@ -40,10 +38,6 @@ use unicode_width::UnicodeWidthStr;
 #[derive(Debug)]
 pub struct RecipeFieldTable<RowSelectKey, RowToggleKey> {
     id: ComponentId,
-    /// What kind of data we we storing? e.g. "Header"
-    noun: &'static str,
-    /// Emitter for menu actions
-    actions_emitter: Emitter<RecipeTableMenuAction>,
     /// Persistence key to store which row is selected
     select_persistent_key: RowSelectKey,
     /// Selectable rows
@@ -71,6 +65,7 @@ where
                     i, // This will be the unique ID for the row
                     key,
                     EditableTemplate::new(
+                        noun,
                         override_key,
                         template.clone(),
                         can_stream,
@@ -88,8 +83,6 @@ where
 
         Self {
             id: Default::default(),
-            noun,
-            actions_emitter: Default::default(),
             select_persistent_key: select_key,
             select: ComponentSelect::new(select),
         }
@@ -103,20 +96,6 @@ where
                 row.to_build_override().map(|ovr| (row.index, ovr))
             })
             .collect()
-    }
-
-    /// Enter edit mode in the selected row
-    fn edit_selected_row(&mut self) {
-        if let Some(selected_row) = self.select.selected_mut() {
-            selected_row.value.edit();
-        }
-    }
-
-    /// Reset override on selected row
-    fn reset_selected_row(&mut self) {
-        if let Some(selected_row) = self.select.selected_mut() {
-            selected_row.value.reset_override();
-        }
     }
 }
 
@@ -145,32 +124,6 @@ where
                 }
                 SelectEvent::Submit(_) => {}
             })
-            .emitted(self.actions_emitter, |menu_action| match menu_action {
-                // The selected row can't change while the action menu is open,
-                // so we don't need to plumb the index/key through
-                RecipeTableMenuAction::Edit => self.edit_selected_row(),
-                RecipeTableMenuAction::Reset => {
-                    self.reset_selected_row();
-                }
-            })
-    }
-
-    fn menu(&self) -> Vec<MenuItem> {
-        let emitter = self.actions_emitter;
-        let noun = self.noun;
-        let selected = self.select.selected();
-        vec![
-            emitter
-                .menu(RecipeTableMenuAction::Edit, format!("Edit {noun}"))
-                .enable(selected.is_some())
-                .shortcut(Some(Action::Edit))
-                .into(),
-            emitter
-                .menu(RecipeTableMenuAction::Reset, format!("Reset {noun}"))
-                .enable(selected.is_some_and(|row| row.value.is_overridden()))
-                .shortcut(Some(Action::Reset))
-                .into(),
-        ]
     }
 
     fn persist(&self, store: &mut PersistentStore) {
@@ -233,12 +186,6 @@ where
             true,
         );
     }
-}
-
-#[derive(Debug)]
-enum RecipeTableMenuAction {
-    Edit,
-    Reset,
 }
 
 #[derive(Debug)]

@@ -23,7 +23,10 @@ use crate::{
 use anyhow::anyhow;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use ratatui::layout::{Constraint, Layout, Spacing};
+use ratatui::{
+    layout::{Constraint, Layout, Spacing},
+    style::Styled,
+};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::collection::{Profile, ProfileId};
@@ -217,8 +220,9 @@ impl Draw for ProfileDetail {
         .areas(header_area);
 
         // Draw header
-        canvas.render_widget("Field", key_header_area);
-        canvas.render_widget("Value", value_header_area);
+        let style = TuiContext::get().styles.table.header;
+        canvas.render_widget("Field".set_style(style), key_header_area);
+        canvas.render_widget("Value".set_style(style), value_header_area);
 
         // Draw rows
         canvas.draw(

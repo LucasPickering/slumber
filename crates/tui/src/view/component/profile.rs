@@ -256,6 +256,7 @@ struct ProfileField {
 impl ProfileField {
     fn new(profile_id: ProfileId, field: String, template: Template) -> Self {
         let template = EditableTemplate::new(
+            "Field",
             TemplateOverrideKey::profile(profile_id, field.clone()),
             template,
             // We don't know how this value will be used, so let's say we *do*

@@ -2,7 +2,6 @@ use crate::{
     context::TuiContext,
     view::{
         common::{
-            actions::MenuItem,
             component_select::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
@@ -14,11 +13,10 @@ use crate::{
             override_template::{EditableTemplate, TemplateOverrideKey},
         },
         context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
+        event::{Event, EventMatch, ToEmitter},
     },
 };
 use ratatui::{layout::Layout, prelude::Constraint, text::Span};
-use slumber_config::Action;
 use slumber_core::collection::{Authentication, RecipeId};
 use slumber_template::Template;
 
@@ -26,8 +24,6 @@ use slumber_template::Template;
 #[derive(Debug)]
 pub struct AuthenticationDisplay {
     id: ComponentId,
-    /// Emitter for menu actions
-    actions_emitter: Emitter<AuthenticationMenuAction>,
     state: State,
 }
 
@@ -43,6 +39,7 @@ impl AuthenticationDisplay {
             }
             Authentication::Bearer { token } => State::Bearer {
                 token: EditableTemplate::new(
+                    "Token",
                     TemplateOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
                     false,
@@ -52,7 +49,6 @@ impl AuthenticationDisplay {
         };
         Self {
             id: ComponentId::default(),
-            actions_emitter: Emitter::default(),
             state,
         }
     }
@@ -81,38 +77,6 @@ impl AuthenticationDisplay {
 impl Component for AuthenticationDisplay {
     fn id(&self) -> ComponentId {
         self.id
-    }
-
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event
-            .m()
-            .emitted(self.actions_emitter, |menu_action| match menu_action {
-                AuthenticationMenuAction::Edit => {
-                    self.state.selected_template_mut().edit();
-                }
-                AuthenticationMenuAction::Reset => {
-                    self.state.selected_template_mut().reset_override();
-                }
-            })
-    }
-
-    fn menu(&self) -> Vec<MenuItem> {
-        let emitter = self.actions_emitter;
-        let label = match &self.state {
-            State::Basic(basic) => basic.select.selected().unwrap().label,
-            State::Bearer { .. } => "Token",
-        };
-        vec![
-            emitter
-                .menu(AuthenticationMenuAction::Edit, format!("Edit {label}"))
-                .shortcut(Some(Action::Edit))
-                .into(),
-            emitter
-                .menu(AuthenticationMenuAction::Reset, format!("Reset {label}"))
-                .enable(self.state.selected_template().is_overridden())
-                .shortcut(Some(Action::Reset))
-                .into(),
-        ]
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -153,12 +117,6 @@ impl Draw for AuthenticationDisplay {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-enum AuthenticationMenuAction {
-    Edit,
-    Reset,
-}
-
 /// Private to hide enum variants
 #[derive(Debug)]
 enum State {
@@ -174,24 +132,6 @@ impl State {
                 basic.select.items().any(|item| item.value.is_overridden())
             }
             Self::Bearer { token } => token.is_overridden(),
-        }
-    }
-
-    /// Get the template that is receiving events
-    fn selected_template(&self) -> &EditableTemplate {
-        match self {
-            Self::Basic(basic) => &basic.select.selected().unwrap().value,
-            Self::Bearer { token } => token,
-        }
-    }
-
-    /// Get a mutable reference to the template that is receiving events
-    fn selected_template_mut(&mut self) -> &mut EditableTemplate {
-        match self {
-            Self::Basic(basic) => {
-                &mut basic.select.selected_mut().unwrap().value
-            }
-            Self::Bearer { token } => token,
         }
     }
 }
@@ -214,12 +154,14 @@ impl BasicAuthentication {
         password: Template,
     ) -> Self {
         let username = EditableTemplate::new(
+            "Username",
             TemplateOverrideKey::auth_basic_username(recipe_id.clone()),
             username,
             false,
             false,
         );
         let password = EditableTemplate::new(
+            "Password",
             TemplateOverrideKey::auth_basic_password(recipe_id),
             password,
             false,

@@ -21,6 +21,7 @@ impl Collection {
                 Profile::example(),
                 Profile {
                     id: "remote".into(),
+                    location: SourceLocation::default(),
                     name: Some("Remote".into()),
                     default: false,
                     data: indexmap! {
@@ -51,6 +52,7 @@ impl Profile {
     pub fn example() -> Self {
         Profile {
             id: "local".into(),
+            location: SourceLocation::default(),
             name: Some("Local".into()),
             default: true,
             data: indexmap! {

@@ -55,7 +55,10 @@ pub struct TemplateContext {
     pub selected_profile: Option<ProfileId>,
     /// An interface to allow accessing and sending HTTP chained requests
     pub http_provider: Box<dyn HttpProvider>,
-    /// Additional key=value overrides passed directly from the user
+    /// Additional profile key=value overrides passed directly from the user.
+    /// These will be applied to both the root and triggered requests, which is
+    /// why they are part of the context instead of
+    /// [BuildOptions](super::http::BuildOptions).
     pub overrides: IndexMap<String, Template>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,

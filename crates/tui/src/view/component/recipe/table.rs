@@ -20,6 +20,7 @@ use crate::{
 };
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
+    style::Styled,
     widgets::Block,
 };
 use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
@@ -170,8 +171,15 @@ where
         .areas(header_area);
 
         // Draw header
-        canvas.render_widget(props.key_header, key_header_area);
-        canvas.render_widget(props.value_header, value_header_area);
+        let header_style = TuiContext::get().styles.table.header;
+        canvas.render_widget(
+            props.key_header.set_style(header_style),
+            key_header_area,
+        );
+        canvas.render_widget(
+            props.value_header.set_style(header_style),
+            value_header_area,
+        );
 
         // Draw rows
         let item_props = RecipeFieldTableRowProps { key_column_width };

@@ -431,8 +431,8 @@ impl SessionKey for TemplateOverrideKey {
     type Value = Template;
 }
 
-/// Different kinds of recipe fields that can be persisted. This is exposed only
-/// through methods on [RecipeOverrideKey] to make usage a bit terser.
+/// Different kinds of recipe fields that can be persisted. This is should be
+/// used through methods on [TemplateOverrideKey] to make usage a bit terser.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub enum TemplateOverrideKeyKind {
     Url,

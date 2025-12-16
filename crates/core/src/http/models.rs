@@ -277,6 +277,13 @@ impl RequestSeed {
 /// and this options layer makes the available modifications clear and
 /// restricted.
 ///
+/// The distinction between this and
+/// [TemplateContext::overrides](super::TemplateContext::overrides) is that
+/// this struct stores *recipe* overrides whereas that field stores *profile
+/// field* overrides. This is important because profile overrides apply to
+/// triggered requests as well, but recipe overrides do not. That's why we
+/// can't put recipe overrides into the template context.
+///
 /// These store *indexes* rather than keys because keys may not be necessarily
 /// unique (e.g. in the case of query params). Technically some could use keys
 /// and some could use indexes, but I chose consistency.

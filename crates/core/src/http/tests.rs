@@ -998,10 +998,95 @@ async fn test_build_curl(http_engine: HttpEngine) {
     let seed = seed(&context, BuildOptions::default());
 
     let command = http_engine.build_curl(seed, &context).await.unwrap();
-    let expected_command = "curl -XGET \
-    --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
-    --header 'accept: application/json' \
-    --header 'content-type: application/json'";
+    let expected_command = r"curl -XGET \
+  --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
+  --header 'accept: application/json' \
+  --header 'content-type: application/json'";
+    assert_eq!(command, expected_command);
+}
+
+/// Build a curl command with a large JSON body to demonstrate multiline
+/// formatting. This example is taken from GitHub issue #678.
+#[rstest]
+#[tokio::test]
+async fn test_build_curl_complex_json(http_engine: HttpEngine) {
+    let recipe = Recipe {
+        method: HttpMethod::Post,
+        url: "{{ host }}/v1/chat/completions".into(),
+        headers: indexmap! {
+            "Authorization".into() => "Bearer {{ token }}".into(),
+        },
+        body: Some(
+            RecipeBody::json(json!({
+                "model": "gpt-4",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant."
+                    },
+                    {
+                        "role": "user",
+                        "content": "What is the weather in Boston?"
+                    }
+                ],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "description": "Get the current weather",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "location": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }))
+            .unwrap(),
+        ),
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe, None);
+    let seed = seed(&context, BuildOptions::default());
+    let command = http_engine.build_curl(seed, &context).await.unwrap();
+    let expected_command = r#"curl -XPOST \
+  --url 'http://localhost/v1/chat/completions' \
+  --header 'authorization: Bearer tokenzzz' \
+  --json '{
+  "model": "gpt-4",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant."
+    },
+    {
+      "role": "user",
+      "content": "What is the weather in Boston?"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get the current weather",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ]
+}'"#;
     assert_eq!(command, expected_command);
 }
 
@@ -1053,7 +1138,7 @@ async fn test_build_curl_authentication(
 )]
 #[case::json(
     RecipeBody::json(json!({"group_id": "{{ group_id }}"})).unwrap(),
-    r#"--json '{"group_id":"3"}'"#
+    "--json '{\n  \"group_id\": \"3\"\n}'"
 )]
 #[case::form_urlencoded(
     RecipeBody::FormUrlencoded(indexmap! {
@@ -1088,6 +1173,8 @@ async fn test_build_curl_body(
     #[case] body: RecipeBody,
     #[case] expected_arguments: &str,
 ) {
+    use crate::http::curl::CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER;
+
     let recipe = Recipe {
         body: Some(body),
         ..Recipe::factory(())
@@ -1100,8 +1187,20 @@ async fn test_build_curl_body(
         // Dynamic replacements for system-specific contents
         .replace('/', path::MAIN_SEPARATOR_STR)
         .replace("{ROOT}", &context.root_dir.to_string_lossy());
-    let expected_command =
+
+    // Build expected command - format depends on length (>
+    // CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER chars = multiline)
+    let single_line =
         format!("curl -XGET --url 'http://localhost/url' {expected_arguments}");
+    let expected_command =
+        if single_line.len() > CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER {
+            format!(
+                "curl -XGET \\\n  --url 'http://localhost/url' \\\n  {}",
+                expected_arguments.replace(" -", " \\\n  -")
+            )
+        } else {
+            single_line
+        };
     assert_eq!(command, expected_command);
 }
 

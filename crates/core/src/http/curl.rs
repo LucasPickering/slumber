@@ -8,16 +8,21 @@ use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use slumber_template::StreamSource;
 use std::borrow::Cow;
 
+/// Character limit for single-line curl commands.
+/// Commands longer than this will be formatted as multiline.
+pub const CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER: usize = 100;
+
 /// Builder pattern for constructing cURL commands from a recipe
 pub struct CurlBuilder {
-    /// Command arguments. Built up as a list then joined into a string
-    command: Vec<Cow<'static, str>>,
+    /// Command argument groups. Each group contains related args (e.g., flag
+    /// and its value) that should stay on the same line.
+    groups: Vec<Vec<Cow<'static, str>>>,
 }
 
 impl CurlBuilder {
     /// Start building a new cURL command for an HTTP method
     pub fn new(method: HttpMethod) -> Self {
-        let mut slf = Self { command: vec![] };
+        let mut slf = Self { groups: vec![] };
         slf.push(["curl".into(), format!("-X{method}").into()]);
         slf
     }
@@ -121,7 +126,7 @@ impl CurlBuilder {
                 self.push(["--data".into(), format!("'{body}'").into()]);
             }
             RenderedBody::Json(json) => {
-                self.push(["--json".into(), format!("'{json}'").into()]);
+                self.push(["--json".into(), format!("'{json:#}'").into()]);
             }
             // Use the first-class form support where possible
             RenderedBody::FormUrlencoded(form) => {
@@ -158,13 +163,29 @@ impl CurlBuilder {
 
     /// Finalize and return the command
     pub fn build(self) -> String {
-        self.command.join(" ")
+        let single_line = join_groups(&self.groups, " ");
+
+        if single_line.len() > CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER {
+            join_groups(&self.groups, " \\\n  ")
+        } else {
+            single_line
+        }
     }
 
     /// Push arguments onto the list
     fn push<const N: usize>(&mut self, arguments: [Cow<'static, str>; N]) {
-        self.command.extend(arguments);
+        self.groups.push(arguments.into());
     }
+}
+
+/// Join argument groups into a single string. Each group's arguments are
+/// joined with spaces, then groups are joined with the given separator.
+fn join_groups(groups: &[Vec<Cow<'static, str>>], separator: &str) -> String {
+    groups
+        .iter()
+        .map(|g| g.join(" "))
+        .collect::<Vec<_>>()
+        .join(separator)
 }
 
 /// Convert bytes to text, or return an error if it's not UTF-8

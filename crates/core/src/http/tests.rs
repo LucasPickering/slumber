@@ -151,12 +151,14 @@ async fn test_build_request(http_engine: HttpEngine) {
 }
 
 /// Test building just a URL. Should include query params, but headers/body
-/// should *not* be built
+/// should *not* be built. Include inline query param and fragment; they should
+/// not be dropped
 #[rstest]
 #[tokio::test]
 async fn test_build_url(http_engine: HttpEngine) {
     let recipe = Recipe {
-        url: "{{ host }}/users/{{ user_id }}".into(),
+        // query param and fragment should be retained
+        url: "{{ host }}/users/{{ user_id }}?inline=1#fragment".into(),
         query: indexmap! {
             "mode".into() => ["{{ mode }}", "user"].into(),
             "fast".into() => ["true", "false"].into(),
@@ -169,7 +171,9 @@ async fn test_build_url(http_engine: HttpEngine) {
 
     assert_eq!(
         url.as_str(),
-        "http://localhost/users/1?mode=sudo&mode=user&fast=true&fast=false"
+        "http://localhost/users/1\
+            ?inline=1&mode=sudo&mode=user&fast=true&fast=false\
+            #fragment"
     );
 }
 

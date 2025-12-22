@@ -998,8 +998,7 @@ async fn test_build_curl(http_engine: HttpEngine) {
     let seed = seed(&context, BuildOptions::default());
 
     let command = http_engine.build_curl(seed, &context).await.unwrap();
-    let expected_command = r"curl -XGET \
-  --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
+    let expected_command = r"curl -XGET --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
   --header 'accept: application/json' \
   --header 'content-type: application/json'";
     assert_eq!(command, expected_command);
@@ -1012,40 +1011,18 @@ async fn test_build_curl(http_engine: HttpEngine) {
 async fn test_build_curl_complex_json(http_engine: HttpEngine) {
     let recipe = Recipe {
         method: HttpMethod::Post,
-        url: "{{ host }}/v1/chat/completions".into(),
+        url: "{{ host }}/json".into(),
         headers: indexmap! {
             "Authorization".into() => "Bearer {{ token }}".into(),
         },
         body: Some(
             RecipeBody::json(json!({
-                "model": "gpt-4",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant."
-                    },
-                    {
-                        "role": "user",
-                        "content": "What is the weather in Boston?"
-                    }
+                "fishes": [
+                    {"species": "Salmon", "name": "Sam"},
+                    {"species": "Blue Tang", "name": "Dory"},
+                    {"species": "Clownfish", "name": "Nemo"},
                 ],
-                "tools": [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "get_weather",
-                            "description": "Get the current weather",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "location": {
-                                        "type": "string"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ]
+                "count": 207,
             }))
             .unwrap(),
         ),
@@ -1054,38 +1031,24 @@ async fn test_build_curl_complex_json(http_engine: HttpEngine) {
     let context = template_context(recipe, None);
     let seed = seed(&context, BuildOptions::default());
     let command = http_engine.build_curl(seed, &context).await.unwrap();
-    let expected_command = r#"curl -XPOST \
-  --url 'http://localhost/v1/chat/completions' \
+    let expected_command = r#"curl -XPOST --url 'http://localhost/json' \
   --header 'authorization: Bearer tokenzzz' \
   --json '{
-  "model": "gpt-4",
-  "messages": [
+  "fishes": [
     {
-      "role": "system",
-      "content": "You are a helpful assistant."
+      "species": "Salmon",
+      "name": "Sam"
     },
     {
-      "role": "user",
-      "content": "What is the weather in Boston?"
+      "species": "Blue Tang",
+      "name": "Dory"
+    },
+    {
+      "species": "Clownfish",
+      "name": "Nemo"
     }
   ],
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "get_weather",
-        "description": "Get the current weather",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "location": {
-              "type": "string"
-            }
-          }
-        }
-      }
-    }
-  ]
+  "count": 207
 }'"#;
     assert_eq!(command, expected_command);
 }
@@ -1124,7 +1087,8 @@ async fn test_build_curl_authentication(
     let seed = seed(&context, BuildOptions::default());
     let command = http_engine.build_curl(seed, &context).await.unwrap();
     let expected_command = format!(
-        "curl -XGET --url 'http://localhost/url' {expected_arguments}",
+        "curl -XGET --url 'http://localhost/url' \\
+  {expected_arguments}",
     );
     assert_eq!(command, expected_command);
 }
@@ -1145,7 +1109,7 @@ async fn test_build_curl_authentication(
         "user_id".into() => "{{ user_id }}".into(),
         "token".into() => "{{ token }}".into()
     }),
-    "--data-urlencode 'user_id=1' --data-urlencode 'token=tokenzzz'"
+    "--data-urlencode 'user_id=1' \\\n  --data-urlencode 'token=tokenzzz'"
 )]
 #[case::form_multipart(
     // This doesn't support binary content because we can't pass it via cmd
@@ -1153,7 +1117,7 @@ async fn test_build_curl_authentication(
         "user_id".into() => "{{ user_id }}".into(),
         "token".into() => "{{ token }}".into()
     }),
-    "-F 'user_id=1' -F 'token=tokenzzz'"
+    "-F 'user_id=1' \\\n  -F 'token=tokenzzz'"
 )]
 #[case::form_multipart_file(
     RecipeBody::FormMultipart(indexmap! {
@@ -1173,8 +1137,6 @@ async fn test_build_curl_body(
     #[case] body: RecipeBody,
     #[case] expected_arguments: &str,
 ) {
-    use crate::http::curl::CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER;
-
     let recipe = Recipe {
         body: Some(body),
         ..Recipe::factory(())
@@ -1188,19 +1150,10 @@ async fn test_build_curl_body(
         .replace('/', path::MAIN_SEPARATOR_STR)
         .replace("{ROOT}", &context.root_dir.to_string_lossy());
 
-    // Build expected command - format depends on length (>
-    // CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER chars = multiline)
-    let single_line =
-        format!("curl -XGET --url 'http://localhost/url' {expected_arguments}");
-    let expected_command =
-        if single_line.len() > CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER {
-            format!(
-                "curl -XGET \\\n  --url 'http://localhost/url' \\\n  {}",
-                expected_arguments.replace(" -", " \\\n  -")
-            )
-        } else {
-            single_line
-        };
+    let expected_command = format!(
+        "curl -XGET --url 'http://localhost/url' \\
+  {expected_arguments}"
+    );
     assert_eq!(command, expected_command);
 }
 

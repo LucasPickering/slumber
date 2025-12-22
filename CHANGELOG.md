@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Improve readability of generated curl commands by formatting them as multiline if the command exceeds 100 characters
+- Add line breaks to cURL command output if length is >100 characters (@fgebhart, [#678](https://github.com/LucasPickering/slumber/issues/678))
 
 ## [4.3.0] - 2025-12-12
 

@@ -4,27 +4,23 @@ use crate::{
 };
 use bytes::BytesMut;
 use futures::TryStreamExt;
+use itertools::Itertools;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use slumber_template::StreamSource;
-use std::borrow::Cow;
-
-/// Character limit for single-line curl commands.
-/// Commands longer than this will be formatted as multiline.
-pub const CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER: usize = 100;
 
 /// Builder pattern for constructing cURL commands from a recipe
 pub struct CurlBuilder {
     /// Command argument groups. Each group contains related args (e.g., flag
     /// and its value) that should stay on the same line.
-    groups: Vec<Vec<Cow<'static, str>>>,
+    groups: Vec<Vec<String>>,
 }
 
 impl CurlBuilder {
     /// Start building a new cURL command for an HTTP method
     pub fn new(method: HttpMethod) -> Self {
-        let mut slf = Self { groups: vec![] };
-        slf.push(["curl".into(), format!("-X{method}").into()]);
-        slf
+        Self {
+            groups: vec![vec!["curl".into(), format!("-X{method}")]],
+        }
     }
 
     /// Add the URL, with query parameters, to the command
@@ -38,7 +34,8 @@ impl CurlBuilder {
         if !query.is_empty() {
             url.query_pairs_mut().extend_pairs(query);
         }
-        self.push(["--url".into(), format!("'{url}'").into()]);
+        // Add to the first group, so it goes on the same line as the method
+        self.groups[0].extend(["--url".into(), format!("'{url}'")]);
         self
     }
 
@@ -60,7 +57,8 @@ impl CurlBuilder {
         value: &HeaderValue,
     ) -> Result<Self, RequestBuildErrorKind> {
         let value = as_text(value.as_bytes())?;
-        self.push(["--header".into(), format!("'{name}: {value}'").into()]);
+        self.groups
+            .push(vec!["--header".into(), format!("'{name}: {value}'")]);
         Ok(self)
     }
 
@@ -71,13 +69,12 @@ impl CurlBuilder {
     ) -> Self {
         match authentication {
             Authentication::Basic { username, password } => {
-                self.push([
+                self.groups.push(vec![
                     "--user".into(),
                     format!(
                         "'{username}:{password}'",
                         password = password.as_deref().unwrap_or_default()
-                    )
-                    .into(),
+                    ),
                 ]);
                 self
             }
@@ -101,7 +98,7 @@ impl CurlBuilder {
         match body {
             RenderedBody::Raw(bytes) => {
                 let body = as_text(&bytes)?;
-                self.push(["--data".into(), format!("'{body}'").into()]);
+                self.groups.push(vec!["--data".into(), format!("'{body}'")]);
             }
             // We know how to stream files to curl
             RenderedBody::Stream(BodyStream {
@@ -109,9 +106,9 @@ impl CurlBuilder {
                 ..
             }) => {
                 // Stream the file
-                self.push([
+                self.groups.push(vec![
                     "--data".into(),
-                    format!("'@{path}'", path = path.to_string_lossy()).into(),
+                    format!("'@{path}'", path = path.to_string_lossy()),
                 ]);
             }
             // Any other type of has to be resolved eagerly since curl
@@ -123,17 +120,18 @@ impl CurlBuilder {
                     .await
                     .map_err(RequestBuildErrorKind::BodyStream)?;
                 let body = as_text(&bytes)?;
-                self.push(["--data".into(), format!("'{body}'").into()]);
+                self.groups.push(vec!["--data".into(), format!("'{body}'")]);
             }
             RenderedBody::Json(json) => {
-                self.push(["--json".into(), format!("'{json:#}'").into()]);
+                self.groups
+                    .push(vec!["--json".into(), format!("'{json:#}'")]);
             }
             // Use the first-class form support where possible
             RenderedBody::FormUrlencoded(form) => {
                 for (field, value) in form {
-                    self.push([
+                    self.groups.push(vec![
                         "--data-urlencode".into(),
-                        format!("'{field}={value}'").into(),
+                        format!("'{field}={value}'"),
                     ]);
                 }
             }
@@ -154,7 +152,7 @@ impl CurlBuilder {
                         let text = as_text(&bytes)?;
                         format!("'{field}={text}'")
                     };
-                    self.push(["-F".into(), argument.into()]);
+                    self.groups.push(vec!["-F".into(), argument]);
                 }
             }
         }
@@ -163,29 +161,16 @@ impl CurlBuilder {
 
     /// Finalize and return the command
     pub fn build(self) -> String {
-        let single_line = join_groups(&self.groups, " ");
+        /// Between args in the same group
+        const ARG_SEPARATOR: &str = " ";
+        /// Between separate groups
+        const GROUP_SEPARATOR: &str = " \\\n  ";
 
-        if single_line.len() > CURL_CMD_CHAR_LIMIT_MULTILINE_AFTER {
-            join_groups(&self.groups, " \\\n  ")
-        } else {
-            single_line
-        }
+        self.groups
+            .into_iter()
+            .map(|group| group.join(ARG_SEPARATOR))
+            .join(GROUP_SEPARATOR)
     }
-
-    /// Push arguments onto the list
-    fn push<const N: usize>(&mut self, arguments: [Cow<'static, str>; N]) {
-        self.groups.push(arguments.into());
-    }
-}
-
-/// Join argument groups into a single string. Each group's arguments are
-/// joined with spaces, then groups are joined with the given separator.
-fn join_groups(groups: &[Vec<Cow<'static, str>>], separator: &str) -> String {
-    groups
-        .iter()
-        .map(|g| g.join(" "))
-        .collect::<Vec<_>>()
-        .join(separator)
 }
 
 /// Convert bytes to text, or return an error if it's not UTF-8

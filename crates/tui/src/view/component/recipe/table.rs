@@ -23,7 +23,10 @@ use ratatui::{
     style::Styled,
     widgets::Block,
 };
-use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
+use slumber_core::{
+    collection::RecipeId,
+    http::{BuildFieldOverride, BuildFieldOverrides},
+};
 use slumber_template::Template;
 use std::iter;
 use unicode_width::UnicodeWidthStr;
@@ -35,34 +38,31 @@ use unicode_width::UnicodeWidthStr;
 /// - Render values as template previwws
 /// - Allow editing values for temporary overrides
 ///
-/// Generic params define the keys to use for persisting state
+/// The generic param defines some common behavior via the trait
+/// [RecipeTableKey].
 #[derive(Debug)]
-pub struct RecipeFieldTable<RowSelectKey, RowToggleKey> {
+pub struct RecipeTable<K: RecipeTableKey> {
     id: ComponentId,
     /// Persistence key to store which row is selected
-    select_persistent_key: RowSelectKey,
+    select_persistent_key: K::SelectKey,
     /// Selectable rows
-    select: ComponentSelect<RecipeFieldTableRow<RowToggleKey>>,
+    select: ComponentSelect<RecipeTableRow<K::ToggleKey>>,
 }
 
-impl<RowSelectKey, RowToggleKey> RecipeFieldTable<RowSelectKey, RowToggleKey>
-where
-    RowSelectKey: PersistentKey<Value = String>,
-    RowToggleKey: 'static + PersistentKey<Value = bool>,
-{
+impl<K: RecipeTableKey> RecipeTable<K> {
     pub fn new(
         noun: &'static str,
-        select_key: RowSelectKey,
-        rows: impl IntoIterator<
-            Item = (String, Template, TemplateOverrideKey, RowToggleKey),
-        >,
+        recipe_id: RecipeId,
+        rows: impl IntoIterator<Item = (String, Template)>,
         can_stream: bool,
     ) -> Self {
-        let rows: Vec<RecipeFieldTableRow<RowToggleKey>> = rows
+        let rows: Vec<RecipeTableRow<K::ToggleKey>> = rows
             .into_iter()
             .enumerate()
-            .map(|(i, (key, template, override_key, toggle_key))| {
-                RecipeFieldTableRow::new(
+            .map(|(i, (key, template))| {
+                let toggle_key = K::toggle_key(recipe_id.clone(), key.clone());
+                let override_key = K::override_key(recipe_id.clone(), i);
+                RecipeTableRow::new(
                     i, // This will be the unique ID for the row
                     key,
                     EditableTemplate::new(
@@ -77,6 +77,7 @@ where
             })
             .collect();
 
+        let select_key = K::select_key(recipe_id);
         let select = Select::builder(rows)
             .persisted(&select_key)
             .subscribe([SelectEventType::Select, SelectEventType::Toggle])
@@ -100,12 +101,7 @@ where
     }
 }
 
-impl<RowSelectKey, RowToggleKey> Component
-    for RecipeFieldTable<RowSelectKey, RowToggleKey>
-where
-    RowSelectKey: PersistentKey<Value = String>,
-    RowToggleKey: 'static + PersistentKey<Value = bool>,
-{
+impl<K: RecipeTableKey> Component for RecipeTable<K> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -140,16 +136,11 @@ where
     }
 }
 
-impl<'a, RowSelectKey, RowToggleKey> Draw<RecipeFieldTableProps<'a>>
-    for RecipeFieldTable<RowSelectKey, RowToggleKey>
-where
-    RowSelectKey: PersistentKey<Value = String>,
-    RowToggleKey: 'static + PersistentKey<Value = bool>,
-{
+impl<'a, K: RecipeTableKey> Draw<RecipeTableProps<'a>> for RecipeTable<K> {
     fn draw(
         &self,
         canvas: &mut Canvas,
-        props: RecipeFieldTableProps<'a>,
+        props: RecipeTableProps<'a>,
         metadata: DrawMetadata,
     ) {
         let [header_area, rows_area] =
@@ -182,7 +173,7 @@ where
         );
 
         // Draw rows
-        let item_props = RecipeFieldTableRowProps { key_column_width };
+        let item_props = RecipeTableRowProps { key_column_width };
         canvas.draw(
             &self.select,
             ComponentSelectProps {
@@ -196,18 +187,38 @@ where
     }
 }
 
+/// Draw props for [RecipeTable]
 #[derive(Debug)]
-pub struct RecipeFieldTableProps<'a> {
+pub struct RecipeTableProps<'a> {
     /// Label for the left column in the table
     pub key_header: &'a str,
     /// Label for the right column in the table
     pub value_header: &'a str,
 }
 
+/// Abstraction for row types in [RecipeTable]
+pub trait RecipeTableKey {
+    /// Persistent key to store the selected row in the table
+    type SelectKey: PersistentKey<Value = String>;
+    /// Persistent key to store toggle state for a single row
+    type ToggleKey: PersistentKey<Value = bool>;
+
+    /// Get the key under which row selection state is persisted for this table.
+    /// Typically just a wrapper around the recipe ID.
+    fn select_key(recipe_id: RecipeId) -> Self::SelectKey;
+
+    /// Get the key under which toggle state for a single row is persisted
+    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey;
+
+    /// Get the key under which the template override for a single row is
+    /// persisted in the session store
+    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey;
+}
+
 /// One row in the query/header table. Generic param is the persistence key to
 /// use for toggle state
 #[derive(Debug)]
-struct RecipeFieldTableRow<RowToggleKey> {
+struct RecipeTableRow<RowToggleKey> {
     id: ComponentId,
     /// Index of this row in the table. This is the unique ID for this row
     /// **in the context of a single session**. Rows can be added/removed
@@ -232,10 +243,7 @@ struct RecipeFieldTableRow<RowToggleKey> {
     enabled: bool,
 }
 
-impl<RowToggleKey> RecipeFieldTableRow<RowToggleKey>
-where
-    RowToggleKey: PersistentKey<Value = bool>,
-{
+impl<RowToggleKey: PersistentKey<Value = bool>> RecipeTableRow<RowToggleKey> {
     fn new(
         index: usize,
         key: String,
@@ -269,7 +277,7 @@ where
     }
 }
 
-impl<RowToggleKey> Component for RecipeFieldTableRow<RowToggleKey>
+impl<RowToggleKey> Component for RecipeTableRow<RowToggleKey>
 where
     RowToggleKey: PersistentKey<Value = bool>,
 {
@@ -287,15 +295,14 @@ where
     }
 }
 
-impl<RowToggleKey> Draw<RecipeFieldTableRowProps>
-    for RecipeFieldTableRow<RowToggleKey>
+impl<RowToggleKey> Draw<RecipeTableRowProps> for RecipeTableRow<RowToggleKey>
 where
     RowToggleKey: PersistentKey<Value = bool>,
 {
     fn draw(
         &self,
         canvas: &mut Canvas,
-        props: RecipeFieldTableRowProps,
+        props: RecipeTableRowProps,
         metadata: DrawMetadata,
     ) {
         if !self.enabled {
@@ -326,14 +333,14 @@ where
 }
 
 // Needed for toggle persistence
-impl<RowToggleKey> PartialEq<String> for RecipeFieldTableRow<RowToggleKey> {
+impl<RowToggleKey> PartialEq<String> for RecipeTableRow<RowToggleKey> {
     fn eq(&self, key: &String) -> bool {
         &self.key == key
     }
 }
 
 #[derive(Copy, Clone)]
-struct RecipeFieldTableRowProps {
+struct RecipeTableRowProps {
     key_column_width: u16,
 }
 
@@ -349,6 +356,29 @@ mod tests {
     use slumber_core::collection::RecipeId;
     use slumber_util::Factory;
     use terminput::KeyCode;
+
+    #[derive(Debug)]
+    struct TestKey;
+
+    impl RecipeTableKey for TestKey {
+        type SelectKey = TestRowKey;
+        type ToggleKey = TestRowToggleKey;
+
+        fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
+            TestRowKey(recipe_id)
+        }
+
+        fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
+            TestRowToggleKey { recipe_id, key }
+        }
+
+        fn override_key(
+            recipe_id: RecipeId,
+            index: usize,
+        ) -> TemplateOverrideKey {
+            TemplateOverrideKey::query_param(recipe_id, index)
+        }
+    }
 
     #[derive(Debug, Serialize)]
     struct TestRowKey(RecipeId);
@@ -372,35 +402,14 @@ mod tests {
     fn test_disabled_row(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         let rows = [
-            (
-                "row0".into(),
-                "value0".into(),
-                TemplateOverrideKey::query_param(recipe_id.clone(), 0),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row0".into(),
-                },
-            ),
-            (
-                "row1".into(),
-                "value1".into(),
-                TemplateOverrideKey::query_param(recipe_id.clone(), 1),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row1".into(),
-                },
-            ),
+            ("row0".into(), "value0".into()),
+            ("row1".into(), "value1".into()),
         ];
 
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new(
-                "Row",
-                TestRowKey(recipe_id.clone()),
-                rows,
-                false,
-            ),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())
         .build();
@@ -443,35 +452,14 @@ mod tests {
     fn test_override_row(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         let rows = [
-            (
-                "row0".into(),
-                "value0".into(),
-                TemplateOverrideKey::query_param(recipe_id.clone(), 0),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row0".into(),
-                },
-            ),
-            (
-                "row1".into(),
-                "value1".into(),
-                TemplateOverrideKey::query_param(recipe_id.clone(), 1),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row1".into(),
-                },
-            ),
+            ("row0".into(), "value0".into()),
+            ("row1".into(), "value1".into()),
         ];
 
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new(
-                "Row",
-                TestRowKey(recipe_id.clone()),
-                rows,
-                false,
-            ),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())
         .build();
@@ -516,25 +504,12 @@ mod tests {
     #[rstest]
     fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        let rows = [(
-            "row0".into(),
-            "value0".into(),
-            TemplateOverrideKey::query_param(recipe_id.clone(), 0),
-            TestRowToggleKey {
-                recipe_id: recipe_id.clone(),
-                key: "row0".into(),
-            },
-        )];
+        let rows = [("row0".into(), "value0".into())];
 
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new(
-                "Row",
-                TestRowKey(recipe_id.clone()),
-                rows,
-                false,
-            ),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())
         .build();
@@ -562,35 +537,11 @@ mod tests {
             TemplateOverrideKey::query_param(recipe_id.clone(), 1),
             "p1".into(),
         );
-        let rows = [
-            (
-                "row0".into(),
-                "".into(),
-                TemplateOverrideKey::query_param(recipe_id.clone(), 0),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row0".into(),
-                },
-            ),
-            (
-                "row1".into(),
-                "".into(),
-                TemplateOverrideKey::query_param(recipe_id.clone(), 1),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row1".into(),
-                },
-            ),
-        ];
+        let rows = [("row0".into(), "".into()), ("row1".into(), "".into())];
         let component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new(
-                "Row",
-                TestRowKey(recipe_id.clone()),
-                rows,
-                false,
-            ),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())
         .build();
@@ -606,8 +557,8 @@ mod tests {
         );
     }
 
-    fn props_factory() -> RecipeFieldTableProps<'static> {
-        RecipeFieldTableProps {
+    fn props_factory() -> RecipeTableProps<'static> {
+        RecipeTableProps {
             key_header: "Key",
             value_header: "Value",
         }

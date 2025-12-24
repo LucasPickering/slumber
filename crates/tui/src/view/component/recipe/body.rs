@@ -11,7 +11,7 @@ use crate::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
             override_template::{OverrideTemplate, TemplateOverrideKey},
-            recipe::table::{RecipeFieldTable, RecipeFieldTableProps},
+            recipe::table::{RecipeTable, RecipeTableKey, RecipeTableProps},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
@@ -42,7 +42,7 @@ pub enum RecipeBodyDisplay {
     /// uses the same internal type as `Raw`, but the distinction allows us to
     /// parse and generate an override body correctly
     Json(TextBody),
-    Form(RecipeFieldTable<FormRowKey, FormRowToggleKey>),
+    Form(RecipeTable<FormKey>),
 }
 
 impl RecipeBodyDisplay {
@@ -71,21 +71,13 @@ impl RecipeBodyDisplay {
         recipe_id: &RecipeId,
         fields: &IndexMap<String, Template>,
         can_stream: bool,
-    ) -> RecipeFieldTable<FormRowKey, FormRowToggleKey> {
-        RecipeFieldTable::new(
+    ) -> RecipeTable<FormKey> {
+        RecipeTable::new(
             "Field",
-            FormRowKey(recipe_id.clone()),
-            fields.iter().enumerate().map(|(i, (field, value))| {
-                (
-                    field.clone(),
-                    value.clone(),
-                    TemplateOverrideKey::form_field(recipe_id.clone(), i),
-                    FormRowToggleKey {
-                        recipe_id: recipe_id.clone(),
-                        field: field.clone(),
-                    },
-                )
-            }),
+            recipe_id.clone(),
+            fields
+                .iter()
+                .map(|(field, value)| (field.clone(), value.clone())),
             can_stream,
         )
     }
@@ -144,7 +136,7 @@ impl Draw for RecipeBodyDisplay {
             }
             RecipeBodyDisplay::Form(form) => canvas.draw(
                 form,
-                RecipeFieldTableProps {
+                RecipeTableProps {
                     key_header: "Field",
                     value_header: "Value",
                 },
@@ -320,6 +312,30 @@ impl Draw for TextBody {
             area,
             true,
         );
+    }
+}
+
+/// [RecipeTableKey] implementation for the form table
+#[derive(Debug)]
+pub struct FormKey;
+
+impl RecipeTableKey for FormKey {
+    type SelectKey = FormRowKey;
+    type ToggleKey = FormRowToggleKey;
+
+    fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
+        FormRowKey(recipe_id)
+    }
+
+    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
+        FormRowToggleKey {
+            recipe_id,
+            field: key,
+        }
+    }
+
+    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey {
+        TemplateOverrideKey::form_field(recipe_id, index)
     }
 }
 

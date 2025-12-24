@@ -8,7 +8,7 @@ use crate::view::{
         recipe::{
             authentication::AuthenticationDisplay,
             body::RecipeBodyDisplay,
-            table::{RecipeFieldTable, RecipeFieldTableProps},
+            table::{RecipeTable, RecipeTableKey, RecipeTableProps},
             url::UrlDisplay,
         },
     },
@@ -33,8 +33,8 @@ pub struct RecipeDisplay {
     tabs: Tabs<RecipeTabKey, Tab>,
     method: HttpMethod,
     url: UrlDisplay,
-    query: RecipeFieldTable<QueryRowKey, QueryRowToggleKey>,
-    headers: RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>,
+    query: RecipeTable<QueryKey>,
+    headers: RecipeTable<HeaderKey>,
     body: Option<RecipeBodyDisplay>,
     authentication: Option<AuthenticationDisplay>,
 }
@@ -62,43 +62,21 @@ impl RecipeDisplay {
             tabs,
             method: recipe.method,
             url: UrlDisplay::new(recipe.id.clone(), recipe.url.clone()),
-            query: RecipeFieldTable::new(
+            query: RecipeTable::new(
                 "Parameter",
-                QueryRowKey(recipe.id.clone()),
-                recipe.query_iter().enumerate().map(
-                    |(i, (param, _, value))| {
-                        (
-                            param.to_owned(),
-                            value.clone(),
-                            TemplateOverrideKey::query_param(
-                                recipe.id.clone(),
-                                i,
-                            ),
-                            QueryRowToggleKey {
-                                recipe_id: recipe.id.clone(),
-                                param: param.to_owned(),
-                            },
-                        )
-                    },
-                ),
+                recipe.id.clone(),
+                recipe
+                    .query_iter()
+                    .map(|(param, _, value)| (param.to_owned(), value.clone())),
                 false,
             ),
-            headers: RecipeFieldTable::new(
+            headers: RecipeTable::new(
                 "Header",
-                HeaderRowKey(recipe.id.clone()),
-                recipe.headers.iter().enumerate().map(
-                    |(i, (header, value))| {
-                        (
-                            header.clone(),
-                            value.clone(),
-                            TemplateOverrideKey::header(recipe.id.clone(), i),
-                            HeaderRowToggleKey {
-                                recipe_id: recipe.id.clone(),
-                                header: header.clone(),
-                            },
-                        )
-                    },
-                ),
+                recipe.id.clone(),
+                recipe
+                    .headers
+                    .iter()
+                    .map(|(header, value)| (header.clone(), value.clone())),
                 false,
             ),
             body: recipe
@@ -202,7 +180,7 @@ impl Draw for RecipeDisplay {
             }
             Tab::Query => canvas.draw(
                 &self.query,
-                RecipeFieldTableProps {
+                RecipeTableProps {
                     key_header: "Parameter",
                     value_header: "Value",
                 },
@@ -211,7 +189,7 @@ impl Draw for RecipeDisplay {
             ),
             Tab::Headers => canvas.draw(
                 &self.headers,
-                RecipeFieldTableProps {
+                RecipeTableProps {
                     key_header: "Header",
                     value_header: "Value",
                 },
@@ -257,6 +235,30 @@ enum Tab {
     Authentication,
 }
 
+/// [RecipeTableKey] implementation for the query parameter table
+#[derive(Debug)]
+struct QueryKey;
+
+impl RecipeTableKey for QueryKey {
+    type SelectKey = QueryRowKey;
+    type ToggleKey = QueryRowToggleKey;
+
+    fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
+        QueryRowKey(recipe_id)
+    }
+
+    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
+        QueryRowToggleKey {
+            recipe_id,
+            param: key,
+        }
+    }
+
+    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey {
+        TemplateOverrideKey::query_param(recipe_id, index)
+    }
+}
+
 /// Persistence key for selected query param, per recipe. Value is the query
 /// param name
 #[derive(Debug, Serialize)]
@@ -275,6 +277,30 @@ struct QueryRowToggleKey {
 
 impl PersistentKey for QueryRowToggleKey {
     type Value = bool;
+}
+
+/// [RecipeTableKey] implementation for the header table
+#[derive(Debug)]
+struct HeaderKey;
+
+impl RecipeTableKey for HeaderKey {
+    type SelectKey = HeaderRowKey;
+    type ToggleKey = HeaderRowToggleKey;
+
+    fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
+        HeaderRowKey(recipe_id)
+    }
+
+    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
+        HeaderRowToggleKey {
+            recipe_id,
+            header: key,
+        }
+    }
+
+    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey {
+        TemplateOverrideKey::header(recipe_id, index)
+    }
 }
 
 /// Persistence key for selected header, per recipe. Value is the header name

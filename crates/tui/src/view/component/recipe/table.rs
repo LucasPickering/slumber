@@ -23,12 +23,12 @@ use ratatui::{
     widgets::Block,
 };
 use serde::{Serialize, de::DeserializeOwned};
-use slumber_core::{
-    collection::RecipeId,
-    http::{BuildFieldOverride, BuildFieldOverrides},
-};
+use slumber_core::{collection::RecipeId, http::BuildFieldOverride};
 use slumber_template::Template;
-use std::{any, fmt::Debug, iter, marker::PhantomData};
+use std::{
+    any, collections::HashMap, fmt::Debug, hash::Hash, iter,
+    marker::PhantomData,
+};
 use unicode_width::UnicodeWidthStr;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
@@ -57,12 +57,10 @@ impl<Kind: RecipeTableKind> RecipeTable<Kind> {
     ) -> Self {
         let rows: Vec<RecipeTableRow<Kind>> = rows
             .into_iter()
-            .enumerate()
-            .map(|(i, (key, template))| {
+            .map(|(key, template)| {
                 RecipeTableRow::new(
                     recipe_id.clone(),
                     noun,
-                    i, // This will be the unique ID for the row
                     key,
                     template,
                     can_stream,
@@ -84,11 +82,12 @@ impl<Kind: RecipeTableKind> RecipeTable<Kind> {
     }
 
     /// Get the set of disabled/overridden rows for this table
-    pub fn to_build_overrides(&self) -> BuildFieldOverrides {
+    pub fn to_build_overrides(&self) -> HashMap<Kind::Key, BuildFieldOverride> {
         self.select
             .items()
             .filter_map(|row| {
-                row.to_build_override().map(|ovr| (row.index, ovr))
+                let ovr = row.to_build_override()?;
+                Some((row.key.clone(), ovr))
             })
             .collect()
     }
@@ -197,10 +196,6 @@ pub struct RecipeTableProps<'a> {
 #[derive(Debug)]
 struct RecipeTableRow<Kind: RecipeTableKind> {
     id: ComponentId,
-    /// Index of this row in the table. This is the unique ID for this row
-    /// **in the context of a single session**. Rows can be added/removed
-    /// during a collection reload, so we can't persist this.
-    index: usize,
     /// **Non-unique** identifier for this row. Keys can be duplicated within
     /// one table (e.g. query params). This should be consistent across reloads
     /// though because this is the *value* persisted to identify which row is
@@ -224,7 +219,6 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
     fn new(
         recipe_id: RecipeId,
         noun: &'static str,
-        index: usize,
         key: Kind::Key,
         template: Template,
         can_stream: bool,
@@ -239,7 +233,6 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
         );
         Self {
             id: ComponentId::default(),
-            index,
             key,
             value,
             enabled: PersistentStore::get(&persistent_key).unwrap_or(true),
@@ -335,9 +328,11 @@ pub trait RecipeTableKind: 'static {
     /// that don't have a single unique value (e.g. query parameters), it will
     /// be something more specific to make it unique.
     type Key: 'static
-        + Clone // For override persistence (session store)
-        + Debug // For override persistence (session store)
-        + PartialEq // For override persistence (session store)
+        + Clone // Override persistence (session store)
+        + Debug // Override persistence (session store)
+        + Eq // Override map key
+        + Hash // Override map key
+        + PartialEq // Override persistence (session store)
         + Serialize // For selected/toggle persistence
         + DeserializeOwned; // For selected row persistence
 
@@ -483,10 +478,7 @@ mod tests {
         .build();
 
         // Check initial state
-        assert_eq!(
-            component.to_build_overrides(),
-            BuildFieldOverrides::default()
-        );
+        assert_eq!(component.to_build_overrides(), HashMap::new());
 
         // Disable the second row
         component
@@ -499,7 +491,7 @@ mod tests {
         assert!(!selected_row.enabled);
         assert_eq!(
             component.to_build_overrides(),
-            [(1, BuildFieldOverride::Omit)].into_iter().collect(),
+            HashMap::from_iter([("row1".to_owned(), BuildFieldOverride::Omit)]),
         );
 
         // Re-enable the row
@@ -509,10 +501,7 @@ mod tests {
             .assert_empty();
         let selected_row = component.select.selected().unwrap();
         assert!(selected_row.enabled);
-        assert_eq!(
-            component.to_build_overrides(),
-            BuildFieldOverrides::default(),
-        );
+        assert_eq!(component.to_build_overrides(), HashMap::new());
     }
 
     /// User can edit the value for a row
@@ -533,10 +522,7 @@ mod tests {
         .build();
 
         // Check initial state
-        assert_eq!(
-            component.to_build_overrides(),
-            BuildFieldOverrides::default()
-        );
+        assert_eq!(component.to_build_overrides(), HashMap::new());
 
         // Edit the second row
         component
@@ -554,9 +540,10 @@ mod tests {
         assert_eq!(selected_row.value.template().display(), "value1!!!");
         assert_eq!(
             component.to_build_overrides(),
-            [(1, BuildFieldOverride::Override("value1!!!".into()))]
-                .into_iter()
-                .collect(),
+            HashMap::from_iter([(
+                "row1".to_owned(),
+                BuildFieldOverride::Override("value1!!!".into())
+            )]),
         );
 
         // Reset edited state
@@ -622,12 +609,10 @@ mod tests {
 
         assert_eq!(
             component.to_build_overrides(),
-            [
-                (0, BuildFieldOverride::Override("p0".into())),
-                (1, BuildFieldOverride::Override("p1".into()))
-            ]
-            .into_iter()
-            .collect(),
+            HashMap::from_iter([
+                ("row0".to_owned(), BuildFieldOverride::Override("p0".into())),
+                ("row1".to_owned(), BuildFieldOverride::Override("p1".into())),
+            ]),
         );
     }
 

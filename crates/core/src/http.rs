@@ -491,25 +491,22 @@ impl Recipe {
         options: &BuildOptions,
         context: &TemplateContext,
     ) -> Result<Vec<(String, String)>, RequestBuildErrorKind> {
-        let iter =
-            self.query_iter().enumerate().filter_map(|(i, (k, _, v))| {
-                // Look up and apply override. We do this by index because the
-                // keys aren't necessarily unique
-                let template = options.query_parameters.get(i, v)?;
+        let iter = self.query_iter().filter_map(|(k, i, v)| {
+            // Look up and apply override. We need the index because keys aren't
+            // necessarily unique
+            let template = options.query_parameter(k, i, v)?;
 
-                Some(async move {
-                    let value = template
-                        .render_string(&context.streaming(false))
-                        .await
-                        .map_err(|error| {
-                            RequestBuildErrorKind::QueryRender {
-                                parameter: k.to_owned(),
-                                error,
-                            }
-                        })?;
-                    Ok((k.to_owned(), value))
-                })
-            });
+            Some(async move {
+                let value = template
+                    .render_string(&context.streaming(false))
+                    .await
+                    .map_err(|error| RequestBuildErrorKind::QueryRender {
+                        parameter: k.to_owned(),
+                        error,
+                    })?;
+                Ok((k.to_owned(), value))
+            })
+        });
         future::try_join_all(iter).await
     }
 
@@ -523,17 +520,15 @@ impl Recipe {
         let mut headers = HeaderMap::new();
 
         // Render headers in an iterator so we can parallelize
-        let iter = self.headers.iter().enumerate().filter_map(
-            move |(i, (header, value_template))| {
-                // Look up and apply override. We do this by index because the
-                // keys aren't necessarily unique
-                let template = options.headers.get(i, value_template)?;
-
-                Some(async move {
-                    self.render_header(context, header, template).await
-                })
-            },
-        );
+        let iter =
+            self.headers
+                .iter()
+                .filter_map(move |(header, value_template)| {
+                    let template = options.header(header, value_template)?;
+                    Some(async move {
+                        self.render_header(context, header, template).await
+                    })
+                });
 
         let rendered = future::try_join_all(iter).await?;
         headers.reserve(rendered.len());
@@ -660,10 +655,10 @@ impl Recipe {
                     .map_err(RequestBuildErrorKind::BodyRender)?,
             ),
             RecipeBody::FormUrlencoded(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
-                    |(i, (field, value_template))| {
+                let iter =
+                    fields.iter().filter_map(|(field, value_template)| {
                         let template =
-                            options.form_fields.get(i, value_template)?;
+                            options.form_field(field, value_template)?;
                         Some(async move {
                             let value = template
                                 .render_string(&context.streaming(false))
@@ -679,16 +674,15 @@ impl Recipe {
                                 value,
                             ))
                         })
-                    },
-                );
+                    });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
             RecipeBody::FormMultipart(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
-                    move |(i, (field, value_template))| {
+                let iter =
+                    fields.iter().filter_map(move |(field, value_template)| {
                         let template =
-                            options.form_fields.get(i, value_template)?;
+                            options.form_field(field, value_template)?;
                         Some(async move {
                             let output =
                                 template.render(&context.streaming(true)).await;
@@ -712,8 +706,7 @@ impl Recipe {
                                 BodyStream { stream, source },
                             ))
                         })
-                    },
-                );
+                    });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormMultipart(rendered)
             }

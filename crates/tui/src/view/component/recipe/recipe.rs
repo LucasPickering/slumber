@@ -270,11 +270,14 @@ mod tests {
     };
     use indexmap::indexmap;
     use rstest::rstest;
-    use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
+    use slumber_core::http::BuildFieldOverride;
     use slumber_util::Factory;
+    use std::collections::HashMap;
     use terminput::KeyCode;
 
-    /// Override query parameters, including persistence
+    /// Override query parameters, including persistence. Query param keys are
+    /// not unique on their own, so this ensures the index-based uniqueness is
+    /// working correctly.
     #[rstest]
     fn test_override_query(harness: TestHarness, terminal: TestTerminal) {
         let recipe = Recipe {
@@ -311,10 +314,13 @@ mod tests {
             .send_text("xxx")
             .assert_empty();
 
-        let expected = BuildFieldOverrides::from_iter([
-            (1, BuildFieldOverride::Omit),
-            (2, BuildFieldOverride::Override("v1www".into())),
-            (3, BuildFieldOverride::Omit),
+        let expected = HashMap::from_iter([
+            (("p1".to_owned(), 0), BuildFieldOverride::Omit),
+            (
+                ("p1".to_owned(), 1),
+                BuildFieldOverride::Override("v1www".into()),
+            ),
+            (("p1".to_owned(), 2), BuildFieldOverride::Omit),
         ]);
         assert_eq!(component.query.to_build_overrides(), expected);
 

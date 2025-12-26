@@ -299,45 +299,60 @@ pub struct BuildOptions {
     /// Authentication can be overridden, but not disabled. For simplicity,
     /// the override is wholesale rather than by field.
     pub authentication: Option<Authentication>,
-    pub headers: BuildFieldOverrides,
-    pub query_parameters: BuildFieldOverrides,
-    pub form_fields: BuildFieldOverrides,
+    /// Override individual headers
+    pub headers: HashMap<String, BuildFieldOverride>,
+    /// Override individual query parameters. The index is the instance of that
+    /// parameter unique to the key. E.g. the keys of `a=1&a=2&b=1` would be
+    /// `[(a, 0), (a, 1), (b, 0)]`
+    pub query_parameters: HashMap<(String, usize), BuildFieldOverride>,
+    /// Override individual fields in a URL-encoded or multipart form
+    pub form_fields: HashMap<String, BuildFieldOverride>,
     /// Override body. This should *not* be used for form bodies, since those
     /// can be overridden on a field-by-field basis.
     pub body: Option<RecipeBody>,
 }
 
-/// A collection of modifications made to a particular section of a recipe
-/// (query params, headers, etc.). See [BuildFieldOverride]
-#[derive(Debug, Default)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub struct BuildFieldOverrides {
-    overrides: HashMap<usize, BuildFieldOverride>,
-}
-
-impl BuildFieldOverrides {
-    /// Get the value to be used for a particular field, keyed by index. Return
-    /// `None` if the field should be dropped from the request, and use the
-    /// given default if no override is provided.
-    pub fn get<'a>(
+impl BuildOptions {
+    /// Get the override for a form field. Return `Some(default)` if the
+    /// override is unset, or `None` if it's set as `Omit`.
+    pub fn form_field<'a>(
         &'a self,
-        index: usize,
+        header: &str,
         default: &'a Template,
     ) -> Option<&'a Template> {
-        match self.overrides.get(&index) {
-            Some(BuildFieldOverride::Omit) => None,
+        match self.form_fields.get(header) {
             Some(BuildFieldOverride::Override(template)) => Some(template),
+            Some(BuildFieldOverride::Omit) => None,
             None => Some(default),
         }
     }
-}
 
-impl FromIterator<(usize, BuildFieldOverride)> for BuildFieldOverrides {
-    fn from_iter<T: IntoIterator<Item = (usize, BuildFieldOverride)>>(
-        iter: T,
-    ) -> Self {
-        Self {
-            overrides: HashMap::from_iter(iter),
+    /// Get the override for a header. Return `Some(default)` if the override is
+    /// unset, or `None` if it's set as `Omit`.
+    pub fn header<'a>(
+        &'a self,
+        header: &str,
+        default: &'a Template,
+    ) -> Option<&'a Template> {
+        match self.headers.get(header) {
+            Some(BuildFieldOverride::Override(template)) => Some(template),
+            Some(BuildFieldOverride::Omit) => None,
+            None => Some(default),
+        }
+    }
+
+    /// Get the override for a query parameter. Return `Some(default)` if the
+    /// override is unset, or `None` if it's set as `Omit`.
+    pub fn query_parameter<'a>(
+        &'a self,
+        parameter: &str,
+        index: usize,
+        default: &'a Template,
+    ) -> Option<&'a Template> {
+        match self.query_parameters.get(&(parameter.to_owned(), index)) {
+            Some(BuildFieldOverride::Override(template)) => Some(template),
+            Some(BuildFieldOverride::Omit) => None,
+            None => Some(default),
         }
     }
 }

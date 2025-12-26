@@ -6,11 +6,15 @@
 //! the response's metadata, use [ContentType::from_headers] and
 //! [ContentType::parse_content].
 
-use derive_more::{Deref, Display, From};
+use derive_more::{Deref, From};
 use mime::{APPLICATION, JSON, Mime};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, fmt::Debug, str::Utf8Error};
+use std::{
+    borrow::Cow,
+    fmt::{Debug, Display},
+    str::Utf8Error,
+};
 use thiserror::Error;
 
 /// All supported content types. Each variant should have a corresponding
@@ -154,7 +158,7 @@ pub trait ResponseContent: Debug + Display + Send + Sync {
 }
 
 /// JSON content type
-#[derive(Debug, Display, Deref, From, PartialEq)]
+#[derive(Debug, derive_more::Display, Deref, From, PartialEq)]
 pub struct Json(serde_json::Value);
 
 impl ResponseContent for Json {

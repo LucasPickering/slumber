@@ -17,7 +17,9 @@ use slumber_template::{
     ValueError, WithValue, impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
-use std::{env, fmt::Debug, io, path::PathBuf, process::Stdio, sync::Arc};
+use std::{
+    env, fmt::Debug, io, path::PathBuf, process::Stdio, str::FromStr, sync::Arc,
+};
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncWriteExt},

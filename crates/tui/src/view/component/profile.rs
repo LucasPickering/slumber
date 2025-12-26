@@ -14,10 +14,10 @@ use crate::{
         },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-            override_template::{EditableTemplate, TemplateOverrideKey},
+            override_template::EditableTemplate,
             sidebar_list::{SidebarListItem, SidebarListState},
         },
-        persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore, SessionKey},
     },
 };
 use anyhow::anyhow;
@@ -249,19 +249,33 @@ impl PersistentKey for SelectedProfileFieldKey {
     type Value = String;
 }
 
+/// Persistence key for overridden profile field template in the session store
+#[derive(Debug, Clone, PartialEq)]
+struct ProfileFieldOverrideKey {
+    profile_id: ProfileId,
+    field: String,
+}
+
+impl SessionKey for ProfileFieldOverrideKey {
+    type Value = Template;
+}
+
 /// A single field in the Profile detail table
 #[derive(Debug)]
 struct ProfileField {
     id: ComponentId,
     field: String,
-    template: EditableTemplate,
+    template: EditableTemplate<ProfileFieldOverrideKey>,
 }
 
 impl ProfileField {
     fn new(profile_id: ProfileId, field: String, template: Template) -> Self {
         let template = EditableTemplate::new(
             "Field",
-            TemplateOverrideKey::profile(profile_id, field.clone()),
+            ProfileFieldOverrideKey {
+                profile_id,
+                field: field.clone(),
+            },
             template,
             // We don't know how this value will be used, so let's say we *do*
             // support streaming to prevent loading some huge streams

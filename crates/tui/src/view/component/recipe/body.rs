@@ -10,12 +10,12 @@ use crate::{
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            override_template::{OverrideTemplate, TemplateOverrideKey},
-            recipe::table::{RecipeTable, RecipeTableKey, RecipeTableProps},
+            override_template::OverrideTemplate,
+            recipe::table::{RecipeTable, RecipeTableKind, RecipeTableProps},
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
-        persistent::PersistentKey,
+        persistent::{PersistentKey, SessionKey},
         util::view_text,
     },
 };
@@ -42,7 +42,7 @@ pub enum RecipeBodyDisplay {
     /// uses the same internal type as `Raw`, but the distinction allows us to
     /// parse and generate an override body correctly
     Json(TextBody),
-    Form(RecipeTable<FormKey>),
+    Form(RecipeTable<FormTableKind>),
 }
 
 impl RecipeBodyDisplay {
@@ -71,7 +71,7 @@ impl RecipeBodyDisplay {
         recipe_id: &RecipeId,
         fields: &IndexMap<String, Template>,
         can_stream: bool,
-    ) -> RecipeTable<FormKey> {
+    ) -> RecipeTable<FormTableKind> {
         RecipeTable::new(
             "Field",
             recipe_id.clone(),
@@ -158,7 +158,7 @@ pub struct TextBody {
     /// Editable body template. We use the external editor to do the editing,
     /// because the content could be too big to comfortably navigate in the
     /// in-app editor.
-    body: OverrideTemplate,
+    body: OverrideTemplate<BodyKey>,
     /// Body MIME type, used for syntax highlighting and pager selection. This
     /// has no impact on content of the rendered body
     mime: Option<Mime>,
@@ -175,7 +175,7 @@ impl TextBody {
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
             body: OverrideTemplate::new(
-                TemplateOverrideKey::body(recipe.id.clone()),
+                BodyKey(recipe.id.clone()),
                 template,
                 content_type,
                 true,
@@ -315,47 +315,49 @@ impl Draw for TextBody {
     }
 }
 
-/// [RecipeTableKey] implementation for the form table
+/// Persistent key for text body override template
+#[derive(Clone, Debug, PartialEq)]
+struct BodyKey(RecipeId);
+
+impl SessionKey for BodyKey {
+    type Value = Template;
+}
+
+/// [RecipeTableKind] for the form field table
 #[derive(Debug)]
-pub struct FormKey;
+pub struct FormTableKind;
 
-impl RecipeTableKey for FormKey {
-    type SelectKey = FormRowKey;
-    type ToggleKey = FormRowToggleKey;
+impl RecipeTableKind for FormTableKind {
+    type Key = String;
 
-    fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
-        FormRowKey(recipe_id)
-    }
-
-    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
-        FormRowToggleKey {
-            recipe_id,
-            field: key,
-        }
-    }
-
-    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey {
-        TemplateOverrideKey::form_field(recipe_id, index)
+    fn key_as_str(key: &Self::Key) -> &str {
+        key.as_str()
     }
 }
 
 /// Persistence key for selected form field, per recipe. Value is the field name
 #[derive(Debug, Serialize)]
-pub struct FormRowKey(RecipeId);
+pub struct SelectedFormRowKey(RecipeId);
 
-impl PersistentKey for FormRowKey {
+impl PersistentKey for SelectedFormRowKey {
     type Value = String;
 }
 
 /// Persistence key for toggle state for a single form field in the table
-#[derive(Debug, Serialize)]
-pub struct FormRowToggleKey {
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct FormRowKey {
     recipe_id: RecipeId,
     field: String,
 }
 
-impl PersistentKey for FormRowToggleKey {
+// Toggle persistent
+impl PersistentKey for FormRowKey {
     type Value = bool;
+}
+
+// Override template persistent
+impl SessionKey for FormRowKey {
+    type Value = Template;
 }
 
 /// Action menu items for a raw body
@@ -458,9 +460,8 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = PersistentStore::get_session(
-            &TemplateOverrideKey::body(recipe.id.clone()),
-        );
+        let persisted =
+            PersistentStore::get_session(&BodyKey(recipe.id.clone()));
         assert_eq!(persisted, Some("goodbye!".into()));
 
         // Reset edited state
@@ -527,9 +528,8 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = PersistentStore::get_session(
-            &TemplateOverrideKey::body(recipe.id.clone()),
-        );
+        let persisted =
+            PersistentStore::get_session(&BodyKey(recipe.id.clone()));
         assert_eq!(persisted, Some(override_text.into()));
 
         // Reset edited state
@@ -547,10 +547,9 @@ mod tests {
             body: Some(RecipeBody::Raw("".into())),
             ..Recipe::factory(())
         };
-        harness.persistent_store().set_session(
-            TemplateOverrideKey::body(recipe.id.clone()),
-            "hello!".into(),
-        );
+        harness
+            .persistent_store()
+            .set_session(BodyKey(recipe.id.clone()), "hello!".into());
 
         let component = TestComponent::new(
             &harness,

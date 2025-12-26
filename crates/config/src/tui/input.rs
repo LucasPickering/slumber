@@ -1,6 +1,6 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use derive_more::{Deref, Display};
+use derive_more::Deref;
 use indexmap::{IndexMap, indexmap};
 use itertools::Itertools;
 use serde::{
@@ -15,7 +15,7 @@ use slumber_util::{
 };
 use std::{
     borrow::Cow,
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     iter,
     str::FromStr,
 };
@@ -99,7 +99,15 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
 /// The order of the variants matters! It defines the ordering used in the help
 /// modal (but doesn't affect behavior).
 #[derive(
-    Copy, Clone, Debug, Display, Eq, PartialEq, Hash, Serialize, Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    derive_more::Display,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]

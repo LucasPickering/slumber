@@ -9,11 +9,11 @@ use crate::{
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
-            internal::Child,
-            override_template::{EditableTemplate, TemplateOverrideKey},
+            internal::Child, override_template::EditableTemplate,
         },
         context::UpdateContext,
         event::{Event, EventMatch, ToEmitter},
+        persistent::SessionKey,
     },
 };
 use ratatui::{layout::Layout, prelude::Constraint, text::Span};
@@ -40,7 +40,7 @@ impl AuthenticationDisplay {
             Authentication::Bearer { token } => State::Bearer {
                 token: EditableTemplate::new(
                     "Token",
-                    TemplateOverrideKey::auth_bearer_token(recipe_id.clone()),
+                    AuthenticationKey::Token(recipe_id.clone()),
                     token,
                     false,
                     false,
@@ -121,7 +121,9 @@ impl Draw for AuthenticationDisplay {
 #[derive(Debug)]
 enum State {
     Basic(BasicAuthentication),
-    Bearer { token: EditableTemplate },
+    Bearer {
+        token: EditableTemplate<AuthenticationKey>,
+    },
 }
 
 impl State {
@@ -155,14 +157,14 @@ impl BasicAuthentication {
     ) -> Self {
         let username = EditableTemplate::new(
             "Username",
-            TemplateOverrideKey::auth_basic_username(recipe_id.clone()),
+            AuthenticationKey::Username(recipe_id.clone()),
             username,
             false,
             false,
         );
         let password = EditableTemplate::new(
             "Password",
-            TemplateOverrideKey::auth_basic_password(recipe_id),
+            AuthenticationKey::Password(recipe_id.clone()),
             password,
             false,
             false,
@@ -236,11 +238,14 @@ impl Draw for BasicAuthentication {
 struct BasicField {
     id: ComponentId,
     label: &'static str,
-    value: EditableTemplate,
+    value: EditableTemplate<AuthenticationKey>,
 }
 
 impl BasicField {
-    fn new(label: &'static str, template: EditableTemplate) -> Self {
+    fn new(
+        label: &'static str,
+        template: EditableTemplate<AuthenticationKey>,
+    ) -> Self {
         Self {
             id: ComponentId::default(),
             label,
@@ -268,6 +273,18 @@ impl Draw for BasicField {
         canvas.render_widget(self.label, label_area);
         canvas.draw(&self.value, (), value_area, true);
     }
+}
+
+/// Session persistent key for override templates
+#[derive(Clone, Debug, PartialEq)]
+enum AuthenticationKey {
+    Token(RecipeId),
+    Username(RecipeId),
+    Password(RecipeId),
+}
+
+impl SessionKey for AuthenticationKey {
+    type Value = Template;
 }
 
 #[cfg(test)]
@@ -430,11 +447,11 @@ mod tests {
     fn test_persisted_load_basic(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
-            TemplateOverrideKey::auth_basic_username(recipe_id.clone()),
+            AuthenticationKey::Username(recipe_id.clone()),
             "user".into(),
         );
         harness.persistent_store().set_session(
-            TemplateOverrideKey::auth_basic_password(recipe_id.clone()),
+            AuthenticationKey::Password(recipe_id.clone()),
             "hunter2".into(),
         );
         let authentication = Authentication::Basic {
@@ -464,7 +481,7 @@ mod tests {
     ) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
-            TemplateOverrideKey::auth_bearer_token(recipe_id.clone()),
+            AuthenticationKey::Token(recipe_id.clone()),
             "token".into(),
         );
         let authentication = Authentication::Bearer { token: "".into() };

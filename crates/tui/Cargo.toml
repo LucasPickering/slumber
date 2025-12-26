@@ -16,7 +16,7 @@ async-trait = {workspace = true}
 bytes = {workspace = true}
 chrono = {workspace = true}
 crossterm = {version = "0.29.0", default-features = false, features = ["bracketed-paste", "events", "event-stream", "osc52", "windows"]}
-derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from"]}
+derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "eq", "from"]}
 futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}

@@ -2,8 +2,9 @@ use crate::view::{
     common::template_preview::TemplatePreview,
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        override_template::{EditableTemplate, TemplateOverrideKey},
+        override_template::EditableTemplate,
     },
+    persistent::SessionKey,
 };
 use slumber_core::collection::RecipeId;
 use slumber_template::Template;
@@ -13,18 +14,13 @@ use slumber_template::Template;
 pub struct UrlDisplay {
     id: ComponentId,
     /// Rendered URL
-    url: EditableTemplate,
+    url: EditableTemplate<UrlKey>,
 }
 
 impl UrlDisplay {
     pub fn new(recipe_id: RecipeId, url: Template) -> Self {
-        let url = EditableTemplate::new(
-            "URL",
-            TemplateOverrideKey::url(recipe_id),
-            url,
-            false,
-            false,
-        );
+        let url =
+            EditableTemplate::new("URL", UrlKey(recipe_id), url, false, false);
         Self {
             id: ComponentId::default(),
             url,
@@ -59,6 +55,14 @@ impl Draw for UrlDisplay {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         canvas.draw(&self.url, (), metadata.area(), true);
     }
+}
+
+/// Persistent key for URL override template
+#[derive(Clone, Debug, PartialEq)]
+struct UrlKey(RecipeId);
+
+impl SessionKey for UrlKey {
+    type Value = Template;
 }
 
 #[cfg(test)]
@@ -139,10 +143,9 @@ mod tests {
     #[rstest]
     fn test_persisted_load(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        harness.persistent_store().set_session(
-            TemplateOverrideKey::url(recipe_id.clone()),
-            "persisted/url".into(),
-        );
+        harness
+            .persistent_store()
+            .set_session(UrlKey(recipe_id.clone()), "persisted/url".into());
         let component = TestComponent::new(
             &harness,
             &terminal,

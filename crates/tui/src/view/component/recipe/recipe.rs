@@ -4,11 +4,10 @@ use crate::view::{
     component::{
         Canvas, ComponentId, Draw, DrawMetadata,
         internal::{Child, ToChild},
-        override_template::TemplateOverrideKey,
         recipe::{
             authentication::AuthenticationDisplay,
             body::RecipeBodyDisplay,
-            table::{RecipeTable, RecipeTableKey, RecipeTableProps},
+            table::{RecipeTable, RecipeTableKind, RecipeTableProps},
             url::UrlDisplay,
         },
     },
@@ -18,7 +17,7 @@ use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
-    collection::{Recipe, RecipeId},
+    collection::Recipe,
     http::{BuildOptions, HttpMethod},
 };
 use std::iter;
@@ -33,8 +32,8 @@ pub struct RecipeDisplay {
     tabs: Tabs<RecipeTabKey, Tab>,
     method: HttpMethod,
     url: UrlDisplay,
-    query: RecipeTable<QueryKey>,
-    headers: RecipeTable<HeaderKey>,
+    query: RecipeTable<QueryTableKind>,
+    headers: RecipeTable<HeaderTableKind>,
     body: Option<RecipeBodyDisplay>,
     authentication: Option<AuthenticationDisplay>,
 }
@@ -65,9 +64,9 @@ impl RecipeDisplay {
             query: RecipeTable::new(
                 "Parameter",
                 recipe.id.clone(),
-                recipe
-                    .query_iter()
-                    .map(|(param, _, value)| (param.to_owned(), value.clone())),
+                recipe.query_iter().map(|(param, index, value)| {
+                    ((param.to_owned(), index), value.clone())
+                }),
                 false,
             ),
             headers: RecipeTable::new(
@@ -235,89 +234,96 @@ enum Tab {
     Authentication,
 }
 
-/// [RecipeTableKey] implementation for the query parameter table
+/// [RecipeTableKind] for the query parameter table
 #[derive(Debug)]
-struct QueryKey;
+struct QueryTableKind;
 
-impl RecipeTableKey for QueryKey {
-    type SelectKey = QueryRowKey;
-    type ToggleKey = QueryRowToggleKey;
+impl RecipeTableKind for QueryTableKind {
+    /// Query parameters can be repeated, so the parameter name alone isn't
+    /// unique. The index makes each key unique. These are pulled directly from
+    /// [Recipe::query_iter].
+    type Key = (String, usize);
 
-    fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
-        QueryRowKey(recipe_id)
-    }
-
-    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
-        QueryRowToggleKey {
-            recipe_id,
-            param: key,
-        }
-    }
-
-    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey {
-        TemplateOverrideKey::query_param(recipe_id, index)
+    fn key_as_str(key: &Self::Key) -> &str {
+        key.0.as_str()
     }
 }
 
-/// Persistence key for selected query param, per recipe. Value is the query
-/// param name
-#[derive(Debug, Serialize)]
-struct QueryRowKey(RecipeId);
-
-impl PersistentKey for QueryRowKey {
-    type Value = String;
-}
-
-/// Persistence key for toggle state for a single query param in the table
-#[derive(Debug, Serialize)]
-struct QueryRowToggleKey {
-    recipe_id: RecipeId,
-    param: String,
-}
-
-impl PersistentKey for QueryRowToggleKey {
-    type Value = bool;
-}
-
-/// [RecipeTableKey] implementation for the header table
+/// [RecipeTableKind] for the header table
 #[derive(Debug)]
-struct HeaderKey;
+struct HeaderTableKind;
 
-impl RecipeTableKey for HeaderKey {
-    type SelectKey = HeaderRowKey;
-    type ToggleKey = HeaderRowToggleKey;
+impl RecipeTableKind for HeaderTableKind {
+    type Key = String;
 
-    fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
-        HeaderRowKey(recipe_id)
-    }
-
-    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
-        HeaderRowToggleKey {
-            recipe_id,
-            header: key,
-        }
-    }
-
-    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey {
-        TemplateOverrideKey::header(recipe_id, index)
+    fn key_as_str(key: &Self::Key) -> &str {
+        key.as_str()
     }
 }
 
-/// Persistence key for selected header, per recipe. Value is the header name
-#[derive(Debug, Serialize)]
-struct HeaderRowKey(RecipeId);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_util::{TestHarness, TestTerminal, harness, terminal},
+        view::test_util::TestComponent,
+    };
+    use indexmap::indexmap;
+    use rstest::rstest;
+    use slumber_core::http::{BuildFieldOverride, BuildFieldOverrides};
+    use slumber_util::Factory;
+    use terminput::KeyCode;
 
-impl PersistentKey for HeaderRowKey {
-    type Value = String;
-}
+    /// Override query parameters, including persistence
+    #[rstest]
+    fn test_override_query(harness: TestHarness, terminal: TestTerminal) {
+        let recipe = Recipe {
+            query: indexmap! {
+                "p0".into() => "v0".into(),
+                "p1".into() => ["v0", "v1", "v2"].into(),
+            },
+            ..Recipe::factory(())
+        };
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            RecipeDisplay::new(&recipe),
+        );
 
-/// Persistence key for toggle state for a single header in the table
-#[derive(Debug, Serialize)]
-struct HeaderRowToggleKey {
-    recipe_id: RecipeId,
-    header: String,
-}
+        // Select query tab
+        component
+            .int()
+            .drain_draw() // Drain initial events
+            .send_key(KeyCode::Right)
+            .assert_empty();
+        assert_eq!(component.tabs.selected(), Tab::Query);
 
-impl PersistentKey for HeaderRowToggleKey {
-    type Value = bool;
+        // Test persistence of both disable and override state, with a mixture
+        // of row ordering to make sure higher rows don't overwrite lower ones,
+        // or vice versa.
+        component
+            .int()
+            .send_keys([KeyCode::Down, KeyCode::Char(' ')]) // Disable (p1,v0)
+            .send_keys([KeyCode::Down, KeyCode::Char('e')]) // Override (p1,v1)
+            .send_text("www")
+            // Disable+override (p1,v2)
+            .send_keys([KeyCode::Down, KeyCode::Char(' '), KeyCode::Char('e')])
+            .send_text("xxx")
+            .assert_empty();
+
+        let expected = BuildFieldOverrides::from_iter([
+            (1, BuildFieldOverride::Omit),
+            (2, BuildFieldOverride::Override("v1www".into())),
+            (3, BuildFieldOverride::Omit),
+        ]);
+        assert_eq!(component.query.to_build_overrides(), expected);
+
+        // Rebuild the component and make sure state was persisted+reloaded
+        let component = TestComponent::new(
+            &harness,
+            &terminal,
+            RecipeDisplay::new(&recipe),
+        );
+        assert_eq!(component.query.to_build_overrides(), expected);
+    }
 }

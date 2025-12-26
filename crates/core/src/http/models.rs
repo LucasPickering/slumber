@@ -11,7 +11,7 @@ use crate::{
 };
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
-use derive_more::{Display, From, FromStr};
+use derive_more::FromStr;
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::{
@@ -21,7 +21,11 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use slumber_template::{RenderError, Template};
 use std::{
-    collections::HashMap, error::Error, fmt::Debug, io, str::Utf8Error,
+    collections::HashMap,
+    error::Error,
+    fmt::{Debug, Display},
+    io,
+    str::{FromStr, Utf8Error},
     sync::Arc,
 };
 use strum::{EnumIter, IntoEnumIterator};
@@ -35,7 +39,7 @@ use uuid::Uuid;
     Copy,
     Clone,
     Debug,
-    Display,
+    derive_more::Display,
     Eq,
     FromStr,
     Hash,

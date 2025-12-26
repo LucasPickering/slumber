@@ -13,22 +13,20 @@ use crate::view::{
     event::{Emitter, Event, EventMatch, ToEmitter},
     persistent::{PersistentStore, SessionKey},
 };
-use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{
-    collection::{ProfileId, RecipeId},
-    http::content_type::ContentType,
-};
+use slumber_core::http::content_type::ContentType;
 use slumber_template::Template;
 use std::fmt::Debug;
 
 /// A template that can be previewed, overridden, and persisted. Parent is
 /// responsible for implementing the override behavior, and calling
 /// [set_override](Self::set_override) when needed.
+///
+/// `PK` is the persistent key used to store override state in the session store
 #[derive(Debug)]
-pub struct OverrideTemplate {
+pub struct OverrideTemplate<PK> {
     id: ComponentId,
-    persistent_key: TemplateOverrideKey,
+    persistent_key: PK,
     /// The template from the collection
     original_template: Template,
     /// Temporary override entered by the user
@@ -42,13 +40,16 @@ pub struct OverrideTemplate {
     can_stream: bool,
 }
 
-impl OverrideTemplate {
+impl<PK> OverrideTemplate<PK> {
     pub fn new(
-        persistent_key: TemplateOverrideKey,
+        persistent_key: PK,
         template: Template,
         content_type: Option<ContentType>,
         can_stream: bool,
-    ) -> Self {
+    ) -> Self
+    where
+        PK: SessionKey<Value = Template>,
+    {
         let override_template = PersistentStore::get_session(&persistent_key);
         let preview = TemplatePreview::new(
             override_template.as_ref().unwrap_or(&template).clone(),
@@ -116,7 +117,10 @@ impl OverrideTemplate {
     }
 }
 
-impl Component for OverrideTemplate {
+impl<PK> Component for OverrideTemplate<PK>
+where
+    PK: Clone + SessionKey<Value = Template>,
+{
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -137,7 +141,10 @@ impl Component for OverrideTemplate {
     }
 }
 
-impl Draw for OverrideTemplate {
+impl<PK> Draw for OverrideTemplate<PK>
+where
+    PK: Clone + SessionKey<Value = Template>,
+{
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         canvas.draw(self.preview(), (), metadata.area(), false);
     }
@@ -146,13 +153,15 @@ impl Draw for OverrideTemplate {
 /// An extension of [OverrideTemplate] that uses an inline text box to
 /// enable editing. This handles edit/reset events itself and manages the state
 /// of the text box.
+///
+/// `PK` is the persistent key used to store override state in the session store
 #[derive(Debug)]
-pub struct EditableTemplate {
+pub struct EditableTemplate<PK> {
     id: ComponentId,
     /// Descriptor for the *type* of template being shown, e.g. "Header"
     noun: &'static str,
     actions_emitter: Emitter<EditableTemplateMenuAction>,
-    template: OverrideTemplate,
+    template: OverrideTemplate<PK>,
     /// An inline text box for editing the override template. `Some` only when
     /// editing.
     edit_text_box: Option<TextBox>,
@@ -162,7 +171,7 @@ pub struct EditableTemplate {
     refresh_on_edit: bool,
 }
 
-impl EditableTemplate {
+impl<PK> EditableTemplate<PK> {
     /// Construct a new template that can be edited inline.
     ///
     /// ## Params
@@ -177,11 +186,14 @@ impl EditableTemplate {
     ///   because those can have downstream effects.
     pub fn new(
         noun: &'static str,
-        persistent_key: TemplateOverrideKey,
+        persistent_key: PK,
         template: Template,
         can_stream: bool,
         refresh_on_edit: bool,
-    ) -> Self {
+    ) -> Self
+    where
+        PK: SessionKey<Value = Template>,
+    {
         Self {
             id: ComponentId::default(),
             noun,
@@ -258,7 +270,10 @@ impl EditableTemplate {
     }
 }
 
-impl Component for EditableTemplate {
+impl<PK> Component for EditableTemplate<PK>
+where
+    PK: Clone + SessionKey<Value = Template>,
+{
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -311,7 +326,10 @@ impl Component for EditableTemplate {
     }
 }
 
-impl Draw for EditableTemplate {
+impl<PK> Draw for EditableTemplate<PK>
+where
+    PK: Clone + SessionKey<Value = Template>,
+{
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if let Some(edit_text_box) = &self.edit_text_box {
             canvas.draw(
@@ -340,111 +358,6 @@ enum EditableTemplateMenuAction {
     Reset,
 }
 
-/// Persisted key for override templates in the session store. This uniquely
-/// identifies any piece of a recipe that can be overridden.
-#[derive(Clone, Debug, PartialEq)]
-pub enum TemplateOverrideKey {
-    /// A profile field is overridden
-    Profile {
-        profile_id: ProfileId,
-        field: String,
-    },
-    /// A piece of a recipe is overridden
-    Recipe {
-        recipe_id: RecipeId,
-        kind: TemplateOverrideKeyKind,
-    },
-}
-
-impl TemplateOverrideKey {
-    pub fn profile(profile_id: ProfileId, field: String) -> Self {
-        Self::Profile { profile_id, field }
-    }
-
-    pub fn url(recipe_id: RecipeId) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::Url,
-            recipe_id,
-        }
-    }
-
-    pub fn body(recipe_id: RecipeId) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::Body,
-            recipe_id,
-        }
-    }
-
-    pub fn auth_basic_username(recipe_id: RecipeId) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::AuthenticationBasicUsername,
-            recipe_id,
-        }
-    }
-
-    pub fn auth_basic_password(recipe_id: RecipeId) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::AuthenticationBasicPassword,
-            recipe_id,
-        }
-    }
-
-    pub fn auth_bearer_token(recipe_id: RecipeId) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::AuthenticationBearerToken,
-            recipe_id,
-        }
-    }
-
-    /// Get a unique key for a query parameter. This can use index instead of
-    /// param name because it's only used within one session, and params can't
-    /// be added/reordered/removed without reloading the collection.
-    pub fn query_param(recipe_id: RecipeId, index: usize) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::QueryParam(index),
-            recipe_id,
-        }
-    }
-
-    /// Get a unique key for a header. This can use index instead of
-    /// param name because it's only used within one session, and params can't
-    /// be added/reordered/removed without reloading the collection.
-    pub fn header(recipe_id: RecipeId, index: usize) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::Header(index),
-            recipe_id,
-        }
-    }
-
-    /// Get a unique key for a form field. This can use index instead of
-    /// param name because it's only used within one session, and params can't
-    /// be added/reordered/removed without reloading the collection.
-    pub fn form_field(recipe_id: RecipeId, index: usize) -> Self {
-        Self::Recipe {
-            kind: TemplateOverrideKeyKind::FormField(index),
-            recipe_id,
-        }
-    }
-}
-
-impl SessionKey for TemplateOverrideKey {
-    type Value = Template;
-}
-
-/// Different kinds of recipe fields that can be persisted. This is should be
-/// used through methods on [TemplateOverrideKey] to make usage a bit terser.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
-pub enum TemplateOverrideKeyKind {
-    Url,
-    Body,
-    AuthenticationBasicUsername,
-    AuthenticationBasicPassword,
-    AuthenticationBearerToken,
-    QueryParam(usize),
-    Header(usize),
-    FormField(usize),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,28 +366,27 @@ mod tests {
         view::test_util::TestComponent,
     };
     use rstest::rstest;
-    use slumber_util::Factory;
     use std::iter;
     use terminput::KeyCode;
+
+    /// Persistent key for testing
+    #[derive(Clone, Debug, PartialEq)]
+    struct Key;
+
+    impl SessionKey for Key {
+        type Value = Template;
+    }
 
     /// Test persisting and restoring overrides
     #[rstest]
     fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
-        let recipe_id = RecipeId::factory(());
-        let key = TemplateOverrideKey::url(recipe_id);
         harness
             .persistent_store()
-            .set_session(key.clone(), "persisted".into());
+            .set_session(Key, "persisted".into());
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            EditableTemplate::new(
-                "Item",
-                key.clone(),
-                "default".into(),
-                false,
-                false,
-            ),
+            EditableTemplate::new("Item", Key, "default".into(), false, false),
         );
 
         // Persisted value is loaded on creation
@@ -490,12 +402,12 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(component.template(), &"override".into());
-        assert_eq!(PersistentStore::get_session(&key), Some("override".into()));
+        assert_eq!(PersistentStore::get_session(&Key), Some("override".into()));
 
         // Clear the override; should be removed from the store
         component.int().send_key(KeyCode::Char('z')).assert_empty();
         component.persist(&mut PersistentStore::new(harness.database));
         assert_eq!(component.template(), &"default".into());
-        assert_eq!(PersistentStore::get_session(&key), None);
+        assert_eq!(PersistentStore::get_session(&Key), None);
     }
 }

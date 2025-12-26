@@ -10,12 +10,11 @@ use crate::{
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
-            internal::Child,
-            override_template::{EditableTemplate, TemplateOverrideKey},
+            internal::Child, override_template::EditableTemplate,
         },
         context::UpdateContext,
         event::{Event, EventMatch, ToEmitter},
-        persistent::{PersistentKey, PersistentStore},
+        persistent::{PersistentKey, PersistentStore, SessionKey},
     },
 };
 use ratatui::{
@@ -23,12 +22,13 @@ use ratatui::{
     style::Styled,
     widgets::Block,
 };
+use serde::{Serialize, de::DeserializeOwned};
 use slumber_core::{
     collection::RecipeId,
     http::{BuildFieldOverride, BuildFieldOverrides},
 };
 use slumber_template::Template;
-use std::iter;
+use std::{any, fmt::Debug, iter, marker::PhantomData};
 use unicode_width::UnicodeWidthStr;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
@@ -38,54 +38,47 @@ use unicode_width::UnicodeWidthStr;
 /// - Render values as template previwws
 /// - Allow editing values for temporary overrides
 ///
-/// The generic param defines some common behavior via the trait
-/// [RecipeTableKey].
+/// See [RecipeTableKind] for a description of the generic param.
 #[derive(Debug)]
-pub struct RecipeTable<K: RecipeTableKey> {
+pub struct RecipeTable<Kind: RecipeTableKind> {
     id: ComponentId,
-    /// Persistence key to store which row is selected
-    select_persistent_key: K::SelectKey,
+    /// Persistent key for storing selected row key
+    selected_row_key: SelectedRowKey<Kind>,
     /// Selectable rows
-    select: ComponentSelect<RecipeTableRow<K::ToggleKey>>,
+    select: ComponentSelect<RecipeTableRow<Kind>>,
 }
 
-impl<K: RecipeTableKey> RecipeTable<K> {
+impl<Kind: RecipeTableKind> RecipeTable<Kind> {
     pub fn new(
         noun: &'static str,
         recipe_id: RecipeId,
-        rows: impl IntoIterator<Item = (String, Template)>,
+        rows: impl IntoIterator<Item = (Kind::Key, Template)>,
         can_stream: bool,
     ) -> Self {
-        let rows: Vec<RecipeTableRow<K::ToggleKey>> = rows
+        let rows: Vec<RecipeTableRow<Kind>> = rows
             .into_iter()
             .enumerate()
             .map(|(i, (key, template))| {
-                let toggle_key = K::toggle_key(recipe_id.clone(), key.clone());
-                let override_key = K::override_key(recipe_id.clone(), i);
                 RecipeTableRow::new(
+                    recipe_id.clone(),
+                    noun,
                     i, // This will be the unique ID for the row
                     key,
-                    EditableTemplate::new(
-                        noun,
-                        override_key,
-                        template.clone(),
-                        can_stream,
-                        false,
-                    ),
-                    toggle_key,
+                    template,
+                    can_stream,
                 )
             })
             .collect();
 
-        let select_key = K::select_key(recipe_id);
+        let selected_row_key = SelectedRowKey::new(recipe_id);
         let select = Select::builder(rows)
-            .persisted(&select_key)
+            .persisted(&selected_row_key)
             .subscribe([SelectEventType::Select, SelectEventType::Toggle])
             .build();
 
         Self {
             id: Default::default(),
-            select_persistent_key: select_key,
+            selected_row_key,
             select: ComponentSelect::new(select),
         }
     }
@@ -101,7 +94,7 @@ impl<K: RecipeTableKey> RecipeTable<K> {
     }
 }
 
-impl<K: RecipeTableKey> Component for RecipeTable<K> {
+impl<Kind: RecipeTableKind> Component for RecipeTable<Kind> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -126,7 +119,7 @@ impl<K: RecipeTableKey> Component for RecipeTable<K> {
     fn persist(&self, store: &mut PersistentStore) {
         // Persist selected row
         store.set_opt(
-            &self.select_persistent_key,
+            &self.selected_row_key,
             self.select.selected().map(|row| &row.key),
         );
     }
@@ -136,7 +129,10 @@ impl<K: RecipeTableKey> Component for RecipeTable<K> {
     }
 }
 
-impl<'a, K: RecipeTableKey> Draw<RecipeTableProps<'a>> for RecipeTable<K> {
+impl<'a, Kind> Draw<RecipeTableProps<'a>> for RecipeTable<Kind>
+where
+    Kind: RecipeTableKind,
+{
     fn draw(
         &self,
         canvas: &mut Canvas,
@@ -149,7 +145,7 @@ impl<'a, K: RecipeTableKey> Draw<RecipeTableProps<'a>> for RecipeTable<K> {
 
         // Find the widest key so we know how to size the key column
         let key_column_width = iter::once(props.key_header)
-            .chain(self.select.items().map(|row| row.key.as_str()))
+            .chain(self.select.items().map(|row| Kind::key_as_str(&row.key)))
             .map(UnicodeWidthStr::width)
             .max()
             .unwrap_or(0) as u16
@@ -196,29 +192,10 @@ pub struct RecipeTableProps<'a> {
     pub value_header: &'a str,
 }
 
-/// Abstraction for row types in [RecipeTable]
-pub trait RecipeTableKey {
-    /// Persistent key to store the selected row in the table
-    type SelectKey: PersistentKey<Value = String>;
-    /// Persistent key to store toggle state for a single row
-    type ToggleKey: PersistentKey<Value = bool>;
-
-    /// Get the key under which row selection state is persisted for this table.
-    /// Typically just a wrapper around the recipe ID.
-    fn select_key(recipe_id: RecipeId) -> Self::SelectKey;
-
-    /// Get the key under which toggle state for a single row is persisted
-    fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey;
-
-    /// Get the key under which the template override for a single row is
-    /// persisted in the session store
-    fn override_key(recipe_id: RecipeId, index: usize) -> TemplateOverrideKey;
-}
-
 /// One row in the query/header table. Generic param is the persistence key to
-/// use for toggle state
+/// use for toggle/override state
 #[derive(Debug)]
-struct RecipeTableRow<RowToggleKey> {
+struct RecipeTableRow<Kind: RecipeTableKind> {
     id: ComponentId,
     /// Index of this row in the table. This is the unique ID for this row
     /// **in the context of a single session**. Rows can be added/removed
@@ -228,12 +205,12 @@ struct RecipeTableRow<RowToggleKey> {
     /// one table (e.g. query params). This should be consistent across reloads
     /// though because this is the *value* persisted to identify which row is
     /// selected.
-    key: String,
+    key: Kind::Key,
     /// Value template. This includes functionality to make it editable, and
     /// persist the edited value within the current session
-    value: EditableTemplate,
-    /// Persistence key to store the toggle state for this row
-    persistent_key: RowToggleKey,
+    value: EditableTemplate<RowPersistentKey<Kind>>,
+    /// Persistence key to store the toggle and override state for this row
+    persistent_key: RowPersistentKey<Kind>,
     /// Is the row enabled/included? This is persisted by row *key* rather than
     /// index, which **may not be unique**. E.g. a query param could be
     /// duplicated. This means duplicated keys will all get the same persisted
@@ -243,21 +220,30 @@ struct RecipeTableRow<RowToggleKey> {
     enabled: bool,
 }
 
-impl<RowToggleKey: PersistentKey<Value = bool>> RecipeTableRow<RowToggleKey> {
+impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
     fn new(
+        recipe_id: RecipeId,
+        noun: &'static str,
         index: usize,
-        key: String,
-        value: EditableTemplate,
-        toggle_persistent_key: RowToggleKey,
+        key: Kind::Key,
+        template: Template,
+        can_stream: bool,
     ) -> Self {
+        let persistent_key = RowPersistentKey::new(recipe_id, key.clone());
+        let value = EditableTemplate::new(
+            noun,
+            persistent_key.clone(),
+            template.clone(),
+            can_stream,
+            false,
+        );
         Self {
             id: ComponentId::default(),
             index,
             key,
             value,
-            enabled: PersistentStore::get(&toggle_persistent_key)
-                .unwrap_or(true),
-            persistent_key: toggle_persistent_key,
+            enabled: PersistentStore::get(&persistent_key).unwrap_or(true),
+            persistent_key,
         }
     }
 
@@ -277,10 +263,7 @@ impl<RowToggleKey: PersistentKey<Value = bool>> RecipeTableRow<RowToggleKey> {
     }
 }
 
-impl<RowToggleKey> Component for RecipeTableRow<RowToggleKey>
-where
-    RowToggleKey: PersistentKey<Value = bool>,
-{
+impl<Kind: RecipeTableKind> Component for RecipeTableRow<Kind> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -295,10 +278,7 @@ where
     }
 }
 
-impl<RowToggleKey> Draw<RecipeTableRowProps> for RecipeTableRow<RowToggleKey>
-where
-    RowToggleKey: PersistentKey<Value = bool>,
-{
+impl<Kind: RecipeTableKind> Draw<RecipeTableRowProps> for RecipeTableRow<Kind> {
     fn draw(
         &self,
         canvas: &mut Canvas,
@@ -327,14 +307,14 @@ where
             },
             checkbox_area,
         );
-        canvas.render_widget(self.key.as_str(), key_area);
+        canvas.render_widget(Kind::key_as_str(&self.key), key_area);
         canvas.draw(&self.value, (), value_area, true);
     }
 }
 
 // Needed for toggle persistence
-impl<RowToggleKey> PartialEq<String> for RecipeTableRow<RowToggleKey> {
-    fn eq(&self, key: &String) -> bool {
+impl<Kind: RecipeTableKind> PartialEq<Kind::Key> for RecipeTableRow<Kind> {
+    fn eq(&self, key: &Kind::Key) -> bool {
         &self.key == key
     }
 }
@@ -342,6 +322,124 @@ impl<RowToggleKey> PartialEq<String> for RecipeTableRow<RowToggleKey> {
 #[derive(Copy, Clone)]
 struct RecipeTableRowProps {
     key_column_width: u16,
+}
+
+/// A trait to define a single usage of [RecipeTable], e.g. headers, query
+/// params, etc. This serves two purposes:
+///
+/// - Define the key type for the table
+/// - Provide a unique type to attach to each table's persisted state
+pub trait RecipeTableKind: 'static {
+    /// Type of the key column for this table. The key value **must be unique**
+    /// within each table. For most tables this is just `String`, but for tables
+    /// that don't have a single unique value (e.g. query parameters), it will
+    /// be something more specific to make it unique.
+    type Key: 'static
+        + Clone // For override persistence (session store)
+        + Debug // For override persistence (session store)
+        + PartialEq // For override persistence (session store)
+        + Serialize // For selected/toggle persistence
+        + DeserializeOwned; // For selected row persistence
+
+    /// Convert the key to a `&str` so it can be displayed
+    fn key_as_str(key: &Self::Key) -> &str;
+}
+
+/// Persistent key for which row is selected in a single table.
+///
+/// This key is unique to (table kind, recipe). Each table in each recipe
+/// persists its selected row separately.
+#[derive(Debug, Serialize)]
+#[serde(bound = "")]
+struct SelectedRowKey<Kind> {
+    /// Which table is this key from? Form, header, etc.
+    kind: TypeName<Kind>,
+    /// Recipe being edited
+    recipe_id: RecipeId,
+}
+
+impl<Kind> SelectedRowKey<Kind> {
+    fn new(recipe_id: RecipeId) -> Self {
+        Self {
+            kind: TypeName(PhantomData),
+            recipe_id,
+        }
+    }
+}
+
+impl<Kind: RecipeTableKind> PersistentKey for SelectedRowKey<Kind> {
+    /// Persist the key of the selected row, which must be unique within the
+    /// table
+    type Value = Kind::Key;
+}
+
+/// Persistent key for data specific to a single row in a single table. This is
+/// used to persist:
+/// - Toggle state in the persistent store
+/// - Override template in the session store
+///
+/// This key is unique to (table kind, recipe, row). Each row in each table of
+/// each recipe has its own state.
+#[derive(derive_more::Debug, derive_more::PartialEq, Serialize)]
+#[serde(bound = "Kind::Key: Serialize")]
+struct RowPersistentKey<Kind: RecipeTableKind> {
+    /// Which table is this row from? Form, header, etc.
+    kind: TypeName<Kind>,
+    /// Recipe being edited
+    recipe_id: RecipeId,
+    /// Unique row identifier
+    row_key: Kind::Key,
+}
+
+// Remove `Kind: Clone` bound
+impl<Kind: RecipeTableKind> Clone for RowPersistentKey<Kind> {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            recipe_id: self.recipe_id.clone(),
+            row_key: self.row_key.clone(),
+        }
+    }
+}
+
+impl<Kind: RecipeTableKind> RowPersistentKey<Kind> {
+    fn new(recipe_id: RecipeId, row_key: Kind::Key) -> Self {
+        Self {
+            kind: TypeName(PhantomData),
+            recipe_id,
+            row_key,
+        }
+    }
+}
+
+impl<Kind: RecipeTableKind> PersistentKey for RowPersistentKey<Kind> {
+    type Value = bool;
+}
+
+impl<Kind: RecipeTableKind> SessionKey for RowPersistentKey<Kind> {
+    type Value = Template;
+}
+
+/// Serialize `T` as just its fully qualified path. Allows the type to make a
+/// unique serialization value for persistence without needing a value of that
+/// type.
+#[derive(derive_more::Debug, derive_more::PartialEq)]
+struct TypeName<T>(PhantomData<T>);
+
+// Remove `T: Clone` bound
+impl<T> Clone for TypeName<T> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T> Serialize for TypeName<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        any::type_name::<T>().serialize(serializer)
+    }
 }
 
 #[cfg(test)]
@@ -352,7 +450,6 @@ mod tests {
         view::test_util::TestComponent,
     };
     use rstest::rstest;
-    use serde::Serialize;
     use slumber_core::collection::RecipeId;
     use slumber_util::Factory;
     use terminput::KeyCode;
@@ -360,41 +457,12 @@ mod tests {
     #[derive(Debug)]
     struct TestKey;
 
-    impl RecipeTableKey for TestKey {
-        type SelectKey = TestRowKey;
-        type ToggleKey = TestRowToggleKey;
+    impl RecipeTableKind for TestKey {
+        type Key = String;
 
-        fn select_key(recipe_id: RecipeId) -> Self::SelectKey {
-            TestRowKey(recipe_id)
+        fn key_as_str(key: &Self::Key) -> &str {
+            key.as_str()
         }
-
-        fn toggle_key(recipe_id: RecipeId, key: String) -> Self::ToggleKey {
-            TestRowToggleKey { recipe_id, key }
-        }
-
-        fn override_key(
-            recipe_id: RecipeId,
-            index: usize,
-        ) -> TemplateOverrideKey {
-            TemplateOverrideKey::query_param(recipe_id, index)
-        }
-    }
-
-    #[derive(Debug, Serialize)]
-    struct TestRowKey(RecipeId);
-
-    impl PersistentKey for TestRowKey {
-        type Value = String;
-    }
-
-    #[derive(Debug, Serialize)]
-    struct TestRowToggleKey {
-        recipe_id: RecipeId,
-        key: String,
-    }
-
-    impl PersistentKey for TestRowToggleKey {
-        type Value = bool;
     }
 
     /// User can hide a row from the recipe
@@ -530,11 +598,17 @@ mod tests {
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
-            TemplateOverrideKey::query_param(recipe_id.clone(), 0),
+            RowPersistentKey::<TestKey>::new(
+                recipe_id.clone(),
+                "row0".to_owned(),
+            ),
             "p0".into(),
         );
         harness.persistent_store().set_session(
-            TemplateOverrideKey::query_param(recipe_id.clone(), 1),
+            RowPersistentKey::<TestKey>::new(
+                recipe_id.clone(),
+                "row1".to_owned(),
+            ),
             "p1".into(),
         );
         let rows = [("row0".into(), "".into()), ("row1".into(), "".into())];

@@ -1,8 +1,8 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use derive_more::Display;
 use ratatui::layout::{Position, Size};
 use slumber_config::{Action, InputBinding, InputMap};
+use std::fmt::Display;
 use terminput::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind, ScrollDirection,

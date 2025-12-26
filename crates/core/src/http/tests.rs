@@ -604,8 +604,11 @@ async fn test_override_headers(http_engine: HttpEngine) {
         &context,
         BuildOptions {
             headers: [
-                (1, BuildFieldOverride::Override("style2".into())),
-                (2, BuildFieldOverride::Omit),
+                (
+                    "Big-Guy".to_owned(),
+                    BuildFieldOverride::Override("style2".into()),
+                ),
+                ("content-type".to_owned(), BuildFieldOverride::Omit),
             ]
             .into_iter()
             .collect(),
@@ -635,10 +638,9 @@ async fn test_override_query(http_engine: HttpEngine) {
         query: indexmap! {
             // Overridden
             "mode".into() => "regular".into(),
-            // Excluded
             "fast".into() => [
-                "false", // Excluded
                 "true", // Included
+                "false", // Excluded
             ].into(),
         },
         ..Recipe::factory(())
@@ -648,8 +650,11 @@ async fn test_override_query(http_engine: HttpEngine) {
         &context,
         BuildOptions {
             query_parameters: [
-                (0, BuildFieldOverride::Override("{{ mode }}".into())),
-                (1, BuildFieldOverride::Omit),
+                (
+                    ("mode".to_owned(), 0),
+                    BuildFieldOverride::Override("{{ mode }}".into()),
+                ),
+                (("fast".to_owned(), 1), BuildFieldOverride::Omit),
             ]
             .into_iter()
             .collect(),
@@ -748,8 +753,11 @@ async fn test_override_body_form(http_engine: HttpEngine) {
         &context,
         BuildOptions {
             form_fields: [
-                (1, BuildFieldOverride::Omit),
-                (2, BuildFieldOverride::Override("small".into())),
+                ("token".to_owned(), BuildFieldOverride::Omit),
+                (
+                    "preference".to_owned(),
+                    BuildFieldOverride::Override("small".into()),
+                ),
             ]
             .into_iter()
             .collect(),

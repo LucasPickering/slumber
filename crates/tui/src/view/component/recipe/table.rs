@@ -17,6 +17,7 @@ use crate::{
         persistent::{PersistentKey, PersistentStore, SessionKey},
     },
 };
+use indexmap::IndexMap;
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
     style::Styled,
@@ -25,10 +26,7 @@ use ratatui::{
 use serde::{Serialize, de::DeserializeOwned};
 use slumber_core::{collection::RecipeId, http::BuildFieldOverride};
 use slumber_template::Template;
-use std::{
-    any, collections::HashMap, fmt::Debug, hash::Hash, iter,
-    marker::PhantomData,
-};
+use std::{any, fmt::Debug, hash::Hash, iter, marker::PhantomData};
 use unicode_width::UnicodeWidthStr;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
@@ -82,7 +80,9 @@ impl<Kind: RecipeTableKind> RecipeTable<Kind> {
     }
 
     /// Get the set of disabled/overridden rows for this table
-    pub fn to_build_overrides(&self) -> HashMap<Kind::Key, BuildFieldOverride> {
+    pub fn to_build_overrides(
+        &self,
+    ) -> IndexMap<Kind::Key, BuildFieldOverride> {
         self.select
             .items()
             .filter_map(|row| {
@@ -478,7 +478,7 @@ mod tests {
         .build();
 
         // Check initial state
-        assert_eq!(component.to_build_overrides(), HashMap::new());
+        assert_eq!(component.to_build_overrides(), IndexMap::new());
 
         // Disable the second row
         component
@@ -491,7 +491,10 @@ mod tests {
         assert!(!selected_row.enabled);
         assert_eq!(
             component.to_build_overrides(),
-            HashMap::from_iter([("row1".to_owned(), BuildFieldOverride::Omit)]),
+            IndexMap::<_, _>::from_iter([(
+                "row1".to_owned(),
+                BuildFieldOverride::Omit
+            )]),
         );
 
         // Re-enable the row
@@ -501,7 +504,7 @@ mod tests {
             .assert_empty();
         let selected_row = component.select.selected().unwrap();
         assert!(selected_row.enabled);
-        assert_eq!(component.to_build_overrides(), HashMap::new());
+        assert_eq!(component.to_build_overrides(), IndexMap::new());
     }
 
     /// User can edit the value for a row
@@ -522,7 +525,7 @@ mod tests {
         .build();
 
         // Check initial state
-        assert_eq!(component.to_build_overrides(), HashMap::new());
+        assert_eq!(component.to_build_overrides(), IndexMap::new());
 
         // Edit the second row
         component
@@ -540,9 +543,9 @@ mod tests {
         assert_eq!(selected_row.value.template().display(), "value1!!!");
         assert_eq!(
             component.to_build_overrides(),
-            HashMap::from_iter([(
+            IndexMap::<_, _>::from_iter([(
                 "row1".to_owned(),
-                BuildFieldOverride::Override("value1!!!".into())
+                "value1!!!".into()
             )]),
         );
 
@@ -609,9 +612,9 @@ mod tests {
 
         assert_eq!(
             component.to_build_overrides(),
-            HashMap::from_iter([
-                ("row0".to_owned(), BuildFieldOverride::Override("p0".into())),
-                ("row1".to_owned(), BuildFieldOverride::Override("p1".into())),
+            IndexMap::<_, _>::from_iter([
+                ("row0".to_owned(), "p0".into()),
+                ("row1".to_owned(), "p1".into()),
             ]),
         );
     }

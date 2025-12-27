@@ -12,6 +12,7 @@ use crate::{
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::FromStr;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::{
@@ -21,7 +22,6 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use slumber_template::{RenderError, Template};
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Debug, Display},
     io,
@@ -300,72 +300,35 @@ pub struct BuildOptions {
     /// the override is wholesale rather than by field.
     pub authentication: Option<Authentication>,
     /// Override individual headers
-    pub headers: HashMap<String, BuildFieldOverride>,
+    pub headers: IndexMap<String, BuildFieldOverride>,
     /// Override individual query parameters. The index is the instance of that
     /// parameter unique to the key. E.g. the keys of `a=1&a=2&b=1` would be
     /// `[(a, 0), (a, 1), (b, 0)]`
-    pub query_parameters: HashMap<(String, usize), BuildFieldOverride>,
+    pub query_parameters: IndexMap<(String, usize), BuildFieldOverride>,
     /// Override individual fields in a URL-encoded or multipart form
-    pub form_fields: HashMap<String, BuildFieldOverride>,
+    pub form_fields: IndexMap<String, BuildFieldOverride>,
     /// Override body. This should *not* be used for form bodies, since those
     /// can be overridden on a field-by-field basis.
     pub body: Option<RecipeBody>,
 }
 
-impl BuildOptions {
-    /// Get the override for a form field. Return `Some(default)` if the
-    /// override is unset, or `None` if it's set as `Omit`.
-    pub fn form_field<'a>(
-        &'a self,
-        header: &str,
-        default: &'a Template,
-    ) -> Option<&'a Template> {
-        match self.form_fields.get(header) {
-            Some(BuildFieldOverride::Override(template)) => Some(template),
-            Some(BuildFieldOverride::Omit) => None,
-            None => Some(default),
-        }
-    }
-
-    /// Get the override for a header. Return `Some(default)` if the override is
-    /// unset, or `None` if it's set as `Omit`.
-    pub fn header<'a>(
-        &'a self,
-        header: &str,
-        default: &'a Template,
-    ) -> Option<&'a Template> {
-        match self.headers.get(header) {
-            Some(BuildFieldOverride::Override(template)) => Some(template),
-            Some(BuildFieldOverride::Omit) => None,
-            None => Some(default),
-        }
-    }
-
-    /// Get the override for a query parameter. Return `Some(default)` if the
-    /// override is unset, or `None` if it's set as `Omit`.
-    pub fn query_parameter<'a>(
-        &'a self,
-        parameter: &str,
-        index: usize,
-        default: &'a Template,
-    ) -> Option<&'a Template> {
-        match self.query_parameters.get(&(parameter.to_owned(), index)) {
-            Some(BuildFieldOverride::Override(template)) => Some(template),
-            Some(BuildFieldOverride::Omit) => None,
-            None => Some(default),
-        }
-    }
-}
-
 /// Modifications made to a single field (query param, header, etc.) in a
 /// recipe
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum BuildFieldOverride {
     /// Do not include this field in the recipe
     Omit,
     /// Replace the value for this field with a different template
     Override(Template),
+}
+
+/// Build a [BuildFieldOverride::Override] from a template literal
+#[cfg(any(test, feature = "test"))]
+impl From<&'static str> for BuildFieldOverride {
+    fn from(template: &'static str) -> Self {
+        Self::Override(template.into())
+    }
 }
 
 /// A request ready to be launched into through the stratosphere. This is

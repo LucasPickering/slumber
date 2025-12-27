@@ -550,13 +550,46 @@ async fn test_override_url(http_engine: HttpEngine) {
 
 /// Test overriding authentication in BuildOptions
 #[rstest]
+#[case::basic(
+    Some(Authentication::Basic {
+        username: "username".into(),
+        password: None,
+    }),
+    Authentication::Basic {
+        username: "{{ username }}".into(),
+        password: Some("{{ password }}".into()),
+    },
+    "Basic dXNlcjpodW50ZXIy",
+)]
+#[case::bearer(
+    Some(Authentication::Bearer { token: "token".into() }),
+    Authentication::Bearer { token: "{{ password }}".into() },
+    "Bearer hunter2",
+)]
+// None -> Some
+#[case::add_auth(
+    None,
+    Authentication::Bearer { token: "{{ password }}".into() },
+    "Bearer hunter2",
+)]
+// Change the auth type with the override
+#[case::basic_to_bearer(
+    Some(Authentication::Basic {
+        username: "{{ username }}".into(),
+        password: Some("{{ password }}".into()),
+    }),
+    Authentication::Bearer { token: "{{ password }}".into() },
+    "Bearer hunter2",
+)]
 #[tokio::test]
-async fn test_override_authentication(http_engine: HttpEngine) {
+async fn test_override_authentication(
+    http_engine: HttpEngine,
+    #[case] recipe_auth: Option<Authentication>,
+    #[case] override_auth: Authentication,
+    #[case] expected_header: &str,
+) {
     let recipe = Recipe {
-        authentication: Some(Authentication::Basic {
-            username: "username".into(),
-            password: None,
-        }),
+        authentication: recipe_auth,
         ..Recipe::factory(())
     };
     let context = template_context(recipe, None);
@@ -564,10 +597,7 @@ async fn test_override_authentication(http_engine: HttpEngine) {
     let seed = seed(
         &context,
         BuildOptions {
-            authentication: Some(Authentication::Basic {
-                username: "{{ username }}".into(),
-                password: Some("{{ password }}".into()),
-            }),
+            authentication: Some(override_auth),
             ..Default::default()
         },
     );
@@ -578,8 +608,8 @@ async fn test_override_authentication(http_engine: HttpEngine) {
             .record
             .headers
             .get("Authorization")
-            .and_then(|v| v.to_str().ok()),
-        Some("Basic dXNlcjpodW50ZXIy")
+            .map(|v| v.to_str().unwrap()),
+        Some(expected_header)
     );
 }
 
@@ -604,11 +634,9 @@ async fn test_override_headers(http_engine: HttpEngine) {
         &context,
         BuildOptions {
             headers: [
-                (
-                    "Big-Guy".to_owned(),
-                    BuildFieldOverride::Override("style2".into()),
-                ),
+                ("Big-Guy".to_owned(), "style2".into()),
                 ("content-type".to_owned(), BuildFieldOverride::Omit),
+                ("extra".to_owned(), "extra".into()),
             ]
             .into_iter()
             .collect(),
@@ -625,6 +653,7 @@ async fn test_override_headers(http_engine: HttpEngine) {
             // It picked up the default content-type from the body,
             // because ours was excluded
             ("content-type", "application/json"),
+            ("extra", "extra"),
         ])
     );
 }
@@ -650,11 +679,9 @@ async fn test_override_query(http_engine: HttpEngine) {
         &context,
         BuildOptions {
             query_parameters: [
-                (
-                    ("mode".to_owned(), 0),
-                    BuildFieldOverride::Override("{{ mode }}".into()),
-                ),
+                (("mode".to_owned(), 0), "{{ mode }}".into()),
                 (("fast".to_owned(), 1), BuildFieldOverride::Omit),
+                (("extra".to_owned(), 0), "extra".into()),
             ]
             .into_iter()
             .collect(),
@@ -666,23 +693,45 @@ async fn test_override_query(http_engine: HttpEngine) {
     // Should override "mode" and omit "fast=false"
     assert_eq!(
         ticket.record.url.as_str(),
-        "http://localhost/url?mode=sudo&fast=true"
+        "http://localhost/url?mode=sudo&fast=true&extra=extra"
     );
 }
 
-/// Test overriding raw body in BuildOptions
+/// Test overriding raw and JSON bodies in BuildOptions
 #[rstest]
+#[case::raw(Some("{{ username }}".into()), "{{ password }}".into(), "hunter2")]
+#[case::json(
+    Some(
+        RecipeBody::json(json!({"username": "{{ username }}"})).unwrap(),
+    ),
+    RecipeBody::json(json!({"username": "user1"})).unwrap(),
+    r#"{"username":"user1"}"#,
+)]
+// None -> Some
+#[case::add_body(None, "{{ password }}".into(), "hunter2")]
+// Change body type
+#[case::raw_to_json(
+    Some("{{ username }}".into()),
+    RecipeBody::json(json!({"username": "user1"})).unwrap(),
+    r#"{"username":"user1"}"#,
+)]
 #[tokio::test]
-async fn test_override_body_raw(http_engine: HttpEngine) {
+async fn test_override_body(
+    http_engine: HttpEngine,
+    #[case] recipe_body: Option<RecipeBody>,
+    #[case] override_body: RecipeBody,
+    #[case] expected: &str,
+) {
     let recipe = Recipe {
-        body: Some(RecipeBody::Raw("{{ username }}".into())),
+        body: recipe_body,
         ..Recipe::factory(())
     };
     let context = template_context(recipe, None);
+
     let seed = seed(
         &context,
         BuildOptions {
-            body: Some("{{ password }}".into()),
+            body: Some(override_body),
             ..Default::default()
         },
     );
@@ -693,39 +742,8 @@ async fn test_override_body_raw(http_engine: HttpEngine) {
             .record
             .body
             .as_deref()
-            .and_then(|bytes| std::str::from_utf8(bytes).ok()),
-        Some("hunter2")
-    );
-}
-
-/// Test overriding JSON body in BuildOptions
-#[rstest]
-#[tokio::test]
-async fn test_override_body_json(http_engine: HttpEngine) {
-    let recipe = Recipe {
-        body: Some(
-            RecipeBody::json(json!({"username": "{{ username }}"})).unwrap(),
-        ),
-        ..Recipe::factory(())
-    };
-    let context = template_context(recipe, None);
-
-    let seed = seed(
-        &context,
-        BuildOptions {
-            body: Some(RecipeBody::json(json!({"username": "user1"})).unwrap()),
-            ..Default::default()
-        },
-    );
-    let ticket = http_engine.build(seed, &context).await.unwrap();
-
-    assert_eq!(
-        ticket
-            .record
-            .body
-            .as_deref()
-            .and_then(|bytes| std::str::from_utf8(bytes).ok()),
-        Some(r#"{"username":"user1"}"#)
+            .map(|bytes| std::str::from_utf8(bytes).unwrap()),
+        Some(expected)
     );
 }
 
@@ -754,10 +772,8 @@ async fn test_override_body_form(http_engine: HttpEngine) {
         BuildOptions {
             form_fields: [
                 ("token".to_owned(), BuildFieldOverride::Omit),
-                (
-                    "preference".to_owned(),
-                    BuildFieldOverride::Override("small".into()),
-                ),
+                ("preference".to_owned(), "small".into()),
+                ("extra".to_owned(), "extra".into()),
             ]
             .into_iter()
             .collect(),
@@ -778,8 +794,10 @@ async fn test_override_body_form(http_engine: HttpEngine) {
             headers: header_map([(
                 "content-type",
                 "application/x-www-form-urlencoded"
-            ),]),
-            body: Some(b"user_id=1&preference=small".as_slice().into()),
+            )]),
+            body: Some(
+                b"user_id=1&preference=small&extra=extra".as_slice().into()
+            ),
         }
     );
 }

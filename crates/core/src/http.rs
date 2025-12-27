@@ -56,6 +56,7 @@ use futures::{
     stream::BoxStream,
     try_join,
 };
+use indexmap::IndexMap;
 use reqwest::{
     Body, Client, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -65,7 +66,7 @@ use reqwest::{
 use slumber_config::HttpEngineConfig;
 use slumber_template::{RenderError, StreamSource, Template};
 use slumber_util::ResultTraced;
-use std::{collections::HashSet, error::Error};
+use std::{collections::HashSet, error::Error, hash::Hash};
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -491,21 +492,24 @@ impl Recipe {
         options: &BuildOptions,
         context: &TemplateContext,
     ) -> Result<Vec<(String, String)>, RequestBuildErrorKind> {
-        let iter = self.query_iter().filter_map(|(k, i, v)| {
-            // Look up and apply override. We need the index because keys aren't
-            // necessarily unique
-            let template = options.query_parameter(k, i, v)?;
+        // Merge overrides with the original map
+        let merged = apply_overrides(
+            self.query_iter().map(|(k, i, v)| ((k, i), v)),
+            options
+                .query_parameters
+                .iter()
+                .map(|((k, i), v)| ((k.as_str(), *i), v)),
+        );
 
-            Some(async move {
-                let value = template
-                    .render_string(&context.streaming(false))
-                    .await
-                    .map_err(|error| RequestBuildErrorKind::QueryRender {
-                        parameter: k.to_owned(),
-                        error,
-                    })?;
-                Ok((k.to_owned(), value))
-            })
+        let iter = merged.into_iter().map(async |((param, _), template)| {
+            let value = template
+                .render_string(&context.streaming(false))
+                .await
+                .map_err(|error| RequestBuildErrorKind::QueryRender {
+                    parameter: param.to_owned(),
+                    error,
+                })?;
+            Ok((param.to_owned(), value))
         });
         future::try_join_all(iter).await
     }
@@ -520,15 +524,10 @@ impl Recipe {
         let mut headers = HeaderMap::new();
 
         // Render headers in an iterator so we can parallelize
-        let iter =
-            self.headers
-                .iter()
-                .filter_map(move |(header, value_template)| {
-                    let template = options.header(header, value_template)?;
-                    Some(async move {
-                        self.render_header(context, header, template).await
-                    })
-                });
+        let merged = apply_overrides(&self.headers, &options.headers);
+        let iter = merged.into_iter().map(|(header, template)| {
+            self.render_header(context, header, template)
+        });
 
         let rendered = future::try_join_all(iter).await?;
         headers.reserve(rendered.len());
@@ -655,58 +654,47 @@ impl Recipe {
                     .map_err(RequestBuildErrorKind::BodyRender)?,
             ),
             RecipeBody::FormUrlencoded(fields) => {
-                let iter =
-                    fields.iter().filter_map(|(field, value_template)| {
-                        let template =
-                            options.form_field(field, value_template)?;
-                        Some(async move {
-                            let value = template
-                                .render_string(&context.streaming(false))
-                                .await
-                                .map_err(|error| {
-                                    RequestBuildErrorKind::BodyFormFieldRender {
-                                        field: field.clone(),
-                                        error,
-                                    }
-                                })?;
-                            Ok::<_, RequestBuildErrorKind>((
-                                field.clone(),
-                                value,
-                            ))
-                        })
-                    });
+                let merged = apply_overrides(fields, &options.form_fields);
+                let iter = merged.into_iter().map(async |(field, template)| {
+                    let value = template
+                        .render_string(&context.streaming(false))
+                        .await
+                        .map_err(|error| {
+                            RequestBuildErrorKind::BodyFormFieldRender {
+                                field: field.clone(),
+                                error,
+                            }
+                        })?;
+                    Ok::<_, RequestBuildErrorKind>((field.clone(), value))
+                });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
             RecipeBody::FormMultipart(fields) => {
-                let iter =
-                    fields.iter().filter_map(move |(field, value_template)| {
-                        let template =
-                            options.form_field(field, value_template)?;
-                        Some(async move {
-                            let output =
-                                template.render(&context.streaming(true)).await;
-                            // If this is a single-chunk template, we can might
-                            // be able to load directly from the source, since
-                            // we support file streams natively. In that case,
-                            // the stream will be thrown away
-                            let source = output.stream_source().cloned();
-                            let stream = output
-                                .try_into_stream()
-                                .map_err(|error| {
-                                    RequestBuildErrorKind::BodyFormFieldRender {
-                                        field: field.clone(),
-                                        error,
-                                    }
-                                })?
-                                .boxed();
+                let merged = apply_overrides(fields, &options.form_fields);
+                let iter = merged.into_iter().map(async |(field, template)| {
+                    let output =
+                        template.render(&context.streaming(true)).await;
+                    // If this is a single-chunk template, we might be able to
+                    // load directly from the source, since we support file
+                    // streams natively. In that case, the stream will be thrown
+                    // away
+                    let source = output.stream_source().cloned();
+                    let stream = output
+                        .try_into_stream()
+                        .map_err(|error| {
+                            RequestBuildErrorKind::BodyFormFieldRender {
+                                field: field.clone(),
+                                error,
+                            }
+                        })?
+                        .boxed();
 
-                            Ok::<_, RequestBuildErrorKind>((
-                                field.clone(),
-                                BodyStream { stream, source },
-                            ))
-                        })
-                    });
+                    Ok::<_, RequestBuildErrorKind>((
+                        field.clone(),
+                        BodyStream { stream, source },
+                    ))
+                });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormMultipart(rendered)
             }
@@ -818,6 +806,32 @@ impl From<HttpMethod> for reqwest::Method {
             HttpMethod::Trace => reqwest::Method::TRACE,
         }
     }
+}
+
+/// Merge a map from the recipe with a map from the overrides. Entries in
+/// `defaults` will be added, overwritten, and dropped as necessary.
+fn apply_overrides<'a, K>(
+    defaults: impl IntoIterator<Item = (K, &'a Template)>,
+    overrides: impl IntoIterator<Item = (K, &'a BuildFieldOverride)>,
+) -> IndexMap<K, &'a Template>
+where
+    K: Eq + Hash + PartialEq,
+{
+    let mut map: IndexMap<K, &Template> = defaults.into_iter().collect();
+    for (k, ovr) in overrides {
+        let ovr: &'a BuildFieldOverride = ovr; // Help the type checker
+        match ovr {
+            BuildFieldOverride::Omit => {
+                // Use shift_remove because order may be significant
+                map.shift_remove(&k);
+            }
+            BuildFieldOverride::Override(template) => {
+                // Insert via the entry to retain order if it's already present
+                map.entry(k).insert_entry(template);
+            }
+        }
+    }
+    map
 }
 
 /// Trim the bytes from the beginning and end of a vector that match the given

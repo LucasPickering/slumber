@@ -113,7 +113,7 @@ impl RecipeDisplay {
         let body = self
             .body
             .as_ref()
-            .and_then(super::body::RecipeBodyDisplay::override_value);
+            .and_then(RecipeBodyDisplay::override_value);
 
         BuildOptions {
             url,
@@ -268,11 +268,10 @@ mod tests {
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
-    use indexmap::indexmap;
+    use indexmap::{IndexMap, indexmap};
     use rstest::rstest;
     use slumber_core::http::BuildFieldOverride;
     use slumber_util::Factory;
-    use std::collections::HashMap;
     use terminput::KeyCode;
 
     /// Override query parameters, including persistence. Query param keys are
@@ -314,12 +313,9 @@ mod tests {
             .send_text("xxx")
             .assert_empty();
 
-        let expected = HashMap::from_iter([
+        let expected = IndexMap::<_, _>::from_iter([
             (("p1".to_owned(), 0), BuildFieldOverride::Omit),
-            (
-                ("p1".to_owned(), 1),
-                BuildFieldOverride::Override("v1www".into()),
-            ),
+            (("p1".to_owned(), 1), "v1www".into()),
             (("p1".to_owned(), 2), BuildFieldOverride::Omit),
         ]);
         assert_eq!(component.query.to_build_overrides(), expected);

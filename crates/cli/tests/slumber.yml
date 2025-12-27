@@ -7,12 +7,14 @@ profiles:
     name: Profile 1
     default: true
     data:
-      host: http://server
+      host: "{{ env('HOST', default='http://server') }}"
       username: username1
+      a: 0
+      b: 0
   profile2:
     name: Profile 2
     data:
-      host: http://server
+      host: "{{ env('HOST', default='http://server') }}"
       username: username2
 
 requests:
@@ -77,3 +79,15 @@ requests:
   chained:
     method: GET
     url: "{{ host }}/chained/{{ response('getUser', trigger='always') | jsonpath('$.username') }}"
+
+  override:
+    method: POST
+    url: "{{ host }}/override"
+    query:
+      foo: bar
+      many: [baz, blorp]
+    headers:
+      X-Test: test
+    body:
+      type: json
+      data: { "a": "{{ a }}", "b": "{{ b }}" }

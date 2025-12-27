@@ -2,7 +2,7 @@ use crate::{
     GlobalArgs, Subcommand,
     completions::{complete_profile, complete_recipe},
 };
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, bail};
 use async_trait::async_trait;
 use clap::{Parser, ValueHint};
 use dialoguer::{Input, Password, Select as DialoguerSelect};
@@ -10,11 +10,11 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{ProfileId, RecipeId},
+    collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
-        BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
-        ResponseRecord, StoredRequestError, TriggeredRequestError,
+        BuildFieldOverride, BuildOptions, Exchange, HttpEngine, RequestRecord,
+        RequestSeed, ResponseRecord, StoredRequestError, TriggeredRequestError,
     },
     render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
@@ -27,7 +27,6 @@ use std::{
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     process::ExitCode,
-    str::FromStr,
 };
 use tracing::warn;
 
@@ -85,15 +84,59 @@ pub struct BuildRequestCommand {
     )]
     profile: Option<ProfileId>,
 
-    /// List of key=value template field overrides
+    /// TODO
     #[clap(
         long = "override",
         short = 'o',
-        value_parser = parse_key_val::<String, String>,
-        // There's no reasonable way of doing completions on this, so disable
-        value_hint = ValueHint::Other,
+        value_parser = parse_profile_override,
+        value_hint = ValueHint::Other, // Disable completions
     )]
-    overrides: Vec<(String, String)>,
+    overrides: Vec<(String, Template)>,
+
+    /// TODO
+    #[clap(
+        long,
+        short = 'Q',
+        value_parser = parse_recipe_override,
+        value_hint = ValueHint::Other, // Disable completions
+    )]
+    query: Vec<(String, BuildFieldOverride)>,
+
+    /// TODO
+    #[clap(
+        long,
+        short = 'H',
+        value_parser = parse_recipe_override,
+        value_hint = ValueHint::Other, // Disable completions
+    )]
+    header: Vec<(String, BuildFieldOverride)>,
+
+    /// TODO
+    // Alias for curl compatibility
+    #[clap(long, visible_alias = "user", value_hint = ValueHint::Other)]
+    basic: Option<Template>,
+
+    /// TODO
+    #[clap(long, visible_alias = "token", value_hint = ValueHint::Other)]
+    bearer: Option<Template>,
+
+    /// TODO
+    #[clap(
+        long,
+        short = 'F',
+        value_parser = parse_recipe_override,
+        value_hint = ValueHint::Other, // Disable completions
+    )]
+    form: Vec<(String, BuildFieldOverride)>,
+
+    /// TODO
+    // Alias for curl compatibility
+    #[clap(long, visible_alias = "data",  value_hint = ValueHint::Other)]
+    body: Option<Template>,
+
+    /// TODO
+    #[clap(long)]
+    url: Option<Template>,
 }
 
 /// Helper for any subcommand that prints exchange (request/response)
@@ -210,12 +253,23 @@ impl BuildRequestCommand {
         });
 
         // Build the request
-        let overrides: IndexMap<_, _> = self
-            .overrides
-            .into_iter()
-            // Don't support templates in overrides (yet)
-            .map(|(field, value)| (field, Template::raw(value)))
-            .collect();
+        let authentication = match (self.basic, self.bearer) {
+            (None, None) => None,
+            (None, Some(token)) => Some(Authentication::Bearer { token }),
+            (Some(_), None) => todo!(),
+            (Some(_), Some(_)) => {
+                bail!("Cannot provide both --basic and --bearer")
+            }
+        };
+        let build_options = BuildOptions {
+            url: self.url,
+            query_parameters: IndexMap::new(), // TODO
+            headers: IndexMap::from_iter(self.header),
+            authentication,
+            form_fields: IndexMap::from_iter(self.form),
+            // TODO do JSON body if the recipe asks for it
+            body: self.body.map(RecipeBody::Raw),
+        };
         let template_context = TemplateContext {
             selected_profile,
             collection: collection.into(),
@@ -224,13 +278,13 @@ impl BuildRequestCommand {
                 http_engine: http_engine.clone(),
                 trigger_dependencies,
             }),
-            overrides,
+            overrides: IndexMap::from_iter(self.overrides),
             prompter: Box::new(CliPrompter),
             show_sensitive: true,
             root_dir: collection_file.parent().to_owned(),
             state: Default::default(),
         };
-        let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
+        let seed = RequestSeed::new(self.recipe_id, build_options);
         Ok((database, http_engine, seed, template_context))
     }
 }
@@ -427,18 +481,29 @@ impl Prompter for CliPrompter {
     }
 }
 
-/// Parse a single key=value pair for an argument
-fn parse_key_val<T, U>(
+/// Parse a single key=value pair for a profile override. The `=` must be
+/// present. Profile fields cannot be omitted.
+fn parse_profile_override(
     s: &str,
-) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
-where
-    T: FromStr,
-    T::Err: Error + Send + Sync + 'static,
-    U: FromStr,
-    U::Err: Error + Send + Sync + 'static,
-{
+) -> Result<(String, Template), anyhow::Error> {
     let (key, value) = s
         .split_once('=')
-        .ok_or_else(|| format!("invalid key=value: no \"=\" found in `{s}`"))?;
-    Ok((key.parse()?, value.parse()?))
+        .ok_or_else(|| anyhow!("invalid key=value: no \"=\" found in `{s}`"))?;
+    Ok((key.to_owned(), value.parse()?))
+}
+
+/// Parse a single key=value pair for a recipe override argument. If the `=`
+/// sign is not present, the field is omitted instead of being overridden.
+fn parse_recipe_override(
+    s: &str,
+) -> Result<(String, BuildFieldOverride), Box<dyn Error + Send + Sync + 'static>>
+{
+    if let Some((key, value)) = s.split_once('=') {
+        // = sign => provide an override value
+        let template: Template = value.parse()?;
+        Ok((key.to_owned(), BuildFieldOverride::Override(template)))
+    } else {
+        // No = sign => omit the field
+        Ok((s.to_owned(), BuildFieldOverride::Omit))
+    }
 }

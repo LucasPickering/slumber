@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The breaking changes in this release are mostly limited to CLI commands. Unless you have an automated workflow defined that uses this command, you won't see any breakage in your experience.
 
+- TODO
 - `slumber show` command has been removed; its functionality has be split up across a set of more discoverable subcommands:
   - `slumber show config` -> `slumber config`
   - `slumber show collection` -> `slumber collection`
@@ -32,6 +33,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 
 ### Added
 
+- TODO
 - Add `Copy as CLI` action to generate a `slumber request` CLI command for the selected recipe/profile
 - Add `Copy as Python` action to generate Python code that uses the [slumber-python](https://pypi.org/project/slumber-python/) API to make a request with the selected recipe/profile
 - Add `slumber config` command (replaces `slumber show config`)

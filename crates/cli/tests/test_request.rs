@@ -2,13 +2,15 @@
 
 mod common;
 
+use indexmap::IndexMap;
 use reqwest::StatusCode;
+use rstest::rstest;
 use serde_json::json;
 use slumber_core::{database::Database, http::ExchangeSummary};
 use slumber_util::assert_matches;
-use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers};
 
-/// Test the basic request use case, including `--profile` and `--override`
+/// Test the basic request use case, including `--profile`
 #[tokio::test]
 async fn test_request() {
     // Mock HTTP response
@@ -26,23 +28,99 @@ async fn test_request() {
         .await;
 
     let (mut command, data_dir) = common::slumber();
-    command.args([
-        "request",
-        "jsonBody",
-        "--profile",
-        "profile2",
-        "-o",
-        &format!("host={host}"),
-    ]);
-    command.assert().success().stdout(body.to_string());
+    command.args(["request", "jsonBody", "--profile", "profile2"]);
+    command
+        .env("HOST", host)
+        .assert()
+        .success()
+        .stdout(body.to_string());
 
-    // Requests are not persisted
+    // CLI requests are **not** persisted
     let database = Database::from_directory(&data_dir).unwrap();
     assert_eq!(
         &database.get_all_requests().unwrap(),
         &[],
         "Expected request to not be persisted"
     );
+}
+
+/// Override profile field with `--override`
+#[rstest]
+#[case::overwrite(
+    &["--override", "a=1", "--override", "b=2"], r#"{"a":"1","b":"2"}"#
+)]
+#[case::alias(&["-o", "a=1"], r#"{"a":"1","b":"0"}"#)]
+#[tokio::test]
+async fn test_request_override_profile(
+    #[case] args: &[&str],
+    #[case] expected_body: &'static str,
+) {
+    // Mock HTTP response
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/override"))
+        // Echo the body
+        .respond_with(|req: &Request| {
+            ResponseTemplate::new(200).set_body_bytes(req.body.clone())
+        })
+        .mount(&server)
+        .await;
+
+    let (mut command, _) = common::slumber();
+    command
+        .args(["request", "override", "--exit-status"])
+        .args(args)
+        .env("HOST", host)
+        .assert()
+        .success()
+        .stdout(expected_body);
+}
+
+/// Override headers with `--header`
+#[rstest]
+#[case::overwrite(&["--header", "x-test=over"], &[("x-test", Some("over"))])]
+#[case::alias(&["-H", "x-test=over"], &[("x-test", Some("over"))])]
+#[case::additional(&["--header", "x-new=over"], &[("x-new", Some("over"))])]
+#[case::omit(&["--header", "x-test"], &[("x-test", None)])]
+#[tokio::test]
+async fn test_request_override_headers(
+    #[case] args: &[&str],
+    #[case] expected_headers: &[(&str, Option<&str>)],
+) {
+    type Headers<'a> = IndexMap<&'a str, &'a str>;
+
+    // Mock HTTP response
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/override"))
+        .respond_with(|req: &Request| {
+            let headers: Headers = req
+                .headers
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.to_str().unwrap()))
+                .collect();
+            ResponseTemplate::new(200).set_body_json(&headers)
+        })
+        .mount(&server)
+        .await;
+
+    let (mut command, _) = common::slumber();
+    let assert = command
+        .args(["request", "override", "--exit-status"])
+        .args(args)
+        .env("HOST", host)
+        .assert()
+        .success();
+
+    let actual: Headers =
+        serde_json::from_slice(&assert.get_output().stdout).unwrap();
+    // Only assert headers that are included in the expectation. Otherwise we'd
+    // have to list all the generic ones, like Content-Type
+    for (header, expected) in expected_headers {
+        assert_eq!(actual.get(header).copied(), *expected, "header `{header}`");
+    }
 }
 
 /// Test the `--verbose` flag

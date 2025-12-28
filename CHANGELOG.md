@@ -34,6 +34,8 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 
 - Add `Copy as CLI` action to generate a `slumber request` CLI command for the selected recipe/profile
 - Add `Copy as Python` action to generate Python code that uses the [slumber-python](https://pypi.org/project/slumber-python/) API to make a request with the selected recipe/profile
+- Add flags to override various parts of a recipe from the CLI
+  - `--header header=value` (`-H`) overrides a header
 - Add `slumber config` command (replaces `slumber show config`)
 - Add `slumber collection` command (replaces `slumber show collection`)
 - Add `slumber db --path` flag (replaces `slumber show paths db`)

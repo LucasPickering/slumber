@@ -190,7 +190,8 @@ mod tests {
                 "jsonBody",
                 "fileBody",
                 "multipart",
-                "chained"
+                "chained",
+                "override",
             ]
         );
     }
@@ -228,6 +229,7 @@ mod tests {
                 "fileBody",
                 "multipart",
                 "chained",
+                "override",
                 &id2.to_string(),
                 &id1.to_string()
             ]

@@ -13,8 +13,8 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
-        BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
-        ResponseRecord, StoredRequestError, TriggeredRequestError,
+        BuildFieldOverride, BuildOptions, Exchange, HttpEngine, RequestRecord,
+        RequestSeed, ResponseRecord, StoredRequestError, TriggeredRequestError,
     },
     render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
@@ -27,7 +27,6 @@ use std::{
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     process::ExitCode,
-    str::FromStr,
 };
 use tracing::warn;
 
@@ -85,15 +84,39 @@ pub struct BuildRequestCommand {
     )]
     profile: Option<ProfileId>,
 
-    /// List of key=value template field overrides
+    /// Override the value of a profile field (format: `field=value`)
+    ///
+    /// The given value is parsed as a template. To override multiple fields,
+    /// pass this flag multiple times.
+    ///
+    ///   slumber request my-recipe -o foo=bar -o 'username={{username}}'
     #[clap(
         long = "override",
         short = 'o',
-        value_parser = parse_key_val::<String, String>,
-        // There's no reasonable way of doing completions on this, so disable
-        value_hint = ValueHint::Other,
+        value_parser = parse_profile_override,
+        value_hint = ValueHint::Other, // Disable completions
+        verbatim_doc_comment,
     )]
-    overrides: Vec<(String, String)>,
+    overrides: Vec<(String, Template)>,
+
+    /// Override a request header (format: `header=value`)
+    ///
+    /// The given value is parsed as a template. To override multiple headers,
+    /// pass this flag multiple times.
+    ///
+    ///   slumber request my-recipe -H 'X-My-Header={{my_header}}'
+    ///
+    /// To omit the header entirely, exclude the = and value:
+    ///
+    ///   slumber request my-recipe -H X-My-Header
+    #[clap(
+        long,
+        short = 'H',
+        value_parser = parse_recipe_override,
+        value_hint = ValueHint::Other, // Disable completions
+        verbatim_doc_comment,
+    )]
+    header: Vec<(String, BuildFieldOverride)>,
 }
 
 /// Helper for any subcommand that prints exchange (request/response)
@@ -210,12 +233,10 @@ impl BuildRequestCommand {
         });
 
         // Build the request
-        let overrides: IndexMap<_, _> = self
-            .overrides
-            .into_iter()
-            // Don't support templates in overrides (yet)
-            .map(|(field, value)| (field, Template::raw(value)))
-            .collect();
+        let build_options = BuildOptions {
+            headers: IndexMap::from_iter(self.header),
+            ..Default::default()
+        };
         let template_context = TemplateContext {
             selected_profile,
             collection: collection.into(),
@@ -224,13 +245,13 @@ impl BuildRequestCommand {
                 http_engine: http_engine.clone(),
                 trigger_dependencies,
             }),
-            overrides,
+            overrides: IndexMap::from_iter(self.overrides),
             prompter: Box::new(CliPrompter),
             show_sensitive: true,
             root_dir: collection_file.parent().to_owned(),
             state: Default::default(),
         };
-        let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
+        let seed = RequestSeed::new(self.recipe_id, build_options);
         Ok((database, http_engine, seed, template_context))
     }
 }
@@ -427,18 +448,29 @@ impl Prompter for CliPrompter {
     }
 }
 
-/// Parse a single key=value pair for an argument
-fn parse_key_val<T, U>(
+/// Parse a single key=value pair for a profile override. The `=` must be
+/// present. Profile fields cannot be omitted.
+fn parse_profile_override(
     s: &str,
-) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
-where
-    T: FromStr,
-    T::Err: Error + Send + Sync + 'static,
-    U: FromStr,
-    U::Err: Error + Send + Sync + 'static,
-{
+) -> Result<(String, Template), anyhow::Error> {
     let (key, value) = s
         .split_once('=')
-        .ok_or_else(|| format!("invalid key=value: no \"=\" found in `{s}`"))?;
-    Ok((key.parse()?, value.parse()?))
+        .ok_or_else(|| anyhow!("invalid key=value: no \"=\" found in `{s}`"))?;
+    Ok((key.to_owned(), value.parse()?))
+}
+
+/// Parse a single key=value pair for a recipe override argument. If the `=`
+/// sign is not present, the field is omitted instead of being overridden.
+fn parse_recipe_override(
+    s: &str,
+) -> Result<(String, BuildFieldOverride), Box<dyn Error + Send + Sync + 'static>>
+{
+    if let Some((key, value)) = s.split_once('=') {
+        // = sign => provide an override value
+        let template: Template = value.parse()?;
+        Ok((key.to_owned(), BuildFieldOverride::Override(template)))
+    } else {
+        // No = sign => omit the field
+        Ok((s.to_owned(), BuildFieldOverride::Omit))
+    }
 }

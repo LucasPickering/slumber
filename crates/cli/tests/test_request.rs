@@ -3,6 +3,7 @@
 mod common;
 
 use indexmap::IndexMap;
+use predicates::prelude::predicate;
 use reqwest::StatusCode;
 use rstest::rstest;
 use serde_json::json;
@@ -121,6 +122,68 @@ async fn test_request_override_headers(
     for (header, expected) in expected_headers {
         assert_eq!(actual.get(header).copied(), *expected, "header `{header}`");
     }
+}
+
+/// Override authentication with `--basic` and `--bearer`
+#[rstest]
+#[case::basic(&["--basic", "user:hunter2"], "Basic dXNlcjpodW50ZXIy")]
+#[case::basic_alias(&["--user", "user:hunter2"], "Basic dXNlcjpodW50ZXIy")]
+#[case::token(&["--bearer", "my-token"], "Bearer my-token")]
+#[case::token_alias(&["--token", "my-token"], "Bearer my-token")]
+#[tokio::test]
+async fn test_request_override_auth(
+    #[case] args: &[&str],
+    #[case] expected_auth: &'static str,
+) {
+    // Mock HTTP response
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/override"))
+        .respond_with(|req: &Request| {
+            let auth = req
+                .headers
+                .get("Authorization")
+                .map(|value| value.to_str().unwrap())
+                .unwrap_or_default();
+            ResponseTemplate::new(200).set_body_string(auth)
+        })
+        .mount(&server)
+        .await;
+
+    let (mut command, _) = common::slumber();
+    command
+        .args(["request", "override", "--exit-status"])
+        .args(args)
+        .env("HOST", host)
+        .assert()
+        .success()
+        .stdout(expected_auth);
+}
+
+/// Error cases in auth override
+#[rstest]
+#[case::mutually_exclusive(
+        &["--basic", "user:pass", "--bearer", "token"],
+        "the argument '--basic <username:password>' cannot be used with \
+        '--bearer <token>'",
+)]
+#[case::invalid_template(&["--bearer", "{{unclosed"], "invalid expression")]
+// I couldn't figure out how to send input to the CLI, so we test that it
+// prompts by ensuring the prompt fails.
+#[case::basic_prompt(&["--basic", "user"], "No reply")]
+#[tokio::test]
+async fn test_request_override_auth_error(
+    #[case] args: &[&str],
+    #[case] expected_error: &'static str,
+) {
+    let (mut command, _) = common::slumber();
+    command
+        .args(["request", "override", "--exit-status"])
+        .args(args)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(expected_error));
 }
 
 /// Test the `--verbose` flag

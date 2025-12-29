@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{ProfileId, RecipeId},
+    collection::{Authentication, ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
         BuildFieldOverride, BuildOptions, Exchange, HttpEngine, RequestRecord,
@@ -19,7 +19,7 @@ use slumber_core::{
     render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
 };
-use slumber_template::Template;
+use slumber_template::{Expression, Template};
 use slumber_util::{ResultTraced, ResultTracedAnyhow};
 use std::{
     error::Error,
@@ -95,14 +95,15 @@ pub struct BuildRequestCommand {
         short = 'o',
         value_parser = parse_profile_override,
         value_hint = ValueHint::Other, // Disable completions
+        value_name = "field=value",
         verbatim_doc_comment,
     )]
     overrides: Vec<(String, Template)>,
 
     /// Override a request header (format: `header=value`)
     ///
-    /// The given value is parsed as a template. To override multiple headers,
-    /// pass this flag multiple times.
+    /// The given value is parsed and rendered as a template. To override
+    /// multiple headers, pass this flag multiple times.
     ///
     ///   slumber request my-recipe -H 'X-My-Header={{my_header}}'
     ///
@@ -114,9 +115,44 @@ pub struct BuildRequestCommand {
         short = 'H',
         value_parser = parse_recipe_override,
         value_hint = ValueHint::Other, // Disable completions
+        value_name = "header=value",
         verbatim_doc_comment,
     )]
     header: Vec<(String, BuildFieldOverride)>,
+
+    /// Set credentials for HTTP Basic authentication
+    ///
+    /// The username and password are split on the first colon. This means the
+    /// username cannot contain a colon. If the colon is omitted, you will be
+    /// prompted for a password instead. Both username and password will be
+    /// parsed and rendered as templates. The split on colon occurs before the
+    /// template parsing.
+    ///
+    /// The request will use basic authentication whether the recipe is
+    /// configured for it or not.
+    // Alias for curl compatibility
+    #[clap(
+        long,
+        visible_alias = "user",
+        conflicts_with = "bearer",
+        value_hint = ValueHint::Other,
+        value_name = "username:password",
+    )]
+    basic: Option<String>,
+
+    /// Set token for HTTP Bearer authentication
+    ///
+    /// The token is parsed and rendered as a template.
+    ///
+    /// The request will use bearer authentication whether the recipe is
+    /// configured for it or not.
+    #[clap(
+        long,
+        visible_alias = "token",
+        value_hint = ValueHint::Other,
+        value_name = "token",
+    )]
+    bearer: Option<Template>,
 }
 
 /// Helper for any subcommand that prints exchange (request/response)
@@ -132,7 +168,7 @@ pub struct DisplayExchangeCommand {
     verbose: bool,
 
     /// Write to file instead of stdout
-    #[clap(long)]
+    #[clap(long, value_name = "path")]
     output: Option<PathBuf>,
 }
 
@@ -233,7 +269,17 @@ impl BuildRequestCommand {
         });
 
         // Build the request
+        let authentication = match (self.basic, self.bearer) {
+            (None, None) => None,
+            (None, Some(token)) => Some(Authentication::Bearer { token }),
+            (Some(value), None) => Some(get_basic_auth(&value)?),
+            (Some(_), Some(_)) => {
+                // Mutual exclusivity is handled by clap
+                unreachable!("--basic and --bearer are mutually exclusive")
+            }
+        };
         let build_options = BuildOptions {
+            authentication,
             headers: IndexMap::from_iter(self.header),
             ..Default::default()
         };
@@ -473,4 +519,38 @@ fn parse_recipe_override(
         // No = sign => omit the field
         Ok((s.to_owned(), BuildFieldOverride::Omit))
     }
+}
+
+/// Split the value into `username:password`. Each component will be parsed as
+/// a template. If there is no colon, the entire value is the username and the
+/// password will be a template to prompt the user for it.
+fn get_basic_auth(value: &str) -> anyhow::Result<Authentication> {
+    let (username, password) =
+        if let Some((username, password)) = value.split_once(':') {
+            let username: Template =
+                username.parse().context("Invalid username template")?;
+            let password: Template =
+                password.parse().context("Invalid password template")?;
+            (username, password)
+        } else {
+            let username: Template =
+                value.parse().context("Invalid username template")?;
+            // Generate a template that will prompt for the password. This lets
+            // us reuse the prompter machinery instead of defining a
+            // bespoke prompt here. Plus, it's cool!
+            let password = Expression::call(
+                "prompt",
+                [],
+                [
+                    ("message", Some("Password".into())),
+                    ("sensitive", Some(true.into())),
+                ],
+            )
+            .into();
+            (username, password)
+        };
+    Ok(Authentication::Basic {
+        username,
+        password: Some(password),
+    })
 }

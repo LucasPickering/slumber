@@ -247,17 +247,11 @@ impl From<Expression> for Template {
     }
 }
 
+/// Parse template from a string literal. Panic if invalid
 #[cfg(any(test, feature = "test"))]
-impl From<&str> for Template {
-    fn from(value: &str) -> Self {
+impl From<&'static str> for Template {
+    fn from(value: &'static str) -> Self {
         value.parse().unwrap()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<String> for Template {
-    fn from(value: String) -> Self {
-        value.as_str().into()
     }
 }
 

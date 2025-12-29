@@ -202,7 +202,7 @@ mod tests {
     #[case::str_with_keys("{{ user_id }}".into(), "{{ user_id }}")]
     fn test_deserialize_template(
         #[case] value: serde_yaml::Value,
-        #[case] expected: &str,
+        #[case] expected: &'static str,
     ) {
         assert_eq!(
             deserialize_yaml::<Template>(value).unwrap(),

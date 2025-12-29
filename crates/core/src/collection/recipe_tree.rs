@@ -3,6 +3,7 @@
 use crate::collection::{Folder, HasId, Recipe, RecipeId};
 use derive_more::From;
 use indexmap::{IndexMap, map::Values};
+use itertools::Itertools;
 use serde::Serialize;
 use slumber_util::yaml::SourceLocation;
 use strum::EnumDiscriminants;
@@ -87,7 +88,10 @@ impl RecipeTree {
         &self,
         id: &RecipeId,
     ) -> Result<&RecipeNode, UnknownRecipeError> {
-        self.get(id).ok_or_else(|| UnknownRecipeError(id.clone()))
+        self.get(id).ok_or_else(|| UnknownRecipeError {
+            recipe_id: id.clone(),
+            all_recipes: self.recipe_ids().cloned().collect(),
+        })
     }
 
     /// Get a **folder** by ID. If the ID isn't in the tree, or points to a
@@ -108,8 +112,10 @@ impl RecipeTree {
         &self,
         id: &RecipeId,
     ) -> Result<&Recipe, UnknownRecipeError> {
-        self.get_recipe(id)
-            .ok_or_else(|| UnknownRecipeError(id.clone()))
+        self.get_recipe(id).ok_or_else(|| UnknownRecipeError {
+            recipe_id: id.clone(),
+            all_recipes: self.recipe_ids().cloned().collect(),
+        })
     }
 
     /// Get all **recipe** IDs in the tree. Useful for printing a list to the
@@ -277,8 +283,15 @@ pub struct DuplicateRecipeIdError(RecipeId);
 /// Error when requesting a recipe/recipe node by ID that doesn't existing in
 /// the tree
 #[derive(Debug, Error)]
-#[error("No recipe with ID `{0}`")]
-pub struct UnknownRecipeError(pub RecipeId);
+#[error(
+    "No recipe with ID `{recipe_id}`; available recipes: {}",
+    all_recipes.iter().join(", "),
+)]
+pub struct UnknownRecipeError {
+    pub recipe_id: RecipeId,
+    /// List of all available recipe IDs, to provide helpful feedback
+    pub all_recipes: Vec<RecipeId>,
+}
 
 #[cfg(test)]
 mod tests {

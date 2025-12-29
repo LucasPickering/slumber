@@ -19,7 +19,18 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     Args::complete(); // If COMPLETE var is enabled, process will stop here
     let args = Args::parse();
 
-    initialize_tracing(args.subcommand.is_some());
+    let stdout_level = if args.subcommand.is_some() {
+        match args.global.verbose {
+            0 => LevelFilter::OFF,
+            1 => LevelFilter::WARN,
+            2 => LevelFilter::DEBUG,
+            3.. => LevelFilter::TRACE,
+        }
+    } else {
+        // Never log to stdout in TUI mode
+        LevelFilter::OFF
+    };
+    initialize_tracing(stdout_level);
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
@@ -71,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
 /// an error creating the log file, we'll skip that part. This means in the TUI
 /// the error (and all other tracing) will never be visible, but that's a
 /// problem for another day.
-fn initialize_tracing(stdout: bool) {
+fn initialize_tracing(stdout_level: LevelFilter) {
     // Failing to log shouldn't be a fatal crash, so just move on
     let log_file = initialize_log_file()
         .context("Error creating log file")
@@ -99,19 +110,14 @@ fn initialize_tracing(stdout: bool) {
             .with_filter(targets)
     });
 
-    // Enable console output for CLI
-    let stdout_subscriber = if stdout {
-        Some(
-            tracing_subscriber::fmt::layer()
-                .with_writer(io::stderr)
-                .with_target(false)
-                .with_span_events(FmtSpan::NONE)
-                .without_time()
-                .with_filter(LevelFilter::WARN),
-        )
-    } else {
-        None
-    };
+    // Enable console output for CLI. By default logging is off, but it can be
+    // turned up with the verbose flag
+    let stdout_subscriber = tracing_subscriber::fmt::layer()
+        .with_writer(io::stderr)
+        .with_target(false)
+        .with_span_events(FmtSpan::NONE)
+        .without_time()
+        .with_filter(stdout_level);
 
     // Enable tokio-console subscriber when tokio_tracing feature is enabled
     #[cfg(feature = "tokio_tracing")]

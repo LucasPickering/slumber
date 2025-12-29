@@ -93,7 +93,7 @@ mod tests {
         };
         let global_args = GlobalArgs {
             file: global_file_arg.map(PathBuf::from),
-            print_log_path: false,
+            ..Default::default()
         };
 
         command.execute(global_args).await.unwrap();

@@ -39,6 +39,8 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Add `slumber config` command (replaces `slumber show config`)
 - Add `slumber collection` command (replaces `slumber show collection`)
 - Add `slumber db --path` flag (replaces `slumber show paths db`)
+- Add `--verbose` flag to increase logging output in the CLI
+  - ERROR/WARN logging is no longer shown by default
 - You can now search command history in the query/export command text box
   - Up/down to cycle through past commands
   - Ctrl-r to search

@@ -55,7 +55,7 @@ impl Args {
 }
 
 /// Arguments that are available to all subcommands and the TUI
-#[derive(Debug, Parser)]
+#[derive(Debug, Default, Parser)]
 pub struct GlobalArgs {
     /// Collection file, which defines profiles, recipes, etc.
     ///
@@ -65,9 +65,17 @@ pub struct GlobalArgs {
     /// same search logic from the given directory rather than the current.
     #[clap(long, short, add = complete_collection_path())]
     pub file: Option<PathBuf>,
+
     /// Print the path to the log file for this session
     #[clap(long)]
     pub print_log_path: bool,
+
+    /// Print logs to stdout during CLI operation
+    ///
+    /// Specify multiple times to increase verbosity. Supports up to -vvv. Has
+    /// no effect in TUI mode.
+    #[clap(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
 }
 
 impl GlobalArgs {

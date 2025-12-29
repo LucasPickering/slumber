@@ -850,7 +850,7 @@ async fn test_response(
     let recipes = [
         Recipe {
             id: "upstream".into(),
-            url: format!("{host}/get").into(),
+            url: format!("{host}/get").parse().unwrap(),
             ..Recipe::factory(())
         },
         Recipe {
@@ -931,7 +931,7 @@ async fn test_response_header(
     // Create context
     let recipe = Recipe {
         id: "upstream".into(),
-        url: format!("{host}/get").into(),
+        url: format!("{host}/get").parse().unwrap(),
         ..Recipe::factory(())
     };
     // If an exchange was requested, include it in the DB

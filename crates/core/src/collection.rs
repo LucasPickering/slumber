@@ -369,7 +369,8 @@ requests:
                                 "{{ prompt('Password', sensitive=true) }}",
                         })
                         .to_string()
-                        .into(),
+                        .parse()
+                        .unwrap(),
                     )),
                     query: indexmap! {
                         "sudo".into() => "yes_please".into(),

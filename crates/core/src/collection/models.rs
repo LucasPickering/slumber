@@ -474,15 +474,15 @@ pub enum QueryParameterValue {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl From<&str> for QueryParameterValue {
-    fn from(value: &str) -> Self {
+impl From<&'static str> for QueryParameterValue {
+    fn from(value: &'static str) -> Self {
         QueryParameterValue::One(value.into())
     }
 }
 
 #[cfg(any(test, feature = "test"))]
-impl<const N: usize> From<[&str; N]> for QueryParameterValue {
-    fn from(values: [&str; N]) -> Self {
+impl<const N: usize> From<[&'static str; N]> for QueryParameterValue {
+    fn from(values: [&'static str; N]) -> Self {
         QueryParameterValue::Many(
             values.into_iter().map(Template::from).collect(),
         )
@@ -550,8 +550,8 @@ impl RecipeBody {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl From<&str> for RecipeBody {
-    fn from(template: &str) -> Self {
+impl From<&'static str> for RecipeBody {
+    fn from(template: &'static str) -> Self {
         Self::Raw(template.into())
     }
 }
@@ -660,7 +660,7 @@ mod tests {
         Some("multipart/form-data")
     )]
     fn test_recipe_mime(
-        #[case] header: Option<&str>,
+        #[case] header: Option<&'static str>,
         #[case] body: Option<RecipeBody>,
         #[case] expected: Option<&str>,
     ) {

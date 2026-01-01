@@ -1,6 +1,7 @@
 use crate::{
     context::TuiContext,
     http::{RequestStateSummary, RequestStore},
+    message::HttpMessage,
     util::ResultReported,
     view::{
         Generate, UpdateContext, ViewContext,
@@ -81,13 +82,11 @@ impl History {
     }
 
     /// Delete the selected request from the request store and our own list
-    fn delete_selected(&mut self, request_store: &mut RequestStore) {
+    fn delete_selected(&mut self) {
         // It doesn't make sense to get to this point in the workflow without
         // a selected request ID, but we don't want to panic if we do
         if let Some(request) = self.select.selected() {
-            request_store
-                .delete_request(request.id())
-                .reported(&ViewContext::messages_tx());
+            ViewContext::send_message(HttpMessage::Delete(request.id()));
         }
         self.select.delete_selected();
         // TODO make sure the visible item is wiped out
@@ -101,7 +100,7 @@ impl Component for History {
 
     fn update(
         &mut self,
-        context: &mut UpdateContext,
+        _context: &mut UpdateContext,
         event: Event,
     ) -> EventMatch {
         event.m().action(|action, propagate| match action {
@@ -114,7 +113,7 @@ impl Component for History {
             // Only consume submission if we're in delete confirmation
             Action::Submit if self.deleting => {
                 if self.delete_confirm_buttons.selected().to_bool() {
-                    self.delete_selected(context.request_store);
+                    self.delete_selected();
                 }
                 // Reset state for next time
                 self.deleting = false;

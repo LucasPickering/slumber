@@ -189,6 +189,8 @@ pub enum HttpMessage {
     Complete(Result<Exchange, Arc<RequestError>>),
     /// Request was cancelled
     Cancel(RequestId),
+    /// Delete a request from the store/database
+    Delete(RequestId),
 }
 
 /// Component/form of a recipe to copy to the clipboard

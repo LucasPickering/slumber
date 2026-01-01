@@ -744,6 +744,10 @@ impl LoadedState {
             HttpMessage::Cancel(request_id) => {
                 self.request_store.cancel(request_id).id()
             }
+            HttpMessage::Delete(request_id) => {
+                self.request_store.delete_request(request_id);
+                todo!()
+            }
         };
 
         // Tell the UI about the state change. We have to refetch the request

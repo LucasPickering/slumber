@@ -144,8 +144,8 @@ pub struct UpdateContext<'a> {
     /// [Component::persist](super::component::Component::persist), but
     /// sometimes components need to directly modify the store.
     pub persistent_store: &'a mut PersistentStore,
-    /// Request state
-    pub request_store: &'a mut RequestStore,
+    /// TODO
+    pub request_store: &'a RequestStore,
 }
 
 #[cfg(test)]

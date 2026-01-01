@@ -2,7 +2,7 @@
 //! generic/utility, but don't fall into a clear category.
 
 use crate::{
-    util::ResultReported,
+    message::HttpMessage,
     view::{
         Generate, Question, ViewContext,
         common::{
@@ -174,7 +174,7 @@ impl Modal for QuestionModal {
         (width, Constraint::Length(1))
     }
 
-    fn on_submit(self, _: &mut UpdateContext) {
+    fn on_submit(self, _context: &mut UpdateContext) {
         match self {
             QuestionModal::Confirm {
                 buttons, on_submit, ..
@@ -257,12 +257,9 @@ impl Modal for DeleteRequestModal {
         (Constraint::Length(24), Constraint::Length(1))
     }
 
-    fn on_submit(self, context: &mut UpdateContext) {
+    fn on_submit(self, _context: &mut UpdateContext) {
         if self.buttons.selected().to_bool() {
-            context
-                .request_store
-                .delete_request(self.request_id)
-                .reported(&ViewContext::messages_tx());
+            ViewContext::send_message(HttpMessage::Delete(self.request_id));
         }
     }
 }
@@ -320,7 +317,7 @@ impl Modal for DeleteRecipeRequestsModal {
         )
     }
 
-    fn on_submit(self, context: &mut UpdateContext) {
+    fn on_submit(self, _context: &mut UpdateContext) {
         // Do the delete here because we have access to the request store
         let profile_filter = match self.buttons.selected() {
             DeleteRecipeRequestsButton::No => None,
@@ -330,10 +327,11 @@ impl Modal for DeleteRecipeRequestsModal {
             DeleteRecipeRequestsButton::All => Some(ProfileFilter::All),
         };
         if let Some(profile_filter) = profile_filter {
-            context
-                .request_store
-                .delete_recipe_requests(profile_filter, &self.recipe_id)
-                .reported(&ViewContext::messages_tx());
+            todo!()
+            // context
+            //     .request_store
+            //     .delete_recipe_requests(profile_filter, &self.recipe_id)
+            //     .reported(&ViewContext::messages_tx());
         }
     }
 }

@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [4.3.1] - 2026-01-02
+
+<!-- ANCHOR: changelog -->
+
 ### Changed
 
 - Add line breaks to cURL command output if length is >100 characters (@fgebhart, [#678](https://github.com/LucasPickering/slumber/issues/678))

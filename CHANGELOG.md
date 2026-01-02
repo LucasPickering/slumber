@@ -42,10 +42,6 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
   - Ctrl-r to search
   - Command history is specific to each collection and capped at 100 commands per collection
 
-## [4.3.1] - 2026-01-02
-
-<!-- ANCHOR: changelog -->
-
 ### Changed
 
 - Reconfigured the TUI layout. The main change is that the recipe and profile lists open in an expandable sidebar now
@@ -57,7 +53,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Help modal has been moved to a fullscreen page
 - Make `slumber request` aliases `rq` and `req` visible
 
-## [Unreleased] - ReleaseDate
+## [4.3.1] - 2026-01-02
 
 <!-- ANCHOR: changelog -->
 

@@ -35,6 +35,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Add `Copy as CLI` action to generate a `slumber request` CLI command for the selected recipe/profile
 - Add `Copy as Python` action to generate Python code that uses the [slumber-python](https://pypi.org/project/slumber-python/) API to make a request with the selected recipe/profile
 - Add flags to override various parts of a recipe from the CLI
+  - `--url <url>` overrides the entire URL
   - `--header <header=value>` (`-H`) overrides a header
   - `--basic <username:password>` sets basic authentication
   - `--bearer <token>` sets bearer authentication

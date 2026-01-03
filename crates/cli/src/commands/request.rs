@@ -153,6 +153,15 @@ pub struct BuildRequestCommand {
         value_name = "token",
     )]
     bearer: Option<Template>,
+
+    /// Set the URL for the request
+    ///
+    /// The URL is parsed and rendered as a template. This will override the
+    /// `url` field of the recipe entirely. Query parameters from the recipe
+    /// will *not* be replaced; they will be appended to the rendered URL
+    /// override.
+    #[clap(long, value_hint = ValueHint::Other)]
+    url: Option<Template>,
 }
 
 /// Helper for any subcommand that prints exchange (request/response)
@@ -279,6 +288,7 @@ impl BuildRequestCommand {
             }
         };
         let build_options = BuildOptions {
+            url: self.url,
             authentication,
             headers: IndexMap::from_iter(self.header),
             ..Default::default()

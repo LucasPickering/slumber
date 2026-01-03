@@ -78,6 +78,39 @@ async fn test_request_override_profile(
         .stdout(expected_body);
 }
 
+/// Override URL with `--url`
+#[rstest]
+#[case::overwrite(
+    &["--url", "{{ host }}/override2?q=1"],
+    // Inherits query params from the recipe
+    "http://localhost/override2?q=1&foo=bar&many=baz&many=blorp",
+)]
+#[tokio::test]
+async fn test_request_override_url(
+    #[case] args: &[&str],
+    #[case] expected_url: &'static str,
+) {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/override2"))
+        .respond_with(|req: &Request| {
+            // Return the given URL
+            ResponseTemplate::new(200).set_body_string(req.url.to_string())
+        })
+        .mount(&server)
+        .await;
+
+    let (mut command, _) = common::slumber();
+    command
+        .args(["request", "override", "--exit-status"])
+        .args(args)
+        .env("HOST", host)
+        .assert()
+        .success()
+        .stdout(expected_url);
+}
+
 /// Override headers with `--header`
 #[rstest]
 #[case::overwrite(&["--header", "x-test=over"], &[("x-test", Some("over"))])]

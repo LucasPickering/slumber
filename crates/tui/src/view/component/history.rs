@@ -5,8 +5,8 @@ use crate::{
     view::{
         Generate, UpdateContext, ViewContext,
         common::{
+            Pane,
             button::ButtonGroup,
-            modal::Modal,
             select::{Select, SelectEvent, SelectEventType, SelectListProps},
         },
         component::{
@@ -17,18 +17,17 @@ use crate::{
         event::{Event, EventMatch, ToEmitter},
     },
 };
-use ratatui::{
-    layout::Constraint,
-    text::{Line, Span},
-};
+use ratatui::text::{Line, Span, Text};
 use slumber_config::Action;
-use slumber_core::{collection::RecipeId, http::RequestId};
+use slumber_core::{
+    collection::{ProfileId, RecipeId},
+    http::RequestId,
+};
 
 /// Browse request/response history for a recipe
 #[derive(Debug)]
 pub struct History {
     id: ComponentId,
-    recipe_name: String,
     select: Select<RequestStateSummary>,
     /// Are we in the process of deleting the selected request? If so, we'll
     /// show a delete confirmation instead of the normal list.
@@ -43,15 +42,16 @@ impl History {
     /// is responsible for loading the list from the request store.
     pub fn new(
         recipe_id: &RecipeId,
-        requests: Vec<RequestStateSummary>,
+        profile_id: Option<&ProfileId>,
+        request_store: &RequestStore,
         selected_request_id: Option<RequestId>,
     ) -> Self {
-        let recipe_name = ViewContext::collection()
-            .recipes
-            .try_get_recipe(recipe_id)
+        // Make sure all requests for this profile+recipe are loaded
+        let requests = request_store
+            .load_summaries(profile_id, recipe_id)
             .reported(&ViewContext::messages_tx())
-            .map(|recipe| recipe.name().to_owned())
-            .unwrap_or_else(|| recipe_id.to_string());
+            .map(Vec::from_iter)
+            .unwrap_or_default();
         let select = Select::builder(requests)
             .subscribe([SelectEventType::Select])
             .preselect_opt(selected_request_id.as_ref())
@@ -59,7 +59,6 @@ impl History {
 
         Self {
             id: ComponentId::default(),
-            recipe_name,
             select,
             deleting: false,
             delete_confirm_buttons: Default::default(),
@@ -81,32 +80,6 @@ impl History {
             // the select doesn't emit an event when the final item is deleted
             ViewContext::push_event(Event::HttpSelectRequest(None));
         }
-    }
-}
-
-impl Modal for History {
-    fn title(&self) -> Line<'_> {
-        if self.deleting {
-            "Delete Request?".into()
-        } else {
-            vec![
-                "History for ".into(),
-                Span::styled(
-                    self.recipe_name.as_str(),
-                    TuiContext::get().styles.text.primary,
-                ),
-            ]
-            .into()
-        }
-    }
-
-    fn dimensions(&self) -> (Constraint, Constraint) {
-        let height = if self.deleting {
-            1
-        } else {
-            self.select.len().min(20) as u16
-        };
-        (Constraint::Length(40), Constraint::Length(height))
     }
 }
 
@@ -160,7 +133,20 @@ impl Component for History {
 
 impl Draw for History {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let area = metadata.area();
+        let title = if self.deleting {
+            "Delete Request?"
+        } else {
+            "Request History"
+        };
+
+        let block = Pane {
+            title,
+            has_focus: metadata.has_focus(),
+        }
+        .generate();
+        let area = block.inner(metadata.area());
+        canvas.render_widget(block, metadata.area());
+
         if self.deleting {
             canvas.draw(&self.delete_confirm_buttons, (), area, true);
         } else {
@@ -171,7 +157,7 @@ impl Draw for History {
 
 impl Generate for &RequestStateSummary {
     type Output<'this>
-        = Line<'this>
+        = Text<'this>
     where
         Self: 'this;
 
@@ -195,11 +181,12 @@ impl Generate for &RequestStateSummary {
             }
         };
         vec![
-            self.start_time().generate(),
-            " / ".into(),
-            self.duration().generate(),
-            " ".into(),
-            description,
+            Line::from_iter([
+                self.start_time().generate(),
+                " / ".into(),
+                self.duration().generate(),
+            ]),
+            description.into(),
         ]
         .into()
     }
@@ -243,16 +230,15 @@ mod tests {
             harness.database.insert_exchange(exchange).unwrap();
         }
 
-        let requests = harness
-            .request_store
-            .borrow_mut()
-            .load_summaries(Some(profile_id), recipe_id)
-            .unwrap()
-            .collect();
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            History::new(recipe_id, requests, None),
+            History::new(
+                recipe_id,
+                Some(profile_id),
+                &harness.request_store.borrow_mut(),
+                None,
+            ),
         );
 
         // Initial state
@@ -288,16 +274,15 @@ mod tests {
             harness.database.insert_exchange(exchange).unwrap();
         }
 
-        let requests = harness
-            .request_store
-            .borrow_mut()
-            .load_summaries(Some(profile_id), recipe_id)
-            .unwrap()
-            .collect();
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            History::new(recipe_id, requests, None),
+            History::new(
+                recipe_id,
+                Some(profile_id),
+                &harness.request_store.borrow_mut(),
+                None,
+            ),
         );
 
         // Initial state

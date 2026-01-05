@@ -15,6 +15,7 @@ use slumber_core::{
     database::Database,
 };
 use std::{ffi::OsStr, ops::Deref};
+use tracing::level_filters::LevelFilter;
 
 /// Build a completer for profile IDs from the default collection
 pub fn complete_profile() -> ArgValueCompleter {
@@ -101,6 +102,25 @@ pub fn complete_collection_specifier() -> ArgValueCompleter {
                 .unwrap_or_default(),
         );
         completions
+    })
+}
+
+/// Complete --log-level
+pub fn complete_log_level() -> ArgValueCompleter {
+    ArgValueCompleter::new(|current: &OsStr| {
+        get_candidates(
+            [
+                LevelFilter::OFF,
+                LevelFilter::ERROR,
+                LevelFilter::WARN,
+                LevelFilter::INFO,
+                LevelFilter::DEBUG,
+                LevelFilter::TRACE,
+            ]
+            .into_iter()
+            .map(|l| l.to_string()),
+            current,
+        )
     })
 }
 

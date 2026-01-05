@@ -12,16 +12,19 @@ Once you have the path to a log file, you can watch the logs with `tail -f <log 
 
 ## Increasing Verbosity
 
-In some scenarios, the default logging level is not verbose enough to debug issues. To increase the verbosity, set the `RUST_LOG` environment variable when starting Slumber:
+In some scenarios, the default logging level is not verbose enough to debug issues. To increase the verbosity, use the `--log-level` argument:
 
 ```sh
-RUST_LOG=slumber=<level> slumber ...
+slumber --log-level <level> ...
 ```
 
-The `slumber=` filter applies this level only to Slumber's internal logging, instead of all libraries, to cut down on verbosity that will likely not be helpful. The available log levels are, in increasing verbosity:
+The available log levels are, in increasing verbosity:
 
+- `off`
 - `error`
 - `warn`
 - `info`
 - `debug`
 - `trace`
+
+This argument applies to both the CLI and TUI. If omitted, the default is `off`, however logging cannot be set below `warn` for file output. That means stderr output is disabled by default, but file output is always _at least_ `warn`.

@@ -16,13 +16,14 @@ use crate::{
         generate::GenerateCommand, import::ImportCommand, new::NewCommand,
         request::RequestCommand,
     },
-    completions::complete_collection_path,
+    completions::{complete_collection_path, complete_log_level},
 };
 use clap::{CommandFactory, Parser};
 use clap_complete::CompleteEnv;
 use slumber_core::collection::{CollectionError, CollectionFile};
 use slumber_util::paths;
 use std::{path::PathBuf, process::ExitCode};
+use tracing::level_filters::LevelFilter;
 
 const COMMAND_NAME: &str = "slumber";
 
@@ -55,7 +56,7 @@ impl Args {
 }
 
 /// Arguments that are available to all subcommands and the TUI
-#[derive(Debug, Default, Parser)]
+#[derive(Debug, Parser)]
 pub struct GlobalArgs {
     /// Collection file, which defines profiles, recipes, etc.
     ///
@@ -66,16 +67,26 @@ pub struct GlobalArgs {
     #[clap(long, short, add = complete_collection_path())]
     pub file: Option<PathBuf>,
 
+    /// Set logging verbosity
+    ///
+    /// For the CLI, this will set the verbosity of stderr output, which
+    /// defaults to off. For both the CLI and the TUI, this will also set the
+    /// verbosity of file logging. HOWEVER, file logging can never be below
+    /// `warn`. Therefore, `--log-level off` has no impact on file logging.
+    ///
+    /// Available options (in increasing verbosity) are:
+    /// - off
+    /// - error
+    /// - warn
+    /// - info
+    /// - debug
+    /// - trace
+    #[clap(long, default_value_t = LevelFilter::OFF, add = complete_log_level())]
+    pub log_level: LevelFilter,
+
     /// Print the path to the log file for this session
     #[clap(long)]
     pub print_log_path: bool,
-
-    /// Print logs to stdout during CLI operation
-    ///
-    /// Specify multiple times to increase verbosity. Supports up to -vvv. Has
-    /// no effect in TUI mode.
-    #[clap(short, long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
 }
 
 impl GlobalArgs {

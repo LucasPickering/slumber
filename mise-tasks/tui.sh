@@ -9,7 +9,7 @@ if [ "$TRACING" = "true" ]; then
   RUSTFLAGS="--cfg=tokio_unstable"
 fi
 
-RUST_LOG=slumber=${LOG:-DEBUG} RUSTFLAGS="$RUSTFLAGS" \
+RUSTFLAGS="$RUSTFLAGS" \
     exec watchexec --restart --no-process-group \
     --watch Cargo.toml --watch Cargo.lock --watch src/ --watch crates/ \
     -- \

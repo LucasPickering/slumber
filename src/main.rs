@@ -5,7 +5,7 @@ use std::{
     io,
 };
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
+use tracing_subscriber::{fmt::format::FmtSpan, prelude::*};
 
 /// This covers two cases: CLI enabled/TUI disabled, or both enabled. We need
 /// the CLI for some TUI features such as the -f flag
@@ -19,18 +19,7 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     Args::complete(); // If COMPLETE var is enabled, process will stop here
     let args = Args::parse();
 
-    let stdout_level = if args.subcommand.is_some() {
-        match args.global.verbose {
-            0 => LevelFilter::OFF,
-            1 => LevelFilter::WARN,
-            2 => LevelFilter::DEBUG,
-            3.. => LevelFilter::TRACE,
-        }
-    } else {
-        // Never log to stdout in TUI mode
-        LevelFilter::OFF
-    };
-    initialize_tracing(stdout_level);
+    initialize_tracing(args.global.log_level, args.subcommand.is_some());
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
@@ -78,25 +67,17 @@ async fn main() -> anyhow::Result<()> {
     ))
 }
 
-/// Set up tracing to a log file, and optionally stdout as well. If there's
+/// Set up tracing to a log file, and optionally stderr as well. If there's
 /// an error creating the log file, we'll skip that part. This means in the TUI
 /// the error (and all other tracing) will never be visible, but that's a
 /// problem for another day.
-fn initialize_tracing(stdout_level: LevelFilter) {
+fn initialize_tracing(level_filter: LevelFilter, has_stderr: bool) {
     // Failing to log shouldn't be a fatal crash, so just move on
     let log_file = initialize_log_file()
         .context("Error creating log file")
         .traced()
         .ok();
 
-    // Basically a minimal version of EnvFilter that doesn't require regexes
-    // https://github.com/tokio-rs/tracing/issues/1436#issuecomment-918528013
-    let targets: Targets = std::env::var("RUST_LOG")
-        .ok()
-        .and_then(|env| env.parse().ok())
-        .unwrap_or_else(|| {
-            Targets::new().with_target("slumber", LevelFilter::WARN)
-        });
     let file_subscriber = log_file.map(|log_file| {
         // Include PID
         // https://github.com/tokio-rs/tracing/pull/2655
@@ -107,24 +88,32 @@ fn initialize_tracing(stdout_level: LevelFilter) {
             .with_target(false)
             .with_ansi(false)
             .with_span_events(FmtSpan::NONE)
-            .with_filter(targets)
+            // File output can't be lower than warn. There's no good reason to
+            // disable file output. If someone passes off/error, they probably
+            // just want to set the stderr level.
+            .with_filter(level_filter.max(LevelFilter::WARN))
     });
 
     // Enable console output for CLI. By default logging is off, but it can be
     // turned up with the verbose flag
-    let stdout_subscriber = tracing_subscriber::fmt::layer()
+    let stderr_subscriber = tracing_subscriber::fmt::layer()
         .with_writer(io::stderr)
         .with_target(false)
         .with_span_events(FmtSpan::NONE)
         .without_time()
-        .with_filter(stdout_level);
+        // Disable stderr for TUI mode
+        .with_filter(if has_stderr {
+            level_filter
+        } else {
+            LevelFilter::OFF
+        });
 
     // Enable tokio-console subscriber when tokio_tracing feature is enabled
     #[cfg(feature = "tokio_tracing")]
     {
         tracing_subscriber::registry()
             .with(file_subscriber)
-            .with(stdout_subscriber)
+            .with(stderr_subscriber)
             .with(console_subscriber::spawn())
             .init()
     }
@@ -132,7 +121,7 @@ fn initialize_tracing(stdout_level: LevelFilter) {
     {
         tracing_subscriber::registry()
             .with(file_subscriber)
-            .with(stdout_subscriber)
+            .with(stderr_subscriber)
             .init()
     }
 }

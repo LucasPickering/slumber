@@ -29,6 +29,8 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
   - CLI commands that fail will automatically print the log path. You can also pass `--print-log-path` to have it always print
 - Remove `left_click` and `right_click` mappable actions
   - Mouse clicks can no longer be mapped to keys
+- Replace the `RUST_LOG` environment variable with a `--log-level` argument
+  - ERROR/WARN log output is not longer shown in stderr for CLI commands
 
 ### Added
 
@@ -42,8 +44,6 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Add `slumber config` command (replaces `slumber show config`)
 - Add `slumber collection` command (replaces `slumber show collection`)
 - Add `slumber db --path` flag (replaces `slumber show paths db`)
-- Add `--verbose` flag to increase logging output in the CLI
-  - ERROR/WARN logging is no longer shown by default
 - You can now search command history in the query/export command text box
   - Up/down to cycle through past commands
   - Ctrl-r to search

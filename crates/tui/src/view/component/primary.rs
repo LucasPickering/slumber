@@ -13,6 +13,7 @@ use crate::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             collection_select::CollectionSelect,
             exchange_pane::ExchangePane,
+            history::History,
             primary::view_state::{
                 DefaultPane, PrimaryLayout, Sidebar, SidebarPane, ViewState,
             },
@@ -32,8 +33,9 @@ use ratatui::{
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::collection::{
-    ProfileId, RecipeId, RecipeNode, RecipeNodeType,
+use slumber_core::{
+    collection::{ProfileId, RecipeId, RecipeNode, RecipeNodeType},
+    http::RequestId,
 };
 use slumber_template::Template;
 use slumber_util::yaml::SourceLocation;
@@ -61,6 +63,8 @@ pub struct PrimaryView {
     /// it handles non-recipe selections (empty recipe list, folder selected,
     /// etc.) so we don't need to handle that here.
     exchange_pane: ExchangePane,
+    /// List of all past requests for the current recipe/profile
+    history: Option<History>,
     /// Modal to select a different collection file
     collection_select: ModalQueue<CollectionSelect>,
 
@@ -79,7 +83,8 @@ impl PrimaryView {
         let recipe_detail = Self::build_recipe_detail(recipe_id);
 
         let profile_list = SidebarList::default();
-        let profile_detail = ProfileDetail::new(profile_list.selected_id());
+        let profile_id = profile_list.selected_id();
+        let profile_detail = ProfileDetail::new(profile_id);
 
         // We don't have the request store here and there aren't any requests
         // loaded into it yet anyway, so we can't fill out the request yet.
@@ -95,6 +100,7 @@ impl PrimaryView {
             profile_list,
             profile_detail,
             exchange_pane,
+            history: None,
             collection_select: Default::default(),
 
             global_actions_emitter: Default::default(),
@@ -181,10 +187,21 @@ impl PrimaryView {
         }
     }
 
-    /// Send a message to open the collection file to the specified location, or
-    /// the top of the file if `None`.
-    fn edit_collection(&self, location: Option<SourceLocation>) {
-        ViewContext::send_message(Message::CollectionEdit { location });
+    /// Open the history sidebar for current recipe+profile
+    pub fn open_history(
+        &mut self,
+        request_store: &RequestStore,
+        selected_request_id: Option<RequestId>,
+    ) {
+        if let Some(recipe_id) = self.selected_recipe_id() {
+            self.history = Some(History::new(
+                recipe_id,
+                self.selected_profile_id(),
+                request_store,
+                selected_request_id,
+            ));
+            self.view.open_sidebar(Sidebar::History);
+        }
     }
 
     fn build_recipe_detail(recipe_id: Option<&RecipeId>) -> RecipeDetail {
@@ -217,13 +234,21 @@ impl PrimaryView {
         match self.view.layout() {
             // Sidebar
             PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Profile,
+                sidebar,
                 selected_pane: SidebarPane::Sidebar,
-            } => canvas.draw(&self.profile_list, sidebar_props, area, true),
-            PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Recipe,
-                selected_pane: SidebarPane::Sidebar,
-            } => canvas.draw(&self.recipe_list, sidebar_props, area, true),
+            } => match sidebar {
+                Sidebar::Profile => {
+                    canvas.draw(&self.profile_list, sidebar_props, area, true);
+                }
+                Sidebar::Recipe => {
+                    canvas.draw(&self.recipe_list, sidebar_props, area, true);
+                }
+                Sidebar::History => {
+                    if let Some(history) = &self.history {
+                        canvas.draw(history, (), area, true);
+                    }
+                }
+            },
             // Top Pane - always Recipe
             PrimaryLayout::Default(DefaultPane::Top)
             | PrimaryLayout::Sidebar {
@@ -233,7 +258,7 @@ impl PrimaryView {
             // Bottom Pane - Exchange or Profile, depending on sidebar
             PrimaryLayout::Default(DefaultPane::Bottom)
             | PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Recipe,
+                sidebar: Sidebar::Recipe | Sidebar::History,
                 selected_pane: SidebarPane::Bottom,
             } => canvas.draw(&self.exchange_pane, (), area, true),
             PrimaryLayout::Sidebar {
@@ -318,6 +343,7 @@ impl PrimaryView {
         let headers: &[&dyn Draw<_>] = match sidebar {
             Sidebar::Profile => &[&self.recipe_list],
             Sidebar::Recipe => &[&self.profile_list],
+            Sidebar::History => &[&self.profile_list, &self.recipe_list],
         };
 
         // Split the areas
@@ -346,16 +372,26 @@ impl PrimaryView {
         }
 
         // Sidebar
-        let sidebar_comp: &dyn Draw<_> = match sidebar {
-            Sidebar::Profile => &self.profile_list,
-            Sidebar::Recipe => &self.recipe_list,
-        };
-        canvas.draw(
-            sidebar_comp,
-            SidebarListProps::list(),
-            sidebar_area,
-            selected_pane == SidebarPane::Sidebar,
-        );
+        let sidebar_selected = selected_pane == SidebarPane::Sidebar;
+        match sidebar {
+            Sidebar::Profile => canvas.draw(
+                &self.profile_list,
+                SidebarListProps::list(),
+                sidebar_area,
+                sidebar_selected,
+            ),
+            Sidebar::Recipe => canvas.draw(
+                &self.recipe_list,
+                SidebarListProps::list(),
+                sidebar_area,
+                sidebar_selected,
+            ),
+            Sidebar::History => {
+                if let Some(history) = &self.history {
+                    canvas.draw(history, (), sidebar_area, sidebar_selected);
+                }
+            }
+        }
 
         // Panes
         canvas.draw(
@@ -366,7 +402,7 @@ impl PrimaryView {
         );
         let bottom: &dyn Draw = match sidebar {
             Sidebar::Profile => &self.profile_detail,
-            Sidebar::Recipe => &self.exchange_pane,
+            Sidebar::Recipe | Sidebar::History => &self.exchange_pane,
         };
         canvas.draw(
             bottom,
@@ -405,8 +441,12 @@ impl Component for PrimaryView {
                 Action::Submit => self.send_request(),
 
                 // Pane hotkeys
-                Action::SelectProfileList => self.view.open_profile_list(),
-                Action::SelectRecipeList => self.view.open_recipe_list(),
+                Action::SelectProfileList => {
+                    self.view.open_sidebar(Sidebar::Profile);
+                }
+                Action::SelectRecipeList => {
+                    self.view.open_sidebar(Sidebar::Recipe);
+                }
                 Action::SelectTopPane => self.view.select_top_pane(),
                 Action::SelectBottomPane => self.view.select_bottom_pane(),
                 Action::SelectCollection => {
@@ -428,12 +468,16 @@ impl Component for PrimaryView {
                 _ => propagate.set(),
             })
             .emitted(self.recipe_list.to_emitter(), |event| match event {
-                SidebarListEvent::Open => self.view.open_recipe_list(),
+                SidebarListEvent::Open => {
+                    self.view.open_sidebar(Sidebar::Recipe);
+                }
                 SidebarListEvent::Select => self.refresh_recipe(),
                 SidebarListEvent::Close => self.view.close_sidebar(),
             })
             .emitted(self.profile_list.to_emitter(), |event| match event {
-                SidebarListEvent::Open => self.view.open_profile_list(),
+                SidebarListEvent::Open => {
+                    self.view.open_sidebar(Sidebar::Profile);
+                }
                 SidebarListEvent::Select => {
                     // Both panes can change when the profile changes
                     self.profile_detail =
@@ -446,7 +490,10 @@ impl Component for PrimaryView {
             .emitted(self.global_actions_emitter, |menu_action| {
                 match menu_action {
                     PrimaryMenuAction::EditCollection(location) => {
-                        self.edit_collection(location);
+                        // Forward to the main loop so it can open the editor
+                        ViewContext::send_message(Message::CollectionEdit {
+                            location,
+                        });
                     }
                 }
             })
@@ -504,6 +551,7 @@ impl Component for PrimaryView {
             self.profile_list.to_child_mut(),
             self.profile_detail.to_child_mut(),
             self.exchange_pane.to_child_mut(),
+            self.history.to_child_mut(),
         ]
     }
 }

@@ -29,18 +29,9 @@ impl ViewState {
         }
     }
 
-    /// Open the profile list in the sidebar
-    pub fn open_profile_list(&mut self) {
-        self.modify_layout(|layout| {
-            *layout = PrimaryLayout::sidebar(Sidebar::Profile);
-        });
-    }
-
-    /// Open the recipe list in the sidebar
-    pub fn open_recipe_list(&mut self) {
-        self.modify_layout(|layout| {
-            *layout = PrimaryLayout::sidebar(Sidebar::Recipe);
-        });
+    /// Open the sidebar with specific content
+    pub fn open_sidebar(&mut self, sidebar: Sidebar) {
+        self.modify_layout(|layout| *layout = PrimaryLayout::sidebar(sidebar));
     }
 
     /// Close the sidebar and return to the default view
@@ -110,9 +101,10 @@ impl ViewState {
                 sidebar: Sidebar::Profile,
                 selected_pane: pane,
             } => *pane = SidebarPane::Bottom,
+            // Pane isn't visible
             PrimaryLayout::Default(_)
             | PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Recipe,
+                sidebar: Sidebar::Recipe | Sidebar::History,
                 ..
             } => {}
         });
@@ -123,9 +115,10 @@ impl ViewState {
         self.modify_layout(|layout| match layout {
             PrimaryLayout::Default(pane) => *pane = DefaultPane::Bottom,
             PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Recipe,
+                sidebar: Sidebar::Recipe | Sidebar::History,
                 selected_pane: pane,
             } => *pane = SidebarPane::Bottom,
+            // Pane isn't visible
             PrimaryLayout::Sidebar {
                 sidebar: Sidebar::Profile,
                 ..
@@ -211,6 +204,7 @@ pub enum SidebarPane {
 pub enum Sidebar {
     Profile,
     Recipe,
+    History,
 }
 
 /// Get the item after `value` in the iterator
@@ -258,11 +252,11 @@ mod tests {
     #[rstest]
     #[case::open_profile_list(
         PrimaryLayout::Default(DefaultPane::Top),
-        ViewState::open_profile_list
+        |state: &mut ViewState| state.open_sidebar(Sidebar::Profile),
     )]
     #[case::open_recipe_list(
         PrimaryLayout::Default(DefaultPane::Top),
-        ViewState::open_recipe_list
+        |state: &mut ViewState| state.open_sidebar(Sidebar::Recipe),
     )]
     #[case::select_recipe_pane(
         PrimaryLayout::Default(DefaultPane::Bottom),
@@ -286,7 +280,7 @@ mod tests {
     )]
     fn test_fullscreen_switch_panes(
         #[case] layout: PrimaryLayout,
-        #[case] mutator: fn(&mut ViewState),
+        #[case] mutator: impl Fn(&mut ViewState),
     ) {
         let mut state = ViewState {
             layout,

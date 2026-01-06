@@ -8,10 +8,9 @@ use crate::{
     util::ResultReported,
     view::{
         Component, RequestDisposition, ViewContext,
-        common::{actions::MenuItem, modal::ModalQueue},
+        common::actions::MenuItem,
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
-            collection_select::CollectionSelect,
             exchange_pane::ExchangePane,
             history::History,
             primary::view_state::{
@@ -65,8 +64,6 @@ pub struct PrimaryView {
     exchange_pane: ExchangePane,
     /// List of all past requests for the current recipe/profile
     history: Option<History>,
-    /// Modal to select a different collection file
-    collection_select: ModalQueue<CollectionSelect>,
 
     global_actions_emitter: Emitter<PrimaryMenuAction>,
 }
@@ -101,7 +98,6 @@ impl PrimaryView {
             profile_detail,
             exchange_pane,
             history: None,
-            collection_select: Default::default(),
 
             global_actions_emitter: Default::default(),
         }
@@ -449,9 +445,6 @@ impl Component for PrimaryView {
                 }
                 Action::SelectTopPane => self.view.select_top_pane(),
                 Action::SelectBottomPane => self.view.select_bottom_pane(),
-                Action::SelectCollection => {
-                    self.collection_select.open(CollectionSelect::new());
-                }
 
                 // Toggle fullscreen
                 Action::Fullscreen => self.view.toggle_fullscreen(),
@@ -543,9 +536,6 @@ impl Component for PrimaryView {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
-            // Modals
-            self.collection_select.to_child_mut(),
-            // Not modals
             self.recipe_list.to_child_mut(),
             self.recipe_detail.to_child_mut(),
             self.profile_list.to_child_mut(),
@@ -577,9 +567,6 @@ impl Draw for PrimaryView {
                 }
             }
         }
-
-        // Modals!!
-        canvas.draw_portal(&self.collection_select, (), true);
     }
 }
 

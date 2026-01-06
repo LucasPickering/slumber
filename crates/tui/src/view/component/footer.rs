@@ -1,23 +1,16 @@
 use crate::{
-    context::TuiContext,
     util,
     view::{
-        Generate, UpdateContext, ViewContext,
+        UpdateContext,
         component::{
-            Canvas, Component, ComponentId, Draw, DrawMetadata,
-            help::HelpFooter,
+            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+            collection_select::CollectionSelect, help::Help,
         },
         event::{Emitter, Event, EventMatch},
         state::Notification,
     },
 };
-use ratatui::{
-    layout::{Constraint, Layout},
-    text::Span,
-};
-use slumber_config::Action;
-use slumber_core::database::CollectionDatabase;
-use slumber_util::ResultTraced;
+use ratatui::layout::{Constraint, Layout};
 use tokio::time;
 use uuid::Uuid;
 
@@ -25,6 +18,12 @@ use uuid::Uuid;
 #[derive(Debug, Default)]
 pub struct Footer {
     id: ComponentId,
+    /// Show minimal help info in the footer, and open up to a fullscreen help
+    /// page
+    help: Help,
+    /// Display current collection with a list that can open to switch
+    /// collections
+    collection_select: CollectionSelect,
     notification: Option<Notification>,
     clear_emitter: Emitter<ClearNotification>,
 }
@@ -66,6 +65,13 @@ impl Component for Footer {
                 }
             })
     }
+
+    fn children(&mut self) -> Vec<Child<'_>> {
+        vec![
+            self.help.to_child_mut(),
+            self.collection_select.to_child_mut(),
+        ]
+    }
 }
 
 impl Draw for Footer {
@@ -80,28 +86,17 @@ impl Draw for Footer {
         }
 
         // No notification - show help dialog and current collection path
-        let input_engine = &TuiContext::get().input_engine;
-        let styles = &TuiContext::get().styles;
-
-        let collection_name =
-            ViewContext::with_database(CollectionDatabase::metadata)
-                .map(|metadata| metadata.display_name())
-                .traced()
-                .unwrap_or_default();
-        let collection_name_text = Span::styled(
-            input_engine.add_hint(collection_name, Action::SelectCollection),
-            styles.text.highlight,
-        );
-
-        let help = HelpFooter.generate();
         let [collection_area, help_area] = Layout::horizontal([
-            Constraint::Length(collection_name_text.content.len() as u16),
-            Constraint::Min(help.width() as u16),
+            Constraint::Length(self.collection_select.text().len() as u16),
+            Constraint::Min(0),
         ])
         .areas(metadata.area());
 
-        canvas.render_widget(collection_name_text, collection_area);
-        canvas.render_widget(help.into_right_aligned_line(), help_area);
+        canvas.draw(&self.collection_select, (), collection_area, true);
+
+        // Draw help last. If it's in fullscreen mode, it draws over everything
+        // else
+        canvas.draw(&self.help, (), help_area, true);
     }
 }
 

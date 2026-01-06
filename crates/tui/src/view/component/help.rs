@@ -13,7 +13,7 @@ use itertools::Itertools;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     text::{Line, Span},
-    widgets::{Row, Table},
+    widgets::{Clear, Row, Table},
 };
 use slumber_config::{Action, Config};
 use slumber_core::database::CollectionDatabase;
@@ -22,62 +22,18 @@ use unicode_width::UnicodeWidthStr;
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// A mini helper in the footer for showing a few important key bindings
-#[derive(Debug)]
-pub struct HelpFooter;
-
-impl Generate for HelpFooter {
-    type Output<'this>
-        = Span<'this>
-    where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
-
-        let tui_context = TuiContext::get();
-
-        let text = actions
-            .into_iter()
-            .map(|action| {
-                let binding = tui_context.input_engine.binding_display(action);
-                format!("{binding} {action}")
-            })
-            .join(" / ");
-
-        Span::styled(text, tui_context.styles.text.highlight)
-    }
-}
-
-/// A fullscreen help page, with metadata about the app as well as all
-/// keybindings
+/// A help footer that can be opened into a fullscreen help page
 ///
-/// This component maintains its own open/close state. The parent is responsible
-/// for opening it (listening to the OpenHelp action), but it closes itself.
-/// When this is open, the parent should draw it **and nothing else**. This
-/// minimizes the amount of state/listening the parent has to do. We can't
-/// listening to the open action in here though because we won't receive events
-/// while closed.
+/// This manages its own open/close state and actions.
 #[derive(Debug, Default)]
 pub struct Help {
     id: ComponentId,
+    /// If true, render on the entire frame. If false, show a summary in the
+    /// footer
     open: bool,
 }
 
 impl Help {
-    /// Show the help page
-    pub fn open(&mut self) {
-        self.open = true;
-    }
-
-    /// Should the page be drawn?
-    pub fn is_open(&self) -> bool {
-        self.open
-    }
-
     /// Get the list of bindings that will be shown in the modal
     fn bindings() -> Vec<[String; 2]> {
         TuiContext::get()
@@ -102,73 +58,107 @@ impl Component for Help {
         _context: &mut UpdateContext,
         event: Event,
     ) -> EventMatch {
-        event.m().any(|event| match event {
-            Event::Input(_) => {
-                self.open = false;
-                None
-            }
-            _ => Some(event),
-        })
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::OpenHelp if !self.open => self.open = true,
+                _ => propagate.set(),
+            })
+            .any(|event| {
+                // Any input exits fullscreen
+                if let Event::Input(_) = event
+                    && self.open
+                {
+                    self.open = false;
+                    None
+                } else {
+                    Some(event)
+                }
+            })
     }
 }
 
 impl Draw for Help {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let styles = &TuiContext::get().styles;
+        if self.open {
+            // Fullscreen mode is open
+            let styles = &TuiContext::get().styles;
 
-        // General info/metadata
-        let doc_link = doc_link("");
-        let config_path = Config::path().display().to_string();
-        let log_path = paths::log_file().display().to_string();
-        let collection_path =
-            ViewContext::with_database(CollectionDatabase::metadata)
-                .map(|metadata| metadata.path.display().to_string())
-                .unwrap_or_default();
-        let general_rows = [
-            ["Version", CRATE_VERSION],
-            ["Docs", &doc_link],
-            ["Configuration", &config_path],
-            ["Log", &log_path],
-            ["Collection", &collection_path],
-        ];
-        let general_height = general_rows.len();
-        let general = Table::new(
-            general_rows.into_iter().map(Row::new),
-            [column_width(general_rows, 0), Constraint::Min(0)],
-        );
+            // General info/metadata
+            let doc_link = doc_link("");
+            let config_path = Config::path().display().to_string();
+            let log_path = paths::log_file().display().to_string();
+            let collection_path =
+                ViewContext::with_database(CollectionDatabase::metadata)
+                    .map(|metadata| metadata.path.display().to_string())
+                    .unwrap_or_default();
+            let general_rows = [
+                ["Version", CRATE_VERSION],
+                ["Docs", &doc_link],
+                ["Configuration", &config_path],
+                ["Log", &log_path],
+                ["Collection", &collection_path],
+            ];
+            let general_height = general_rows.len();
+            let general = Table::new(
+                general_rows.into_iter().map(Row::new),
+                [column_width(general_rows, 0), Constraint::Min(0)],
+            );
 
-        // Keybindings
-        let keybindings = Self::bindings();
-        let left_column_width = column_width(
-            keybindings
-                .iter()
-                .map(|[action, binding]| [action.as_str(), binding.as_str()]),
-            0,
-        );
-        let keybindings = Table::new(
-            keybindings.into_iter().map(Row::new),
-            [left_column_width, Constraint::Min(0)],
-        )
-        .header(Row::new(["Keybindings"]).style(styles.table.header));
+            // Keybindings
+            let keybindings = Self::bindings();
+            let left_column_width = column_width(
+                keybindings.iter().map(|[action, binding]| {
+                    [action.as_str(), binding.as_str()]
+                }),
+                0,
+            );
+            let keybindings = Table::new(
+                keybindings.into_iter().map(Row::new),
+                [left_column_width, Constraint::Min(0)],
+            )
+            .header(Row::new(["Keybindings"]).style(styles.table.header));
 
-        // Draw
-        let block = Pane {
-            title: "Help",
-            has_focus: true,
+            // Draw
+            let block = Pane {
+                title: "Help",
+                has_focus: true,
+            }
+            .generate()
+            .title(
+                Line::from("Press any key to close")
+                    .alignment(Alignment::Right),
+            );
+            let area = canvas.area(); // Use the whole dang screen
+            let [collection_area, _, keybindings_area] = Layout::vertical([
+                Constraint::Length(general_height as u16 + 1),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .areas(block.inner(area));
+            canvas.render_widget(Clear, area);
+            canvas.render_widget(block, area);
+            canvas.render_widget(general, collection_area);
+            canvas.render_widget(keybindings, keybindings_area);
+        } else {
+            // Show minimal help in the footer
+            let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
+
+            let tui_context = TuiContext::get();
+
+            let text = actions
+                .into_iter()
+                .map(|action| {
+                    let binding =
+                        tui_context.input_engine.binding_display(action);
+                    format!("{binding} {action}")
+                })
+                .join(" / ");
+
+            let span = Span::styled(text, tui_context.styles.text.highlight)
+                .into_right_aligned_line();
+            canvas.render_widget(span, metadata.area());
         }
-        .generate()
-        .title(
-            Line::from("Press any key to close").alignment(Alignment::Right),
-        );
-        let [collection_area, _, keybindings_area] = Layout::vertical([
-            Constraint::Length(general_height as u16 + 1),
-            Constraint::Length(1),
-            Constraint::Min(0),
-        ])
-        .areas(block.inner(metadata.area()));
-        canvas.render_widget(block, metadata.area());
-        canvas.render_widget(general, collection_area);
-        canvas.render_widget(keybindings, keybindings_area);
     }
 }
 
@@ -183,4 +173,36 @@ fn column_width<'a>(
         .max()
         .unwrap_or(0);
     Constraint::Length(width as u16)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_util::{TestHarness, TestTerminal, harness, terminal},
+        view::test_util::TestComponent,
+    };
+    use rstest::rstest;
+    use terminput::KeyCode;
+
+    /// Open and close the help page
+    #[rstest]
+    fn test_open(harness: TestHarness, terminal: TestTerminal) {
+        let mut component =
+            TestComponent::new(&harness, &terminal, Help::default());
+        assert!(!component.open);
+
+        // Open help
+        component
+            .int()
+            .drain_draw() // Clear initial events
+            .send_key(KeyCode::Char('?'))
+            .assert_empty();
+        assert!(component.open);
+
+        // Any key should close. Events are *not* handled by anyone else
+        //
+        component.int().send_key(KeyCode::Char('x')).assert_empty();
+        assert!(!component.open);
+    }
 }

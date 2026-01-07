@@ -22,7 +22,7 @@ use crate::{
             },
         },
         context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
+        event::{DeleteTarget, Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, PersistentStore},
     },
 };
@@ -109,10 +109,11 @@ impl Component for RecipeList {
     }
 
     fn menu(&self) -> Vec<MenuItem> {
-        RecipeMenuAction::menu(
-            self.actions_emitter,
-            self.list.selected().is_some_and(RecipeListItem::is_recipe),
-        )
+        let recipe_id = self.list.selected().and_then(|item| match item.kind {
+            RecipeNodeType::Folder => None,
+            RecipeNodeType::Recipe => Some(item.id.clone()),
+        });
+        RecipeMenuAction::menu(self.actions_emitter, recipe_id)
     }
 
     fn persist(&self, store: &mut PersistentStore) {
@@ -272,10 +273,6 @@ impl RecipeListItem {
     fn is_folder(&self) -> bool {
         matches!(self.kind, RecipeNodeType::Folder)
     }
-
-    fn is_recipe(&self) -> bool {
-        matches!(self.kind, RecipeNodeType::Recipe)
-    }
 }
 
 impl SidebarListItem for RecipeListItem {
@@ -405,8 +402,11 @@ impl Component for RecipeDetail {
     }
 
     fn menu(&self) -> Vec<MenuItem> {
-        let has_recipe = matches!(&self.state, RecipeNodeState::Recipe { .. });
-        RecipeMenuAction::menu(self.actions_emitter, has_recipe)
+        let recipe_id = match &self.state {
+            RecipeNodeState::None | RecipeNodeState::Folder { .. } => None,
+            RecipeNodeState::Recipe { id, .. } => Some(id.clone()),
+        };
+        RecipeMenuAction::menu(self.actions_emitter, recipe_id)
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -499,18 +499,29 @@ enum RecipeNodeState {
 
 /// Items in the actions popup menu. This is used by both the list and detail
 /// components. Handling is stateless so it's shared between them.
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 enum RecipeMenuAction {
     CopyUrl,
     CopyAsCli,
     CopyAsCurl,
     CopyAsPython,
-    DeleteRecipe,
+    /// Delete all requests for the current recipe
+    ///
+    /// ID is `None` only when this is disabled
+    DeleteRequests(Option<RecipeId>),
 }
 
 impl RecipeMenuAction {
     /// Build a list of these actions
-    fn menu(emitter: Emitter<Self>, has_recipe: bool) -> Vec<MenuItem> {
+    ///
+    /// `recipe_id` is the ID of the currently selected **recipe** (not folder).
+    /// Pass `Some` iff a recipe is selected. All actions will be disabled if
+    /// there is no recipe.
+    fn menu(
+        emitter: Emitter<Self>,
+        recipe_id: Option<RecipeId>,
+    ) -> Vec<MenuItem> {
+        let has_recipe = recipe_id.is_some();
         vec![
             MenuItem::Group {
                 name: "Copy".into(),
@@ -534,7 +545,7 @@ impl RecipeMenuAction {
                 ],
             },
             emitter
-                .menu(Self::DeleteRecipe, "Delete Requests")
+                .menu(Self::DeleteRequests(recipe_id), "Delete Requests")
                 .enable(has_recipe)
                 .into(),
         ]
@@ -551,8 +562,14 @@ impl RecipeMenuAction {
             Self::CopyAsCli => copy(RecipeCopyTarget::Cli),
             Self::CopyAsCurl => copy(RecipeCopyTarget::Curl),
             Self::CopyAsPython => copy(RecipeCopyTarget::Python),
-            Self::DeleteRecipe => {
-                ViewContext::push_event(Event::DeleteRecipeRequests);
+            Self::DeleteRequests(recipe_id) => {
+                // Action should be disabled when the ID is None, so this if is
+                // just for the compiler
+                if let Some(recipe_id) = recipe_id {
+                    ViewContext::push_event(Event::DeleteRequests(
+                        DeleteTarget::Recipe(recipe_id),
+                    ));
+                }
             }
         }
     }

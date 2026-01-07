@@ -97,7 +97,7 @@ pub enum QuestionModal {
         buttons: ButtonGroup<ConfirmButton>,
         /// Callback when the user replies
         #[debug(skip)]
-        on_submit: Box<dyn 'static + FnOnce(bool)>,
+        on_submit: QuestionCallback<bool>,
     },
     /// Free-form text response
     Text {
@@ -106,7 +106,7 @@ pub enum QuestionModal {
         text_box: TextBox,
         /// Callback when the user replies
         #[debug(skip)]
-        on_submit: Box<dyn 'static + FnOnce(String)>,
+        on_submit: QuestionCallback<String>,
     },
 }
 
@@ -114,7 +114,7 @@ impl QuestionModal {
     /// Open a modal with a yes/no question
     pub fn confirm(
         message: String,
-        on_submit: impl 'static + FnOnce(bool),
+        on_submit: impl 'static + FnOnce(&mut UpdateContext, bool),
     ) -> Self {
         Self::Confirm {
             id: ComponentId::new(),
@@ -128,7 +128,7 @@ impl QuestionModal {
     pub fn text(
         message: String,
         default: Option<String>,
-        on_submit: impl 'static + FnOnce(String),
+        on_submit: impl 'static + FnOnce(&mut UpdateContext, String),
     ) -> Self {
         Self::Text {
             id: ComponentId::new(),
@@ -143,15 +143,15 @@ impl QuestionModal {
     pub fn from_question(question: Question) -> Self {
         match question {
             Question::Confirm { message, channel } => {
-                Self::confirm(message, move |reply| channel.reply(reply))
+                Self::confirm(message, move |_, reply| channel.reply(reply))
             }
             Question::Text {
                 message,
                 default,
                 channel,
-            } => {
-                Self::text(message, default, move |reply| channel.reply(reply))
-            }
+            } => Self::text(message, default, move |_, reply| {
+                channel.reply(reply);
+            }),
         }
     }
 }
@@ -175,19 +175,19 @@ impl Modal for QuestionModal {
         (width, Constraint::Length(1))
     }
 
-    fn on_submit(self, _: &mut UpdateContext) {
+    fn on_submit(self, context: &mut UpdateContext) {
         match self {
             QuestionModal::Confirm {
                 buttons, on_submit, ..
             } => {
-                on_submit(buttons.selected().to_bool());
+                on_submit(context, buttons.selected().to_bool());
             }
             QuestionModal::Text {
                 text_box,
                 on_submit,
                 ..
             } => {
-                on_submit(text_box.into_text());
+                on_submit(context, text_box.into_text());
             }
         }
     }
@@ -230,6 +230,8 @@ impl Draw for QuestionModal {
         }
     }
 }
+
+type QuestionCallback<T> = Box<dyn 'static + FnOnce(&mut UpdateContext, T)>;
 
 /// Confirmation modal to delete a single request
 #[derive(Debug)]

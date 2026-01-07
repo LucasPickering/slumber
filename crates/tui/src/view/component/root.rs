@@ -13,7 +13,7 @@ use crate::{
             primary::PrimaryView,
         },
         context::UpdateContext,
-        event::{Event, EventMatch},
+        event::{DeleteTarget, Event, EventMatch},
         persistent::{PersistentKey, PersistentStore},
     },
 };
@@ -189,13 +189,31 @@ impl Root {
         self.primary_view.set_request(None, None);
     }
 
-    /// Open a modal to confirm deletion of all requests for the selected recipe
-    fn delete_requests(&mut self) {
-        if let Some(recipe_id) = self.primary_view.selected_recipe_id().cloned()
-        {
-            let profile_id = self.primary_view.selected_profile_id().cloned();
-            self.delete_requests_confirm
-                .open(DeleteRecipeRequestsModal::new(profile_id, recipe_id));
+    /// Open a modal to confirm deletion one or more requests
+    fn delete_requests(&mut self, target: DeleteTarget) {
+        let profile_id = self.primary_view.selected_profile_id().cloned();
+        match target {
+            DeleteTarget::Request(request_id) => {
+                self.questions.open(QuestionModal::confirm(
+                    "Delete Request?".into(),
+                    move |context, answer| {
+                        if answer {
+                            context
+                                .request_store
+                                .delete_request(request_id)
+                                .reported(&ViewContext::messages_tx());
+                            ViewContext::push_event(Event::HttpSelectRequest(
+                                None,
+                            ));
+                        }
+                    },
+                ));
+            }
+            DeleteTarget::Recipe(recipe_id) => {
+                self.delete_requests_confirm.open(
+                    DeleteRecipeRequestsModal::new(profile_id, recipe_id),
+                );
+            }
         }
     }
 
@@ -206,8 +224,8 @@ impl Root {
         {
             self.questions.open(QuestionModal::confirm(
                 "Cancel request?".into(),
-                move |response| {
-                    if response {
+                move |_, answer| {
+                    if answer {
                         ViewContext::send_message(HttpMessage::Cancel(
                             request_id,
                         ));
@@ -256,8 +274,8 @@ impl Component for Root {
                 _ => propagate.set(),
             })
             .any(|event| match event {
-                Event::DeleteRecipeRequests => {
-                    self.delete_requests();
+                Event::DeleteRequests(target) => {
+                    self.delete_requests(target);
                     None
                 }
 

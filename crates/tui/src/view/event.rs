@@ -8,7 +8,7 @@ use crate::{
 };
 use ratatui::layout::Position;
 use slumber_config::Action;
-use slumber_core::http::RequestId;
+use slumber_core::{collection::RecipeId, http::RequestId};
 use std::{
     any::{self, Any},
     collections::VecDeque,
@@ -56,11 +56,11 @@ impl EventQueue {
 /// This is conceptually different from [crate::Message] in that events are
 /// restricted to the queue and handled in the main thread. Messages can be
 /// queued asynchronously and are used to interact *between* threads.
-#[derive(derive_more::Debug)]
+#[derive(Debug)]
 pub enum Event {
     /// User has requested to delete all requests for the current selected
     /// recipe. This will trigger a confirmation modal before the deletion
-    DeleteRecipeRequests,
+    DeleteRequests(DeleteTarget),
 
     /// A localized event emitted by a particular [Emitter] implementation.
     /// The event type here does not need to be unique because the emitter ID
@@ -100,6 +100,15 @@ impl Event {
     pub fn m(self) -> EventMatch {
         Some(self).into()
     }
+}
+
+/// TODO
+#[derive(Debug)]
+pub enum DeleteTarget {
+    /// Delete a single request
+    Request(RequestId),
+    /// Delete all requests for a recipe
+    Recipe(RecipeId),
 }
 
 /// Wrapper for matching an event to various expected cases.

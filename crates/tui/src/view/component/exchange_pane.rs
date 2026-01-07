@@ -2,7 +2,7 @@ use crate::{
     context::TuiContext,
     http::{RequestMetadata, ResponseMetadata},
     view::{
-        Generate, RequestState,
+        Generate, RequestState, ViewContext,
         common::{
             Pane, actions::MenuItem, fixed_select::FixedSelect,
             modal::ModalQueue, tabs::Tabs,
@@ -16,7 +16,7 @@ use crate::{
             response_view::{ResponseBodyView, ResponseHeadersView},
         },
         context::UpdateContext,
-        event::{Emitter, Event, EventMatch},
+        event::{DeleteTarget, Emitter, Event, EventMatch},
         persistent::PersistentKey,
         util::format_byte_size,
     },
@@ -332,9 +332,10 @@ impl Component for ExchangePaneContent {
             .action(|action, propagate| match action {
                 Action::Delete => {
                     if let Some(request) = self.state.request() {
-                        // Show a confirmation modal
-                        self.delete_request_modal
-                            .open(DeleteRequestModal::new(request.id()));
+                        // Root handles deletion so it can show a confirm modal
+                        ViewContext::push_event(Event::DeleteRequests(
+                            DeleteTarget::Request(request.id()),
+                        ));
                     }
                 }
                 _ => propagate.set(),

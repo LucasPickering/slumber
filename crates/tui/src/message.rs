@@ -12,6 +12,7 @@ use derive_more::From;
 use mime::Mime;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
+    database::ProfileFilter,
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
@@ -189,6 +190,16 @@ pub enum HttpMessage {
     Complete(Result<Exchange, Arc<RequestError>>),
     /// Request was cancelled
     Cancel(RequestId),
+    /// Delete a request from the store/DB. This executes the delete, so it
+    /// should be send *after* the confirmation process.
+    DeleteRequest(RequestId),
+    /// Delete all requests for a recipe from the store/DB. This executes the
+    /// delete, so it should be send *after* the confirmation process.
+    DeleteRecipe {
+        recipe_id: RecipeId,
+        /// Delete requests for just the current profile or all profiles?
+        profile_filter: ProfileFilter<'static>,
+    },
 }
 
 /// Component/form of a recipe to copy to the clipboard

@@ -102,7 +102,7 @@ impl Event {
     }
 }
 
-/// TODO
+/// Definition of what request(s) to start deletion for
 #[derive(Debug)]
 pub enum DeleteTarget {
     /// Delete a single request

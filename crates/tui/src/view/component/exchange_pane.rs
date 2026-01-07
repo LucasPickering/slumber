@@ -4,13 +4,11 @@ use crate::{
     view::{
         Generate, RequestState, ViewContext,
         common::{
-            Pane, actions::MenuItem, fixed_select::FixedSelect,
-            modal::ModalQueue, tabs::Tabs,
+            Pane, actions::MenuItem, fixed_select::FixedSelect, tabs::Tabs,
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            misc::DeleteRequestModal,
             prompt_form::PromptForm,
             request_view::RequestView,
             response_view::{ResponseBodyView, ResponseHeadersView},
@@ -272,7 +270,6 @@ struct ExchangePaneContent {
     actions_emitter: Emitter<ExchangePaneMenuAction>,
     tabs: Tabs<ExchangeTabKey, Tab>,
     state: ExchangePaneContentState,
-    delete_request_modal: ModalQueue<DeleteRequestModal>,
 }
 
 impl ExchangePaneContent {
@@ -316,7 +313,16 @@ impl ExchangePaneContent {
             actions_emitter: Default::default(),
             tabs: Tabs::new(ExchangeTabKey, FixedSelect::builder()),
             state,
-            delete_request_modal: Default::default(),
+        }
+    }
+
+    /// Delete the selected request
+    fn delete_request(&self) {
+        if let Some(request) = self.state.request() {
+            // Root handles deletion so it can show a confirm modal
+            ViewContext::push_event(Event::DeleteRequests(
+                DeleteTarget::Request(request.id()),
+            ));
         }
     }
 }
@@ -330,60 +336,45 @@ impl Component for ExchangePaneContent {
         event
             .m()
             .action(|action, propagate| match action {
-                Action::Delete => {
-                    if let Some(request) = self.state.request() {
-                        // Root handles deletion so it can show a confirm modal
-                        ViewContext::push_event(Event::DeleteRequests(
-                            DeleteTarget::Request(request.id()),
-                        ));
-                    }
-                }
+                Action::Delete => self.delete_request(),
                 _ => propagate.set(),
             })
-            .emitted(self.actions_emitter, |menu_action| {
-                match menu_action {
-                    // Generally if we get an action the corresponding
-                    // request/response will be present, but we double check in
-                    // case the action got delayed in being
-                    // handled somehow
-                    ExchangePaneMenuAction::CopyUrl => {
-                        if let Some(request) = self.state.request() {
-                            request.copy_url();
-                        }
-                    }
-                    ExchangePaneMenuAction::ViewRequestBody => {
-                        if let Some(request) = self.state.request() {
-                            request.view_body();
-                        }
-                    }
-                    ExchangePaneMenuAction::CopyRequestBody => {
-                        if let Some(request) = self.state.request() {
-                            request.copy_body();
-                        }
-                    }
-                    ExchangePaneMenuAction::CopyResponseBody => {
-                        if let Some(response) = self.state.response() {
-                            response.copy_body();
-                        }
-                    }
-                    ExchangePaneMenuAction::ViewResponseBody => {
-                        if let Some(response) = self.state.response() {
-                            response.view_body();
-                        }
-                    }
-                    ExchangePaneMenuAction::SaveResponseBody => {
-                        if let Some(response) = self.state.response() {
-                            response.save_response_body();
-                        }
-                    }
-                    ExchangePaneMenuAction::DeleteRequest => {
-                        if let Some(request) = self.state.request() {
-                            // Show a confirmation modal
-                            self.delete_request_modal
-                                .open(DeleteRequestModal::new(request.id()));
-                        }
+            .emitted(self.actions_emitter, |menu_action| match menu_action {
+                // Generally if we get an action the corresponding
+                // request/response will be present, but we double check in
+                // case the action got delayed in being
+                // handled somehow
+                ExchangePaneMenuAction::CopyUrl => {
+                    if let Some(request) = self.state.request() {
+                        request.copy_url();
                     }
                 }
+                ExchangePaneMenuAction::ViewRequestBody => {
+                    if let Some(request) = self.state.request() {
+                        request.view_body();
+                    }
+                }
+                ExchangePaneMenuAction::CopyRequestBody => {
+                    if let Some(request) = self.state.request() {
+                        request.copy_body();
+                    }
+                }
+                ExchangePaneMenuAction::CopyResponseBody => {
+                    if let Some(response) = self.state.response() {
+                        response.copy_body();
+                    }
+                }
+                ExchangePaneMenuAction::ViewResponseBody => {
+                    if let Some(response) = self.state.response() {
+                        response.view_body();
+                    }
+                }
+                ExchangePaneMenuAction::SaveResponseBody => {
+                    if let Some(response) = self.state.response() {
+                        response.save_response_body();
+                    }
+                }
+                ExchangePaneMenuAction::DeleteRequest => self.delete_request(),
             })
     }
 
@@ -469,7 +460,7 @@ impl Component for ExchangePaneContent {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         // Add tab content
-        let content = match &mut self.state {
+        let mut children = match &mut self.state {
             ExchangePaneContentState::Building
             | ExchangePaneContentState::BuildError { .. }
             | ExchangePaneContentState::Cancelled => vec![],
@@ -490,12 +481,9 @@ impl Component for ExchangePaneContent {
             }
         };
 
-        let mut children = vec![self.delete_request_modal.to_child_mut()];
         // Content before tabs so the query text box gets priority on left/right
         // arrow keys
-        children.extend(content);
         children.push(self.tabs.to_child_mut());
-
         children
     }
 }
@@ -506,7 +494,6 @@ impl Draw for ExchangePaneContent {
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
         canvas.draw(&self.tabs, (), tabs_area, true);
-        canvas.draw_portal(&self.delete_request_modal, (), true);
         match &self.state {
             ExchangePaneContentState::Building => {
                 canvas.render_widget("Initializing request...", content_area);

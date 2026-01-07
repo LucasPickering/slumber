@@ -709,7 +709,6 @@ impl LoadedState {
     fn handle_http(&mut self, message: HttpMessage) -> anyhow::Result<()> {
         let mut disposition = None;
         let request_id = match message {
-            // Request was triggered by someone else
             HttpMessage::Triggered {
                 request_id,
                 profile_id,
@@ -742,6 +741,18 @@ impl LoadedState {
             HttpMessage::Complete(result) => self.complete_request(result).id(),
             HttpMessage::Cancel(request_id) => {
                 self.request_store.cancel(request_id).id()
+            }
+            HttpMessage::DeleteRequest(request_id) => {
+                self.request_store.delete_request(request_id)?;
+                todo!()
+            }
+            HttpMessage::DeleteRecipe {
+                recipe_id,
+                profile_filter,
+            } => {
+                self.request_store
+                    .delete_recipe_requests(profile_filter, &recipe_id)?;
+                todo!()
             }
         };
 

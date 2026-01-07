@@ -196,15 +196,11 @@ impl Root {
             DeleteTarget::Request(request_id) => {
                 self.questions.open(QuestionModal::confirm(
                     "Delete Request?".into(),
-                    move |context, answer| {
+                    move |answer| {
                         if answer {
-                            context
-                                .request_store
-                                .delete_request(request_id)
-                                .reported(&ViewContext::messages_tx());
-                            ViewContext::push_event(Event::HttpSelectRequest(
-                                None,
-                            ));
+                            ViewContext::send_message(
+                                HttpMessage::DeleteRequest(request_id),
+                            );
                         }
                     },
                 ));
@@ -224,7 +220,7 @@ impl Root {
         {
             self.questions.open(QuestionModal::confirm(
                 "Cancel request?".into(),
-                move |_, answer| {
+                move |answer| {
                     if answer {
                         ViewContext::send_message(HttpMessage::Cancel(
                             request_id,

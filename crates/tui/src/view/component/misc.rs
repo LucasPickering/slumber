@@ -2,7 +2,7 @@
 //! generic/utility, but don't fall into a clear category.
 
 use crate::{
-    util::ResultReported,
+    message::HttpMessage,
     view::{
         Generate, Question, ViewContext,
         common::{
@@ -15,7 +15,6 @@ use crate::{
             internal::{Child, ToChild},
         },
         context::UpdateContext,
-        event::Event,
     },
 };
 use derive_more::Display;
@@ -23,7 +22,6 @@ use ratatui::{prelude::Constraint, text::Line};
 use slumber_core::{
     collection::{ProfileId, RecipeId},
     database::ProfileFilter,
-    http::RequestId,
 };
 use std::fmt::Debug;
 use strum::{EnumCount, EnumIter};
@@ -97,7 +95,7 @@ pub enum QuestionModal {
         buttons: ButtonGroup<ConfirmButton>,
         /// Callback when the user replies
         #[debug(skip)]
-        on_submit: QuestionCallback<bool>,
+        on_submit: Box<dyn 'static + FnOnce(bool)>,
     },
     /// Free-form text response
     Text {
@@ -106,7 +104,7 @@ pub enum QuestionModal {
         text_box: TextBox,
         /// Callback when the user replies
         #[debug(skip)]
-        on_submit: QuestionCallback<String>,
+        on_submit: Box<dyn 'static + FnOnce(String)>,
     },
 }
 
@@ -114,7 +112,7 @@ impl QuestionModal {
     /// Open a modal with a yes/no question
     pub fn confirm(
         message: String,
-        on_submit: impl 'static + FnOnce(&mut UpdateContext, bool),
+        on_submit: impl 'static + FnOnce(bool),
     ) -> Self {
         Self::Confirm {
             id: ComponentId::new(),
@@ -128,7 +126,7 @@ impl QuestionModal {
     pub fn text(
         message: String,
         default: Option<String>,
-        on_submit: impl 'static + FnOnce(&mut UpdateContext, String),
+        on_submit: impl 'static + FnOnce(String),
     ) -> Self {
         Self::Text {
             id: ComponentId::new(),
@@ -143,15 +141,15 @@ impl QuestionModal {
     pub fn from_question(question: Question) -> Self {
         match question {
             Question::Confirm { message, channel } => {
-                Self::confirm(message, move |_, reply| channel.reply(reply))
+                Self::confirm(message, move |reply| channel.reply(reply))
             }
             Question::Text {
                 message,
                 default,
                 channel,
-            } => Self::text(message, default, move |_, reply| {
-                channel.reply(reply);
-            }),
+            } => {
+                Self::text(message, default, move |reply| channel.reply(reply))
+            }
         }
     }
 }
@@ -175,19 +173,19 @@ impl Modal for QuestionModal {
         (width, Constraint::Length(1))
     }
 
-    fn on_submit(self, context: &mut UpdateContext) {
+    fn on_submit(self, _: &mut UpdateContext) {
         match self {
             QuestionModal::Confirm {
                 buttons, on_submit, ..
             } => {
-                on_submit(context, buttons.selected().to_bool());
+                on_submit(buttons.selected().to_bool());
             }
             QuestionModal::Text {
                 text_box,
                 on_submit,
                 ..
             } => {
-                on_submit(context, text_box.into_text());
+                on_submit(text_box.into_text());
             }
         }
     }
@@ -231,62 +229,6 @@ impl Draw for QuestionModal {
     }
 }
 
-type QuestionCallback<T> = Box<dyn 'static + FnOnce(&mut UpdateContext, T)>;
-
-/// Confirmation modal to delete a single request
-#[derive(Debug)]
-pub struct DeleteRequestModal {
-    id: ComponentId,
-    request_id: RequestId,
-    buttons: ButtonGroup<ConfirmButton>,
-}
-
-impl DeleteRequestModal {
-    pub fn new(request_id: RequestId) -> Self {
-        Self {
-            id: ComponentId::default(),
-            request_id,
-            buttons: Default::default(),
-        }
-    }
-}
-
-impl Modal for DeleteRequestModal {
-    fn title(&self) -> Line<'_> {
-        "Delete Request?".into()
-    }
-
-    fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Length(24), Constraint::Length(1))
-    }
-
-    fn on_submit(self, context: &mut UpdateContext) {
-        if self.buttons.selected().to_bool() {
-            context
-                .request_store
-                .delete_request(self.request_id)
-                .reported(&ViewContext::messages_tx());
-            ViewContext::push_event(Event::HttpSelectRequest(None));
-        }
-    }
-}
-
-impl Component for DeleteRequestModal {
-    fn id(&self) -> ComponentId {
-        self.id
-    }
-
-    fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.buttons.to_child_mut()]
-    }
-}
-
-impl Draw for DeleteRequestModal {
-    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        canvas.draw(&self.buttons, (), metadata.area(), true);
-    }
-}
-
 /// Confirmation modal to delete all requests for a recipe
 #[derive(Debug)]
 pub struct DeleteRecipeRequestsModal {
@@ -324,21 +266,18 @@ impl Modal for DeleteRecipeRequestsModal {
         )
     }
 
-    fn on_submit(self, context: &mut UpdateContext) {
+    fn on_submit(self, _: &mut UpdateContext) {
         // Do the delete here because we have access to the request store
         let profile_filter = match self.buttons.selected() {
             DeleteRecipeRequestsButton::No => None,
-            DeleteRecipeRequestsButton::Profile => {
-                Some(self.profile_id.as_ref().into())
-            }
+            DeleteRecipeRequestsButton::Profile => Some(self.profile_id.into()),
             DeleteRecipeRequestsButton::All => Some(ProfileFilter::All),
         };
         if let Some(profile_filter) = profile_filter {
-            context
-                .request_store
-                .delete_recipe_requests(profile_filter, &self.recipe_id)
-                .reported(&ViewContext::messages_tx());
-            ViewContext::push_event(Event::HttpSelectRequest(None));
+            ViewContext::send_message(HttpMessage::DeleteRecipe {
+                recipe_id: self.recipe_id,
+                profile_filter,
+            });
         }
     }
 }

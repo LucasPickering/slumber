@@ -971,6 +971,16 @@ impl<'a> From<Option<&'a ProfileId>> for ProfileFilter<'a> {
     }
 }
 
+/// Convert from an option that defines either *no* profile or a specific one
+impl From<Option<ProfileId>> for ProfileFilter<'static> {
+    fn from(value: Option<ProfileId>) -> Self {
+        match value {
+            Some(profile_id) => Self::Some(Cow::Owned(profile_id)),
+            None => Self::None,
+        }
+    }
+}
+
 /// Useful for CLI arguments
 impl From<Option<Option<ProfileId>>> for ProfileFilter<'static> {
     fn from(value: Option<Option<ProfileId>>) -> Self {

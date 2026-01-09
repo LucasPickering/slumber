@@ -25,15 +25,11 @@ use anyhow::Context;
 use crossterm::event::{self, EventStream};
 use futures::{StreamExt, pin_mut};
 use ratatui::{
-    Terminal,
-    backend::{ClearType, WindowSize},
-    layout::{Position, Size},
-    prelude::{Backend, CrosstermBackend},
+    Terminal, buffer::Buffer, layout::Position, prelude::CrosstermBackend,
 };
 use slumber_config::{Action, Config};
 use slumber_core::{collection::CollectionFile, database::Database};
 use std::{
-    convert::Infallible,
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
@@ -51,8 +47,6 @@ use tracing::{error, info, trace};
 #[derive(Debug)]
 pub struct Tui {
     terminal: Term,
-    /// Null terminal for state-only draws
-    null_terminal: Terminal<NullBackend>,
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
     /// touch this
@@ -102,7 +96,6 @@ impl Tui {
 
         let app = Tui {
             terminal,
-            null_terminal: Terminal::new(NullBackend)?,
             messages_rx,
             messages_tx,
 
@@ -265,16 +258,21 @@ impl Tui {
         CANCEL_TOKEN.cancel();
     }
 
-    /// Draw the view onto the screen. If `null` is true, the draw will be done
-    /// with a null backend. This will update all state in the component tree,
-    /// but won't actually write to the terminal buffer. This should be enabled
-    /// when we know there will be subsequent draws (i.e. if there are more
-    /// events in the queue) to improve performance.
+    /// Draw the view onto the screen.
+    ///
+    /// If `null` is true, the draw will be done with a null buffer. This will
+    /// update all state in the component tree, but won't actually write to the
+    /// terminal buffer. This should be enabled when we know there will be
+    /// subsequent draws (i.e. if there are more events in the queue) to improve
+    /// performance.
     fn draw(&mut self, null: bool) -> anyhow::Result<()> {
         if null {
-            self.null_terminal.draw(|frame| self.state.draw(frame))?;
+            let size = self.terminal.size()?;
+            let mut buffer = Buffer::empty((Position::default(), size).into());
+            self.state.draw(&mut buffer);
         } else {
-            self.terminal.draw(|frame| self.state.draw(frame))?;
+            self.terminal
+                .draw(|frame| self.state.draw(frame.buffer_mut()))?;
         }
         Ok(())
     }
@@ -286,66 +284,6 @@ impl Drop for Tui {
         if let Err(err) = util::restore_terminal() {
             error!(error = err.deref(), "Error restoring terminal, sorry!");
         }
-    }
-}
-
-/// A null implementation of [Backend] that does nothing for all operations
-#[derive(Debug)]
-struct NullBackend;
-
-impl Backend for NullBackend {
-    type Error = Infallible;
-
-    fn draw<'a, I>(&mut self, _content: I) -> Result<(), Self::Error>
-    where
-        I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
-    {
-        Ok(())
-    }
-
-    fn hide_cursor(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn show_cursor(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn get_cursor_position(&mut self) -> Result<Position, Self::Error> {
-        Ok(Position::default())
-    }
-
-    fn set_cursor_position<P: Into<Position>>(
-        &mut self,
-        _position: P,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn clear(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn clear_region(
-        &mut self,
-        _clear_type: ClearType,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn size(&self) -> Result<Size, Self::Error> {
-        Ok(Size::default())
-    }
-
-    fn window_size(&mut self) -> Result<WindowSize, Self::Error> {
-        Ok(WindowSize {
-            columns_rows: Size::default(),
-            pixels: Size::default(),
-        })
-    }
-
-    fn flush(&mut self) -> Result<(), Self::Error> {
-        Ok(())
     }
 }
 

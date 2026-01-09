@@ -16,7 +16,7 @@ use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{
     DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
 };
-use ratatui::Frame;
+use ratatui::buffer::Buffer;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
@@ -169,10 +169,10 @@ impl TuiState {
     }
 
     /// Draw the view onto the screen
-    pub fn draw(&mut self, frame: &mut Frame) {
+    pub fn draw(&mut self, buffer: &mut Buffer) {
         match &mut self.0 {
             TuiStateInner::Loaded(state) => {
-                state.component_map = state.view.draw(frame);
+                state.component_map = state.view.draw(buffer);
             }
             TuiStateInner::Error {
                 collection_file,
@@ -182,7 +182,11 @@ impl TuiState {
                 // We can't show the real UI without a collection, so just show
                 // the error. We have a watcher on the file so when it changes,
                 // we'll reload it
-                View::draw_collection_load_error(frame, collection_file, error);
+                View::draw_collection_load_error(
+                    buffer,
+                    collection_file,
+                    error,
+                );
             }
         }
     }

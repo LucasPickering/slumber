@@ -14,7 +14,6 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{
-    Frame,
     buffer::Buffer,
     layout::{Position, Rect},
     widgets::{StatefulWidget, Widget},
@@ -207,7 +206,7 @@ impl<T: Component + ?Sized> ComponentExt for T {
 /// Using an associated type also makes prop types with lifetimes much less
 /// ergonomic.
 pub trait Draw<Props = ()>: Component {
-    /// Draw the component into the frame.
+    /// Draw the component into the canvas
     ///
     /// This is what each component will implement itself, but this **should not
     /// be called directly.** Instead, call [Canvas::draw] to ensure the
@@ -215,7 +214,7 @@ pub trait Draw<Props = ()>: Component {
     fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata);
 }
 
-/// A wrapper around a [Frame] that manages draw state for a single frame of
+/// A wrapper around a [Buffer] that manages draw state for a single frame of
 /// drawing.
 #[derive(derive_more::Debug)]
 pub struct Canvas<'buf> {
@@ -246,14 +245,14 @@ impl<'buf> Canvas<'buf> {
     /// [ComponentMap] of all drawn components.
     #[must_use]
     pub fn draw_all<T, Props>(
-        frame: &'buf mut Frame,
+        buffer: &'buf mut Buffer,
         root: &T,
         props: Props,
     ) -> ComponentMap
     where
         T: Component + Draw<Props>,
     {
-        Self::draw_all_area(frame, root, props, frame.area(), true)
+        Self::draw_all_area(buffer, root, props, *buffer.area(), true)
     }
 
     /// [Self::draw_all], but the caller determines the area and focus of the
@@ -261,7 +260,7 @@ impl<'buf> Canvas<'buf> {
     /// configured.
     #[must_use]
     pub fn draw_all_area<T, Props>(
-        frame: &'buf mut Frame,
+        buffer: &'buf mut Buffer,
         root: &T,
         props: Props,
         area: Rect,
@@ -270,7 +269,7 @@ impl<'buf> Canvas<'buf> {
     where
         T: Component + Draw<Props>,
     {
-        let mut canvas = Self::new(frame.buffer_mut());
+        let mut canvas = Self::new(buffer);
         canvas.draw(root, props, area, has_focus);
 
         // Merge portaled buffers into the main buffer
@@ -873,8 +872,11 @@ mod tests {
                 let mut component_map = ComponentMap::default();
                 if let Some(props) = props {
                     terminal.draw(|frame| {
-                        component_map =
-                            Canvas::draw_all(frame, component, props);
+                        component_map = Canvas::draw_all(
+                            frame.buffer_mut(),
+                            component,
+                            props,
+                        );
                     });
                 }
 
@@ -956,7 +958,8 @@ mod tests {
     ) {
         let mut component_map = ComponentMap::default();
         terminal.draw(|frame| {
-            component_map = Canvas::draw_all(frame, &component, props);
+            component_map =
+                Canvas::draw_all(frame.buffer_mut(), &component, props);
         });
 
         let mut update_context = UpdateContext {

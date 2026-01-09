@@ -147,7 +147,7 @@ where
         self.terminal.draw(|frame| {
             // Each draw gets a new canvas, as the Lord intended
             self.component_map = Canvas::draw_all_area(
-                frame,
+                frame.buffer_mut(),
                 &self.component,
                 props,
                 self.area,

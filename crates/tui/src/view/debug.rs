@@ -1,9 +1,9 @@
 use ratatui::{
-    Frame,
+    buffer::Buffer,
     layout::{Alignment, Constraint, Layout},
     style::{Color, Style},
     text::Text,
-    widgets::Paragraph,
+    widgets::{Paragraph, Widget},
 };
 use std::{cell::Cell, time::Instant};
 
@@ -20,12 +20,12 @@ impl DebugMonitor {
     /// top at the end.
     pub fn draw<T>(
         &self,
-        frame: &mut Frame,
-        draw_fn: impl FnOnce(&mut Frame) -> T,
+        buffer: &mut Buffer,
+        draw_fn: impl FnOnce(&mut Buffer) -> T,
     ) -> T {
         // Track elapsed time for the draw function
         let start = Instant::now();
-        let output = draw_fn(frame);
+        let output = draw_fn(buffer);
         let duration = start.elapsed();
         let fps = 1.0 / (start - self.last_draw_start.get()).as_secs_f32();
         self.last_draw_start.set(start);
@@ -33,15 +33,16 @@ impl DebugMonitor {
         // Draw in the bottom-right, on top of the help text
         let [_, area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
-                .areas(frame.area());
+                .areas(*buffer.area());
         let text = Text::from(format!(
             "FPS: {fps:.1} / Render: {duration}ms",
             duration = duration.as_millis()
         ))
         .style(Style::default().fg(Color::Black).bg(Color::Green));
-        frame.render_widget(
+        Widget::render(
             Paragraph::new(text).alignment(Alignment::Right),
             area,
+            buffer,
         );
         output
     }

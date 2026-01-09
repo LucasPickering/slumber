@@ -29,10 +29,11 @@ use crate::{
 use crossterm::clipboard::CopyToClipboard;
 use indexmap::IndexMap;
 use ratatui::{
-    Frame,
+    buffer::Buffer,
     crossterm::execute,
     layout::{Constraint, Layout},
     text::{Span, Text},
+    widgets::Widget,
 };
 use slumber_config::Action;
 use slumber_core::{
@@ -86,23 +87,24 @@ impl View {
         }
     }
 
-    /// Draw the view to screen. This needs access to the input engine in order
-    /// to render input bindings as help messages to the user.
+    /// Draw the view to a screen buffer
+    ///
+    /// Return the map of all drawn components.
     #[must_use]
-    pub fn draw<'f>(&'f self, frame: &'f mut Frame) -> ComponentMap {
+    pub fn draw<'f>(&'f self, buffer: &'f mut Buffer) -> ComponentMap {
         // If the screen is too small to render anything, don't try. This avoids
         // panics within ratatui from trying to render borders and margins
         // outside the buffer area
-        if frame.area().width <= 1 || frame.area().height <= 1 {
+        if buffer.area().width <= 1 || buffer.area().height <= 1 {
             return ComponentMap::default();
         }
 
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
             debug_monitor
-                .draw(frame, |frame| Canvas::draw_all(frame, &self.root, ()))
+                .draw(buffer, |buffer| Canvas::draw_all(buffer, &self.root, ()))
         } else {
-            Canvas::draw_all(frame, &self.root, ())
+            Canvas::draw_all(buffer, &self.root, ())
         }
     }
 
@@ -111,7 +113,7 @@ impl View {
     /// the collection file so we can retry initialization when the error is
     /// fixed.
     pub fn draw_collection_load_error(
-        frame: &mut Frame,
+        buffer: &mut Buffer,
         collection_file: &CollectionFile,
         error: &anyhow::Error,
     ) {
@@ -121,9 +123,9 @@ impl View {
             Constraint::Length(1), // A nice gap
             Constraint::Min(1),
         ])
-        .areas(frame.area());
-        frame.render_widget(error.generate(), error_area);
-        frame.render_widget(
+        .areas(*buffer.area());
+        Widget::render(error.generate(), error_area, buffer);
+        Widget::render(
             Text::styled(
                 format!(
                     "Watching {collection_file} for changes...\n{} to exit",
@@ -132,6 +134,7 @@ impl View {
                 context.styles.text.primary,
             ),
             message_area,
+            buffer,
         );
     }
 
@@ -316,7 +319,7 @@ mod tests {
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // Nothing new
-        terminal.draw(|frame| component_map = view.draw(frame));
+        terminal.draw(|frame| component_map = view.draw(frame.buffer_mut()));
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // *Now* the queue is drained

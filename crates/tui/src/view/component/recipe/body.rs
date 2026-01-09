@@ -433,10 +433,10 @@ mod tests {
         terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Open the editor
-        harness.clear_messages();
+        harness.messages().clear();
         component.int().send_key(KeyCode::Char('e')).assert_empty();
         let (file, on_complete) = assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::FileEdit {
                 file,
                 on_complete,
@@ -500,10 +500,10 @@ mod tests {
         ]]);
 
         // Open the editor
-        harness.clear_messages();
+        harness.messages().clear();
         component.int().send_key(KeyCode::Char('e')).assert_empty();
         let (file, on_complete) = assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::FileEdit {
                 file,
                 on_complete,

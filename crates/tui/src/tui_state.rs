@@ -825,7 +825,7 @@ mod tests {
         ($harness:expr, $state:expr, [$($expected:pat), *$(,)?]) => {
             // For each expected message, pop from the queue and handle it
             $(
-                match $harness.pop_message_wait().await {
+                match $harness.messages().pop_wait().await {
                     Some(message @ $expected) => {
                         $state.handle_message(message).unwrap();
                     }
@@ -840,7 +840,7 @@ mod tests {
                 }
             )*
             // We got all the messages
-            $harness.assert_messages_empty();
+            $harness.messages().assert_empty();
         }
     }
 
@@ -1010,7 +1010,7 @@ requests:
         TuiState::load(
             harness.database.clone(),
             collection_file,
-            harness.messages_tx().clone(),
+            harness.messages_tx(),
         )
     }
 

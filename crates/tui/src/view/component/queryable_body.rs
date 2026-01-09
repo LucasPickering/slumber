@@ -708,7 +708,7 @@ mod tests {
         })
         .await;
         // Success should push a notification
-        assert_matches!(harness.pop_message_now(), Message::Notify(_));
+        assert_matches!(harness.messages().pop_now(), Message::Notify(_));
         let file_content = fs::read_to_string(&path).await.unwrap();
         assert_eq!(file_content, TEXT);
 
@@ -724,6 +724,6 @@ mod tests {
         })
         .await;
         component.int().drain_draw().assert_empty();
-        assert_matches!(harness.pop_message_now(), Message::Error { .. });
+        assert_matches!(harness.messages().pop_now(), Message::Error { .. });
     }
 }

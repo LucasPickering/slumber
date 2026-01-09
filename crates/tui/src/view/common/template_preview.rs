@@ -301,11 +301,11 @@ mod tests {
         TemplatePreview::new(template, None, false, false);
         if should_send {
             assert_matches!(
-                harness.pop_message_now(),
+                harness.messages().pop_now(),
                 Message::TemplatePreview { .. }
             );
         } else {
-            harness.assert_messages_empty();
+            harness.messages().assert_empty();
         }
     }
 

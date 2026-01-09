@@ -454,7 +454,7 @@ pub async fn confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TestHarness, harness};
+    use crate::test_util::MessageQueue;
     use rstest::rstest;
     use slumber_config::CommandsConfig;
     use slumber_util::{TempDir, assert_matches, temp_dir};
@@ -467,7 +467,6 @@ mod tests {
     #[case::old_file_overwrite(true, true)]
     #[tokio::test]
     async fn test_save_file(
-        mut harness: TestHarness,
         temp_dir: TempDir,
         #[case] exists: bool,
         #[case] overwrite: bool,
@@ -478,15 +477,16 @@ mod tests {
         }
 
         // This will run in the background and save the file after prompts
+        let mut messages = MessageQueue::new();
         let handle = tokio::spawn(save_file(
-            harness.messages_tx().clone(),
+            messages.tx(),
             Some("default.txt".into()),
             b"hello!".as_slice().into(),
         ));
 
         // First we expect a prompt for the file path
         let (message, default, channel) = assert_matches!(
-            harness.pop_message_wait().await,
+            messages.pop_wait().await,
             Some(Message::Question(Question::Text {
                 message, default, channel, ..
             })) => {
@@ -500,7 +500,7 @@ mod tests {
         if exists {
             // Now we expect a confirmation prompt
             let (message, channel) = assert_matches!(
-                harness.pop_message_wait().await,
+                messages.pop_wait().await,
                 Some(Message::Question(Question::Confirm { message, channel })) => {
                     (message, channel)
                 },

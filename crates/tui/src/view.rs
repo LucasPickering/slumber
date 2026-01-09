@@ -295,7 +295,7 @@ mod tests {
         let mut view = View::new(
             &collection.into(),
             harness.database.clone(),
-            harness.messages_tx().clone(),
+            harness.messages_tx(),
         );
 
         // Initial events

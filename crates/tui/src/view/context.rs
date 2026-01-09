@@ -174,11 +174,11 @@ mod tests {
         ViewContext::send_message(Message::CollectionStartReload);
         ViewContext::send_message(Message::CollectionEdit { location: None });
         assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::CollectionStartReload
         );
         assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::CollectionEdit { .. }
         );
     }

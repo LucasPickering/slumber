@@ -523,7 +523,7 @@ mod tests {
             .assert_empty();
 
         let (actual_request_id, replies) = assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::Http(HttpMessage::FormSubmit {
                 request_id,
                 replies,
@@ -590,7 +590,7 @@ mod tests {
 
         // Our previous values were submitted
         let replies = assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::Http(HttpMessage::FormSubmit {
                 replies,
                 ..
@@ -656,7 +656,7 @@ mod tests {
             .send_keys([KeyCode::Enter, KeyCode::Enter])
             .assert_empty();
         let replies = assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::Http(HttpMessage::FormSubmit {
                 request_id,
                 replies,
@@ -712,7 +712,7 @@ mod tests {
         // Submit
         component.int().send_key(KeyCode::Enter).assert_empty();
         let replies = assert_matches!(
-            harness.pop_message_now(),
+            harness.messages().pop_now(),
             Message::Http(HttpMessage::FormSubmit {
                 request_id,
                 replies,

@@ -38,16 +38,14 @@ pub struct TestHarness {
     /// `RefCell` needed so multiple components can hang onto this at once.
     /// Otherwise we would have to pass it to every single draw and update fn.
     pub request_store: Rc<RefCell<RequestStore>>,
-    messages_tx: MessageSender,
-    messages_rx: UnboundedReceiver<Message>,
+    messages: MessageQueue,
 }
 
 impl TestHarness {
     /// Create a new test harness and initialize state
     pub fn new(collection: Collection) -> Self {
         TuiContext::init_test();
-        let (messages_tx, messages_rx) = mpsc::unbounded_channel();
-        let messages_tx: MessageSender = messages_tx.into();
+        let messages = MessageQueue::new();
         let database = CollectionDatabase::factory(());
         let request_store =
             Rc::new(RefCell::new(RequestStore::new(database.clone())));
@@ -55,14 +53,13 @@ impl TestHarness {
         ViewContext::init(
             Arc::clone(&collection),
             database.clone(),
-            messages_tx.clone(),
+            messages.tx(),
         );
         TestHarness {
             collection,
             database,
             request_store,
-            messages_tx,
-            messages_rx,
+            messages,
         }
     }
 
@@ -71,30 +68,56 @@ impl TestHarness {
         PersistentStore::new(self.database.clone())
     }
 
-    /// Get the message sender
-    pub fn messages_tx(&self) -> &MessageSender {
-        &self.messages_tx
+    /// Get a mutable reference to the message queue
+    pub fn messages(&mut self) -> &mut MessageQueue {
+        &mut self.messages
+    }
+
+    /// Get a clone of the message sender
+    pub fn messages_tx(&self) -> MessageSender {
+        self.messages.tx()
+    }
+}
+
+/// Test-only wrapper for the message channel receiver/sender
+///
+/// This is mostly used via [TestHarness], but you can also construct it
+/// directly for message queue uses that don't require a terminal/component.
+pub struct MessageQueue {
+    rx: UnboundedReceiver<Message>,
+    tx: MessageSender,
+}
+
+impl MessageQueue {
+    /// Open a new MPSC channel
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+        Self { rx, tx: tx.into() }
+    }
+
+    /// Get a new message sender
+    pub fn tx(&self) -> MessageSender {
+        self.tx.clone()
     }
 
     /// Assert that the message queue is empty
-    pub fn assert_messages_empty(&mut self) {
-        if let Ok(message) = self.messages_rx.try_recv() {
+    pub fn assert_empty(&mut self) {
+        if let Ok(message) = self.rx.try_recv() {
             panic!("Expected message queue to be empty, but got {message:?}");
         }
     }
 
     /// Pop the next message off the queue. Panic if the queue is empty
-    pub fn pop_message_now(&mut self) -> Message {
-        self.messages_rx.try_recv().expect("Message queue empty")
+    pub fn pop_now(&mut self) -> Message {
+        self.rx.try_recv().expect("Message queue empty")
     }
 
     /// Pop the next message off the queue, waiting if empty. This will wait
-    /// with a 1s timeout to prevent missing messages from blocking a test
-    /// forever. If the timeout expires, return `None`.
-    pub async fn pop_message_wait(&mut self) -> Option<Message> {
+    /// with a timeout to prevent missing messages from blocking a test forever.
+    /// If the timeout expires, return `None`.
+    pub async fn pop_wait(&mut self) -> Option<Message> {
         let message =
-            time::timeout(Duration::from_secs(1), self.messages_rx.recv())
-                .await;
+            time::timeout(Duration::from_millis(1000), self.rx.recv()).await;
         match message {
             Ok(Some(message)) => Some(message),
             Ok(None) => panic!("Message queue closed"),
@@ -103,8 +126,8 @@ impl TestHarness {
     }
 
     /// Clear all messages in the queue
-    pub fn clear_messages(&mut self) {
-        while self.messages_rx.try_recv().is_ok() {}
+    pub fn clear(&mut self) {
+        while self.rx.try_recv().is_ok() {}
     }
 }
 

@@ -90,12 +90,16 @@ impl TestHarness {
 
     /// Pop the next message off the queue, waiting if empty. This will wait
     /// with a 1s timeout to prevent missing messages from blocking a test
-    /// forever.
-    pub async fn pop_message_wait(&mut self) -> Message {
-        time::timeout(Duration::from_secs(1), self.messages_rx.recv())
-            .await
-            .expect("Message did not appear within 1s timeout")
-            .expect("Message queue closed")
+    /// forever. If the timeout expires, return `None`.
+    pub async fn pop_message_wait(&mut self) -> Option<Message> {
+        let message =
+            time::timeout(Duration::from_secs(1), self.messages_rx.recv())
+                .await;
+        match message {
+            Ok(Some(message)) => Some(message),
+            Ok(None) => panic!("Message queue closed"),
+            Err(_) => None,
+        }
     }
 
     /// Clear all messages in the queue

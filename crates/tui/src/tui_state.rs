@@ -812,6 +812,38 @@ mod tests {
     use slumber_util::{TempDir, assert_matches, temp_dir};
     use std::fs;
 
+    /// Drain all messages from the message queue and handle each one
+    /// sequentially. The list of drained messages must match the given list
+    /// of patterns.
+    ///
+    /// This is needed because [TuiState] doesn't drain the message queue on its
+    /// own. We could do this testing directly on the parent `Tui` struct, but
+    /// that adds additional complexity because that struct is designed to be
+    /// run as a persistent loop attached to a real terminal. This macro makes
+    /// it easy to test [TuiState] in a functional way without any I/O.
+    macro_rules! drain {
+        ($harness:expr, $state:expr, [$($expected:pat), *$(,)?]) => {
+            // For each expected message, pop from the queue and handle it
+            $(
+                match $harness.pop_message_wait().await {
+                    Some(message @ $expected) => {
+                        $state.handle_message(message).unwrap();
+                    }
+                    Some(other) => panic!(
+                        "Unexpected message {other:?} does not match pattern {expected}",
+                        expected = stringify!($pattern),
+                    ),
+                    None => panic!(
+                        "Message queue is empty but expected {expected}",
+                        expected = stringify!($pattern),
+                    )
+                }
+            )*
+            // We got all the messages
+            $harness.assert_messages_empty();
+        }
+    }
+
     /// Load a collection, then change the file to trigger a reload
     #[rstest]
     #[tokio::test]
@@ -821,12 +853,8 @@ mod tests {
     ) {
         // Start with an empty collection
         let file = collection_file(&temp_dir);
+        let mut state = tui_state(&harness, file.clone());
 
-        let mut state = TuiState::load(
-            harness.database.clone(),
-            file.clone(),
-            harness.messages_tx().clone(),
-        );
         // Make sure it loaded correctly
         let collection = assert_matches!(
             &state.0,
@@ -853,14 +881,15 @@ requests:
         )
         .unwrap();
 
-        // We need to manually plumb messages through. Normally the TUI loop
-        // does this
-        let message = harness.pop_message_wait().await;
-        assert_matches!(message, Message::CollectionStartReload);
-        state.handle_message(message).unwrap();
-        let message = harness.pop_message_wait().await;
-        assert_matches!(message, Message::CollectionEndReload { .. });
-        state.handle_message(message).unwrap();
+        // Handle all queued messages
+        drain!(
+            harness,
+            state,
+            [
+                Message::CollectionStartReload,
+                Message::CollectionEndReload { .. },
+            ]
+        );
 
         // And it's done!
         let collection = assert_matches!(
@@ -889,23 +918,15 @@ requests:
         fs::write(file.path(), "requests: 3").unwrap();
 
         // Should load into an error state
-        let mut state = TuiState::load(
-            harness.database.clone(),
-            file.clone(),
-            harness.messages_tx().clone(),
-        );
+        let mut state = tui_state(&harness, file.clone());
         assert_matches!(&state.0, TuiStateInner::Error { error, .. });
 
         // Update the file, make sure it's reflected
         fs::write(file.path(), "requests: {}").unwrap();
 
-        // We need to manually plumb messages through. Normally the TUI loop
-        // does this
-        let message = harness.pop_message_wait().await;
-        assert_matches!(message, Message::CollectionStartReload);
-        state.handle_message(message).unwrap();
-        // The error state loads the collection in the main thread so there's no
-        // CollectionEndReload message
+        // Handle all queued messages. The error state loads the collection in
+        // the main thread so there's no CollectionEndReload message
+        drain!(harness, state, [Message::CollectionStartReload]);
 
         // And it's done!
         let collection = assert_matches!(
@@ -923,12 +944,8 @@ requests:
     async fn test_reload_error(temp_dir: TempDir, mut harness: TestHarness) {
         // Start with an empty collection
         let file = collection_file(&temp_dir);
+        let mut state = tui_state(&harness, file.clone());
 
-        let mut state = TuiState::load(
-            harness.database.clone(),
-            file.clone(),
-            harness.messages_tx().clone(),
-        );
         // Make sure it loaded correctly
         let collection = assert_matches!(
             &state.0,
@@ -939,15 +956,13 @@ requests:
         // Update the file with an invalid colletion
         fs::write(file.path(), "requests: 3").unwrap();
 
-        // We need to manually plumb messages through. Normally the TUI loop
-        // does this
-        let message = harness.pop_message_wait().await;
-        assert_matches!(message, Message::CollectionStartReload);
-        state.handle_message(message).unwrap();
-        // Load failed!!
-        let message = harness.pop_message_wait().await;
-        assert_matches!(message, Message::Error { .. });
-        state.handle_message(message).unwrap();
+        // Handle all queued messages
+        drain!(
+            harness,
+            state,
+            // Load failed!!
+            [Message::CollectionStartReload, Message::Error { .. }]
+        );
 
         // We remain in valid mode with the original collection
         let collection = assert_matches!(
@@ -961,9 +976,6 @@ requests:
     #[rstest]
     #[tokio::test]
     async fn test_collection_switch(temp_dir: TempDir, harness: TestHarness) {
-        // Start with an empty collection
-        let file = collection_file(&temp_dir);
-
         // Create a second collection
         let other_collection = temp_dir.join("other_slumber.yml");
         fs::write(
@@ -972,11 +984,7 @@ requests:
         )
         .unwrap();
 
-        let mut state = TuiState::load(
-            harness.database.clone(),
-            file.clone(),
-            harness.messages_tx().clone(),
-        );
+        let mut state = tui_state(&harness, collection_file(&temp_dir));
         // Make sure it loaded correctly
         let collection = assert_matches!(
             &state.0,
@@ -992,6 +1000,18 @@ requests:
             TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
         );
         assert_eq!(collection.recipes.iter().count(), 1);
+    }
+
+    /// Create a new [TuiState]
+    fn tui_state(
+        harness: &TestHarness,
+        collection_file: CollectionFile,
+    ) -> TuiState {
+        TuiState::load(
+            harness.database.clone(),
+            collection_file,
+            harness.messages_tx().clone(),
+        )
     }
 
     /// Get a path to a collection file in a directory. The file will be created

@@ -487,9 +487,9 @@ mod tests {
         // First we expect a prompt for the file path
         let (message, default, channel) = assert_matches!(
             harness.pop_message_wait().await,
-            Message::Question(Question::Text {
+            Some(Message::Question(Question::Text {
                 message, default, channel, ..
-            }) => {
+            })) => {
                 (message, default, channel)
             },
         );
@@ -501,8 +501,8 @@ mod tests {
             // Now we expect a confirmation prompt
             let (message, channel) = assert_matches!(
                 harness.pop_message_wait().await,
-                Message::Question(Question::Confirm { message, channel }) => {
-                    (message,channel)
+                Some(Message::Question(Question::Confirm { message, channel })) => {
+                    (message, channel)
                 },
             );
             assert_eq!(

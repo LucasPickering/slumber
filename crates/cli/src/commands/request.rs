@@ -84,42 +84,6 @@ pub struct BuildRequestCommand {
     )]
     profile: Option<ProfileId>,
 
-    /// Override the value of a profile field (format: `field=value`)
-    ///
-    /// The given value is parsed as a template. To override multiple fields,
-    /// pass this flag multiple times.
-    ///
-    ///   slumber request my-recipe -o foo=bar -o 'username={{username}}'
-    #[clap(
-        long = "override",
-        short = 'o',
-        value_parser = parse_profile_override,
-        value_hint = ValueHint::Other, // Disable completions
-        value_name = "field=value",
-        verbatim_doc_comment,
-    )]
-    overrides: Vec<(String, Template)>,
-
-    /// Override a request header (format: `header=value`)
-    ///
-    /// The given value is parsed and rendered as a template. To override
-    /// multiple headers, pass this flag multiple times.
-    ///
-    ///   slumber request my-recipe -H 'X-My-Header={{my_header}}'
-    ///
-    /// To omit the header entirely, exclude the = and value:
-    ///
-    ///   slumber request my-recipe -H X-My-Header
-    #[clap(
-        long,
-        short = 'H',
-        value_parser = parse_recipe_override,
-        value_hint = ValueHint::Other, // Disable completions
-        value_name = "header=value",
-        verbatim_doc_comment,
-    )]
-    header: Vec<(String, BuildFieldOverride)>,
-
     /// Set credentials for HTTP Basic authentication
     ///
     /// The username and password are split on the first colon. This means the
@@ -153,6 +117,55 @@ pub struct BuildRequestCommand {
         value_name = "token",
     )]
     bearer: Option<Template>,
+
+    /// Override the request body
+    ///
+    /// The behavior of this override is dependent on the body's original type
+    /// in the recipe:
+    /// - If there is no body, the given override will become a raw body
+    /// - Raw and stream bodies are replaced directly
+    /// - JSON bodies are parsed as JSON before being rendered as a string
+    /// - Form bodies CANNOT be overridden by this flag
+    ///
+    /// TODO document how to override form fields
+    #[clap(long, visible_alias = "data", value_hint = ValueHint::Other)]
+    body: Option<Template>,
+
+    /// Override a request header (format: `header=value`)
+    ///
+    /// The given value is parsed and rendered as a template. To override
+    /// multiple headers, pass this flag multiple times.
+    ///
+    ///   slumber request my-recipe -H 'X-My-Header={{my_header}}'
+    ///
+    /// To omit the header entirely, exclude the = and value:
+    ///
+    ///   slumber request my-recipe -H X-My-Header
+    #[clap(
+        long,
+        short = 'H',
+        value_parser = parse_recipe_override,
+        value_hint = ValueHint::Other, // Disable completions
+        value_name = "header=value",
+        verbatim_doc_comment,
+    )]
+    header: Vec<(String, BuildFieldOverride)>,
+
+    /// Override the value of a profile field (format: `field=value`)
+    ///
+    /// The given value is parsed as a template. To override multiple fields,
+    /// pass this flag multiple times.
+    ///
+    ///   slumber request my-recipe -o foo=bar -o 'username={{username}}'
+    #[clap(
+        long = "override",
+        short = 'o',
+        value_parser = parse_profile_override,
+        value_hint = ValueHint::Other, // Disable completions
+        value_name = "field=value",
+        verbatim_doc_comment,
+    )]
+    overrides: Vec<(String, Template)>,
 
     /// Set the URL for the request
     ///
@@ -291,6 +304,7 @@ impl BuildRequestCommand {
             url: self.url,
             authentication,
             headers: IndexMap::from_iter(self.header),
+            body: self.body,
             ..Default::default()
         };
         let template_context = TemplateContext {

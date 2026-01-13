@@ -67,6 +67,14 @@ requests:
     url: "{{ host }}/file"
     body: "{{ file('test_data/data.json') }}"
 
+  urlencoded:
+    method: POST
+    url: "{{ host }}/urlencoded"
+    body:
+      type: form_urlencoded
+      data:
+        username: "{{ username }}"
+
   multipart:
     method: POST
     url: "{{ host }}/multipart"

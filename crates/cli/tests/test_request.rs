@@ -187,6 +187,42 @@ async fn test_request_override_body(
         .stdout(expected_body);
 }
 
+/// Override form fields with `--form`
+#[rstest]
+#[case::overwrite(&["--form", "username=over"], &[("username", "over")])]
+#[case::alias(&["-F", "username=over"], &[("username", "over")])]
+#[case::additional(
+    &["--form", "new=over"], &[("username", "username1"), ("new", "over")],
+)]
+#[case::omit(&["--form", "username"], &[])]
+#[tokio::test]
+async fn test_request_override_form(
+    #[case] args: &[&str],
+    #[case] expected_form: &[(&str, &str)],
+) {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/urlencoded"))
+        .respond_with(|req: &Request| {
+            ResponseTemplate::new(200).set_body_bytes(req.body.clone())
+        })
+        .mount(&server)
+        .await;
+
+    let (mut command, _) = common::slumber();
+    let assert = command
+        .args(["request", "urlencoded", "--exit-status"])
+        .args(args)
+        .env("HOST", host)
+        .assert()
+        .success();
+
+    let actual: Vec<(&str, &str)> =
+        serde_urlencoded::from_bytes(&assert.get_output().stdout).unwrap();
+    assert_eq!(&actual, expected_form);
+}
+
 /// Override authentication with `--basic` and `--bearer`
 #[rstest]
 #[case::basic(&["--basic", "user:hunter2"], "Basic dXNlcjpodW50ZXIy")]

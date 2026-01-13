@@ -5,7 +5,8 @@
 
 use crate::{
     collection::{
-        Authentication, ProfileId, RecipeBody, RecipeId, UnknownRecipeError,
+        Authentication, JsonTemplateError, ProfileId, RecipeId,
+        UnknownRecipeError,
     },
     http::content_type::ContentType,
 };
@@ -308,8 +309,9 @@ pub struct BuildOptions {
     /// Override individual fields in a URL-encoded or multipart form
     pub form_fields: IndexMap<String, BuildFieldOverride>,
     /// Override body. This should *not* be used for form bodies, since those
-    /// can be overridden on a field-by-field basis.
-    pub body: Option<RecipeBody>,
+    /// can be overridden on a field-by-field basis. For JSON bodies, the
+    /// template will be reparsed as a JSON template *before* rendering.
+    pub body: Option<Template>,
 }
 
 /// Modifications made to a single field (query param, header, etc.) in a
@@ -872,6 +874,11 @@ pub enum RequestBuildErrorKind {
     #[error(transparent)]
     Build(#[from] reqwest::Error),
 
+    /// Attempted to generate a cURL command for a request with non-UTF-8
+    /// values, which we don't support representing in the generated command
+    #[error("Non-text value in curl output")]
+    CurlInvalidUtf8(#[source] Utf8Error),
+
     /// Header name does not meet the HTTP spec
     #[error("Invalid header name `{header}`")]
     HeaderInvalidName {
@@ -894,10 +901,20 @@ pub enum RequestBuildErrorKind {
         error: RenderError,
     },
 
-    /// Attempted to generate a cURL command for a request with non-UTF-8
-    /// values, which we don't support representing in the generated command
-    #[error("Non-text value in curl output")]
-    CurlInvalidUtf8(#[source] Utf8Error),
+    /// Error parsing JSON override template
+    #[error("Invalid JSON override")]
+    Json(
+        #[from]
+        #[source]
+        JsonTemplateError,
+    ),
+
+    /// Passed a full-body override template for a form body. This is
+    /// disallowed; instead, overrides are applied by individual field
+    #[error(
+        "Cannot override form body; override individual form fields instead"
+    )]
+    OverrideFormBody,
 
     /// Error rendering query parameter
     #[error("Rendering query parameter `{parameter}`")]

@@ -44,7 +44,7 @@ mod tests;
 pub use models::*;
 
 use crate::{
-    collection::{Authentication, Recipe, RecipeBody},
+    collection::{Authentication, JsonTemplate, Recipe, RecipeBody},
     http::curl::CurlBuilder,
     render::TemplateContext,
 };
@@ -627,20 +627,44 @@ impl Recipe {
         options: &BuildOptions,
         context: &TemplateContext,
     ) -> Result<Option<RenderedBody>, RequestBuildErrorKind> {
-        let Some(body) = options.body.as_ref().or(self.body.as_ref()) else {
-            return Ok(None);
+        // Make sure the override+body combo is valid. If there's no body but
+        // there is an override, we'll make it a raw body
+        let body = match (&self.body, &options.body) {
+            // No body to return - get outta here!
+            (None, None) => return Ok(None),
+            // No body but we have an override. Build an empty raw body, and it
+            // will grab the override template below
+            (None, Some(_)) => &RecipeBody::Raw(Template::default()),
+            // Full-body override with a form is disallowed
+            (
+                Some(
+                    RecipeBody::FormUrlencoded(_)
+                    | RecipeBody::FormMultipart(_),
+                ),
+                Some(_),
+            ) => return Err(RequestBuildErrorKind::OverrideFormBody),
+            // Re-use the body. If there's an override, each branch below will
+            // grab it
+            (Some(body), _) => body,
         };
 
         let rendered = match body {
             // Raw body is always eagerly rendered
-            RecipeBody::Raw(body) => RenderedBody::Raw(
-                body.render_bytes(&context.streaming(false))
-                    .await
-                    .map_err(RequestBuildErrorKind::BodyRender)?,
-            ),
-            // Stream body is rendered as a stream (!!)
-            RecipeBody::Stream(body) => {
-                let output = body.render(&context.streaming(true)).await;
+            RecipeBody::Raw(template) => {
+                // Use override if it's given
+                let template = options.body.as_ref().unwrap_or(template);
+                RenderedBody::Raw(
+                    template
+                        .render_bytes(&context.streaming(false))
+                        .await
+                        .map_err(RequestBuildErrorKind::BodyRender)?,
+                )
+            }
+            RecipeBody::Stream(template) => {
+                // Use override if it's given
+                let template = options.body.as_ref().unwrap_or(template);
+                // Stream body is rendered as a stream (!!)
+                let output = template.render(&context.streaming(true)).await;
                 let source = output.stream_source().cloned();
                 let stream = output
                     .try_into_stream()
@@ -648,11 +672,21 @@ impl Recipe {
                     .boxed();
                 RenderedBody::Stream(BodyStream { stream, source })
             }
-            RecipeBody::Json(json) => RenderedBody::Json(
-                json.render(context)
+            RecipeBody::Json(json) => {
+                // Use override if it's given
+                let override_json: Option<JsonTemplate> = options
+                    .body
+                    .as_ref()
+                    // Reparse the template as JSON
+                    .map(|template| template.display().parse())
+                    .transpose()?;
+                let json = override_json.as_ref().unwrap_or(json);
+                let value = json
+                    .render(context)
                     .await
-                    .map_err(RequestBuildErrorKind::BodyRender)?,
-            ),
+                    .map_err(RequestBuildErrorKind::BodyRender)?;
+                RenderedBody::Json(value)
+            }
             RecipeBody::FormUrlencoded(fields) => {
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {

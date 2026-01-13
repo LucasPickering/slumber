@@ -126,10 +126,29 @@ pub struct BuildRequestCommand {
     /// - Raw and stream bodies are replaced directly
     /// - JSON bodies are parsed as JSON before being rendered as a string
     /// - Form bodies CANNOT be overridden by this flag
-    ///
-    /// TODO document how to override form fields
     #[clap(long, visible_alias = "data", value_hint = ValueHint::Other)]
     body: Option<Template>,
+
+    /// Override a request form field (format: `field=value`)
+    ///
+    /// The given value is parsed and rendered as a template. To override
+    /// multiple headers, pass this flag multiple times. Requires the recipe
+    /// to have a form_urlencoded or form_multipart body.
+    ///
+    ///   slumber request my-recipe -F 'my-field={{my_field}}'
+    ///
+    /// To omit the form field entirely, exclude the = and value:
+    ///
+    ///   slumber request my-recipe -F my-field
+    #[clap(
+        long,
+        short = 'F',
+        value_parser = parse_recipe_override,
+        value_hint = ValueHint::Other, // Disable completions
+        value_name = "field=value",
+        verbatim_doc_comment,
+    )]
+    form: Vec<(String, BuildFieldOverride)>,
 
     /// Override a request header (format: `header=value`)
     ///
@@ -305,7 +324,8 @@ impl BuildRequestCommand {
             authentication,
             headers: IndexMap::from_iter(self.header),
             body: self.body,
-            ..Default::default()
+            query_parameters: IndexMap::default(),
+            form_fields: IndexMap::from_iter(self.form),
         };
         let template_context = TemplateContext {
             selected_profile,

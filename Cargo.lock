@@ -3364,6 +3364,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "serde_yaml",
  "slumber_config",
  "slumber_core",

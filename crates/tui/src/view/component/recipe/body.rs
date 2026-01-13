@@ -84,21 +84,14 @@ impl RecipeBodyDisplay {
 
     /// If the user has applied a temporary edit to the body, get the override
     /// value. Return `None` to use the recipe's stock body.
-    pub fn override_value(&self) -> Option<RecipeBody> {
+    pub fn override_value(&self) -> Option<Template> {
         match self {
-            RecipeBodyDisplay::Raw(inner) if inner.body.is_overridden() => {
-                Some(RecipeBody::Raw(inner.body.template().clone()))
-            }
-            RecipeBodyDisplay::Json(inner) if inner.body.is_overridden() => {
-                // Parse the template as JSON. The inner templates within the
-                // JSON strings will be parsed into individual templates
-                let json: JsonTemplate = inner
-                    .body
-                    .template()
-                    .display()
-                    .parse()
-                    .reported(&ViewContext::messages_tx())?;
-                Some(RecipeBody::Json(json))
+            RecipeBodyDisplay::Raw(inner) | RecipeBodyDisplay::Json(inner)
+                if inner.body.is_overridden() =>
+            {
+                // For JSON bodies, the template will be parsed as JSON by the
+                // HTTP engine
+                Some(inner.body.template().clone())
             }
             // Form bodies override per-field so return None for them
             _ => None,
@@ -449,10 +442,7 @@ mod tests {
         on_complete(file);
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(
-            component.override_value(),
-            Some(RecipeBody::Raw("goodbye!".into()))
-        );
+        assert_eq!(component.override_value(), Some("goodbye!".into()));
         terminal.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
@@ -516,10 +506,7 @@ mod tests {
         on_complete(file);
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(
-            component.override_value(),
-            Some(RecipeBody::json(json!("goodbye!")).unwrap())
-        );
+        assert_eq!(component.override_value(), Some(override_text.into()));
         terminal.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
@@ -557,10 +544,7 @@ mod tests {
             RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
-        assert_eq!(
-            component.override_value(),
-            Some(RecipeBody::Raw("hello!".into()))
-        );
+        assert_eq!(component.override_value(), Some("hello!".into()));
         terminal.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),

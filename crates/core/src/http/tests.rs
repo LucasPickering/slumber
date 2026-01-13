@@ -10,7 +10,7 @@ use pretty_assertions::assert_eq;
 use reqwest::{Body, StatusCode, header};
 use rstest::rstest;
 use serde_json::json;
-use slumber_util::{Factory, assert_err, test_data_dir};
+use slumber_util::{Factory, assert_err, assert_result, test_data_dir};
 use std::{cell::RefCell, path, ptr};
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
@@ -699,28 +699,33 @@ async fn test_override_query(http_engine: HttpEngine) {
 
 /// Test overriding raw and JSON bodies in BuildOptions
 #[rstest]
-#[case::raw(Some("{{ username }}".into()), "{{ password }}".into(), "hunter2")]
-#[case::json(
-    Some(
-        RecipeBody::json(json!({"username": "{{ username }}"})).unwrap(),
-    ),
-    RecipeBody::json(json!({"username": "user1"})).unwrap(),
-    r#"{"username":"user1"}"#,
+#[case::raw(
+    Some("{{ username }}".into()), "{{ password }}".into(), Ok("hunter2"),
 )]
-// None -> Some
-#[case::add_body(None, "{{ password }}".into(), "hunter2")]
-// Change body type
-#[case::raw_to_json(
-    Some("{{ username }}".into()),
-    RecipeBody::json(json!({"username": "user1"})).unwrap(),
-    r#"{"username":"user1"}"#,
+#[case::json(
+    Some(RecipeBody::json(json!({"username": "{{ username }}"})).unwrap()),
+    r#"{"username":"my name is {{ username }}"}"#,
+    Ok(r#"{"username":"my name is user"}"#),
+)]
+// None -> raw
+#[case::add_body(None, "{{ password }}".into(), Ok("hunter2"))]
+#[case::error_json_invalid(
+    Some(RecipeBody::json("".into()).unwrap()),
+    "Valid json? nope! {",
+    Err("Invalid JSON override"),
+)]
+// Template override doesn't work with forms
+#[case::error_form(
+    Some(RecipeBody::FormUrlencoded(IndexMap::default())),
+    "",
+    Err("Cannot override form body; override individual form fields instead")
 )]
 #[tokio::test]
 async fn test_override_body(
     http_engine: HttpEngine,
     #[case] recipe_body: Option<RecipeBody>,
-    #[case] override_body: RecipeBody,
-    #[case] expected: &str,
+    #[case] override_body: Template,
+    #[case] expected: Result<&str, &str>,
 ) {
     let recipe = Recipe {
         body: recipe_body,
@@ -735,16 +740,16 @@ async fn test_override_body(
             ..Default::default()
         },
     );
-    let ticket = http_engine.build(seed, &context).await.unwrap();
+    let result = http_engine.build(seed, &context).await.map(|ticket| {
+        let body = ticket
+            .request
+            .body()
+            .and_then(|body| body.as_bytes())
+            .expect("Request body should be defined");
+        String::from_utf8(body.into()).unwrap()
+    });
 
-    assert_eq!(
-        ticket
-            .record
-            .body
-            .as_deref()
-            .map(|bytes| std::str::from_utf8(bytes).unwrap()),
-        Some(expected)
-    );
+    assert_result(result, expected);
 }
 
 /// Test overriding form body fields. This has to be a separate test

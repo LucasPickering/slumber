@@ -41,6 +41,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
   - `--header <header=value>` (`-H`) overrides a header
   - `--basic <username:password>` sets basic authentication
   - `--bearer <token>` sets bearer authentication
+  - `--body <body>` sets the request body
 - Add `slumber config` command (replaces `slumber show config`)
 - Add `slumber collection` command (replaces `slumber show collection`)
 - Add `slumber db --path` flag (replaces `slumber show paths db`)

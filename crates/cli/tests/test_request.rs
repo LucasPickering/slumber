@@ -157,6 +157,36 @@ async fn test_request_override_headers(
     }
 }
 
+/// Override body with `--body`
+#[rstest]
+#[case::overwrite(&["--body", r#"{"a":"{{ a }}"}"#], r#"{"a":"0"}"#)]
+#[case::alias(&["--data", r#"{"a":"{{ a }}"}"#], r#"{"a":"0"}"#)] // curl alias
+#[tokio::test]
+async fn test_request_override_body(
+    #[case] args: &[&str],
+    #[case] expected_body: &'static str,
+) {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/override"))
+        .respond_with(|req: &Request| {
+            // Echo the body
+            ResponseTemplate::new(200).set_body_bytes(req.body.clone())
+        })
+        .mount(&server)
+        .await;
+
+    let (mut command, _) = common::slumber();
+    command
+        .args(["request", "override", "--exit-status"])
+        .args(args)
+        .env("HOST", host)
+        .assert()
+        .success()
+        .stdout(expected_body);
+}
+
 /// Override authentication with `--basic` and `--bearer`
 #[rstest]
 #[case::basic(&["--basic", "user:hunter2"], "Basic dXNlcjpodW50ZXIy")]

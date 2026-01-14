@@ -53,8 +53,13 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
 #[cfg(all(not(feature = "cli"), feature = "tui"))]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    initialize_tracing(LevelFilter::OFF, false);
-    let collection_file = std::env::args().nth(1).map(String::into);
+    use std::env;
+    // Parse log level from the LOG variable
+    let level = env::var("LOG")
+        .map(|value| value.parse().unwrap())
+        .unwrap_or(LevelFilter::OFF);
+    initialize_tracing(level, false);
+    let collection_file = env::args().nth(1).map(String::into);
     slumber_tui::Tui::start(collection_file).await
 }
 

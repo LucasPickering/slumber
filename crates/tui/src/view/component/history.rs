@@ -236,7 +236,7 @@ mod tests {
             History::new(
                 recipe_id,
                 Some(profile_id),
-                &harness.request_store.borrow_mut(),
+                &harness.request_store(),
                 None,
             ),
         );
@@ -280,7 +280,7 @@ mod tests {
             History::new(
                 recipe_id,
                 Some(profile_id),
-                &harness.request_store.borrow_mut(),
+                &harness.request_store_mut(),
                 None,
             ),
         );
@@ -314,8 +314,7 @@ mod tests {
 
         // Make sure both the request store and the DB were updated
         let requests = harness
-            .request_store
-            .borrow_mut()
+            .request_store_mut()
             .load_summaries(Some(profile_id), recipe_id)
             .unwrap()
             .collect_vec();

@@ -707,62 +707,73 @@ impl LoadedState {
 
     /// Handle an [HttpMessage]
     fn handle_http(&mut self, message: HttpMessage) -> anyhow::Result<()> {
-        let mut disposition = None;
-        let request_id = match message {
+        let disposition = match message {
             HttpMessage::Triggered {
                 request_id,
                 profile_id,
                 recipe_id,
-            } => self
-                .request_store
-                .start(request_id, profile_id, recipe_id, None)
-                .id(),
+            } => {
+                self.request_store
+                    .start(request_id, profile_id, recipe_id, None);
+                // Request is triggered in the background. Switching to it could
+                // be jarring
+                RequestDisposition::Change(request_id)
+            }
             HttpMessage::Begin => {
+                let id = self.send_request()?;
                 // New requests should be shown immediately
-                disposition = Some(RequestDisposition::Select);
-                self.send_request()?
+                RequestDisposition::Select(id)
             }
             HttpMessage::Prompt { request_id, prompt } => {
+                let id = self.request_store.prompt(request_id, prompt).id();
                 // For any new prompt, jump to the form. This may potentially
                 // be annoying for delayed prompts. If so we can change it :)
-                disposition = Some(RequestDisposition::OpenForm);
-                self.request_store.prompt(request_id, prompt).id()
+                RequestDisposition::OpenForm(id)
             }
             HttpMessage::FormSubmit {
                 request_id,
                 replies: responses,
-            } => self.request_store.submit_form(request_id, responses).id(),
+            } => {
+                let id =
+                    self.request_store.submit_form(request_id, responses).id();
+                RequestDisposition::Change(id)
+            }
             HttpMessage::BuildError(error) => {
-                self.request_store.build_error(error).id()
+                let id = self.request_store.build_error(error).id();
+                RequestDisposition::Change(id)
             }
             HttpMessage::Loading(request) => {
-                self.request_store.loading(request).id()
+                let id = self.request_store.loading(request).id();
+                RequestDisposition::Change(id)
             }
-            HttpMessage::Complete(result) => self.complete_request(result).id(),
+            HttpMessage::Complete(result) => {
+                let id = self.complete_request(result).id();
+                RequestDisposition::Change(id)
+            }
             HttpMessage::Cancel(request_id) => {
-                self.request_store.cancel(request_id).id()
+                let id = self.request_store.cancel(request_id).id();
+                RequestDisposition::Change(id)
             }
             HttpMessage::DeleteRequest(request_id) => {
                 self.request_store.delete_request(request_id)?;
-                todo!()
+                RequestDisposition::Change(request_id)
             }
             HttpMessage::DeleteRecipe {
                 recipe_id,
                 profile_filter,
             } => {
-                self.request_store
+                let deleted = self
+                    .request_store
                     .delete_recipe_requests(profile_filter, &recipe_id)?;
-                todo!()
+                RequestDisposition::ChangeAll(deleted)
             }
         };
 
-        // Tell the UI about the state change. We have to refetch the request
-        // state from the store to enable partial borrowing. If we have the
-        // match block above return the state, the state's lifetime is attached
-        // to the lifetime of &self, meaning we can't get & mut to self.view
-        // below.
-        let request = self.request_store.get(request_id).unwrap();
-        self.view.update_request(request, disposition);
+        // Tell the UI that *something* changed in the request store, and
+        // optionally the disposition will tell it if anything should change.
+        // The view is responsible for checking the store to see if the current
+        // request was changed at all, and modify the view if so.
+        self.view.refresh_request(&self.request_store, disposition);
 
         Ok(())
     }

@@ -255,7 +255,7 @@ async fn test_life_cycle_loading_cancel() {
 
 #[rstest]
 fn test_load(harness: TestHarness) {
-    let mut store = harness.request_store.borrow_mut();
+    let mut store = harness.request_store_mut();
 
     // Generally we would expect this to be in the DB, but in this case omit
     // it so we can ensure the store *isn't* going to the DB for it
@@ -291,7 +291,7 @@ fn test_load(harness: TestHarness) {
 
 #[rstest]
 fn test_load_latest(harness: TestHarness) {
-    let mut store = harness.request_store.borrow_mut();
+    let mut store = harness.request_store_mut();
     let profile_id = ProfileId::factory(());
     let recipe_id = RecipeId::factory(());
 
@@ -329,7 +329,7 @@ fn test_load_latest_local(harness: TestHarness) {
         Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
     let request_id = exchange.id;
 
-    let mut store = harness.request_store.borrow_mut();
+    let mut store = harness.request_store_mut();
     store
         .requests
         .insert(exchange.id, RequestState::response(exchange));
@@ -343,7 +343,7 @@ async fn test_load_summaries(harness: TestHarness) {
     // reqwest doesn't let you build an error directly. We'll use this later
     let error = reqwest::get("fake").await.unwrap_err();
 
-    let mut store = harness.request_store.borrow_mut();
+    let mut store = harness.request_store_mut();
     let profile_id = ProfileId::factory(());
     let recipe_id = RecipeId::factory(());
 
@@ -484,7 +484,7 @@ fn test_delete_recipe_requests(harness: TestHarness) {
     let r2p2_id = create_exchange(&harness, Some(&profile2), Some(&recipe2)).id;
     let all_ids = [r1p1_id, r2p1_id, r1p2_id, r2p2_id];
 
-    let mut store = harness.request_store.borrow_mut();
+    let mut store = harness.request_store_mut();
 
     // Load everything into the cache. We'll do this after each modification to
     // make sure we're deleting from the cache AND the DB
@@ -546,7 +546,7 @@ fn test_delete_request(harness: TestHarness) {
     let id = create_exchange(&harness, None, None).id;
 
     // Load the exchange into the cache
-    let mut store = harness.request_store.borrow_mut();
+    let mut store = harness.request_store_mut();
     assert!(store.load(id).unwrap().is_some());
 
     store.delete_request(id).unwrap();

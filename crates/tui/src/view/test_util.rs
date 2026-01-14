@@ -77,7 +77,7 @@ where
         TestComponentBuilder {
             terminal,
             database: harness.database.clone(),
-            request_store: Rc::clone(&harness.request_store),
+            request_store: harness.request_store_owned(),
             area: terminal.area(),
             component: TestWrapper::new(data),
             props: None,

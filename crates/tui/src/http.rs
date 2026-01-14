@@ -477,12 +477,12 @@ impl RequestStore {
     }
 
     /// Delete all requests for a specific recipe+profile combo. Return the
-    /// number of deleted requests
+    /// IDs of the deleted requests
     pub fn delete_recipe_requests(
         &mut self,
         profile_filter: ProfileFilter,
         recipe_id: &RecipeId,
-    ) -> Result<usize, DatabaseError> {
+    ) -> Result<Vec<RequestId>, DatabaseError> {
         self.requests.retain(|_, state| {
             // Keep items that _don't_ match
             !(state.recipe_id() == recipe_id

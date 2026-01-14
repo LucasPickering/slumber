@@ -7,7 +7,7 @@ use crate::{
     message::{HttpMessage, Message},
     util::ResultReported,
     view::{
-        Component, RequestDisposition, ViewContext,
+        Component, ViewContext,
         common::actions::MenuItem,
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
@@ -167,20 +167,17 @@ impl PrimaryView {
 
     /// Update the Exchange pane with the selected request. Call this whenever
     /// a new request is selected or the selected request changes.
-    pub fn set_request(
-        &mut self,
-        selected_request: Option<&RequestState>,
-        disposition: Option<RequestDisposition>,
-    ) {
+    pub fn set_request(&mut self, selected_request: Option<&RequestState>) {
         self.exchange_pane = ExchangePane::new(
             selected_request,
             self.selected_recipe_node().map(|(_, node_type)| node_type),
         );
+    }
 
-        // If there's a new prompt, select the form pane
-        if disposition == Some(RequestDisposition::OpenForm) {
-            self.view.select_exchange_pane();
-        }
+    /// Select the Exchange pane. The parent uses this to select the form pane
+    /// when a new prompt is added to the form
+    pub fn select_exchange_pane(&mut self) {
+        self.view.select_exchange_pane();
     }
 
     /// Open the history sidebar for current recipe+profile

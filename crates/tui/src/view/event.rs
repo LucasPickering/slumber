@@ -8,7 +8,7 @@ use crate::{
 };
 use ratatui::layout::Position;
 use slumber_config::Action;
-use slumber_core::{collection::RecipeId, http::RequestId};
+use slumber_core::http::RequestId;
 use std::{
     any::{self, Any},
     collections::VecDeque,
@@ -105,10 +105,10 @@ impl Event {
 /// Definition of what request(s) to start deletion for
 #[derive(Debug)]
 pub enum DeleteTarget {
-    /// Delete a single request
-    Request(RequestId),
-    /// Delete all requests for a recipe
-    Recipe(RecipeId),
+    /// Delete the selected request
+    Request,
+    /// Delete all requests for the selected recipe
+    Recipe,
 }
 
 /// Wrapper for matching an event to various expected cases.

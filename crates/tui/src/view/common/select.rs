@@ -342,33 +342,6 @@ impl<Item, State: SelectState> Select<Item, State> {
         self.select_delta(delta);
     }
 
-    /// Remove the selected item from the list. This will slide everything after
-    /// that item up one slot, so that the item after it is selected. If the
-    /// selected item was at the end of the list, the item before it will be
-    /// selected. If the list is now empty, the selection is cleared.
-    pub fn delete_selected(&mut self) {
-        let state = self.state.get_mut();
-        let selected_index = state.selected();
-        if let Some(index) = selected_index {
-            self.items.remove(index);
-
-            // There are two ways the selection could now be invalid:
-            // - Deleted the only item in the list. Clear the selection
-            // - Deleted the item at the end of the list. Select the item before
-            //   it
-            // Otherwise, we implicitly selected the item after the deleted one,
-            // and can proceed as usual
-            if self.items.is_empty() {
-                state.select(None);
-            } else if index == self.items.len() {
-                state.select(Some(index - 1));
-            }
-
-            // This will do nothing if the selection is now empty
-            self.emit_for_selected(SelectEvent::Select);
-        }
-    }
-
     /// Move some number of items up or down the list. Selection will wrap if
     /// it underflows/overflows.
     fn select_delta(&mut self, delta: isize) {
@@ -811,50 +784,6 @@ mod tests {
 
         component.int().send_key(KeyCode::Up).assert_empty();
         assert_eq!(component.selected(), Some(&"a"));
-    }
-
-    /// Test deleting the selected item
-    #[rstest]
-    fn test_delete(harness: TestHarness, terminal: TestTerminal) {
-        let items = vec!["a", "b", "c"];
-        let select: Select<&str, ListState> = Select::builder(items)
-            .subscribe([SelectEventType::Select])
-            .build();
-        let mut component = TestComponent::new(&harness, &terminal, select);
-
-        // Start by selecting the second item, so we can assert that we select
-        // the one after it when possible
-        component
-            .int()
-            .drain_draw() // Handle initial state
-            .send_key(KeyCode::Down)
-            .assert_emitted([SelectEvent::Select(0), SelectEvent::Select(1)]);
-        assert_eq!(component.selected(), Some(&"b"));
-
-        // Delete `b`, `c` should get selected because it's below
-        component.delete_selected();
-        assert_eq!(component.selected(), Some(&"c"));
-        component
-            .int()
-            .drain_draw()
-            .assert_emitted([SelectEvent::Select(1)]);
-
-        // Delete `c`; there's nothing left below so select above
-        component.delete_selected();
-        assert_eq!(component.selected(), Some(&"a"));
-        component
-            .int()
-            .drain_draw()
-            .assert_emitted([SelectEvent::Select(0)]);
-
-        // Delete `a`, nothing left to select
-        component.delete_selected();
-        assert_eq!(component.selected(), None);
-        component.int().drain_draw().assert_emitted([]);
-
-        // Delete nothing; nothing should happen
-        component.delete_selected();
-        component.int().drain_draw().assert_emitted([]);
     }
 
     /// Test select emitted event

@@ -23,6 +23,7 @@ use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{collection::ProfileId, http::RequestId};
 use slumber_template::Template;
+use tracing::warn;
 
 /// The root view component
 #[derive(Debug)]
@@ -227,9 +228,15 @@ impl Root {
 
     /// Open a modal to confirm deletion one or more requests
     fn delete_requests(&mut self, target: DeleteTarget) {
-        let profile_id = self.primary_view.selected_profile_id().cloned();
         match target {
-            DeleteTarget::Request(request_id) => {
+            DeleteTarget::Request => {
+                let Some(request_id) = self.selected_request_id else {
+                    // It shouldn't be possible to trigger this without a
+                    // selected request
+                    warn!("Cannot delete request; no request selected");
+                    return;
+                };
+
                 self.questions.open(QuestionModal::confirm(
                     "Delete Request?".into(),
                     move |answer| {
@@ -241,7 +248,17 @@ impl Root {
                     },
                 ));
             }
-            DeleteTarget::Recipe(recipe_id) => {
+            DeleteTarget::Recipe => {
+                let Some(recipe_id) =
+                    self.primary_view.selected_recipe_id().cloned()
+                else {
+                    // It shouldn't be possible to trigger this without a
+                    // selected recipe
+                    warn!("Cannot delete recipe request; no recipe selected");
+                    return;
+                };
+                let profile_id =
+                    self.primary_view.selected_profile_id().cloned();
                 self.delete_requests_confirm.open(
                     DeleteRecipeRequestsModal::new(profile_id, recipe_id),
                 );

@@ -315,16 +315,6 @@ impl ExchangePaneContent {
             state,
         }
     }
-
-    /// Delete the selected request
-    fn delete_request(&self) {
-        if let Some(request) = self.state.request() {
-            // Root handles deletion so it can show a confirm modal
-            ViewContext::push_event(Event::DeleteRequests(
-                DeleteTarget::Request(request.id()),
-            ));
-        }
-    }
 }
 
 impl Component for ExchangePaneContent {
@@ -336,7 +326,12 @@ impl Component for ExchangePaneContent {
         event
             .m()
             .action(|action, propagate| match action {
-                Action::Delete => self.delete_request(),
+                Action::Delete if self.state.request().is_some() => {
+                    // Root handles deletion so it can show a confirm modal
+                    ViewContext::push_event(Event::DeleteRequests(
+                        DeleteTarget::Request,
+                    ));
+                }
                 _ => propagate.set(),
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
@@ -374,7 +369,11 @@ impl Component for ExchangePaneContent {
                         response.save_response_body();
                     }
                 }
-                ExchangePaneMenuAction::DeleteRequest => self.delete_request(),
+                ExchangePaneMenuAction::DeleteRequest => {
+                    ViewContext::push_event(Event::DeleteRequests(
+                        DeleteTarget::Request,
+                    ));
+                }
             })
     }
 

@@ -15,7 +15,14 @@ use ratatui::{
 use rstest::fixture;
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use slumber_util::Factory;
-use std::{cell::RefCell, future::Future, rc::Rc, sync::Arc, time::Duration};
+use std::{
+    cell::RefCell,
+    future::Future,
+    ops::{Deref, DerefMut},
+    rc::Rc,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver},
     task::LocalSet,
@@ -37,7 +44,7 @@ pub struct TestHarness {
     pub database: CollectionDatabase,
     /// `RefCell` needed so multiple components can hang onto this at once.
     /// Otherwise we would have to pass it to every single draw and update fn.
-    pub request_store: Rc<RefCell<RequestStore>>,
+    request_store: Rc<RefCell<RequestStore>>,
     messages: MessageQueue,
 }
 
@@ -61,6 +68,21 @@ impl TestHarness {
             request_store,
             messages,
         }
+    }
+
+    /// Get an immutable reference to the request store
+    pub fn request_store(&self) -> impl Deref<Target = RequestStore> {
+        self.request_store.borrow()
+    }
+
+    /// Get a mutable reference to the request store
+    pub fn request_store_mut(&self) -> impl DerefMut<Target = RequestStore> {
+        self.request_store.borrow_mut()
+    }
+
+    /// Get an `Rc` clone to the request store
+    pub fn request_store_owned(&self) -> Rc<RefCell<RequestStore>> {
+        Rc::clone(&self.request_store)
     }
 
     /// Get a [PersistentStore] pointing at the test database

@@ -610,13 +610,13 @@ impl CollectionDatabase {
         Ok(())
     }
 
-    /// Delete all requests for a recipe+profile combo. Return the number of
+    /// Delete all requests for a recipe+profile combo. Return the IDs of the
     /// deleted requests
     pub fn delete_recipe_requests(
         &self,
         profile_id: ProfileFilter,
         recipe_id: &RecipeId,
-    ) -> Result<usize, DatabaseError> {
+    ) -> Result<Vec<RequestId>, DatabaseError> {
         info!(
             collection = ?self.metadata(),
             %recipe_id,
@@ -625,22 +625,30 @@ impl CollectionDatabase {
         );
         self.database
             .connection()
-            .execute(
-                // `IS` needed for profile_id so `None` will match `NULL`.
-                // We want to dynamically ignore the profile filter if the user
-                // is asking for all profiles. Dynamically modifying the query
-                // is really ugly so the easiest thing is to use an additional
-                // parameter to bypass the filter
+            .prepare(
                 "DELETE FROM requests_v2 WHERE collection_id = :collection_id
                     AND (:ignore_profile_id OR profile_id IS :profile_id)
-                    AND recipe_id = :recipe_id",
-                named_params! {
-                    ":collection_id": self.collection_id,
-                    ":ignore_profile_id": profile_id == ProfileFilter::All,
-                    ":profile_id": profile_id,
-                    ":recipe_id": recipe_id,
-                },
+                    AND recipe_id = :recipe_id
+                RETURNING id",
             )
+            .and_then(|mut stmt| {
+                stmt.query_map(
+                    named_params! {
+                        ":collection_id": self.collection_id,
+                        // `IS` needed for profile_id so `None` will match
+                        // `NULL`. We want to dynamically ignore the profile
+                        // filter if the user is asking for all profiles.
+                        // Dynamically modifying the query is really ugly so the
+                        // easiest thing is to use an additional parameter to
+                        // bypass the filter
+                        ":ignore_profile_id": profile_id == ProfileFilter::All,
+                        ":profile_id": profile_id,
+                        ":recipe_id": recipe_id,
+                    },
+                    |row| row.get::<_, RequestId>("id"),
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()
+            })
             .map_err({
                 DatabaseError::add_context(format!(
                     "Deleting requests for recipe `{recipe_id}`"

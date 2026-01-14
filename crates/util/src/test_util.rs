@@ -179,7 +179,7 @@ macro_rules! assert_matches {
         match $expr {
             // If a conditional was given, check it. This has to be a separate
             // arm to prevent borrow fighting over the matched value
-            $(value @ $pattern if !$condition => {
+            $(ref value @ $pattern if !$condition => {
                 panic!(
                     "Value {value:?} does not match condition {condition}",
                     condition = stringify!($condition),

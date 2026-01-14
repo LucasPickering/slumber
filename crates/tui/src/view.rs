@@ -17,7 +17,7 @@ pub use util::{PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
     context::TuiContext,
-    http::{RequestConfig, RequestState},
+    http::{RequestConfig, RequestState, RequestStore},
     input::InputEvent,
     message::MessageSender,
     view::{
@@ -39,6 +39,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
+    http::RequestId,
 };
 use slumber_template::Template;
 use std::{
@@ -165,14 +166,15 @@ impl View {
         self.root.profile_overrides()
     }
 
-    /// Update the UI to reflect the current state of an HTTP request. If
-    /// `select` is `true`, select the request too.
-    pub fn update_request(
+    /// Update the displayed request based on a change in HTTP request state.
+    /// If the update is not relevant to what's on screen (e.g. an unselected
+    /// request was modified), this will do nothing.
+    pub fn refresh_request(
         &mut self,
-        state: &RequestState,
-        disposition: Option<RequestDisposition>,
+        store: &RequestStore,
+        disposition: RequestDisposition,
     ) {
-        self.root.update_request(state, disposition);
+        self.root.refresh_request(store, disposition);
     }
 
     /// Ask the user a [Question]
@@ -270,15 +272,23 @@ where
     }
 }
 
-/// Hint to the view about how state should be updated according to a change in
-/// request state
+/// Hint to the view about how an HTTP request state update should be handled
 #[derive(Debug, PartialEq)]
 pub enum RequestDisposition {
-    /// Updated request should be selected as the active request. Use this when
-    /// a new request is created or a new recipe/profile was selected.
-    Select,
-    /// Select the prompt form pane. Use this when a new prompt is visible.
-    OpenForm,
+    /// A request was changed in some way. If the request is visible, the UI
+    /// will need to be updated.
+    Change(RequestId),
+    /// Multiple requests were changed. If any of these requests is visible, the
+    /// UI will need to be updated.
+    ChangeAll(Vec<RequestId>),
+    /// Updated request should be selected as the active request. The selection
+    /// will only be made if the request matches the current recipe/profile. Use
+    /// this when a new request is created or a new recipe/profile was selected.
+    Select(RequestId),
+    /// Select the prompt form pane. Use this when a new prompt is visible and
+    /// needs a response from the user. If the prompting request is not
+    /// currently selected, do *not* make any changes.
+    OpenForm(RequestId),
 }
 
 #[cfg(test)]
@@ -310,7 +320,7 @@ mod tests {
         // Events should *still* be in the queue, because we haven't drawn yet
         let mut component_map = ComponentMap::default();
         let mut persisent_store = harness.persistent_store();
-        let mut request_store = harness.request_store.borrow_mut();
+        let mut request_store = harness.request_store_mut();
         view.handle_events(UpdateContext {
             component_map: &component_map,
             persistent_store: &mut persisent_store,

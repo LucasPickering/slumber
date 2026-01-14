@@ -117,7 +117,7 @@ impl Root {
     /// Load a request from the store and select it
     fn load_and_select_request(
         &mut self,
-        request_store: &mut RequestStore,
+        store: &mut RequestStore,
         request_id: Option<RequestId>,
     ) -> anyhow::Result<()> {
         let state = if let Some(request_id) = request_id {
@@ -126,17 +126,14 @@ impl Root {
             // request selected before exiting). But somehow we just fall back
             // to the most recent request for the recipe, as desired. I don't
             // understand it, but I'll take it...
-            request_store.load(request_id)?
+            store.load(request_id)?
         } else if let Some(recipe_id) = self.primary_view.selected_recipe_id() {
-            // We don't have a valid persisted ID, find the most recent for
-            // the current recipe+profile
-
             // If someone asked for the latest request for a recipe, but we
             // already have another request of that same recipe selected,
             // ignore the request. This gets around a bug during
             // initialization where the recipe list asks for the latest
             // request *after* the selected ID is loaded from persistence
-            let selected_request = self.selected_request(request_store);
+            let selected_request = self.selected_request(store);
             let profile_id = self.selected_profile_id();
             if selected_request.is_some_and(|request| {
                 request.recipe_id() == recipe_id
@@ -144,14 +141,15 @@ impl Root {
             }) {
                 selected_request
             } else {
-                request_store.load_latest(profile_id, recipe_id)?
+                store.load_latest(profile_id, recipe_id)?
             }
         } else {
             None
         };
 
         if let Some(state) = state {
-            self.update_request(state, Some(RequestDisposition::Select));
+            let id = state.id();
+            self.refresh_request(store, RequestDisposition::Select(id));
         } else {
             // We switch to a recipe with no request, or just deleted the last
             // request for a recipe
@@ -163,22 +161,60 @@ impl Root {
 
     /// Update the UI to reflect the current state of an HTTP request. If
     /// `select` is `true`, select the request too.
-    pub fn update_request(
+    pub fn refresh_request(
         &mut self,
-        state: &RequestState,
-        disposition: Option<RequestDisposition>,
+        store: &RequestStore,
+        disposition: RequestDisposition,
     ) {
-        // Select it if requested and we're on the current recipe/profile
-        if disposition == Some(RequestDisposition::Select)
-            && state.profile_id() == self.selected_profile_id()
-            && Some(state.recipe_id()) == self.primary_view.selected_recipe_id()
-        {
-            self.selected_request_id = Some(state.id());
-        }
+        match disposition {
+            RequestDisposition::Change(request_id) => {
+                // If the selected request was changed, rebuild state.
+                // Otherwise, we don't care about the change
+                if Some(request_id) == self.selected_request_id {
+                    // If the request isn't in the store, that means it was just
+                    // deleted
+                    let state = store.get(request_id);
+                    self.primary_view.set_request(state);
+                }
+            }
+            RequestDisposition::ChangeAll(request_ids) => {
+                // Check if the selected request changed
+                if let Some(request_id) = self.selected_request_id
+                    && request_ids.contains(&request_id)
+                {
+                    // If the request isn't in the store, that means it was just
+                    // deleted
+                    let state = store.get(request_id);
+                    self.primary_view.set_request(state);
+                }
+            }
+            RequestDisposition::Select(request_id) => {
+                let Some(state) = store.get(request_id) else {
+                    // If the request is not in the store, it can't be selected
+                    return;
+                };
 
-        // If the updated request is the one in view, rebuild the view
-        if Some(state.id()) == self.selected_request_id {
-            self.primary_view.set_request(Some(state), disposition);
+                // Select only if it matches the current recipe/profile
+                let selected_recipe_id = self.primary_view.selected_recipe_id();
+                if state.profile_id() == self.selected_profile_id()
+                    && Some(state.recipe_id()) == selected_recipe_id
+                {
+                    self.selected_request_id = Some(state.id());
+                    self.primary_view.set_request(Some(state));
+                }
+            }
+            RequestDisposition::OpenForm(request_id) => {
+                // If a new prompt appears for a request that isn't selected, we
+                // *don't* want to switch to it
+                if Some(request_id) == self.selected_request_id {
+                    // State *should* be Some here because the form just updated
+                    let state = store.get(request_id);
+                    // Update the view with the new prompt
+                    self.primary_view.set_request(state);
+                    // Select the form pane
+                    self.primary_view.select_exchange_pane();
+                }
+            }
         }
     }
 
@@ -186,7 +222,7 @@ impl Root {
     /// no request available
     fn clear_request(&mut self) {
         self.selected_request_id = None;
-        self.primary_view.set_request(None, None);
+        self.primary_view.set_request(None);
     }
 
     /// Open a modal to confirm deletion one or more requests
@@ -373,7 +409,7 @@ mod tests {
         http::Exchange,
         test_util::by_id,
     };
-    use slumber_util::Factory;
+    use slumber_util::{Factory, assert_matches};
     use terminput::KeyCode;
 
     /// Test that, on first render, the view loads the most recent historical
@@ -535,14 +571,14 @@ mod tests {
         assert_eq!(component.selected_request_id, Some(exchange2.id));
     }
 
-    /// Test "Delete Requests" action via both the recipe pane
+    /// Test "Delete Requests" action via the recipe pane
     #[rstest]
     fn test_delete_recipe_requests(
-        harness: TestHarness,
+        mut harness: TestHarness,
         #[with(80, 20)] terminal: TestTerminal,
     ) {
-        let recipe_id = harness.collection.first_recipe_id();
-        let profile_id = harness.collection.first_profile_id();
+        let recipe_id = harness.collection.first_recipe_id().clone();
+        let profile_id = harness.collection.first_profile_id().clone();
         let old_exchange =
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         let new_exchange =
@@ -582,13 +618,21 @@ mod tests {
             .send_keys([KeyCode::Enter])
             .assert_empty();
 
-        assert_eq!(component.selected_request_id, None);
+        // It'd be nice to test that the request is actually deleted, but I
+        // haven't figured out a way to test messages in the event loop.
+        assert_matches!(
+            harness.messages().pop_now(),
+            Message::Http(HttpMessage::DeleteRecipe {
+                recipe_id: ref rid,
+                profile_filter: ref pf
+            }) if rid == &recipe_id && pf == &Some(profile_id).into()
+        );
     }
 
     /// Test "Delete Request" action, which is available via the
     /// Request/Response pane
     #[rstest]
-    fn test_delete_request(harness: TestHarness, terminal: TestTerminal) {
+    fn test_delete_request(mut harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = harness.collection.first_recipe_id();
         let profile_id = harness.collection.first_profile_id();
         let old_exchange =
@@ -614,8 +658,7 @@ mod tests {
         component
             .int()
             .action(&["Delete Request"])
-            // Decline
-            .send_keys([KeyCode::Left, KeyCode::Enter])
+            .send_keys([KeyCode::Left, KeyCode::Enter]) // Decline
             .assert_empty();
 
         // Same request is still selected
@@ -624,12 +667,15 @@ mod tests {
         component
             .int()
             .action(&["Delete Request"])
-            // Confirm
-            .send_keys([KeyCode::Enter])
+            .send_keys([KeyCode::Enter]) // Confirm
             .assert_empty();
 
-        // New exchange is gone
-        assert_eq!(component.selected_request_id, Some(old_exchange.id));
-        assert_eq!(harness.request_store.borrow().get(new_exchange.id), None);
+        // It'd be nice to test that the request is actually deleted, but I
+        // haven't figured out a way to test messages in the event loop.
+        assert_matches!(
+            harness.messages().pop_now(),
+            Message::Http(HttpMessage::DeleteRequest(request_id))
+                if request_id == new_exchange.id
+        );
     }
 }

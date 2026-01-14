@@ -361,7 +361,8 @@ fn test_delete_recipe_requests(
     assert_eq!(
         collection1
             .delete_recipe_requests(profile_filter, &recipe_id)
-            .unwrap(),
+            .unwrap()
+            .len(),
         expected_deleted
     );
     assert_eq!(collection1.count_requests(), 6 - expected_deleted);

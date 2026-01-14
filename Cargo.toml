@@ -38,7 +38,7 @@ dirs = "5.0.1"
 env-lock = "1.0.1"
 futures = "0.3.28"
 indexmap = {version = "2.0.0", default-features = false}
-itertools = "0.13.0"
+itertools = "0.14.0"
 mime = "0.3.17"
 pretty_assertions = "1.4.0"
 proptest = "1.5.0"

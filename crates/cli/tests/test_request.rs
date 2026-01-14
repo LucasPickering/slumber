@@ -51,6 +51,8 @@ async fn test_request() {
     &["--override", "a=1", "--override", "b=2"], r#"{"a":"1","b":"2"}"#
 )]
 #[case::alias(&["-o", "a=1"], r#"{"a":"1","b":"0"}"#)]
+// Second replaces first
+#[case::duplicate(&["-o", "a=1", "-o", "a=2"], r#"{"a":"2","b":"0"}"#)]
 #[tokio::test]
 async fn test_request_override_profile(
     #[case] args: &[&str],
@@ -61,10 +63,7 @@ async fn test_request_override_profile(
     let host = server.uri();
     Mock::given(matchers::method("POST"))
         .and(matchers::path("/override"))
-        // Echo the body
-        .respond_with(|req: &Request| {
-            ResponseTemplate::new(200).set_body_bytes(req.body.clone())
-        })
+        .respond_with(echo_body)
         .mount(&server)
         .await;
 
@@ -111,14 +110,61 @@ async fn test_request_override_url(
         .stdout(expected_url);
 }
 
+/// Override query parameters with `--query`
+#[rstest]
+#[case::overwrite_one_to_one(
+    &["--query", "foo=over"], "foo=over&many=baz&many=blorp",
+)]
+#[case::overwrite_one_to_two(
+    &["--query", "foo=one", "--query", "foo=two"],
+    // The ordering is because first instance of foo is a replacement while the
+    // second is an insert. This is determined by the HTTP engine implementation
+    "foo=one&many=baz&many=blorp&foo=two",
+)]
+#[case::overwrite_two_to_one(&["--query", "many=over"], "foo=bar&many=over")]
+#[case::additional(
+    &["--query", "add=over"], "foo=bar&many=baz&many=blorp&add=over",
+)]
+#[case::omit(&["--query", "many"], "foo=bar")]
+#[tokio::test]
+async fn test_request_override_query(
+    #[case] args: &[&str],
+    #[case] expected_query: &'static str,
+) {
+    // Mock HTTP response
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("POST"))
+        .and(matchers::path("/override"))
+        .respond_with(|req: &Request| {
+            let query = req.url.query().expect("Missing query string");
+            ResponseTemplate::new(200).set_body_string(query)
+        })
+        .mount(&server)
+        .await;
+
+    let (mut command, _) = common::slumber();
+    command
+        .args(["request", "override", "--exit-status"])
+        .args(args)
+        .env("HOST", host)
+        .assert()
+        .success()
+        .stdout(expected_query);
+}
+
 /// Override headers with `--header`
 #[rstest]
 #[case::overwrite(&["--header", "x-test=over"], &[("x-test", Some("over"))])]
 #[case::alias(&["-H", "x-test=over"], &[("x-test", Some("over"))])]
+#[case::duplicate(
+    // Second replaces first
+    &["-H", "x-test=1", "-H", "x-test=2"], &[("x-test", Some("2"))],
+)]
 #[case::additional(&["--header", "x-new=over"], &[("x-new", Some("over"))])]
 #[case::omit(&["--header", "x-test"], &[("x-test", None)])]
 #[tokio::test]
-async fn test_request_override_headers(
+async fn test_request_override_header(
     #[case] args: &[&str],
     #[case] expected_headers: &[(&str, Option<&str>)],
 ) {
@@ -170,10 +216,7 @@ async fn test_request_override_body(
     let host = server.uri();
     Mock::given(matchers::method("POST"))
         .and(matchers::path("/override"))
-        .respond_with(|req: &Request| {
-            // Echo the body
-            ResponseTemplate::new(200).set_body_bytes(req.body.clone())
-        })
+        .respond_with(echo_body)
         .mount(&server)
         .await;
 
@@ -194,6 +237,10 @@ async fn test_request_override_body(
 #[case::additional(
     &["--form", "new=over"], &[("username", "username1"), ("new", "over")],
 )]
+#[case::duplicate(
+    // Second replaces first
+    &["-F", "new=1", "-F", "new=2"], &[("username", "username1"), ("new", "2")],
+)]
 #[case::omit(&["--form", "username"], &[])]
 #[tokio::test]
 async fn test_request_override_form(
@@ -204,9 +251,7 @@ async fn test_request_override_form(
     let host = server.uri();
     Mock::given(matchers::method("POST"))
         .and(matchers::path("/urlencoded"))
-        .respond_with(|req: &Request| {
-            ResponseTemplate::new(200).set_body_bytes(req.body.clone())
-        })
+        .respond_with(echo_body)
         .mount(&server)
         .await;
 
@@ -422,4 +467,9 @@ async fn test_set_collection_name() {
         database.get_collections().unwrap()[0].name.as_deref(),
         Some("CLI Tests")
     );
+}
+
+/// wiremock responder to echo the request body back
+fn echo_body(req: &Request) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_bytes(req.body.clone())
 }

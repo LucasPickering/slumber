@@ -10,7 +10,9 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Authentication, ProfileId, RecipeId},
+    collection::{
+        Authentication, ProfileId, QueryParameterValue, Recipe, RecipeId,
+    },
     database::{CollectionDatabase, Database},
     http::{
         BuildFieldOverride, BuildOptions, Exchange, HttpEngine, RequestRecord,
@@ -186,6 +188,27 @@ pub struct BuildRequestCommand {
     )]
     overrides: Vec<(String, Template)>,
 
+    /// Override a request query parameter (format: `parameter=value`)
+    ///
+    /// The given value is parsed as a template. To override multiple
+    /// parameters, or to specify the same parameter multiple times, pass
+    /// this flag multiple times.
+    ///
+    ///   slumber request my-recipe --query foo=bar
+    ///
+    /// Any parameter that appears in an override will replace ALL instances of
+    /// that parameter from the recipe definition. If you only want to override
+    /// a single instance of the parameter, you'll need to re-specify all
+    /// instances in the override flags.
+    #[clap(
+        long,
+        value_parser = parse_recipe_override,
+        value_hint = ValueHint::Other, // Disable completions
+        value_name = "query=value",
+        verbatim_doc_comment,
+    )]
+    query: Vec<(String, BuildFieldOverride)>,
+
     /// Set the URL for the request
     ///
     /// The URL is parsed and rendered as a template. This will override the
@@ -319,12 +342,13 @@ impl BuildRequestCommand {
                 unreachable!("--basic and --bearer are mutually exclusive")
             }
         };
+        let recipe = collection.recipes.try_get_recipe(&self.recipe_id)?;
         let build_options = BuildOptions {
             url: self.url,
             authentication,
             headers: IndexMap::from_iter(self.header),
             body: self.body,
-            query_parameters: IndexMap::default(),
+            query_parameters: get_query_parameters(recipe, self.query),
             form_fields: IndexMap::from_iter(self.form),
         };
         let template_context = TemplateContext {
@@ -597,4 +621,46 @@ fn get_basic_auth(value: &str) -> anyhow::Result<Authentication> {
         username,
         password: Some(password),
     })
+}
+
+/// Apply overrides to the query parameters in the recipe, returning the set
+/// of overrides that can be passed to [BuildOptions].
+///
+/// Any query parameter that appears in the override list will be completely
+/// overridden, meaning *all* instances of that parameter from the recipe will
+/// be overridden or omitted. We need the recipe as input so we know which
+/// `(param, index)` pairs need to be omitted when not overridden.
+fn get_query_parameters(
+    recipe: &Recipe,
+    overrides: Vec<(String, BuildFieldOverride)>,
+) -> IndexMap<(String, usize), BuildFieldOverride> {
+    // Get the number of values a param has in the recipe
+    let get_n = |param: &str| -> usize {
+        match recipe.query.get(param) {
+            None => 0,
+            Some(QueryParameterValue::One(_)) => 1,
+            Some(QueryParameterValue::Many(values)) => values.len(),
+        }
+    };
+
+    overrides
+        .into_iter()
+        // Sort and group by parameter
+        .sorted_by(|(a, _), (b, _)| String::cmp(a, b))
+        // Clone is needed to detach the lifetime from the iterator
+        .chunk_by(|(param, _)| param.clone())
+        .into_iter()
+        // For each param, spit out a series of overrides for each associated
+        // value. If the recipe specifies `n` values and we have `o` overrides,
+        // the output will be `max(n, o)` elements.
+        .flat_map(|(param, values)| {
+            values
+                // If `n > o`, pad out with omits for values `(o+1)..n`
+                .pad_using(get_n(&param), move |_| {
+                    (param.clone(), BuildFieldOverride::Omit)
+                })
+                .enumerate()
+                .map(|(i, (param, value))| ((param, i), value))
+        })
+        .collect()
 }

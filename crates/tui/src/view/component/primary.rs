@@ -174,6 +174,18 @@ impl PrimaryView {
         );
     }
 
+    /// If the history list is open, rebuild it. Call this after any request is
+    /// updated
+    pub fn refresh_history(
+        &mut self,
+        request_store: &RequestStore,
+        selected_request_id: Option<RequestId>,
+    ) {
+        if self.history.is_some() {
+            self.open_history(request_store, selected_request_id);
+        }
+    }
+
     /// Select the Exchange pane. The parent uses this to select the form pane
     /// when a new prompt is added to the form
     pub fn select_exchange_pane(&mut self) {

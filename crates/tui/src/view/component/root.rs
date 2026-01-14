@@ -149,8 +149,7 @@ impl Root {
         };
 
         if let Some(state) = state {
-            let id = state.id();
-            self.refresh_request(store, RequestDisposition::Select(id));
+            self.select_request(state);
         } else {
             // We switch to a recipe with no request, or just deleted the last
             // request for a recipe
@@ -167,6 +166,10 @@ impl Root {
         store: &RequestStore,
         disposition: RequestDisposition,
     ) {
+        // Refresh the history list when any request changes
+        self.primary_view
+            .refresh_history(store, self.selected_request_id);
+
         match disposition {
             RequestDisposition::Change(request_id) => {
                 // If the selected request was changed, rebuild state.
@@ -200,8 +203,7 @@ impl Root {
                 if state.profile_id() == self.selected_profile_id()
                     && Some(state.recipe_id()) == selected_recipe_id
                 {
-                    self.selected_request_id = Some(state.id());
-                    self.primary_view.set_request(Some(state));
+                    self.select_request(state);
                 }
             }
             RequestDisposition::OpenForm(request_id) => {
@@ -217,6 +219,12 @@ impl Root {
                 }
             }
         }
+    }
+
+    /// Select the given request and update the primary view accordingly
+    fn select_request(&mut self, state: &RequestState) {
+        self.selected_request_id = Some(state.id());
+        self.primary_view.set_request(Some(state));
     }
 
     /// Clear the selected request. Call this when switching to a state that has

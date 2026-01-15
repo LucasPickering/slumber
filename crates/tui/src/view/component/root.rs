@@ -262,8 +262,9 @@ impl Draw for Root {
         // Footer
         canvas.draw(&self.footer, (), footer_area, true);
 
-        // Modals
-        canvas.draw_portal(&self.actions, (), true);
+        // Draw modals/popups. These are all given the full screen area because
+        // they want to capture all cursor events
+        canvas.draw(&self.actions, (), metadata.area(), true);
         canvas.draw_portal(&self.questions, (), true);
         // Errors render last because they're drawn on top (highest priority)
         canvas.draw_portal(&self.errors, (), true);
@@ -524,7 +525,10 @@ mod tests {
     /// Test "Delete Request" action, which is available via the
     /// Request/Response pane
     #[rstest]
-    fn test_delete_request(mut harness: TestHarness, terminal: TestTerminal) {
+    fn test_delete_request(
+        mut harness: TestHarness,
+        #[with(60, 20)] terminal: TestTerminal,
+    ) {
         let recipe_id = harness.collection.first_recipe_id();
         let profile_id = harness.collection.first_profile_id();
         let old_exchange =

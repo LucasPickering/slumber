@@ -4,8 +4,7 @@ use crate::{
         Generate,
         common::select::{Select, SelectEventKind, SelectListProps},
         component::{
-            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, Portal,
-            ToChild,
+            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
@@ -17,7 +16,7 @@ use ratatui::{
     prelude::Rect,
     symbols::merge::MergeStrategy,
     text::Span,
-    widgets::{Block, Borders},
+    widgets::{Block, Borders, Clear},
 };
 use slumber_config::Action;
 use std::fmt::{self, Display};
@@ -57,38 +56,6 @@ impl ActionMenu {
     }
 }
 
-impl Portal for ActionMenu {
-    fn area(&self, canvas_area: Rect) -> Rect {
-        let Some(content) = &self.content else {
-            return Rect::default();
-        };
-
-        // First, calculate the area for each item
-        let areas = content.areas(Position::default());
-
-        // Then shift them all to be centered on the *first* layer. We don't
-        // want them to shift when additional layers are opened
-        let first = areas.first().expect("Menu stack cannot be empty");
-        let centered = canvas_area.centered(
-            Constraint::Length(first.width),
-            Constraint::Length(first.height),
-        );
-        // We know everything is relative to (0,0) to begin with
-        let offset = Offset {
-            x: centered.x.into(),
-            y: centered.y.into(),
-        };
-
-        // The overall area is just the union of each layer's area. This will
-        // get the smallest possible area that contains all layers
-        areas
-            .into_iter()
-            .map(|area| area.offset(offset))
-            .reduce(Rect::union)
-            .unwrap_or_default()
-    }
-}
-
 impl Component for ActionMenu {
     fn id(&self) -> ComponentId {
         self.id
@@ -107,6 +74,7 @@ impl Component for ActionMenu {
                 Action::Cancel | Action::Quit => self.close(),
                 _ => propagate.set(),
             })
+            .click(|_, _| self.close()) // If clicked outside the content, close
             .emitted(
                 emitter,
                 // Unwraps are safe because we can only get an event if the
@@ -120,12 +88,6 @@ impl Component for ActionMenu {
             })
     }
 
-    fn contains(&self, _context: &UpdateContext, _position: Position) -> bool {
-        // We want to receive clicks in the background, but we can't draw to
-        // that space or it would actually cover everything up
-        true
-    }
-
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.content.to_child_mut()]
     }
@@ -133,8 +95,11 @@ impl Component for ActionMenu {
 
 impl Draw for ActionMenu {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        if let Some(state) = &self.content {
-            canvas.draw(state, (), metadata.area(), true);
+        if let Some(content) = &self.content {
+            // Our given area is the full screen so we can capture cursor
+            // events. Draw the content just to the middle block
+            let area = content.area(metadata.area());
+            canvas.draw(content, (), area, true);
         }
     }
 }
@@ -257,6 +222,33 @@ impl ActionMenuContent {
                 action.emitter.emit(action.value);
             }
         }
+    }
+
+    /// Get the smallest possible area that can contain all menu layers
+    fn area(&self, canvas_area: Rect) -> Rect {
+        // First, calculate the area for each item
+        let areas = self.areas(Position::default());
+
+        // Then shift them all to be centered on the *first* layer. We don't
+        // want them to shift when additional layers are opened
+        let first = areas.first().expect("Menu stack cannot be empty");
+        let centered = canvas_area.centered(
+            Constraint::Length(first.width),
+            Constraint::Length(first.height),
+        );
+        // We know everything is relative to (0,0) to begin with
+        let offset = Offset {
+            x: centered.x.into(),
+            y: centered.y.into(),
+        };
+
+        // The overall area is just the union of each layer's area. This
+        // will get the smallest possible area that contains all layers
+        areas
+            .into_iter()
+            .map(|area| area.offset(offset))
+            .reduce(Rect::union)
+            .unwrap_or_default()
     }
 
     /// Get the area for each open layer, starting from the given position
@@ -400,6 +392,16 @@ impl Draw for ActionMenuContent {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles.menu;
         let areas = self.areas(metadata.area().as_position());
+
+        // Clear content/styling underneath all layers. This has to happen
+        // before rendering any blocks so we don't clear the border from a
+        // parent layer; that breaks the border merging. And we can't just clear
+        // the entire parent area because there may be content within the
+        // rectangle that isn't behind any single layer
+        for area in &areas {
+            canvas.render_widget(Clear, *area);
+        }
+
         for (i, (layer, area)) in self.stack.iter().zip(areas).enumerate() {
             // Add border
             let block = Block::new()
@@ -762,7 +764,7 @@ mod tests {
     )]
     fn test_actions_nested(
         harness: TestHarness,
-        terminal: TestTerminal,
+        #[with(80, 20)] terminal: TestTerminal,
         #[case] inputs: &[KeyCode],
         #[case] expected_action: TestAction,
     ) {

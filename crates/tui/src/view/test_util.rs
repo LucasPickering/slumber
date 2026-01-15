@@ -596,6 +596,6 @@ where
 {
     fn draw(&self, canvas: &mut Canvas, props: Props, metadata: DrawMetadata) {
         canvas.draw(&self.inner, props, metadata.area(), metadata.has_focus());
-        canvas.draw_portal(&self.actions, (), true);
+        canvas.draw(&self.actions, (), metadata.area(), true);
     }
 }

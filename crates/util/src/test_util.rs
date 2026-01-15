@@ -140,6 +140,7 @@ pub fn assert_result<TA, TE, E>(
 }
 
 /// Enable tracing output. Call this in a test to enable logging
+#[deprecated(note = "Debugging only; remove when done")]
 pub fn initialize_tracing() {
     let subscriber = tracing_subscriber::fmt::layer()
         .with_writer(io::stderr)

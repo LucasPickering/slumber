@@ -773,7 +773,8 @@ impl LoadedState {
         // optionally the disposition will tell it if anything should change.
         // The view is responsible for checking the store to see if the current
         // request was changed at all, and modify the view if so.
-        self.view.refresh_request(&self.request_store, disposition);
+        self.view
+            .refresh_request(&mut self.request_store, disposition);
 
         Ok(())
     }

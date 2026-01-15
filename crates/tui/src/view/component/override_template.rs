@@ -264,9 +264,7 @@ impl<PK> EditableTemplate<PK> {
         if let Ok(template) = text_box.into_text().parse::<Template>() {
             self.set_override(template);
             if self.refresh_on_edit {
-                ViewContext::push_event(Event::Broadcast(
-                    BroadcastEvent::RefreshPreviews,
-                ));
+                ViewContext::push_event(BroadcastEvent::RefreshPreviews);
             }
         }
     }

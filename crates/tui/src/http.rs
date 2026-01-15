@@ -355,28 +355,6 @@ impl RequestStore {
         Ok(request.map(|r| &*r))
     }
 
-    /// Get the latest request (by start time) for a specific profile+recipe
-    /// combo
-    pub fn load_latest(
-        &mut self,
-        profile_id: Option<&ProfileId>,
-        recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<&RequestState>> {
-        self.cache_latest_exchange(profile_id, recipe_id)?;
-
-        // Now that the know the most recent completed record is in our local
-        // cache, find the most recent record of *any* kind
-
-        Ok(self
-            .requests
-            .values()
-            .filter(|state| {
-                profile_id == state.profile_id()
-                    && state.recipe_id() == recipe_id
-            })
-            .max_by_key(|state| state.request_metadata().start_time))
-    }
-
     /// Load the latest (by start time) _completed_ request for a specific
     /// profile+recipe combo
     pub fn load_latest_exchange(

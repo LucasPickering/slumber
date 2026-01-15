@@ -1,7 +1,6 @@
 use crate::{
-    http::{RequestConfig, RequestState, RequestStore},
+    http::{RequestConfig, RequestStore},
     message::{HttpMessage, Message},
-    util::ResultReported,
     view::{
         Component, Question, RequestDisposition, ViewContext,
         common::{actions::ActionMenu, modal::ModalQueue},
@@ -14,26 +13,20 @@ use crate::{
         },
         context::UpdateContext,
         event::{DeleteTarget, Event, EventMatch},
-        persistent::{PersistentKey, PersistentStore},
     },
 };
 use indexmap::IndexMap;
 use ratatui::{layout::Layout, prelude::Constraint};
-use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{collection::ProfileId, http::RequestId};
+use slumber_core::collection::ProfileId;
 use slumber_template::Template;
 use tracing::warn;
 
 /// The root view component
 #[derive(Debug)]
 pub struct Root {
-    // ===== Own State =====
     id: ComponentId,
-    /// Which request are we showing in the request/response panel?
-    selected_request_id: Option<RequestId>,
-
-    // ==== Children =====
+    /// The pane layout that forms the primary content
     primary_view: PrimaryView,
     footer: Footer,
     // Modals!!
@@ -50,22 +43,8 @@ pub struct Root {
 
 impl Root {
     pub fn new() -> Self {
-        // Restore the selected request via an event. When selecting the
-        // request we need to load it into the request store as well, and we
-        // don't have access to that here
-        if let Some(selected_request_id) =
-            PersistentStore::get(&SelectedRequestKey)
-        {
-            ViewContext::push_event(Event::HttpSelectRequest(Some(
-                selected_request_id,
-            )));
-        }
-
         Self {
             id: ComponentId::default(),
-            selected_request_id: None,
-
-            // Children
             primary_view: PrimaryView::new(),
             footer: Footer::default(),
             actions: ActionMenu::default(),
@@ -106,139 +85,21 @@ impl Root {
         self.primary_view.profile_overrides()
     }
 
-    /// Extract the currently selected request from the store
-    fn selected_request<'a>(
-        &self,
-        request_store: &'a RequestStore,
-    ) -> Option<&'a RequestState> {
-        self.selected_request_id
-            .and_then(|id| request_store.get(id))
-    }
-
-    /// Load a request from the store and select it
-    fn load_and_select_request(
-        &mut self,
-        store: &mut RequestStore,
-        request_id: Option<RequestId>,
-    ) -> anyhow::Result<()> {
-        let state = if let Some(request_id) = request_id {
-            // TBH I would expect a bug here, if we're loading a persisted
-            // request ID that doesn't exist anymore (e.g. we had a failed
-            // request selected before exiting). But somehow we just fall back
-            // to the most recent request for the recipe, as desired. I don't
-            // understand it, but I'll take it...
-            store.load(request_id)?
-        } else if let Some(recipe_id) = self.primary_view.selected_recipe_id() {
-            // If someone asked for the latest request for a recipe, but we
-            // already have another request of that same recipe selected,
-            // ignore the request. This gets around a bug during
-            // initialization where the recipe list asks for the latest
-            // request *after* the selected ID is loaded from persistence
-            let selected_request = self.selected_request(store);
-            let profile_id = self.selected_profile_id();
-            if selected_request.is_some_and(|request| {
-                request.recipe_id() == recipe_id
-                    && request.profile_id() == profile_id
-            }) {
-                selected_request
-            } else {
-                store.load_latest(profile_id, recipe_id)?
-            }
-        } else {
-            None
-        };
-
-        if let Some(state) = state {
-            self.select_request(state);
-        } else {
-            // We switch to a recipe with no request, or just deleted the last
-            // request for a recipe
-            self.clear_request();
-        }
-
-        Ok(())
-    }
-
-    /// Update the UI to reflect the current state of an HTTP request. If
-    /// `select` is `true`, select the request too.
+    /// Update the UI to reflect the current state of an HTTP request
     pub fn refresh_request(
         &mut self,
-        store: &RequestStore,
+        store: &mut RequestStore,
         disposition: RequestDisposition,
     ) {
-        // Refresh the history list when any request changes
-        self.primary_view
-            .refresh_history(store, self.selected_request_id);
-
-        match disposition {
-            RequestDisposition::Change(request_id) => {
-                // If the selected request was changed, rebuild state.
-                // Otherwise, we don't care about the change
-                if Some(request_id) == self.selected_request_id {
-                    // If the request isn't in the store, that means it was just
-                    // deleted
-                    let state = store.get(request_id);
-                    self.primary_view.set_request(state);
-                }
-            }
-            RequestDisposition::ChangeAll(request_ids) => {
-                // Check if the selected request changed
-                if let Some(request_id) = self.selected_request_id
-                    && request_ids.contains(&request_id)
-                {
-                    // If the request isn't in the store, that means it was just
-                    // deleted
-                    let state = store.get(request_id);
-                    self.primary_view.set_request(state);
-                }
-            }
-            RequestDisposition::Select(request_id) => {
-                let Some(state) = store.get(request_id) else {
-                    // If the request is not in the store, it can't be selected
-                    return;
-                };
-
-                // Select only if it matches the current recipe/profile
-                let selected_recipe_id = self.primary_view.selected_recipe_id();
-                if state.profile_id() == self.selected_profile_id()
-                    && Some(state.recipe_id()) == selected_recipe_id
-                {
-                    self.select_request(state);
-                }
-            }
-            RequestDisposition::OpenForm(request_id) => {
-                // If a new prompt appears for a request that isn't selected, we
-                // *don't* want to switch to it
-                if Some(request_id) == self.selected_request_id {
-                    // State *should* be Some here because the form just updated
-                    let state = store.get(request_id);
-                    // Update the view with the new prompt
-                    self.primary_view.set_request(state);
-                    // Select the form pane
-                    self.primary_view.select_exchange_pane();
-                }
-            }
-        }
-    }
-
-    /// Select the given request and update the primary view accordingly
-    fn select_request(&mut self, state: &RequestState) {
-        self.selected_request_id = Some(state.id());
-        self.primary_view.set_request(Some(state));
-    }
-
-    /// Clear the selected request. Call this when switching to a state that has
-    /// no request available
-    fn clear_request(&mut self) {
-        self.selected_request_id = None;
-        self.primary_view.set_request(None);
+        self.primary_view.refresh_request(store, disposition);
     }
 
     /// Open a modal to confirm deletion one or more requests
     fn delete_requests(&mut self, target: DeleteTarget) {
         match target {
             DeleteTarget::Request => {
-                let Some(request_id) = self.selected_request_id else {
+                let Some(request_id) = self.primary_view.selected_request_id()
+                else {
                     // It shouldn't be possible to trigger this without a
                     // selected request
                     warn!("Cannot delete request; no request selected");
@@ -276,7 +137,7 @@ impl Root {
 
     /// Cancel the active request
     fn cancel_request(&mut self, context: &mut UpdateContext<'_>) {
-        if let Some(request_id) = self.selected_request_id
+        if let Some(request_id) = self.primary_view.selected_request_id()
             && context.request_store.can_cancel(request_id)
         {
             self.questions.open(QuestionModal::confirm(
@@ -307,14 +168,6 @@ impl Component for Root {
             .m()
             .action(|action, propagate| match action {
                 Action::Cancel => self.cancel_request(context),
-                Action::History => {
-                    // We have to handle this event here because we have the
-                    // selected request ID
-                    self.primary_view.open_history(
-                        context.request_store,
-                        self.selected_request_id,
-                    );
-                }
                 Action::OpenActions => {
                     // Walk down the component tree and collect actions from
                     // all visible+focused components
@@ -334,33 +187,25 @@ impl Component for Root {
                 // Broadcast events are *supposed* to be propagated!
                 Event::Broadcast(_) => None,
 
+                // Handle deletion here
                 Event::DeleteRequests(target) => {
                     self.delete_requests(target);
                     None
                 }
 
-                // There shouldn't be anything left unhandled. Bubble up to log
-                // it
-                Event::Emitted { .. } => Some(event),
-
-                // Set selected request, and load it from the DB if needed
-                Event::HttpSelectRequest(request_id) => {
-                    self.load_and_select_request(
-                        context.request_store,
-                        request_id,
-                    )
-                    .reported(&ViewContext::messages_tx());
-                    None
-                }
+                // Ignore any emitted events that made it this far. It's
+                // possible this event is indicative of a bug, but it's also
+                // possible that it's been emitted by a component that has
+                // since been dropped, in which case the event can safely be
+                // ignored. Until we have an intelligent emitter handle that
+                // will clear out its own events on drop, ignoring here saves
+                // a lot of headaches.
+                Event::Emitted { .. } => None,
 
                 // Any other unhandled input event should *not* log an error,
                 // because it is probably just unmapped input, and not a bug
                 Event::Input { .. } => None,
             })
-    }
-
-    fn persist(&self, store: &mut PersistentStore) {
-        store.set_opt(&SelectedRequestKey, self.selected_request_id.as_ref());
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -409,25 +254,19 @@ impl Draw for Root {
     }
 }
 
-/// Persistence key for the selected request
-#[derive(Debug, Serialize)]
-struct SelectedRequestKey;
-
-impl PersistentKey for SelectedRequestKey {
-    type Value = RequestId;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        view::{
+            component::history::SelectedRequestKey, test_util::TestComponent,
+        },
     };
     use rstest::rstest;
     use slumber_core::{
         collection::{Collection, Profile, Recipe},
-        http::Exchange,
+        http::{Exchange, RequestId},
         test_util::by_id,
     };
     use slumber_util::{Factory, assert_matches};
@@ -449,10 +288,10 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         // Make sure profile+recipe were preselected correctly
-        let primary_view = &component.primary_view;
-        assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
-        assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
-        assert_eq!(component.selected_request_id, Some(exchange.id));
+        let primary = &component.primary_view;
+        assert_eq!(primary.selected_profile_id(), Some(profile_id));
+        assert_eq!(primary.selected_recipe_id(), Some(recipe_id));
+        assert_eq!(primary.selected_request_id(), Some(exchange.id));
 
         // It'd be nice to assert on the view but it's just too complicated to
         // be worth mocking the whole thing out
@@ -483,15 +322,10 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         // Make sure everything was preselected correctly
-        assert_eq!(
-            component.primary_view.selected_profile_id(),
-            Some(profile_id)
-        );
-        assert_eq!(
-            component.primary_view.selected_recipe_id(),
-            Some(recipe_id)
-        );
-        assert_eq!(component.selected_request_id, Some(old_exchange.id));
+        let primary = &component.primary_view;
+        assert_eq!(primary.selected_profile_id(), Some(profile_id));
+        assert_eq!(primary.selected_recipe_id(), Some(recipe_id));
+        assert_eq!(primary.selected_request_id(), Some(old_exchange.id));
     }
 
     /// Test that if the persisted request ID isn't in the DB, we'll fall back
@@ -518,7 +352,10 @@ mod tests {
             TestComponent::new(&harness, &terminal, Root::new());
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(new_exchange.id)
+        );
     }
 
     /// Test that when the selected recipe changes, the selected request changes
@@ -546,14 +383,20 @@ mod tests {
             TestComponent::new(&harness, &terminal, Root::new());
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(component.selected_request_id, Some(exchange1.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(exchange1.id)
+        );
 
         // Select the second recipe
         component
             .int()
             .send_keys([KeyCode::Char('r'), KeyCode::Down])
             .assert_empty();
-        assert_eq!(component.selected_request_id, Some(exchange2.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(exchange2.id)
+        );
     }
 
     /// Test that when the selected profile changes, the selected request
@@ -581,7 +424,10 @@ mod tests {
             TestComponent::new(&harness, &terminal, Root::new());
         component.int().drain_draw().assert_empty();
 
-        assert_eq!(component.selected_request_id, Some(exchange1.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(exchange1.id)
+        );
 
         // Select the second profile
         component
@@ -589,7 +435,10 @@ mod tests {
             .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
         // The exchange from profile2 should be selected now
-        assert_eq!(component.selected_request_id, Some(exchange2.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(exchange2.id)
+        );
     }
 
     /// Test "Delete Requests" action via the recipe pane
@@ -617,7 +466,10 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(new_exchange.id)
+        );
 
         // Select "Delete Requests" but decline the confirmation
         component
@@ -628,7 +480,10 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(new_exchange.id)
+        );
 
         // Select "Delete Requests" and accept. I don't feel like testing Delete
         // for All Profiles
@@ -673,7 +528,10 @@ mod tests {
             .assert_empty();
 
         // Sanity check for initial state
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(new_exchange.id)
+        );
 
         // Select "Delete Request" but decline the confirmation
         component
@@ -683,7 +541,10 @@ mod tests {
             .assert_empty();
 
         // Same request is still selected
-        assert_eq!(component.selected_request_id, Some(new_exchange.id));
+        assert_eq!(
+            component.primary_view.selected_request_id(),
+            Some(new_exchange.id)
+        );
 
         component
             .int()

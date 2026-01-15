@@ -338,15 +338,12 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, terminal},
-        view::{
-            event::{BroadcastEvent, Event},
-            test_util::TestComponent,
-        },
+        view::{event::BroadcastEvent, test_util::TestComponent},
     };
     use indexmap::indexmap;
     use rstest::rstest;
     use slumber_core::{collection::Collection, test_util::by_id};
-    use slumber_util::{Factory, assert_matches};
+    use slumber_util::Factory;
     use terminput::KeyCode;
 
     #[rstest]
@@ -370,17 +367,13 @@ mod tests {
             ProfileDetail::new(Some(&profile_id)),
         );
 
-        let propagated = component
+        component
             .int()
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("123")
             .send_key(KeyCode::Enter)
-            .into_propagated();
-        // Tell all other previews to re-render
-        assert_matches!(
-            propagated.as_slice(),
-            &[Event::Broadcast(BroadcastEvent::RefreshPreviews)]
-        );
+            // Tell all other previews to re-render
+            .assert_broadcast([BroadcastEvent::RefreshPreviews]);
         let field = &component.select[1];
         assert_eq!(field.template.template(), &"def123".into());
     }

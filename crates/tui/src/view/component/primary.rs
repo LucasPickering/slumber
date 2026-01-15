@@ -7,7 +7,7 @@ use crate::{
     message::{HttpMessage, Message},
     util::ResultReported,
     view::{
-        Component, ViewContext,
+        Component, RequestDisposition, ViewContext,
         common::actions::MenuItem,
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
@@ -21,7 +21,7 @@ use crate::{
             sidebar_list::{SidebarList, SidebarListEvent, SidebarListProps},
         },
         context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
+        event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, PersistentStore},
     },
 };
@@ -63,7 +63,7 @@ pub struct PrimaryView {
     /// etc.) so we don't need to handle that here.
     exchange_pane: ExchangePane,
     /// List of all past requests for the current recipe/profile
-    history: Option<History>,
+    history: History,
 
     global_actions_emitter: Emitter<PrimaryMenuAction>,
 }
@@ -88,6 +88,11 @@ impl PrimaryView {
         // There will be a message to load it immediately after though
         let exchange_pane = ExchangePane::new(None, recipe_node_type);
 
+        let history = History::new(
+            profile_list.selected_id().cloned(),
+            recipe_list.selected_recipe_id().cloned(),
+        );
+
         Self {
             id: ComponentId::default(),
             view,
@@ -97,7 +102,7 @@ impl PrimaryView {
             profile_list,
             profile_detail,
             exchange_pane,
-            history: None,
+            history,
 
             global_actions_emitter: Default::default(),
         }
@@ -106,18 +111,17 @@ impl PrimaryView {
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty OR a folder is selected.
     pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
-        self.selected_recipe_node().and_then(|(id, kind)| {
-            if matches!(kind, RecipeNodeType::Recipe) {
-                Some(id)
-            } else {
-                None
-            }
-        })
+        self.recipe_list.selected_recipe_id()
     }
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
         self.profile_list.selected_id()
+    }
+
+    /// ID of the selected request. `None` iff the list of requests is empty
+    pub fn selected_request_id(&self) -> Option<RequestId> {
+        self.history.selected_id()
     }
 
     fn selected_recipe_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
@@ -159,54 +163,76 @@ impl PrimaryView {
                     .reported(&ViewContext::messages_tx())
             });
         self.recipe_detail = RecipeDetail::new(selected_recipe_node);
+    }
 
-        // When the recipe/profile changes, we want to select the most recent
-        // recipe for that combo as well
-        ViewContext::push_event(Event::HttpSelectRequest(None));
+    /// Update the UI to reflect the current state of an HTTP request
+    pub fn refresh_request(
+        &mut self,
+        store: &mut RequestStore,
+        disposition: RequestDisposition,
+    ) {
+        // Refresh history list. This has to happen first so the
+        // select_request() call below has access to the latest request
+        self.history.refresh(store);
+
+        match disposition {
+            RequestDisposition::Change(request_id) => {
+                // If the selected request was changed, rebuild state.
+                // Otherwise, we don't care about the change
+                if Some(request_id) == self.selected_request_id() {
+                    // If the request isn't in the store, that means it was just
+                    // deleted
+                    let state = store.get(request_id);
+                    self.set_request(state);
+                }
+            }
+            RequestDisposition::ChangeAll(request_ids) => {
+                // Check if the selected request changed
+                if let Some(request_id) = self.selected_request_id()
+                    && request_ids.contains(&request_id)
+                {
+                    // If the request isn't in the store, that means it was just
+                    // deleted
+                    let state = store.get(request_id);
+                    self.set_request(state);
+                }
+            }
+            RequestDisposition::Select(request_id) => {
+                let Some(state) = store.get(request_id) else {
+                    // If the request is not in the store, it can't be selected
+                    return;
+                };
+
+                // Select only if it matches the current recipe/profile
+                let selected_recipe_id = self.selected_recipe_id();
+                if state.profile_id() == self.selected_profile_id()
+                    && Some(state.recipe_id()) == selected_recipe_id
+                {
+                    self.history.select_request(state.id());
+                }
+            }
+            RequestDisposition::OpenForm(request_id) => {
+                // If a new prompt appears for a request that isn't selected, we
+                // *don't* want to switch to it
+                if Some(request_id) == self.selected_request_id() {
+                    // State *should* be Some here because the form just updated
+                    let state = store.get(request_id);
+                    // Update the view with the new prompt
+                    self.set_request(state);
+                    // Select the form pane
+                    self.view.select_exchange_pane();
+                }
+            }
+        }
     }
 
     /// Update the Exchange pane with the selected request. Call this whenever
     /// a new request is selected or the selected request changes.
-    pub fn set_request(&mut self, selected_request: Option<&RequestState>) {
+    fn set_request(&mut self, selected_request: Option<&RequestState>) {
         self.exchange_pane = ExchangePane::new(
             selected_request,
             self.selected_recipe_node().map(|(_, node_type)| node_type),
         );
-    }
-
-    /// If the history list is open, rebuild it. Call this after any request is
-    /// updated
-    pub fn refresh_history(
-        &mut self,
-        request_store: &RequestStore,
-        selected_request_id: Option<RequestId>,
-    ) {
-        if self.history.is_some() {
-            self.open_history(request_store, selected_request_id);
-        }
-    }
-
-    /// Select the Exchange pane. The parent uses this to select the form pane
-    /// when a new prompt is added to the form
-    pub fn select_exchange_pane(&mut self) {
-        self.view.select_exchange_pane();
-    }
-
-    /// Open the history sidebar for current recipe+profile
-    pub fn open_history(
-        &mut self,
-        request_store: &RequestStore,
-        selected_request_id: Option<RequestId>,
-    ) {
-        if let Some(recipe_id) = self.selected_recipe_id() {
-            self.history = Some(History::new(
-                recipe_id,
-                self.selected_profile_id(),
-                request_store,
-                selected_request_id,
-            ));
-            self.view.open_sidebar(Sidebar::History);
-        }
     }
 
     fn build_recipe_detail(recipe_id: Option<&RecipeId>) -> RecipeDetail {
@@ -248,11 +274,7 @@ impl PrimaryView {
                 Sidebar::Recipe => {
                     canvas.draw(&self.recipe_list, sidebar_props, area, true);
                 }
-                Sidebar::History => {
-                    if let Some(history) = &self.history {
-                        canvas.draw(history, (), area, true);
-                    }
-                }
+                Sidebar::History => canvas.draw(&self.history, (), area, true),
             },
             // Top Pane - always Recipe
             PrimaryLayout::Default(DefaultPane::Top)
@@ -392,9 +414,7 @@ impl PrimaryView {
                 sidebar_selected,
             ),
             Sidebar::History => {
-                if let Some(history) = &self.history {
-                    canvas.draw(history, (), sidebar_area, sidebar_selected);
-                }
+                canvas.draw(&self.history, (), sidebar_area, sidebar_selected);
             }
         }
 
@@ -446,6 +466,7 @@ impl Component for PrimaryView {
                 Action::Submit => self.send_request(),
 
                 // Pane hotkeys
+                Action::History => self.view.open_sidebar(Sidebar::History),
                 Action::SelectProfileList => {
                     self.view.open_sidebar(Sidebar::Profile);
                 }
@@ -469,11 +490,38 @@ impl Component for PrimaryView {
                 }
                 _ => propagate.set(),
             })
+            .broadcast(|event| match event {
+                // Refresh previews when selected profile/recipe changes
+                BroadcastEvent::SelectedProfile(_) => {
+                    // Both panes can change when the profile changes
+                    self.profile_detail =
+                        ProfileDetail::new(self.profile_list.selected_id());
+                    self.refresh_recipe();
+                }
+                BroadcastEvent::SelectedRecipe(_) => self.refresh_recipe(),
+                BroadcastEvent::SelectedRequest(request_id) => {
+                    // When a new request is selected, make sure it's loaded
+                    // from the DB, then put it in the Exchange pane
+                    let state = request_id.and_then(|id| {
+                        context
+                            .request_store
+                            .load(id)
+                            .reported(&ViewContext::messages_tx())
+                            .flatten()
+                    });
+                    self.set_request(state);
+                }
+                BroadcastEvent::RefreshPreviews => {}
+            })
             .emitted(self.recipe_list.to_emitter(), |event| match event {
                 SidebarListEvent::Open => {
                     self.view.open_sidebar(Sidebar::Recipe);
                 }
-                SidebarListEvent::Select => self.refresh_recipe(),
+                SidebarListEvent::Select => {
+                    ViewContext::push_event(BroadcastEvent::SelectedRecipe(
+                        self.selected_recipe_id().cloned(),
+                    ));
+                }
                 SidebarListEvent::Close => self.view.close_sidebar(),
             })
             .emitted(self.profile_list.to_emitter(), |event| match event {
@@ -481,10 +529,9 @@ impl Component for PrimaryView {
                     self.view.open_sidebar(Sidebar::Profile);
                 }
                 SidebarListEvent::Select => {
-                    // Both panes can change when the profile changes
-                    self.profile_detail =
-                        ProfileDetail::new(self.profile_list.selected_id());
-                    self.refresh_recipe();
+                    ViewContext::push_event(BroadcastEvent::SelectedProfile(
+                        self.selected_profile_id().cloned(),
+                    ));
                 }
                 SidebarListEvent::Close => self.view.close_sidebar(),
             })
@@ -602,7 +649,7 @@ mod tests {
         http::RequestConfig,
         message::{Message, RecipeCopyTarget},
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        view::{event::BroadcastEvent, test_util::TestComponent},
     };
     use rstest::rstest;
     use slumber_core::http::BuildOptions;
@@ -617,14 +664,15 @@ mod tests {
         let mut component =
             TestComponent::new(harness, terminal, PrimaryView::new());
         // Initial events
-        assert_matches!(
-            component.int().drain_draw().into_propagated().as_slice(),
-            // The profile and recipe lists each trigger this once
-            &[
-                Event::HttpSelectRequest(None),
-                Event::HttpSelectRequest(None)
-            ]
-        );
+        let recipe_id = harness.collection.first_recipe_id().clone();
+        let profile_id = harness.collection.first_profile_id().clone();
+        component.int().drain_draw().assert_broadcast([
+            BroadcastEvent::SelectedRecipe(Some(recipe_id)),
+            BroadcastEvent::SelectedProfile(Some(profile_id)),
+            // The two events above each trigger a request selection
+            BroadcastEvent::SelectedRequest(None),
+            BroadcastEvent::SelectedRequest(None),
+        ]);
         // Clear template preview messages so we can test what we want
         harness.messages().clear();
         component

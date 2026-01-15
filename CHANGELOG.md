@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+5.0 is a huge release that focuses on two main areas:
+
+- A major refactor of the TUI includes:
+  - A new layout with a collapsible sidebar to speed up navigation
+  - Query/export command history navigation (similar to shell history)
+  - QoL improvements such as selecting list items by click
+- CLI commands have been reorganized to be more consistent and discoverable
+
+While is is a major release with breaking changes, the breakages are fairly limited. There are no changes to the collection format, so it's unlikely you'll need to make any changes to your workflow to upgrade.
+
 ### Breaking
 
 The breaking changes in this release are mostly limited to CLI commands. Unless you have an automated workflow defined that uses this command, you won't see any breakage in your experience.
@@ -30,7 +40,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Remove `left_click` and `right_click` mappable actions
   - Mouse clicks can no longer be mapped to keys
 - Replace the `RUST_LOG` environment variable with a `--log-level` argument
-  - ERROR/WARN log output is not longer shown in stderr for CLI commands
+  - ERROR/WARN log output is not longer shown by default in stderr for CLI commands
 
 ### Added
 

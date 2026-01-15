@@ -171,7 +171,7 @@ impl View {
     /// request was modified), this will do nothing.
     pub fn refresh_request(
         &mut self,
-        store: &RequestStore,
+        store: &mut RequestStore,
         disposition: RequestDisposition,
     ) {
         self.root.refresh_request(store, disposition);

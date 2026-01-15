@@ -98,8 +98,8 @@ impl ViewContext {
     }
 
     /// Queue a view event to be handled by the component tree
-    pub fn push_event(event: Event) {
-        Self::with_mut(|context| context.event_queue.push(event));
+    pub fn push_event(event: impl Into<Event>) {
+        Self::with_mut(|context| context.event_queue.push(event.into()));
     }
 
     /// Pop an event off the event queue
@@ -151,7 +151,10 @@ pub struct UpdateContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TestHarness, assert_events, harness};
+    use crate::{
+        test_util::{TestHarness, assert_events, harness},
+        view::event::DeleteTarget,
+    };
     use rstest::rstest;
     use slumber_util::assert_matches;
 
@@ -159,12 +162,12 @@ mod tests {
     fn test_event_queue(_harness: TestHarness) {
         assert_events!(); // Start empty
 
-        ViewContext::push_event(Event::HttpSelectRequest(None));
-        assert_events!(Event::HttpSelectRequest(None));
+        ViewContext::push_event(Event::DeleteRequests(DeleteTarget::Request));
+        assert_events!(Event::DeleteRequests(DeleteTarget::Request));
 
         assert_matches!(
             ViewContext::pop_event(),
-            Some(Event::HttpSelectRequest(None))
+            Some(Event::DeleteRequests(DeleteTarget::Request))
         );
         assert_events!(); // Empty again
     }

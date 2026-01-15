@@ -290,7 +290,7 @@ fn test_load(harness: TestHarness) {
 }
 
 #[rstest]
-fn test_load_latest(harness: TestHarness) {
+fn test_load_latest_exchange(harness: TestHarness) {
     let mut store = harness.request_store_mut();
     let profile_id = ProfileId::factory(());
     let recipe_id = RecipeId::factory(());
@@ -303,38 +303,17 @@ fn test_load_latest(harness: TestHarness) {
         create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
 
     assert_eq!(
-        store.load_latest((&profile_id).into(), &recipe_id).unwrap(),
-        Some(&RequestState::response(expected_exchange))
+        store
+            .load_latest_exchange((&profile_id).into(), &recipe_id)
+            .unwrap(),
+        Some(&expected_exchange)
     );
 
     // Non-match
     assert_matches!(
-        store.load_latest((&profile_id).into(), &("other".into())),
+        store.load_latest_exchange((&profile_id).into(), &("other".into())),
         Ok(None)
     );
-}
-
-/// Test load_latest when the most recent request for the profile is a
-/// request that's not in the DB (i.e. in a state other than completed)
-#[rstest]
-fn test_load_latest_local(harness: TestHarness) {
-    let profile_id = ProfileId::factory(());
-    let recipe_id = RecipeId::factory(());
-
-    // We don't expect to load this one
-    create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
-
-    // This is what we should see
-    let exchange =
-        Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
-    let request_id = exchange.id;
-
-    let mut store = harness.request_store_mut();
-    store
-        .requests
-        .insert(exchange.id, RequestState::response(exchange));
-    let loaded = store.load_latest((&profile_id).into(), &recipe_id).unwrap();
-    assert_eq!(loaded.map(RequestState::id), Some(request_id));
 }
 
 #[rstest]

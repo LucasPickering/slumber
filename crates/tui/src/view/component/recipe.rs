@@ -61,6 +61,18 @@ impl RecipeList {
         self.list.selected().map(|item| (item.id(), item.kind()))
     }
 
+    /// Which recipe in the recipe list is selected? `None` iff the list is
+    /// empty OR a folder is selected.
+    pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
+        self.selected().and_then(|(id, kind)| {
+            if matches!(kind, RecipeNodeType::Recipe) {
+                Some(id)
+            } else {
+                None
+            }
+        })
+    }
+
     /// Modify expand/collapse state on the selected node
     fn collapse_selected(&mut self, collapse: Collapse) {
         if let Some(selected) = self.list.selected()

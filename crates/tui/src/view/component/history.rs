@@ -13,10 +13,14 @@ use crate::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
         },
-        event::{DeleteTarget, Emitter, Event, EventMatch, ToEmitter},
+        event::{
+            BroadcastEvent, DeleteTarget, Emitter, Event, EventMatch, ToEmitter,
+        },
+        persistent::{PersistentKey, PersistentStore},
     },
 };
 use ratatui::text::{Line, Span, Text};
+use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
@@ -29,33 +33,74 @@ pub struct History {
     id: ComponentId,
     actions_emitter: Emitter<HistoryAction>,
     select: Select<RequestStateSummary>,
+    // We need to retain the selected profile/recipe IDs so we can access both
+    // during a refresh. These are updated by the SelectedRecipe/Profile
+    // broadcast events, so as long as those events are sent correctly, these
+    // will stay in sync.
+    selected_profile_id: Option<ProfileId>,
+    selected_recipe_id: Option<RecipeId>,
 }
 
 impl History {
     /// Construct a new history modal with the given list of requests. Parent
     /// is responsible for loading the list from the request store.
     pub fn new(
-        recipe_id: &RecipeId,
-        profile_id: Option<&ProfileId>,
-        request_store: &RequestStore,
-        selected_request_id: Option<RequestId>,
+        selected_profile_id: Option<ProfileId>,
+        selected_recipe_id: Option<RecipeId>,
     ) -> Self {
-        // Make sure all requests for this profile+recipe are loaded
-        let requests = request_store
-            .load_summaries(profile_id, recipe_id)
-            .reported(&ViewContext::messages_tx())
-            .map(Vec::from_iter)
-            .unwrap_or_default();
-        let select = Select::builder(requests)
-            .subscribe([SelectEventKind::Select])
-            .preselect_opt(selected_request_id.as_ref())
-            .build();
-
         Self {
             id: ComponentId::default(),
             actions_emitter: Emitter::default(),
-            select,
+            // Always start with an empty list. On startup, we'll populate when
+            // the initial SelectedRecipe/SelectedProfile events are received
+            select: Self::build_select(vec![]),
+            selected_profile_id,
+            selected_recipe_id,
         }
+    }
+
+    /// Get the ID of the request that's currently selected. Return `None` iff
+    /// the request list is empty
+    pub fn selected_id(&self) -> Option<RequestId> {
+        self.select.selected().map(RequestStateSummary::id)
+    }
+
+    /// Select a request by ID. Does nothing if the request ID is not in the
+    /// current list.
+    pub fn select_request(&mut self, id: RequestId) {
+        self.select.select(&id);
+    }
+
+    /// Rebuild the request list from the store. This uses the retained
+    /// profile/recipe IDs to query the DB for all matching requests
+    pub fn refresh(&mut self, store: &mut RequestStore) {
+        // If there's no recipe selected, there's no requests to show
+        let requests = if let Some(recipe_id) = &self.selected_recipe_id {
+            // Load matching requests from the DB
+            store
+                .load_summaries(self.selected_profile_id.as_ref(), recipe_id)
+                .reported(&ViewContext::messages_tx())
+                .map(Vec::from_iter)
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+        self.select = Self::build_select(requests);
+
+        // If the list is empty, it never sends a Select event so we need to
+        // manually notify our friends that there's no request selected.
+        if self.select.is_empty() {
+            ViewContext::push_event(BroadcastEvent::SelectedRequest(None));
+        }
+    }
+
+    fn build_select(
+        requests: Vec<RequestStateSummary>,
+    ) -> Select<RequestStateSummary> {
+        Select::builder(requests)
+            .subscribe([SelectEventKind::Select])
+            .persisted(&SelectedRequestKey)
+            .build()
     }
 }
 
@@ -64,7 +109,11 @@ impl Component for History {
         self.id
     }
 
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
         event
             .m()
             .action(|action, propagate| match action {
@@ -84,7 +133,21 @@ impl Component for History {
             .emitted(self.select.to_emitter(), |event| match event.kind {
                 SelectEventKind::Select => {
                     let id = self.select[event].id();
-                    ViewContext::push_event(Event::HttpSelectRequest(Some(id)));
+                    ViewContext::push_event(BroadcastEvent::SelectedRequest(
+                        Some(id),
+                    ));
+                }
+                SelectEventKind::Submit | SelectEventKind::Toggle => {}
+            })
+            .broadcast(|event| match event {
+                // When the profile or recipe select changes, rebuild our list
+                BroadcastEvent::SelectedProfile(profile_id) => {
+                    self.selected_profile_id = profile_id;
+                    self.refresh(context.request_store);
+                }
+                BroadcastEvent::SelectedRecipe(recipe_id) => {
+                    self.selected_recipe_id = recipe_id;
+                    self.refresh(context.request_store);
                 }
                 _ => {}
             })
@@ -106,6 +169,10 @@ impl Component for History {
         ]
     }
 
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set_opt(&SelectedRequestKey, self.selected_id().as_ref());
+    }
+
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![self.select.to_child_mut()]
     }
@@ -122,7 +189,7 @@ impl Draw for History {
         canvas.render_widget(block, metadata.area());
 
         if self.select.is_empty() {
-            canvas.render_widget("No requests", area);
+            canvas.render_widget("No request history", area);
         } else {
             canvas.draw(&self.select, SelectListProps::modal(), area, true);
         }
@@ -173,6 +240,16 @@ impl PartialEq<RequestId> for RequestStateSummary {
     }
 }
 
+/// Persistence key for the selected request ID
+///
+/// Public so it can be used in the Root tests
+#[derive(Debug, Serialize)]
+pub struct SelectedRequestKey;
+
+impl PersistentKey for SelectedRequestKey {
+    type Value = RequestId;
+}
+
 #[derive(Copy, Clone, Debug)]
 enum HistoryAction {
     /// Delete the selected request
@@ -191,7 +268,7 @@ mod tests {
     use itertools::Itertools;
     use rstest::rstest;
     use slumber_core::http::Exchange;
-    use slumber_util::{Factory, assert_matches};
+    use slumber_util::Factory;
     use terminput::KeyCode;
 
     /// Test that we can browse requests, and selecting one updates root state
@@ -215,26 +292,20 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            History::new(
-                recipe_id,
-                Some(profile_id),
-                &harness.request_store(),
-                None,
-            ),
+            History::new(Some(profile_id.clone()), Some(recipe_id.clone())),
         );
+        // Normally the initial refresh is triggered by the Select events from
+        // the profile/recipe list. We need to refresh manually here
+        component.refresh(&mut harness.request_store_mut());
 
         // Initial state
-        let selected = assert_matches!(
-            component.int().drain_draw().into_propagated().as_slice(),
-            &[Event::HttpSelectRequest(Some(selected))] => selected,
-        );
-        assert_eq!(selected, exchanges[0].id);
+        component.int().drain_draw().assert_broadcast([
+            BroadcastEvent::SelectedRequest(Some(exchanges[0].id)),
+        ]);
 
         // Select the next one
-        let selected = assert_matches!(
-            component.int().send_key(KeyCode::Down).into_propagated().as_slice(),
-            &[Event::HttpSelectRequest(Some(selected))] => selected,
-        );
-        assert_eq!(selected, exchanges[1].id);
+        component.int().send_key(KeyCode::Down).assert_broadcast([
+            BroadcastEvent::SelectedRequest(Some(exchanges[1].id)),
+        ]);
     }
 }

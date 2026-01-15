@@ -8,7 +8,10 @@ use crate::{
 };
 use ratatui::layout::Position;
 use slumber_config::Action;
-use slumber_core::http::RequestId;
+use slumber_core::{
+    collection::{ProfileId, RecipeId},
+    http::RequestId,
+};
 use std::{
     any::{self, Any},
     collections::VecDeque,
@@ -17,7 +20,7 @@ use std::{
     ops::Deref,
 };
 use terminput::ScrollDirection;
-use tracing::{error, trace};
+use tracing::trace;
 use uuid::Uuid;
 
 /// A queue of view events. Any component within the view can add to this, and
@@ -77,15 +80,6 @@ pub enum Event {
         event: Box<dyn LocalEvent>,
     },
 
-    /// Load a request from the database. If the ID is given, load that
-    /// specific request. If not, get the most recent for the current
-    /// profile+recipe.
-    ///
-    /// This is a top-level event because it's send from multiple different
-    /// components throughout the tree, such that using emitted events would be
-    /// excessively complicated.
-    HttpSelectRequest(Option<RequestId>),
-
     /// Input from the user, which may or may not be bound to an action. Most
     /// components just care about the action, but some require raw input
     Input(InputEvent),
@@ -98,19 +92,37 @@ impl Event {
     }
 }
 
+impl From<BroadcastEvent> for Event {
+    fn from(value: BroadcastEvent) -> Self {
+        Self::Broadcast(value)
+    }
+}
+
 /// A special type of event that is always propagated to all components
 ///
 /// Broadcast events are for notifications rather than actions. They notify
 /// components that an event has happened, allowing each component to update
 /// its own state internally. They cannot be consumed. Check for a broadcast
 /// event with [EventMatch::broadcast]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BroadcastEvent {
     /// Rerender **all** template previews. This notifies all existing previews
     /// of a potential change that could affect their content. This is sent
     /// out when a profile field is modified because any template could contain
     /// that profile field.
     RefreshPreviews,
+
+    /// Selected profile ID has changed. ID is `None` if there is no profile
+    /// selected.
+    SelectedProfile(Option<ProfileId>),
+
+    /// Selected recipe ID has changed. ID is `None` if there is no recipe
+    /// selected. This will be sent for selected folders as well.
+    SelectedRecipe(Option<RecipeId>),
+
+    /// Selected request ID has changed. ID is `None` if there is no request
+    /// selected.
+    SelectedRequest(Option<RequestId>),
 }
 
 /// Definition of what request(s) to start deletion for
@@ -294,10 +306,6 @@ impl<T: ?Sized> Emitter<T> {
 impl<T: Sized + LocalEvent> Emitter<T> {
     /// Push an event onto the event queue
     pub fn emit(&self, event: T) {
-        if self.id.0.is_nil() {
-            error!(?event, "Event emitted from null emitter");
-        }
-
         ViewContext::push_event(Event::Emitted {
             emitter_id: self.id,
             emitter_type: format_type_name(any::type_name::<T>()),

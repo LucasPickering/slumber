@@ -16,11 +16,7 @@ use rstest::fixture;
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use slumber_util::Factory;
 use std::{
-    cell::RefCell,
-    future::Future,
-    ops::{Deref, DerefMut},
-    rc::Rc,
-    sync::Arc,
+    cell::RefCell, future::Future, ops::DerefMut, rc::Rc, sync::Arc,
     time::Duration,
 };
 use tokio::{
@@ -68,11 +64,6 @@ impl TestHarness {
             request_store,
             messages,
         }
-    }
-
-    /// Get an immutable reference to the request store
-    pub fn request_store(&self) -> impl Deref<Target = RequestStore> {
-        self.request_store.borrow()
     }
 
     /// Get a mutable reference to the request store

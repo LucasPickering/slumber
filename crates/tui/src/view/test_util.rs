@@ -12,7 +12,7 @@ use crate::{
             DrawMetadata, ToChild,
         },
         context::ViewContext,
-        event::{Event, EventMatch, LocalEvent, ToEmitter},
+        event::{BroadcastEvent, Event, EventMatch, LocalEvent, ToEmitter},
         persistent::PersistentStore,
     },
 };
@@ -484,6 +484,28 @@ where
         );
     }
 
+    /// Assert that one or more [BroadcastEvent]s were emitted. No other events
+    /// should have bene propagated.
+    #[track_caller]
+    pub fn assert_broadcast(
+        self,
+        expected: impl IntoIterator<Item = BroadcastEvent>,
+    ) {
+        let actual = self
+            .propagated
+            .into_iter()
+            .map(|event| {
+                if let Event::Broadcast(event) = event {
+                    event
+                } else {
+                    panic!("Expected only broadcasts, but received: {event:#?}")
+                }
+            })
+            .collect_vec();
+        let expected = expected.into_iter().collect_vec();
+        assert_eq!(actual, expected);
+    }
+
     /// Assert that only emitted events were propagated, and those events match
     /// a specific sequence. Requires `PartialEq` to be implemented for the
     /// emitted event type.
@@ -505,7 +527,7 @@ where
                     )
                 })
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
         let expected = expected.into_iter().collect_vec();
         assert_eq!(emitted, expected);
     }

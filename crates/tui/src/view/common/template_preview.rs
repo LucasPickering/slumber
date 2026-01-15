@@ -154,8 +154,10 @@ impl Component for TemplatePreview {
             .m()
             // Update text with emitted event from the preview task
             .emitted(self.callback_emitter, |text| self.text = text)
-            .broadcast(|event| match event {
-                BroadcastEvent::RefreshPreviews => self.render_preview(),
+            .broadcast(|event| {
+                if let BroadcastEvent::RefreshPreviews = event {
+                    self.render_preview();
+                }
             })
     }
 }

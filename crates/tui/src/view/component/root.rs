@@ -8,7 +8,7 @@ use crate::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
             internal::ComponentExt,
-            misc::{DeleteRecipeRequestsModal, ErrorModal, QuestionModal},
+            misc::{DeleteRequestsButton, ErrorModal, QuestionModal},
             primary::PrimaryView,
         },
         context::UpdateContext,
@@ -18,7 +18,7 @@ use crate::{
 use indexmap::IndexMap;
 use ratatui::{layout::Layout, prelude::Constraint};
 use slumber_config::Action;
-use slumber_core::collection::ProfileId;
+use slumber_core::{collection::ProfileId, database::ProfileFilter};
 use slumber_template::Template;
 use tracing::warn;
 
@@ -30,13 +30,7 @@ pub struct Root {
     primary_view: PrimaryView,
     footer: Footer,
     // Modals!!
-    // Some of these can only have one instance at a time while some are
-    // queues. They use the same implementation, but it's only possible to open
-    // multiple modals at a time if the trigger is from the background (e.g.
-    // errors or prompts).
     actions: ActionMenu,
-    /// Confirmation modal to delete all requests for a recipe
-    delete_requests_confirm: ModalQueue<DeleteRecipeRequestsModal>,
     questions: ModalQueue<QuestionModal>,
     errors: ModalQueue<ErrorModal>,
 }
@@ -48,7 +42,6 @@ impl Root {
             primary_view: PrimaryView::new(),
             footer: Footer::default(),
             actions: ActionMenu::default(),
-            delete_requests_confirm: ModalQueue::default(),
             questions: ModalQueue::default(),
             errors: ModalQueue::default(),
         }
@@ -128,9 +121,34 @@ impl Root {
                 };
                 let profile_id =
                     self.primary_view.selected_profile_id().cloned();
-                self.delete_requests_confirm.open(
-                    DeleteRecipeRequestsModal::new(profile_id, recipe_id),
-                );
+
+                // Open a question modal to confirm deletion. We'll also ask
+                // if they want to delete all requests for the recipe, or just
+                // for this profile.
+                self.questions.open(QuestionModal::delete_requests(
+                    format!("Delete Requests for {recipe_id}?"),
+                    move |button| {
+                        // Do the delete here because we have access to the
+                        // request store
+                        let profile_filter = match button {
+                            DeleteRequestsButton::No => None,
+                            DeleteRequestsButton::Profile => {
+                                Some(profile_id.into())
+                            }
+                            DeleteRequestsButton::All => {
+                                Some(ProfileFilter::All)
+                            }
+                        };
+                        if let Some(profile_filter) = profile_filter {
+                            ViewContext::send_message(
+                                HttpMessage::DeleteRecipe {
+                                    recipe_id,
+                                    profile_filter,
+                                },
+                            );
+                        }
+                    },
+                ));
             }
         }
     }
@@ -215,7 +233,6 @@ impl Component for Root {
             self.errors.to_child_mut(),
             // Rest of the modals
             self.actions.to_child_mut(),
-            self.delete_requests_confirm.to_child_mut(),
             self.questions.to_child_mut(),
             // Footer has some high-priority pop-ups
             self.footer.to_child_mut(),
@@ -247,7 +264,6 @@ impl Draw for Root {
 
         // Modals
         canvas.draw_portal(&self.actions, (), true);
-        canvas.draw_portal(&self.delete_requests_confirm, (), true);
         canvas.draw_portal(&self.questions, (), true);
         // Errors render last because they're drawn on top (highest priority)
         canvas.draw_portal(&self.errors, (), true);

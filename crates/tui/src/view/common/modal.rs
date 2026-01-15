@@ -2,14 +2,14 @@ use crate::{
     context::TuiContext,
     view::{
         Component, UpdateContext,
-        component::{Canvas, Child, ComponentId, Draw, DrawMetadata, Portal},
+        component::{Canvas, Child, ComponentId, Draw, DrawMetadata},
         event::{Event, EventMatch},
     },
 };
 use ratatui::{
-    layout::{Constraint, Margin, Position, Rect},
+    layout::{Constraint, Margin, Position},
     text::Line,
-    widgets::{Block, Borders},
+    widgets::{Block, Borders, Clear},
 };
 use slumber_config::Action;
 use std::{collections::VecDeque, fmt::Debug};
@@ -53,13 +53,16 @@ impl<T: Modal> ModalQueue<T> {
         self.queue.push_back(modal);
     }
 
-    /// Close the visible modal at the front of the queue. If `submitted` is
-    /// `true`, call [Modal::on_submit] for the closed modal.
-    pub fn close(&mut self, context: &mut UpdateContext, submitted: bool) {
+    /// Close the visible modal at the front of the queue without submission
+    fn close(&mut self) {
+        self.queue.pop_front();
+    }
+
+    /// Close the visible modal at the front of the queue, calling
+    /// [Modal::on_submit] for the closed modal.
+    fn submit(&mut self, context: &mut UpdateContext) {
         let popped = self.queue.pop_front();
-        if let Some(modal) = popped
-            && submitted
-        {
+        if let Some(modal) = popped {
             modal.on_submit(context);
         }
     }
@@ -70,21 +73,6 @@ impl<T: Modal> ModalQueue<T> {
 
     fn active_mut(&mut self) -> Option<&mut T> {
         self.queue.front_mut()
-    }
-}
-
-// Through the power of PORTALS, we can always render modals on top. The Modal
-// impl tells us how big the modal content will be, so we can report how much
-// space we intend to take up in the middle of the screen.
-impl<T: Modal> Portal for ModalQueue<T> {
-    fn area(&self, canvas_area: Rect) -> Rect {
-        if let Some(modal) = self.active() {
-            let (width, height) = modal.dimensions();
-            // 1x1 margin for the border, plus 1x0 of padding
-            canvas_area.centered(width, height).outer(Margin::new(2, 1))
-        } else {
-            Rect::default()
-        }
     }
 }
 
@@ -111,22 +99,17 @@ impl<T: Component + Modal> Component for ModalQueue<T> {
                 // thing, modals may override. We eat the Quit action here
                 // because it's (hopefully) intuitive and consistent with other
                 // TUIs
-                Action::Cancel | Action::Quit => self.close(context, false),
-                Action::Submit => self.close(context, true),
+                Action::Cancel | Action::Quit => self.close(),
+                Action::Submit => self.submit(context),
                 _ => propagate.set(),
             })
+            .click(|_, _| self.close()) // If clicked outside the content, close
             .any(|event| match event {
                 // Modals are meant to consume all focus, so don't allow any
                 // events to go to background components
                 Event::Input { .. } => None,
                 _ => Some(event),
             })
-    }
-
-    fn contains(&self, _context: &UpdateContext, _position: Position) -> bool {
-        // We want to receive clicks in the background, but we can't draw to
-        // that space or it would actually cover everything up
-        true
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -148,6 +131,17 @@ where
             return;
         };
 
+        // The given area is the full screen (so we can catch all cursor
+        // events). Shrink it down to just where the modal wants to draw
+        let (width, height) = modal.dimensions();
+        let area = metadata
+            .area()
+            .centered(width, height)
+            // 1x1 margin for the border, plus 1x0 of padding
+            .outer(Margin::new(2, 1));
+        // Clear content/styling from underneath
+        canvas.render_widget(Clear, area);
+
         let styles = &TuiContext::get().styles.modal;
         let block = Block::default()
             .borders(Borders::ALL)
@@ -158,8 +152,8 @@ where
         // that would interfere with word-based selection
         let margin = Margin::new(1, 0);
 
-        canvas.render_widget(&block, metadata.area());
-        let area = block.inner(metadata.area()).inner(margin);
+        canvas.render_widget(&block, area);
+        let area = block.inner(area).inner(margin);
         canvas.draw(modal, props, area, true);
     }
 }

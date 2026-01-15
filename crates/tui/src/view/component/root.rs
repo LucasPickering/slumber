@@ -265,9 +265,9 @@ impl Draw for Root {
         // Draw modals/popups. These are all given the full screen area because
         // they want to capture all cursor events
         canvas.draw(&self.actions, (), metadata.area(), true);
-        canvas.draw_portal(&self.questions, (), true);
+        canvas.draw(&self.questions, (), metadata.area(), true);
         // Errors render last because they're drawn on top (highest priority)
-        canvas.draw_portal(&self.errors, (), true);
+        canvas.draw(&self.errors, (), metadata.area(), true);
     }
 }
 

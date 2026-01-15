@@ -162,7 +162,7 @@ impl EventMatch {
     }
 
     /// Handle a left click event. Given position is the absolute position of
-    /// the cursor. By default, click events are **always propagated,** even if
+    /// the cursor. By default, click events are **always propagated**, even if
     /// handled by a child. This is to make it easy for parent and child to both
     /// grab focus when clicked (e.g. text box within a parent pane). If the
     /// action should *not* be propagated, call `propagate.unset()`.

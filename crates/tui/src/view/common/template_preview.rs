@@ -4,7 +4,7 @@ use crate::{
     view::{
         UpdateContext, ViewContext,
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        event::{Emitter, Event, EventMatch},
+        event::{BroadcastEvent, Emitter, Event, EventMatch},
         state::Identified,
         util::highlight,
     },
@@ -149,21 +149,13 @@ impl Component for TemplatePreview {
         self.id
     }
 
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> EventMatch {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
             // Update text with emitted event from the preview task
             .emitted(self.callback_emitter, |text| self.text = text)
-            .any(|event| {
-                if let Event::RefreshPreviews = event {
-                    self.render_preview();
-                }
-                // Refresh must be send to all previews, so *don't* consume!!
-                Some(event)
+            .broadcast(|event| match event {
+                BroadcastEvent::RefreshPreviews => self.render_preview(),
             })
     }
 }

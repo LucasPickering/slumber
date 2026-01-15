@@ -58,6 +58,9 @@ impl EventQueue {
 /// queued asynchronously and are used to interact *between* threads.
 #[derive(Debug)]
 pub enum Event {
+    /// See [BroadcastEvent]
+    Broadcast(BroadcastEvent),
+
     /// User has requested to delete all requests for the current selected
     /// recipe. This will trigger a confirmation modal before the deletion
     DeleteRequests(DeleteTarget),
@@ -86,13 +89,6 @@ pub enum Event {
     /// Input from the user, which may or may not be bound to an action. Most
     /// components just care about the action, but some require raw input
     Input(InputEvent),
-
-    /// Rerender **all** template previews. This is a **broadcast event**,
-    /// meaning it should not be consumed by anyone except the root. This
-    /// notifies all existing previews of a potential change that could affect
-    /// their content. This is sent out when a profile field is modified,
-    /// because any template could contain that profile field.
-    RefreshPreviews,
 }
 
 impl Event {
@@ -100,6 +96,21 @@ impl Event {
     pub fn m(self) -> EventMatch {
         Some(self).into()
     }
+}
+
+/// A special type of event that is always propagated to all components
+///
+/// Broadcast events are for notifications rather than actions. They notify
+/// components that an event has happened, allowing each component to update
+/// its own state internally. They cannot be consumed. Check for a broadcast
+/// event with [EventMatch::broadcast]
+#[derive(Clone, Debug)]
+pub enum BroadcastEvent {
+    /// Rerender **all** template previews. This notifies all existing previews
+    /// of a potential change that could affect their content. This is sent
+    /// out when a profile field is modified because any template could contain
+    /// that profile field.
+    RefreshPreviews,
 }
 
 /// Definition of what request(s) to start deletion for
@@ -125,6 +136,17 @@ impl EventMatch {
             return self;
         };
         f(event).into()
+    }
+
+    /// Match a [BroadcastEvent]. The event will always be propagated, even if
+    /// the match succeeds.
+    pub fn broadcast(self, f: impl FnOnce(BroadcastEvent)) -> Self {
+        // Call the watcher. We ALWAYS propagate, because that's the purpose of
+        // a broadcast event
+        if let Some(Event::Broadcast(broadcast)) = &self.event {
+            f(broadcast.clone()); // Clone needed so we can always propagate
+        }
+        self
     }
 
     /// Handle a left click event. Given position is the absolute position of

@@ -195,11 +195,7 @@ impl Component for BasicAuthentication {
         self.id
     }
 
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> EventMatch {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
             .emitted(self.select.to_emitter(), |event| match event {

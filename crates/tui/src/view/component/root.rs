@@ -331,15 +331,11 @@ impl Component for Root {
                 _ => propagate.set(),
             })
             .any(|event| match event {
+                // Broadcast events are *supposed* to be propagated!
+                Event::Broadcast(_) => None,
+
                 Event::DeleteRequests(target) => {
                     self.delete_requests(target);
-                    None
-                }
-
-                Event::RefreshPreviews => {
-                    // This is broadcast to all template previews. They all
-                    // propagate to allow their friends to view it; we eat it
-                    // here just so it doesn't trigger a warning.
                     None
                 }
 

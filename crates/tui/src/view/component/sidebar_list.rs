@@ -145,11 +145,7 @@ impl<State: SidebarListState> Component for SidebarList<State> {
         self.id
     }
 
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> EventMatch {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
             .click(|_, _| self.emitter.emit(SidebarListEvent::Open))

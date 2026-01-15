@@ -10,7 +10,7 @@ use crate::view::{
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
-    event::{Emitter, Event, EventMatch, ToEmitter},
+    event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
     persistent::{PersistentStore, SessionKey},
 };
 use slumber_config::Action;
@@ -166,8 +166,8 @@ pub struct EditableTemplate<PK> {
     /// editing.
     edit_text_box: Option<TextBox>,
     /// After a new valie template is submitted, should we send
-    /// [Event::RefreshPreviews]? Use for profile fields, because those can
-    /// affect other templates
+    /// [BroadcastEvent::RefreshPreviews]? Enable for profile fields, because
+    /// those can affect other templates
     refresh_on_edit: bool,
 }
 
@@ -264,7 +264,9 @@ impl<PK> EditableTemplate<PK> {
         if let Ok(template) = text_box.into_text().parse::<Template>() {
             self.set_override(template);
             if self.refresh_on_edit {
-                ViewContext::push_event(Event::RefreshPreviews);
+                ViewContext::push_event(Event::Broadcast(
+                    BroadcastEvent::RefreshPreviews,
+                ));
             }
         }
     }

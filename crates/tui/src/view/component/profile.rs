@@ -338,7 +338,10 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, terminal},
-        view::{event::Event, test_util::TestComponent},
+        view::{
+            event::{BroadcastEvent, Event},
+            test_util::TestComponent,
+        },
     };
     use indexmap::indexmap;
     use rstest::rstest;
@@ -374,7 +377,10 @@ mod tests {
             .send_key(KeyCode::Enter)
             .into_propagated();
         // Tell all other previews to re-render
-        assert_matches!(propagated.as_slice(), &[Event::RefreshPreviews]);
+        assert_matches!(
+            propagated.as_slice(),
+            &[Event::Broadcast(BroadcastEvent::RefreshPreviews)]
+        );
         let field = &component.select[1];
         assert_eq!(field.template.template(), &"def123".into());
     }

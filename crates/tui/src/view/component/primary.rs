@@ -12,7 +12,7 @@ use crate::{
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             exchange_pane::ExchangePane,
-            history::History,
+            history::{History, HistoryEvent},
             primary::view_state::{
                 DefaultPane, PrimaryLayout, Sidebar, SidebarPane, ViewState,
             },
@@ -534,6 +534,9 @@ impl Component for PrimaryView {
                     ));
                 }
                 SidebarListEvent::Close => self.view.close_sidebar(),
+            })
+            .emitted(self.history.to_emitter(), |event| match event {
+                HistoryEvent::Close => self.view.close_sidebar(),
             })
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {

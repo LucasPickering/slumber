@@ -31,6 +31,7 @@ use slumber_core::{
 #[derive(Debug)]
 pub struct History {
     id: ComponentId,
+    emitter: Emitter<HistoryEvent>,
     actions_emitter: Emitter<HistoryAction>,
     select: Select<RequestStateSummary>,
     // We need to retain the selected profile/recipe IDs so we can access both
@@ -50,6 +51,7 @@ impl History {
     ) -> Self {
         Self {
             id: ComponentId::default(),
+            emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             // Always start with an empty list. On startup, we'll populate when
             // the initial SelectedRecipe/SelectedProfile events are received
@@ -98,7 +100,7 @@ impl History {
         requests: Vec<RequestStateSummary>,
     ) -> Select<RequestStateSummary> {
         Select::builder(requests)
-            .subscribe([SelectEventKind::Select])
+            .subscribe([SelectEventKind::Select, SelectEventKind::Submit])
             .persisted(&SelectedRequestKey)
             .build()
     }
@@ -137,7 +139,11 @@ impl Component for History {
                         Some(id),
                     ));
                 }
-                SelectEventKind::Submit | SelectEventKind::Toggle => {}
+                SelectEventKind::Submit => {
+                    // Close sidebar on Enter
+                    self.emitter.emit(HistoryEvent::Close);
+                }
+                SelectEventKind::Toggle => {}
             })
             .broadcast(|event| match event {
                 // When the profile or recipe select changes, rebuild our list
@@ -180,8 +186,10 @@ impl Component for History {
 
 impl Draw for History {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let input_engine = &TuiContext::get().input_engine;
+        let title = input_engine.add_hint("Request History", Action::History);
         let block = Pane {
-            title: "Request History",
+            title: &title,
             has_focus: metadata.has_focus(),
         }
         .generate();
@@ -193,6 +201,12 @@ impl Draw for History {
         } else {
             canvas.draw(&self.select, SelectListProps::modal(), area, true);
         }
+    }
+}
+
+impl ToEmitter<HistoryEvent> for History {
+    fn to_emitter(&self) -> Emitter<HistoryEvent> {
+        self.emitter
     }
 }
 
@@ -256,6 +270,13 @@ enum HistoryAction {
     Delete,
     /// Delete all requests for this recipe (optionally filter by profile)
     DeleteAll,
+}
+
+/// Emitted event from [History]
+#[derive(Copy, Clone, Debug)]
+pub enum HistoryEvent {
+    /// History sidebar should be closed
+    Close,
 }
 
 #[cfg(test)]

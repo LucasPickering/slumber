@@ -21,7 +21,6 @@ use ratatui::{
 use std::{
     any,
     collections::HashMap,
-    mem,
     sync::atomic::{AtomicU64, Ordering},
 };
 use tracing::{instrument, trace, trace_span, warn};
@@ -220,11 +219,6 @@ pub trait Draw<Props = ()>: Component {
 pub struct Canvas<'buf> {
     /// Main frame buffer
     buffer: &'buf mut Buffer,
-    /// Each [Portal] element is rendered to its own buffer. The buffers are
-    /// then merged together into the main frame buffer at the end of the draw.
-    /// If there are multiple portals, the *later* rendered portals take
-    /// priority.
-    portals: Vec<Buffer>,
     /// Throughout a draw, we track which components are drawn and where. At
     /// the end of the draw, this is returned to the caller so it can be used
     /// during the subsequent update phase.
@@ -236,7 +230,6 @@ impl<'buf> Canvas<'buf> {
     pub fn new(buffer: &'buf mut Buffer) -> Self {
         Self {
             buffer,
-            portals: vec![],
             components: ComponentMap::default(),
         }
     }
@@ -271,12 +264,6 @@ impl<'buf> Canvas<'buf> {
     {
         let mut canvas = Self::new(buffer);
         canvas.draw(root, props, area, has_focus);
-
-        // Merge portaled buffers into the main buffer
-        for portal_buffer in &canvas.portals {
-            canvas.buffer.merge(portal_buffer);
-        }
-
         canvas.components
     }
 
@@ -303,39 +290,6 @@ impl<'buf> Canvas<'buf> {
         self.components.0.insert(component.id(), metadata);
 
         component.draw(self, props, metadata);
-    }
-
-    /// Draw a component to the screen *outside of its normal draw order.*
-    ///
-    /// See [Portal] for more info. Unlike [Self::draw], this does *not* take
-    /// an `area` param because the component determines its own draw area via
-    /// [Portal::area].
-    pub fn draw_portal<T, Props>(
-        &mut self,
-        component: &T,
-        props: Props,
-        has_focus: bool,
-    ) where
-        T: Component + Draw<Props> + Portal,
-    {
-        // Ask the component what area it wants to portal to. Clamp it to fit
-        // inside the frame.
-        let area = component.area(self.area()).clamp(self.area());
-
-        // We want to draw the portal to its own buffer, so we merge it into the
-        // main buffer *at the end*. We need a Frame to draw to, but ratatui
-        // doesn't expose a way to create one. We can reuse the existing frame,
-        // and just swap out its buffer with a new one.
-        //
-        // The portal buffer will only contain the area that the portal wants to
-        // draw to. Ratatui is smart enough to shift the buffers to align by
-        // area before merging.
-        let main_buffer = mem::replace(self.buffer, Buffer::empty(area));
-        self.draw(component, props, area, has_focus);
-        // Swap the main buffer back into the frame
-        let portal = mem::replace(self.buffer, main_buffer);
-        // Store what we rendered, to be merged in later
-        self.portals.push(portal);
     }
 
     /// Get the full screen area
@@ -548,6 +502,7 @@ fn update_all(
     // handling children because it's possible for an event to be over a child
     // without being over the parent (in the case of portals). In that case, the
     // child receives the event but the parent doesn't.
+    // TODO update ^^
     let should_receive = match &event {
         Event::Input(
             InputEvent::Click { position, .. }
@@ -613,20 +568,6 @@ impl Default for ComponentId {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// An on-screen element that can be drawn outside of its normal draw order.
-///
-/// This allows certain types of components to subvert their normal draw order
-/// and be drawn *on top* of all other components. It detachs the component's
-/// draw order from its logical location in the component tree. Useful for
-/// modals and other elements that must be drawn on top. This concept allows
-/// components to logically live where they belong in a component tree,
-/// simplifying state management and reducing the need for indirect event-based
-/// logic.
-pub trait Portal {
-    /// Get the area of the screen that this component should be drawn to
-    fn area(&self, canvas_area: Rect) -> Rect;
 }
 
 #[cfg(test)]

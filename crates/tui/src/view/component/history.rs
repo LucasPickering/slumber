@@ -169,7 +169,7 @@ impl Component for History {
                 .enable(has_requests)
                 .into(),
             emitter
-                .menu(HistoryAction::DeleteAll, "Delete All")
+                .menu(HistoryAction::DeleteAll, "Delete All Requests")
                 .enable(has_requests)
                 .into(),
         ]

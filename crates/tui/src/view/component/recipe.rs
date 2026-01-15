@@ -22,7 +22,7 @@ use crate::{
             },
         },
         context::UpdateContext,
-        event::{DeleteTarget, Emitter, Event, EventMatch, ToEmitter},
+        event::{Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, PersistentStore},
     },
 };
@@ -513,45 +513,35 @@ enum RecipeNodeState {
 /// Items in the actions popup menu. This is used by both the list and detail
 /// components. Handling is stateless so it's shared between them.
 #[derive(Debug)]
+#[expect(clippy::enum_variant_names)]
 enum RecipeMenuAction {
     CopyUrl,
     CopyAsCli,
     CopyAsCurl,
     CopyAsPython,
-    /// Delete all requests for the current recipe
-    DeleteRequests,
 }
 
 impl RecipeMenuAction {
     /// Build a list of these actions
     fn menu(emitter: Emitter<Self>, has_recipe: bool) -> Vec<MenuItem> {
-        vec![
-            MenuItem::Group {
-                name: "Copy".into(),
-                children: vec![
-                    emitter
-                        .menu(Self::CopyUrl, "URL")
-                        .enable(has_recipe)
-                        .into(),
-                    emitter
-                        .menu(Self::CopyAsCli, "as CLI")
-                        .enable(has_recipe)
-                        .into(),
-                    emitter
-                        .menu(Self::CopyAsCurl, "as cURL")
-                        .enable(has_recipe)
-                        .into(),
-                    emitter
-                        .menu(Self::CopyAsPython, "as Python")
-                        .enable(has_recipe)
-                        .into(),
-                ],
-            },
-            emitter
-                .menu(Self::DeleteRequests, "Delete Requests")
-                .enable(has_recipe)
-                .into(),
-        ]
+        vec![MenuItem::Group {
+            name: "Copy".into(),
+            children: vec![
+                emitter.menu(Self::CopyUrl, "URL").enable(has_recipe).into(),
+                emitter
+                    .menu(Self::CopyAsCli, "as CLI")
+                    .enable(has_recipe)
+                    .into(),
+                emitter
+                    .menu(Self::CopyAsCurl, "as cURL")
+                    .enable(has_recipe)
+                    .into(),
+                emitter
+                    .menu(Self::CopyAsPython, "as Python")
+                    .enable(has_recipe)
+                    .into(),
+            ],
+        }]
     }
 
     /// Send a global message/event to handle this event
@@ -565,9 +555,6 @@ impl RecipeMenuAction {
             Self::CopyAsCli => copy(RecipeCopyTarget::Cli),
             Self::CopyAsCurl => copy(RecipeCopyTarget::Curl),
             Self::CopyAsPython => copy(RecipeCopyTarget::Python),
-            Self::DeleteRequests => ViewContext::push_event(
-                Event::DeleteRequests(DeleteTarget::Recipe),
-            ),
         }
     }
 }

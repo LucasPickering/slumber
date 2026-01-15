@@ -131,7 +131,11 @@ pub enum DeleteTarget {
     /// Delete the selected request
     Request,
     /// Delete all requests for the selected recipe
-    Recipe,
+    Recipe {
+        /// If `true`, delete all requests for all profiles. If `false`, delete
+        /// just requests for the selected profile
+        all_profiles: bool,
+    },
 }
 
 /// Wrapper for matching an event to various expected cases.

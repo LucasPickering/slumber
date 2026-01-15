@@ -8,7 +8,7 @@ use crate::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
             internal::ComponentExt,
-            misc::{DeleteRequestsButton, ErrorModal, QuestionModal},
+            misc::{ErrorModal, QuestionModal},
             primary::PrimaryView,
         },
         context::UpdateContext,
@@ -18,7 +18,10 @@ use crate::{
 use indexmap::IndexMap;
 use ratatui::{layout::Layout, prelude::Constraint};
 use slumber_config::Action;
-use slumber_core::{collection::ProfileId, database::ProfileFilter};
+use slumber_core::{
+    collection::{HasId, Profile, ProfileId},
+    database::ProfileFilter,
+};
 use slumber_template::Template;
 use tracing::warn;
 
@@ -89,7 +92,9 @@ impl Root {
 
     /// Open a modal to confirm deletion one or more requests
     fn delete_requests(&mut self, target: DeleteTarget) {
-        match target {
+        // Get the string to show to the user, and the message we should push
+        // *if* they say yes
+        let (title, message) = match target {
             DeleteTarget::Request => {
                 let Some(request_id) = self.primary_view.selected_request_id()
                 else {
@@ -99,58 +104,72 @@ impl Root {
                     return;
                 };
 
-                self.questions.open(QuestionModal::confirm(
+                (
                     "Delete Request?".into(),
-                    move |answer| {
-                        if answer {
-                            ViewContext::send_message(
-                                HttpMessage::DeleteRequest(request_id),
-                            );
-                        }
-                    },
-                ));
+                    HttpMessage::DeleteRequest(request_id),
+                )
             }
-            DeleteTarget::Recipe => {
-                let Some(recipe_id) =
-                    self.primary_view.selected_recipe_id().cloned()
+            DeleteTarget::Recipe { all_profiles } => {
+                let collection = ViewContext::collection();
+                let Some(recipe) = self
+                    .primary_view
+                    .selected_recipe_id()
+                    .and_then(|id| collection.recipes.get_recipe(id))
                 else {
                     // It shouldn't be possible to trigger this without a
                     // selected recipe
-                    warn!("Cannot delete recipe request; no recipe selected");
+                    warn!("Cannot delete recipe requests; no recipe selected");
                     return;
                 };
-                let profile_id =
-                    self.primary_view.selected_profile_id().cloned();
+                let recipe_id = recipe.id.clone();
 
-                // Open a question modal to confirm deletion. We'll also ask
-                // if they want to delete all requests for the recipe, or just
-                // for this profile.
-                self.questions.open(QuestionModal::delete_requests(
-                    format!("Delete Requests for {recipe_id}?"),
-                    move |button| {
-                        // Do the delete here because we have access to the
-                        // request store
-                        let profile_filter = match button {
-                            DeleteRequestsButton::No => None,
-                            DeleteRequestsButton::Profile => {
-                                Some(profile_id.into())
-                            }
-                            DeleteRequestsButton::All => {
-                                Some(ProfileFilter::All)
-                            }
-                        };
-                        if let Some(profile_filter) = profile_filter {
-                            ViewContext::send_message(
-                                HttpMessage::DeleteRecipe {
-                                    recipe_id,
-                                    profile_filter,
-                                },
-                            );
-                        }
-                    },
-                ));
+                // Check which profiles we should delete for
+                if all_profiles {
+                    // All profiles
+                    (
+                        format!(
+                            "Delete all requests for {} (ALL profiles)?",
+                            recipe.name()
+                        ),
+                        HttpMessage::DeleteRecipe {
+                            recipe_id,
+                            profile_filter: ProfileFilter::All,
+                        },
+                    )
+                } else {
+                    // Only a single profile. If there is no selected profile,
+                    // we'll delete for profile=none
+                    let profile = self
+                        .primary_view
+                        .selected_profile_id()
+                        .and_then(|id| collection.profiles.get(id));
+
+                    (
+                        format!(
+                            "Delete all requests for {} (profile {})?",
+                            recipe.name(),
+                            profile.map(Profile::name).unwrap_or("None"),
+                        ),
+                        HttpMessage::DeleteRecipe {
+                            recipe_id,
+                            profile_filter: profile
+                                .map(Profile::id)
+                                .cloned()
+                                .into(),
+                        },
+                    )
+                }
             }
-        }
+        };
+
+        // Show a confirmation modal. If the user confirms, send the message
+        // that will trigger the delete
+        self.questions
+            .open(QuestionModal::confirm(title, move |answer| {
+                if answer {
+                    ViewContext::send_message(message);
+                }
+            }));
     }
 
     /// Cancel the active request
@@ -458,11 +477,11 @@ mod tests {
         );
     }
 
-    /// Test "Delete Requests" action via the recipe pane
+    /// Test "Delete All Requests > This Profile" action via the recipe pane
     #[rstest]
     fn test_delete_recipe_requests(
         mut harness: TestHarness,
-        #[with(80, 20)] terminal: TestTerminal,
+        #[with(120, 20)] terminal: TestTerminal,
     ) {
         let recipe_id = harness.collection.first_recipe_id().clone();
         let profile_id = harness.collection.first_profile_id().clone();
@@ -475,11 +494,11 @@ mod tests {
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());
-        // Select recipe pane
+        // Select History list
         component
             .int()
             .drain_draw()
-            .send_key(KeyCode::Char('c'))
+            .send_key(KeyCode::Char('h'))
             .assert_empty();
 
         // Sanity check for initial state
@@ -488,10 +507,11 @@ mod tests {
             Some(new_exchange.id)
         );
 
-        // Select "Delete Requests" but decline the confirmation
+        // Select action but decline the confirmation
+        let action_path = &["Delete All Requests", "This Profile"];
         component
             .int()
-            .action(&["Delete Requests"])
+            .action(action_path)
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
             .assert_empty();
@@ -502,11 +522,10 @@ mod tests {
             Some(new_exchange.id)
         );
 
-        // Select "Delete Requests" and accept. I don't feel like testing Delete
-        // for All Profiles
+        // Select action and accept. I don't feel like testing All Profiles too
         component
             .int()
-            .action(&["Delete Requests"])
+            .action(action_path)
             // Confirm
             .send_keys([KeyCode::Enter])
             .assert_empty();

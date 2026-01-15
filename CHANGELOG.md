@@ -54,7 +54,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 
 ### Changed
 
-- Reconfigured the TUI layout. The main change is that the recipe and profile lists open in an expandable sidebar now
+- Reconfigured the TUI layout. The main change is that the recipe, profile, and history lists open in an expandable sidebar now
   - Switching between recipes and profiles should feel faster and more intuitive now
 - `prompt()` and `select()` calls are now grouped into a single form pane in the TUI
   - Previously, you'd be fed a series of modals one-by-one to fill out

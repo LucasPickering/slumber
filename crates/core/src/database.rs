@@ -962,7 +962,7 @@ impl ProfileFilter<'_> {
     }
 }
 
-/// Convert from an option that defines either *no* profile or a specific one
+/// Convert from a specific profile
 impl<'a> From<&'a ProfileId> for ProfileFilter<'a> {
     fn from(profile_id: &'a ProfileId) -> Self {
         Self::Some(Cow::Borrowed(profile_id))
@@ -976,6 +976,13 @@ impl<'a> From<Option<&'a ProfileId>> for ProfileFilter<'a> {
             Some(profile_id) => Self::Some(Cow::Borrowed(profile_id)),
             None => Self::None,
         }
+    }
+}
+
+/// Convert from a specific profile
+impl From<ProfileId> for ProfileFilter<'static> {
+    fn from(profile_id: ProfileId) -> Self {
+        Self::Some(Cow::Owned(profile_id))
     }
 }
 

@@ -124,13 +124,19 @@ impl Component for History {
                 ),
                 _ => propagate.set(),
             })
-            .emitted(self.actions_emitter, |menu_action| match menu_action {
-                HistoryAction::Delete => ViewContext::push_event(
-                    Event::DeleteRequests(DeleteTarget::Request),
-                ),
-                HistoryAction::DeleteAll => ViewContext::push_event(
-                    Event::DeleteRequests(DeleteTarget::Recipe),
-                ),
+            .emitted(self.actions_emitter, |menu_action| {
+                let target = match menu_action {
+                    HistoryAction::DeleteRequest => DeleteTarget::Request,
+                    HistoryAction::DeleteRecipeProfile => {
+                        DeleteTarget::Recipe {
+                            all_profiles: false,
+                        }
+                    }
+                    HistoryAction::DeleteRecipeAll => {
+                        DeleteTarget::Recipe { all_profiles: true }
+                    }
+                };
+                ViewContext::push_event(Event::DeleteRequests(target));
             })
             .emitted(self.select.to_emitter(), |event| match event.kind {
                 SelectEventKind::Select => {
@@ -164,14 +170,26 @@ impl Component for History {
         let has_requests = !self.select.is_empty();
         vec![
             emitter
-                .menu(HistoryAction::Delete, "Delete Request")
+                .menu(HistoryAction::DeleteRequest, "Delete Request")
                 .shortcut(Some(Action::Delete))
                 .enable(has_requests)
                 .into(),
-            emitter
-                .menu(HistoryAction::DeleteAll, "Delete All Requests")
-                .enable(has_requests)
-                .into(),
+            MenuItem::Group {
+                name: "Delete All Requests".into(),
+                children: vec![
+                    emitter
+                        .menu(
+                            HistoryAction::DeleteRecipeProfile,
+                            "This Profile",
+                        )
+                        .enable(has_requests)
+                        .into(),
+                    emitter
+                        .menu(HistoryAction::DeleteRecipeAll, "All Profiles")
+                        .enable(has_requests)
+                        .into(),
+                ],
+            },
         ]
     }
 
@@ -265,11 +283,14 @@ impl PersistentKey for SelectedRequestKey {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[expect(clippy::enum_variant_names)]
 enum HistoryAction {
     /// Delete the selected request
-    Delete,
-    /// Delete all requests for this recipe (optionally filter by profile)
-    DeleteAll,
+    DeleteRequest,
+    /// Delete all requests for this recipe+profile
+    DeleteRecipeProfile,
+    /// Delete all requests for this recipe across all profiles
+    DeleteRecipeAll,
 }
 
 /// Emitted event from [History]

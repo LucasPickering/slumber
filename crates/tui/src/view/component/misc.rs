@@ -100,18 +100,6 @@ pub enum QuestionModal {
         #[debug(skip)]
         on_submit: Box<dyn 'static + FnOnce(String)>,
     },
-
-    /// Confirm deletion of all requests for a recipe/profile. This is very
-    /// niche and it'd be better to have a generic "select list" modal, but with
-    /// only one use case it's not worth the effort.
-    DeleteRequests {
-        id: ComponentId,
-        message: String,
-        buttons: ButtonGroup<DeleteRequestsButton>,
-        /// Callback when the user replies
-        #[debug(skip)]
-        on_submit: Box<dyn 'static + FnOnce(DeleteRequestsButton)>,
-    },
 }
 
 impl QuestionModal {
@@ -143,19 +131,6 @@ impl QuestionModal {
         }
     }
 
-    /// Open a modal to confirm deletion of multiple requests
-    pub fn delete_requests(
-        message: String,
-        on_submit: impl 'static + FnOnce(DeleteRequestsButton),
-    ) -> Self {
-        Self::DeleteRequests {
-            id: ComponentId::new(),
-            message,
-            buttons: ButtonGroup::default(),
-            on_submit: Box::new(on_submit),
-        }
-    }
-
     /// Build a new modal to ask a [Question]
     pub fn from_question(question: Question) -> Self {
         match question {
@@ -177,10 +152,7 @@ impl Modal for QuestionModal {
     fn title(&self) -> Line<'_> {
         match self {
             QuestionModal::Confirm { message, .. }
-            | QuestionModal::Text { message, .. }
-            | QuestionModal::DeleteRequests { message, .. } => {
-                message.as_str().into()
-            }
+            | QuestionModal::Text { message, .. } => message.as_str().into(),
         }
     }
 
@@ -191,10 +163,6 @@ impl Modal for QuestionModal {
                 Constraint::Length((message.width() as u16 + 4).max(24))
             }
             QuestionModal::Text { .. } => Constraint::Percentage(60),
-            QuestionModal::DeleteRequests { message, .. } => {
-                const MIN_WIDTH: u16 = 44; // Enough room for the buttons
-                Constraint::Length(MIN_WIDTH.max((message.width() + 4) as u16))
-            }
         };
         (width, Constraint::Length(1))
     }
@@ -213,9 +181,6 @@ impl Modal for QuestionModal {
             } => {
                 on_submit(text_box.into_text());
             }
-            QuestionModal::DeleteRequests {
-                buttons, on_submit, ..
-            } => on_submit(buttons.selected()),
         }
     }
 }
@@ -224,8 +189,7 @@ impl Component for QuestionModal {
     fn id(&self) -> ComponentId {
         match self {
             QuestionModal::Confirm { id, .. }
-            | QuestionModal::Text { id, .. }
-            | QuestionModal::DeleteRequests { id, .. } => *id,
+            | QuestionModal::Text { id, .. } => *id,
         }
     }
 
@@ -236,9 +200,6 @@ impl Component for QuestionModal {
             }
             QuestionModal::Text { text_box, .. } => {
                 vec![text_box.to_child_mut()]
-            }
-            QuestionModal::DeleteRequests { buttons, .. } => {
-                vec![buttons.to_child_mut()]
             }
         }
     }
@@ -256,24 +217,6 @@ impl Draw for QuestionModal {
                 metadata.area(),
                 true,
             ),
-            QuestionModal::DeleteRequests { buttons, .. } => {
-                canvas.draw(buttons, (), metadata.area(), true);
-            }
         }
     }
-}
-
-/// Confirmation buttons to delete all requests for a recipe
-#[derive(
-    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
-)]
-pub enum DeleteRequestsButton {
-    No,
-    /// Delete requests only for the current profile
-    #[default]
-    #[display("For this profile")]
-    Profile,
-    /// Delete all requests for all profiles
-    #[display("For all profiles")]
-    All,
 }

@@ -1,13 +1,13 @@
 use crate::{
     context::TuiContext,
     view::{
-        Component, UpdateContext,
+        Component, ComponentExt, UpdateContext,
         component::{Canvas, Child, ComponentId, Draw, DrawMetadata},
         event::{Event, EventMatch},
     },
 };
 use ratatui::{
-    layout::{Constraint, Margin, Position},
+    layout::{Constraint, Margin},
     text::Line,
     widgets::{Block, Borders, Clear},
 };
@@ -103,7 +103,15 @@ impl<T: Component + Modal> Component for ModalQueue<T> {
                 Action::Submit => self.submit(context),
                 _ => propagate.set(),
             })
-            .click(|_, _| self.close()) // If clicked outside the content, close
+            .click(|position, _| {
+                // If clicked outside the content, close
+                if self
+                    .active()
+                    .is_none_or(|modal| !modal.contains(context, position))
+                {
+                    self.close();
+                }
+            })
             .any(|event| match event {
                 // Modals are meant to consume all focus, so don't allow any
                 // events to go to background components

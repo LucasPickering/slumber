@@ -10,7 +10,8 @@ use crate::{
         Component, RequestDisposition, ViewContext,
         common::actions::MenuItem,
         component::{
-            Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
+            Canvas, Child, ComponentExt, ComponentId, Draw, DrawMetadata,
+            ToChild,
             exchange_pane::ExchangePane,
             history::{History, HistoryEvent},
             primary::view_state::{

@@ -453,7 +453,7 @@ impl<Item: 'static, State: SelectState> Component for Select<Item, State> {
     ) -> EventMatch {
         event
             .m()
-            .click(|position, propagate| {
+            .click(|position, _| {
                 // Map the position to the relative to our top-left. Each item
                 // is one row, so the index is just the y position.
                 //
@@ -465,10 +465,6 @@ impl<Item: 'static, State: SelectState> Component for Select<Item, State> {
                         self.select_index(clicked_index);
                     }
                 }
-
-                // Always propagate this click, because the parent may be a
-                // pane that uses it to select itself
-                propagate.set();
             })
             .scroll(|direction| match direction {
                 ScrollDirection::Up => self.up(),

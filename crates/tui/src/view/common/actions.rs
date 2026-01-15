@@ -4,7 +4,8 @@ use crate::{
         Generate,
         common::select::{Select, SelectEventKind, SelectListProps},
         component::{
-            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+            Canvas, Child, Component, ComponentExt, ComponentId, Draw,
+            DrawMetadata, ToChild,
         },
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
@@ -74,7 +75,9 @@ impl Component for ActionMenu {
                 Action::Cancel | Action::Quit => self.close(),
                 _ => propagate.set(),
             })
-            .click(|_, _| self.close()) // If clicked outside the content, close
+            // If clicked outside the content, close. The content eats click
+            // events so those don't make it here
+            .click(|_, _| self.close())
             .emitted(
                 emitter,
                 // Unwraps are safe because we can only get an event if the
@@ -306,10 +309,10 @@ impl Component for ActionMenuContent {
                 for (i, layer) in self.stack.iter().enumerate() {
                     if layer.contains(context, position) {
                         self.active_layer = i;
+                        // Clicks are propagated by default, but we want to eat!
+                        propagate.unset();
                     }
                 }
-                // Clicks are propagated by default, but we want to EAT THEM ALL
-                propagate.unset();
             })
             .action(|action, propagate| match action {
                 // Navigate between layers with left/right

@@ -61,20 +61,6 @@ pub trait Component: ToChild {
         event.m()
     }
 
-    /// Does this component contain the given cursor position?
-    ///
-    /// This is used to determine if the component should receive mouse events
-    /// for this position. This should typically not be overridden. The default
-    /// implementation checks if the component's last draw area contains the
-    /// point.
-    fn contains(&self, context: &UpdateContext, position: Position) -> bool {
-        // By default, we want to receive any mouse event in our draw area
-        context
-            .component_map
-            .area(self)
-            .is_some_and(|area| area.contains(position))
-    }
-
     /// Provide a list of actions that are accessible from the actions menu.
     /// This list may be static (e.g. determined from an enum) or dynamic. When
     /// the user opens the actions menu, all available actions for all
@@ -121,6 +107,12 @@ pub trait Component: ToChild {
 /// that does not need to be (or cannot be) overridden by implementors of
 /// [Component] should be defined here instead.
 pub trait ComponentExt: Component {
+    /// Does this component contain the given cursor position?
+    ///
+    /// This is used to determine if the component should receive mouse events
+    /// for this position, using the component's last draw area.
+    fn contains(&self, context: &UpdateContext, position: Position) -> bool;
+
     /// Collect all available menu actions from all **focused** descendents of
     /// this component (including this component). This takes a mutable
     /// reference so we don't have to duplicate the code that provides children;
@@ -147,6 +139,13 @@ pub trait ComponentExt: Component {
 }
 
 impl<T: Component + ?Sized> ComponentExt for T {
+    fn contains(&self, context: &UpdateContext, position: Position) -> bool {
+        context
+            .component_map
+            .area(self)
+            .is_some_and(|area| area.contains(position))
+    }
+
     fn collect_actions(&mut self, context: &UpdateContext) -> Vec<MenuItem>
     where
         Self: Sized,
@@ -500,9 +499,8 @@ fn update_all(
     // We need to check one more thing before handling the event: if it's a
     // mouse event, is the cursor within our area? We can't check this before
     // handling children because it's possible for an event to be over a child
-    // without being over the parent (in the case of portals). In that case, the
-    // child receives the event but the parent doesn't.
-    // TODO update ^^
+    // without being over the parent (some children blow out their areas). In
+    // that case, the child receives the event but the parent doesn't.
     let should_receive = match &event {
         Event::Input(
             InputEvent::Click { position, .. }

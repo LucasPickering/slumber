@@ -9,7 +9,8 @@ use crate::{
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         component::{
-            Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
+            Canvas, Child, ComponentExt, ComponentId, Draw, DrawMetadata,
+            ToChild,
             command_text_box::{CommandTextBox, CommandTextBoxEvent},
         },
         context::UpdateContext,

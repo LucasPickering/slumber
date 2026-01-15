@@ -7,7 +7,7 @@ use crate::{
         common::{
             Pane,
             actions::MenuItem,
-            select::{Select, SelectEvent, SelectEventType, SelectListProps},
+            select::{Select, SelectEventKind, SelectListProps},
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
@@ -47,7 +47,7 @@ impl History {
             .map(Vec::from_iter)
             .unwrap_or_default();
         let select = Select::builder(requests)
-            .subscribe([SelectEventType::Select])
+            .subscribe([SelectEventKind::Select])
             .preselect_opt(selected_request_id.as_ref())
             .build();
 
@@ -81,12 +81,12 @@ impl Component for History {
                     Event::DeleteRequests(DeleteTarget::Recipe),
                 ),
             })
-            .emitted(self.select.to_emitter(), |event| {
-                if let SelectEvent::Select(index) = event {
-                    ViewContext::push_event(Event::HttpSelectRequest(Some(
-                        self.select[index].id(),
-                    )));
+            .emitted(self.select.to_emitter(), |event| match event.kind {
+                SelectEventKind::Select => {
+                    let id = self.select[event].id();
+                    ViewContext::push_event(Event::HttpSelectRequest(Some(id)));
                 }
+                _ => {}
             })
     }
 

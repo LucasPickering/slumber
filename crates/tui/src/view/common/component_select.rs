@@ -31,7 +31,7 @@ pub struct ComponentSelect<Item> {
     select: Select<Item, ComponentSelectState>,
 }
 
-impl<Item> ComponentSelect<Item> {
+impl<Item: 'static> ComponentSelect<Item> {
     /// Construct a new [ComponentSelect] from a [Select]
     pub fn new(select: Select<Item, ComponentSelectState>) -> Self {
         Self { select }
@@ -121,7 +121,7 @@ impl<Item> ComponentSelect<Item> {
     }
 }
 
-impl<Item> Default for ComponentSelect<Item> {
+impl<Item: 'static> Default for ComponentSelect<Item> {
     fn default() -> Self {
         Self {
             select: Select::default(),
@@ -129,7 +129,7 @@ impl<Item> Default for ComponentSelect<Item> {
     }
 }
 
-impl<Item: Component> Component for ComponentSelect<Item> {
+impl<Item: 'static + Component> Component for ComponentSelect<Item> {
     fn id(&self) -> ComponentId {
         self.select.id()
     }
@@ -155,7 +155,7 @@ impl<Item, Props> Draw<ComponentSelectProps<Item, Props>>
     for ComponentSelect<Item>
 where
     Props: Clone,
-    Item: Component + Draw<Props>,
+    Item: 'static + Component + Draw<Props>,
 {
     fn draw(
         &self,
@@ -258,7 +258,10 @@ where
     }
 }
 
-impl<Item> From<Select<Item, ComponentSelectState>> for ComponentSelect<Item> {
+impl<Item> From<Select<Item, ComponentSelectState>> for ComponentSelect<Item>
+where
+    Item: 'static,
+{
     fn from(select: Select<Item, ComponentSelectState>) -> Self {
         Self::new(select)
     }

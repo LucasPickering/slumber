@@ -9,10 +9,7 @@ use crate::view::{
 };
 use itertools::Itertools;
 use ratatui::widgets::ListState;
-use std::{
-    fmt::{Debug, Display},
-    ops::{Index, IndexMut},
-};
+use std::fmt::{Debug, Display};
 use strum::{EnumCount, IntoEnumIterator};
 
 /// A static (AKA fixed) list of items
@@ -117,30 +114,6 @@ where
     }
 }
 
-/// Get an item by index, and panic if out of bounds. Useful with emitted
-/// events, when we know the index will be valid
-impl<Item, State> Index<usize> for FixedSelect<Item, State>
-where
-    Item: FixedSelectItem,
-    State: SelectState,
-{
-    type Output = Item;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.inner[index]
-    }
-}
-
-impl<Item, State> IndexMut<usize> for FixedSelect<Item, State>
-where
-    Item: FixedSelectItem,
-    State: SelectState,
-{
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.inner[index]
-    }
-}
-
 impl<Item, State> Component for FixedSelect<Item, State>
 where
     Item: FixedSelectItem,
@@ -173,8 +146,8 @@ where
     }
 }
 
-impl<T: FixedSelectItem> ToEmitter<SelectEvent> for FixedSelect<T> {
-    fn to_emitter(&self) -> Emitter<SelectEvent> {
+impl<Item: FixedSelectItem> ToEmitter<SelectEvent<Item>> for FixedSelect<Item> {
+    fn to_emitter(&self) -> Emitter<SelectEvent<Item>> {
         self.inner.to_emitter()
     }
 }

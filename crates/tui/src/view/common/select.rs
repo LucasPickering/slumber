@@ -26,7 +26,6 @@ use std::{
     marker::PhantomData,
     ops::{Index, IndexMut},
 };
-use strum::EnumDiscriminants;
 use terminput::ScrollDirection;
 use tracing::error;
 
@@ -54,14 +53,14 @@ use tracing::error;
 #[derive(derive_more::Debug)]
 pub struct Select<Item, State = ListState> {
     id: ComponentId,
-    emitter: Emitter<SelectEvent>,
+    emitter: Emitter<SelectEvent<Item>>,
     /// Direction of items, for both display and interaction. In top-to-bottom,
     /// index 0 is at the top, Up decrements the index, and Down increments it.
     /// In bottom-to-top, index 0 is at the bottom, Up increments the index,
     /// and Down decrements it.
     direction: ListDirection,
     /// Which event types to emit
-    subscribed_events: HashSet<SelectEventType>,
+    subscribed_events: HashSet<SelectEventKind>,
     /// Use interior mutability because this needs to be modified during the
     /// draw phase, by [ratatui::Frame::render_stateful_widget]. This allows
     /// rendering without a mutable reference.
@@ -93,11 +92,11 @@ pub struct SelectBuilder<Item, State> {
     /// the index *after* the filter is applied.
     preselect_index: usize,
     direction: ListDirection,
-    subscribed_events: HashSet<SelectEventType>,
+    subscribed_events: HashSet<SelectEventKind>,
     _state: PhantomData<State>,
 }
 
-impl<Item, State> SelectBuilder<Item, State> {
+impl<Item: 'static, State> SelectBuilder<Item, State> {
     /// Disable certain items in the list by index. Disabled items can still be
     /// selected, but do not emit events.
     pub fn disabled_indexes(
@@ -125,7 +124,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     /// Which types of events should this emit?
     pub fn subscribe(
         mut self,
-        event_types: impl IntoIterator<Item = SelectEventType>,
+        event_types: impl IntoIterator<Item = SelectEventKind>,
     ) -> Self {
         self.subscribed_events.extend(event_types);
         self
@@ -229,7 +228,7 @@ impl<Item, State> SelectBuilder<Item, State> {
     }
 }
 
-impl<Item, State: SelectState> Select<Item, State> {
+impl<Item: 'static, State: SelectState> Select<Item, State> {
     /// Start a new builder
     pub fn builder(items: Vec<Item>) -> SelectBuilder<Item, State> {
         SelectBuilder {
@@ -318,7 +317,7 @@ impl<Item, State: SelectState> Select<Item, State> {
 
         // If the selection changed, send an event
         if current != new {
-            self.emit_for_selected(SelectEvent::Select);
+            self.emit_for_selected(SelectEventKind::Select);
         }
     }
 
@@ -373,23 +372,24 @@ impl<Item, State: SelectState> Select<Item, State> {
     /// Helper to generate an emit an event for the currentl selected item. The
     /// event will *not* be emitted if no item is select, or the selected item
     /// is disabled.
-    fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectEvent) {
+    fn emit_for_selected(&self, kind: SelectEventKind) {
         if let Some(selected) = self.selected_index() {
-            let event = event_fn(selected);
             // Check if the parent subscribed to this event type
-            if self.is_subscribed(SelectEventType::from(&event)) {
-                self.emitter.emit(event);
+            if self.is_subscribed(kind) {
+                self.emitter.emit(SelectEvent::new(kind, selected));
             }
         }
     }
 
-    fn is_subscribed(&self, event_type: SelectEventType) -> bool {
-        self.subscribed_events.contains(&event_type)
+    /// Is the parent subscribed to this event kind?
+    fn is_subscribed(&self, kind: SelectEventKind) -> bool {
+        self.subscribed_events.contains(&kind)
     }
 }
 
 impl<Item, State> Default for Select<Item, State>
 where
+    Item: 'static,
     State: SelectState,
 {
     fn default() -> Self {
@@ -397,12 +397,8 @@ where
     }
 }
 
-/// Get an item by index, and panic if out of bounds. Useful with emitted
-/// events, when we know the index will be valid
-impl<Item, State> Index<usize> for Select<Item, State>
-where
-    State: SelectState,
-{
+/// Index by index to get an item by index
+impl<Item, State> Index<usize> for Select<Item, State> {
     type Output = Item;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -410,19 +406,28 @@ where
     }
 }
 
-impl<Item, State> IndexMut<usize> for Select<Item, State>
-where
-    State: SelectState,
-{
+impl<Item, State> IndexMut<usize> for Select<Item, State> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.items[index].value
     }
 }
 
-impl<Item, State> Component for Select<Item, State>
-where
-    State: SelectState,
-{
+/// Index by event to easily grab the item affected by an event
+impl<Item, State> Index<SelectEvent<Item>> for Select<Item, State> {
+    type Output = Item;
+
+    fn index(&self, event: SelectEvent<Item>) -> &Self::Output {
+        &self[event.index]
+    }
+}
+
+impl<Item, State> IndexMut<SelectEvent<Item>> for Select<Item, State> {
+    fn index_mut(&mut self, event: SelectEvent<Item>) -> &mut Self::Output {
+        &mut self[event.index]
+    }
+}
+
+impl<Item: 'static, State: SelectState> Component for Select<Item, State> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -464,25 +469,25 @@ where
                 Action::Down | Action::ScrollDown => self.down(),
                 // Don't eat these events unless the user has subscribed
                 Action::Toggle
-                    if self.is_subscribed(SelectEventType::Toggle) =>
+                    if self.is_subscribed(SelectEventKind::Toggle) =>
                 {
-                    self.emit_for_selected(SelectEvent::Toggle);
+                    self.emit_for_selected(SelectEventKind::Toggle);
                 }
                 Action::Submit
-                    if self.is_subscribed(SelectEventType::Submit) =>
+                    if self.is_subscribed(SelectEventKind::Submit) =>
                 {
-                    self.emit_for_selected(SelectEvent::Submit);
+                    self.emit_for_selected(SelectEventKind::Submit);
                 }
                 _ => propagate.set(),
             })
     }
 }
 
-impl<Item, State> ToEmitter<SelectEvent> for Select<Item, State>
+impl<Item, State> ToEmitter<SelectEvent<Item>> for Select<Item, State>
 where
-    State: SelectState,
+    Item: 'static,
 {
-    fn to_emitter(&self) -> Emitter<SelectEvent> {
+    fn to_emitter(&self) -> Emitter<SelectEvent<Item>> {
         self.emitter
     }
 }
@@ -519,6 +524,7 @@ impl SelectListProps {
 /// Item has to generate() to something that converts to Text
 impl<Item> Draw<SelectListProps> for Select<Item, ListState>
 where
+    Item: 'static,
     for<'a> &'a Item: Generate,
     for<'a> <&'a Item as Generate>::Output<'a>: Into<Text<'a>>,
 {
@@ -617,16 +623,45 @@ impl SelectState for usize {
 }
 
 /// Emitted event for [Select]
-#[derive(Debug, EnumDiscriminants)]
-#[strum_discriminants(name(SelectEventType), derive(Hash))]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum SelectEvent {
+///
+/// If you want to get the particular item affected by this, index the [Select]:
+///
+/// ```ignore
+/// select[event]
+/// ```
+///
+/// The type parameter on this is purely for debugging in emitted events. The
+/// emitted event tracks the name of the event type. By including the item type,
+/// it makes it much easier to determine which [Select] an event originated
+/// from.
+#[derive(Copy, Clone, derive_more::Debug)]
+#[cfg_attr(test, derive(derive_more::PartialEq))]
+pub struct SelectEvent<Item> {
+    pub kind: SelectEventKind,
+    index: usize,
+    #[debug(skip)] // Eliminates `Item: Debug` bound
+    _phantom: PhantomData<Item>,
+}
+
+impl<Item> SelectEvent<Item> {
+    fn new(kind: SelectEventKind, index: usize) -> Self {
+        Self {
+            kind,
+            index,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+/// Type of event that triggered the emission of a [SelectEvent]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum SelectEventKind {
     /// User highlight a new item in the list
-    Select(usize),
+    Select,
     /// User hit submit button (Enter by default) on an item
-    Submit(usize),
+    Submit,
     /// User hit toggle button (Space by default) on an item
-    Toggle(usize),
+    Toggle,
 }
 
 /// Find the index of a value in the list
@@ -791,7 +826,7 @@ mod tests {
     fn test_select(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
         let select: Select<&str, ListState> = Select::builder(items)
-            .subscribe([SelectEventType::Select])
+            .subscribe([SelectEventKind::Select])
             .build();
         let mut component = TestComponent::new(&harness, &terminal, select);
 
@@ -800,13 +835,13 @@ mod tests {
         component
             .int()
             .drain_draw()
-            .assert_emitted([SelectEvent::Select(0)]);
+            .assert_emitted([SelectEvent::new(SelectEventKind::Select, 0)]);
 
         // Select another one
         component
             .int()
             .send_key(KeyCode::Down)
-            .assert_emitted([SelectEvent::Select(1)]);
+            .assert_emitted([SelectEvent::new(SelectEventKind::Select, 1)]);
     }
 
     /// Test submit emitted event
@@ -814,7 +849,7 @@ mod tests {
     fn test_submit(harness: TestHarness, terminal: TestTerminal) {
         let items = vec!["a", "b", "c"];
         let select: Select<&str, ListState> = Select::builder(items)
-            .subscribe([SelectEventType::Submit])
+            .subscribe([SelectEventKind::Submit])
             .build();
         let mut component = TestComponent::new(&harness, &terminal, select);
         component.int().drain_draw().assert_empty();
@@ -822,7 +857,7 @@ mod tests {
         component
             .int()
             .send_keys([KeyCode::Down, KeyCode::Enter])
-            .assert_emitted([SelectEvent::Submit(1)]);
+            .assert_emitted([SelectEvent::new(SelectEventKind::Submit, 1)]);
     }
 
     /// Test that the clicked item is selected
@@ -890,7 +925,7 @@ mod tests {
             // For simplicity, we're only looking for select events. Seems like
             // a safe assumption that if it doesn't emit Select, it won't emit
             // anything else.
-            .subscribe([SelectEventType::Select])
+            .subscribe([SelectEventKind::Select])
             .build();
         let mut component: TestComponent<'_, Select<&'static str>> =
             TestComponent::new(&harness, &terminal, select);
@@ -899,27 +934,27 @@ mod tests {
         component
             .int()
             .drain_draw()
-            .assert_emitted([SelectEvent::Select(0)]);
+            .assert_emitted([SelectEvent::new(SelectEventKind::Select, 0)]);
 
         // Move down - skips over the disabled item
         component
             .int()
             .send_key(KeyCode::Down)
-            .assert_emitted([SelectEvent::Select(2)]);
+            .assert_emitted([SelectEvent::new(SelectEventKind::Select, 2)]);
         assert_eq!(component.selected(), Some(&"c"));
 
         // Move down again - skips over the disabled item
         component
             .int()
             .send_key(KeyCode::Down)
-            .assert_emitted([SelectEvent::Select(4)]);
+            .assert_emitted([SelectEvent::new(SelectEventKind::Select, 4)]);
         assert_eq!(component.selected(), Some(&"e"));
 
         // Move up - skips over the disabled item
         component
             .int()
             .send_key(KeyCode::Up)
-            .assert_emitted([SelectEvent::Select(2)]);
+            .assert_emitted([SelectEvent::new(SelectEventKind::Select, 2)]);
         assert_eq!(component.selected(), Some(&"c"));
 
         // Indexes should skip disabled items
@@ -953,7 +988,7 @@ mod tests {
             let select: Select<&str, ListState> =
                 Select::builder(items.clone())
                     .disabled_indexes(disabled_indexes)
-                    .subscribe([SelectEventType::Select])
+                    .subscribe([SelectEventKind::Select])
                     .build();
             let mut component = TestComponent::new(&harness, &terminal, select);
 
@@ -963,7 +998,9 @@ mod tests {
                 .int()
                 .drain_draw()
                 // Event should be emitted iff there is 1+ enabled items
-                .assert_emitted(first_enabled.map(SelectEvent::Select));
+                .assert_emitted(first_enabled.map(|index| {
+                    SelectEvent::new(SelectEventKind::Select, index)
+                }));
             assert_eq!(component.selected_index(), first_enabled);
 
             for input in inputs {
@@ -1006,8 +1043,10 @@ mod tests {
                         // Event should've been emitted for the selected item,
                         // and *not* for any disabled items that may have been
                         // skipped over
-                        let event =
-                            SelectEvent::Select(selected_index.unwrap());
+                        let event = SelectEvent::new(
+                            SelectEventKind::Select,
+                            selected_index.unwrap(),
+                        );
                         interact.assert_emitted([event]);
                     }
                 }
@@ -1092,7 +1131,7 @@ mod tests {
         ])
         .disabled_indexes([2])
         .persisted(&Key)
-        .subscribe([SelectEventType::Select])
+        .subscribe([SelectEventKind::Select])
         .build();
         let mut component = TestComponent::new(&harness, &terminal, select);
         assert_eq!(
@@ -1103,7 +1142,7 @@ mod tests {
             expected_event_indexes
                 .iter()
                 .copied()
-                .map(SelectEvent::Select),
+                .map(|index| SelectEvent::new(SelectEventKind::Select, index)),
         );
     }
 }

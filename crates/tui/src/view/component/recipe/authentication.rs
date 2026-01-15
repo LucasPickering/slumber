@@ -5,7 +5,7 @@ use crate::{
             component_select::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
-            select::{Select, SelectEvent, SelectEventType},
+            select::{Select, SelectEventKind},
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
@@ -173,7 +173,7 @@ impl BasicAuthentication {
             BasicField::new("Username", username),
             BasicField::new("Password", password),
         ])
-        .subscribe([SelectEventType::Select])
+        .subscribe([SelectEventKind::Select])
         .build();
         Self {
             id: ComponentId::default(),
@@ -198,14 +198,14 @@ impl Component for BasicAuthentication {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .emitted(self.select.to_emitter(), |event| match event {
-                SelectEvent::Select(_) => {
+            .emitted(self.select.to_emitter(), |event| match event.kind {
+                SelectEventKind::Select => {
                     // When changing selection, stop editing the previous item
                     for row in self.select.items_mut() {
                         row.value.submit_edit();
                     }
                 }
-                SelectEvent::Submit(_) | SelectEvent::Toggle(_) => {}
+                SelectEventKind::Submit | SelectEventKind::Toggle => {}
             })
     }
 

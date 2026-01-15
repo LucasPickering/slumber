@@ -6,7 +6,7 @@ use crate::{
             component_select::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
-            select::{Select, SelectEvent, SelectEventType},
+            select::{Select, SelectEventKind},
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
@@ -69,7 +69,7 @@ impl<Kind: RecipeTableKind> RecipeTable<Kind> {
         let selected_row_key = SelectedRowKey::new(recipe_id);
         let select = Select::builder(rows)
             .persisted(&selected_row_key)
-            .subscribe([SelectEventType::Select, SelectEventType::Toggle])
+            .subscribe([SelectEventKind::Select, SelectEventKind::Toggle])
             .build();
 
         Self {
@@ -101,17 +101,17 @@ impl<Kind: RecipeTableKind> Component for RecipeTable<Kind> {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
-            .emitted(self.select.to_emitter(), |event| match event {
-                SelectEvent::Select(_) => {
+            .emitted(self.select.to_emitter(), |event| match event.kind {
+                SelectEventKind::Select => {
                     // When changing selection, stop editing the previous item
                     for row in self.select.items_mut() {
                         row.value.submit_edit();
                     }
                 }
-                SelectEvent::Toggle(index) => {
-                    self.select[index].toggle();
+                SelectEventKind::Toggle => {
+                    self.select[event].toggle();
                 }
-                SelectEvent::Submit(_) => {}
+                SelectEventKind::Submit => {}
             })
     }
 

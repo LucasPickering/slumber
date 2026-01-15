@@ -2,9 +2,7 @@ use crate::{
     context::TuiContext,
     view::{
         Generate,
-        common::select::{
-            Select, SelectEvent, SelectEventType, SelectListProps,
-        },
+        common::select::{Select, SelectEventKind, SelectListProps},
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, Portal,
             ToChild,
@@ -309,7 +307,7 @@ impl Component for ActionMenuContent {
         context: &mut UpdateContext,
         event: Event,
     ) -> EventMatch {
-        let mut propagated = event
+        let mut prop = event
             .m()
             .click(|position, propagate| {
                 // Select clicked layer
@@ -345,18 +343,18 @@ impl Component for ActionMenuContent {
         let mut layer = 0;
         while layer < self.stack.len() {
             let emitter = self.stack[layer].to_emitter();
-            propagated = propagated.emitted(emitter, |event| match event {
-                SelectEvent::Select(index) => {
+            prop = prop.emitted(emitter, |event| match event.kind {
+                SelectEventKind::Select => {
                     // When changing selection, any existing child menus are no
                     // longer relevant so close them
                     self.clear_children(layer);
                     // If the selected item is a group, open a new child menu
-                    let selected = &self.stack[layer][index];
+                    let selected = &self.stack[layer][event];
                     if let MenuItemDisplay::Group { children, .. } = selected {
                         self.open_group(children.clone());
                     }
                 }
-                SelectEvent::Submit(index) => {
+                SelectEventKind::Submit => {
                     // Submitting on an action closes the menu and emits the
                     // action. Submitting on a group moves to the children
                     //
@@ -364,7 +362,7 @@ impl Component for ActionMenuContent {
                     // letting the modal queue handle it because **not all
                     // submissions close the modal**; submission on a group
                     // just enters the next layer
-                    let selected = &self.stack[layer][index];
+                    let selected = &self.stack[layer][event];
                     match selected {
                         MenuItemDisplay::Action { .. } => {
                             // Submission is deferred because it requires an
@@ -376,12 +374,12 @@ impl Component for ActionMenuContent {
                         MenuItemDisplay::Group { .. } => self.next_layer(),
                     }
                 }
-                SelectEvent::Toggle(_) => {}
+                SelectEventKind::Toggle => {}
             });
             layer += 1;
         }
 
-        propagated
+        prop
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -595,7 +593,7 @@ fn build_select(items: Vec<MenuItemDisplay>) -> Select<MenuItemDisplay> {
 
     Select::builder(items)
         .disabled_indexes(disabled_indexes)
-        .subscribe([SelectEventType::Select, SelectEventType::Submit])
+        .subscribe([SelectEventKind::Select, SelectEventKind::Submit])
         .build()
 }
 

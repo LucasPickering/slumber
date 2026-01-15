@@ -1,7 +1,7 @@
 use crate::view::{
     Component, ViewContext,
     common::{
-        select::{Select, SelectEvent, SelectEventType, SelectListProps},
+        select::{Select, SelectEventKind, SelectListProps},
         text_box::{TextBox, TextBoxEvent, TextBoxProps},
     },
     component::{Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild},
@@ -96,7 +96,7 @@ impl CommandTextBox {
                 Select::builder(commands)
                     // Most recent command is closest to the text box
                     .direction(ListDirection::BottomToTop)
-                    .subscribe([SelectEventType::Submit])
+                    .subscribe([SelectEventKind::Submit])
                     .build(),
             );
         }
@@ -136,9 +136,9 @@ impl Component for CommandTextBox {
             })
             .emitted_opt(
                 self.search.as_ref().map(ToEmitter::to_emitter),
-                |event| match event {
-                    SelectEvent::Submit(_) => self.submit_search(),
-                    SelectEvent::Select(_) | SelectEvent::Toggle(_) => {}
+                |event| match event.kind {
+                    SelectEventKind::Submit => self.submit_search(),
+                    SelectEventKind::Select | SelectEventKind::Toggle => {}
                 },
             )
             .emitted(self.text_box.to_emitter(), |event| match event {

@@ -5,7 +5,7 @@ use crate::{
     view::{
         ToStringGenerate, UpdateContext, ViewContext,
         common::{
-            select::{Select, SelectEvent, SelectEventType, SelectListProps},
+            select::{Select, SelectEventKind, SelectListProps},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
@@ -89,14 +89,15 @@ impl Component for CollectionSelect {
                 }
                 _ => propagate.set(),
             })
-            .emitted(self.select.to_emitter(), |event| {
+            .emitted(self.select.to_emitter(), |event| match event.kind {
                 // The ol' Tennessee Switcharoo
-                if let SelectEvent::Submit(index) = event {
-                    let item = &self.select[index];
+                SelectEventKind::Select => {
+                    let item = &self.select[event];
                     ViewContext::send_message(Message::CollectionSelect(
                         item.path.clone(),
                     ));
                 }
+                _ => {}
             })
             .emitted(self.filter.to_emitter(), |event| {
                 // Rebuild the list with the filter applied
@@ -209,6 +210,6 @@ fn build_select(filter: &str) -> Select<CollectionSelectItem> {
     // disappear
     .filter(filter)
     .preselect(&current_collection_id)
-    .subscribe([SelectEventType::Submit])
+    .subscribe([SelectEventKind::Submit])
     .build()
 }

@@ -4,7 +4,7 @@ use crate::{
         Generate, UpdateContext,
         common::{
             Pane,
-            select::{Select, SelectEvent, SelectEventType, SelectListProps},
+            select::{Select, SelectEventKind, SelectListProps},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
@@ -128,7 +128,7 @@ impl<State: SidebarListState> SidebarList<State> {
             .collect();
 
         Select::builder(items)
-            .subscribe([SelectEventType::Select, SelectEventType::Submit])
+            .subscribe([SelectEventKind::Select, SelectEventKind::Submit])
             .persisted(&state.persistent_key())
             .build()
     }
@@ -166,17 +166,17 @@ impl<State: SidebarListState> Component for SidebarList<State> {
                 _ => propagate.set(),
             })
             // Emitted events from select
-            .emitted(self.select.to_emitter(), |event| match event {
-                SelectEvent::Select(_) => {
+            .emitted(self.select.to_emitter(), |event| match event.kind {
+                SelectEventKind::Select => {
                     self.emitter.emit(SidebarListEvent::Select);
                 }
-                SelectEvent::Submit(_) => {
+                SelectEventKind::Submit => {
                     // Close with the current item selected. Checkpoint this
                     // item for the next time we're opened
                     self.last_submitted = self.select.selected_index();
                     self.emitter.emit(SidebarListEvent::Close);
                 }
-                SelectEvent::Toggle(_) => {}
+                SelectEventKind::Toggle => {}
             })
             // Emitted events from filter
             .emitted(self.filter.to_emitter(), |event| match event {

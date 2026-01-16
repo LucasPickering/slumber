@@ -646,7 +646,7 @@ impl<'a> ReferenceResolver<'a> {
         reference
             .resolve(self.spec)
             .with_context(|| {
-                let ObjectOrReference::Ref { ref_path } = reference else {
+                let ObjectOrReference::Ref { ref_path, .. } = reference else {
                     unreachable!("Only references can fail to resolve")
                 };
                 format!("Error resolving reference `{ref_path}`")

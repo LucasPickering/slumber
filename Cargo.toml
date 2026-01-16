@@ -108,7 +108,7 @@ used_underscore_binding = "allow"
 
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}
-console-subscriber = {version = "0.4.1", default-features = false, optional = true}
+console-subscriber = {version = "0.5.0", default-features = false, optional = true}
 slumber_cli = {workspace = true, optional = true}
 slumber_tui = {workspace = true, optional = true}
 slumber_util = {workspace = true}

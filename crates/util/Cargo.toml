@@ -22,7 +22,6 @@ path-clean = "1.0.1"
 rstest = {workspace = true, optional = true}
 saphyr = {workspace = true}
 serde = {workspace = true}
-serde_path_to_error = "0.1.16"
 serde_yaml = {workspace = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}

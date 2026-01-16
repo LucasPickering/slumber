@@ -22,7 +22,7 @@ indexmap = {workspace = true}
 itertools = {workspace = true}
 mime = {workspace = true}
 notify = {version = "8.0.0", default-features = false, features = ["macos_kqueue"]}
-notify-debouncer-full = {version = "0.5.0", default-features = false}
+notify-debouncer-full = {version = "0.6.0", default-features = false}
 ratatui = {version = "0.30.0-alpha.5", default-features = false, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
 reqwest = {workspace = true}
 serde = {workspace = true}
@@ -34,11 +34,11 @@ slumber_template = {workspace = true}
 slumber_util = {workspace = true}
 strum = {workspace = true}
 terminput = {workspace = true}
-terminput-crossterm = "0.3.3"
+terminput-crossterm = "0.4.0"
 tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
 tokio-util = {workspace = true}
 tracing = {workspace = true}
-tree-sitter-highlight = "0.25.4"
+tree-sitter-highlight = "0.26.0"
 tree-sitter-json = "0.24.8"
 unicode-width = "0.1.13"
 uuid = {workspace = true}

@@ -12,16 +12,31 @@ use thiserror::Error;
 use tracing::error;
 use winnow::error::{ContextError, ParseError};
 
-/// An error while parsing a template. The string is provided by winnow
+/// An error while parsing a template
 #[derive(Debug, Error)]
-#[error("{0}")]
-pub struct TemplateParseError(String);
+#[error("{error}")]
+pub struct TemplateParseError {
+    /// The string that failed to parse
+    input: String,
+    /// Error message, provided by winnow
+    error: String,
+}
+
+impl TemplateParseError {
+    /// Get the invalid template
+    pub fn input(&self) -> &str {
+        &self.input
+    }
+}
 
 /// Convert winnow's error type into ours. This stringifies the error so we can
 /// dump the reference to the input
 impl From<ParseError<&str, ContextError>> for TemplateParseError {
     fn from(error: ParseError<&str, ContextError>) -> Self {
-        Self(error.to_string())
+        Self {
+            input: (*error.input()).to_string(),
+            error: error.to_string(),
+        }
     }
 }
 

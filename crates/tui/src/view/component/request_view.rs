@@ -120,7 +120,7 @@ impl Draw for RequestView {
             canvas.draw(
                 &self.body_text_window,
                 TextWindowProps {
-                    text: body,
+                    text: body.as_ref(),
                     margins: Default::default(),
                 },
                 body_area,

@@ -92,8 +92,8 @@ impl TemplatePreview {
         slf
     }
 
-    pub fn text(&self) -> &Identified<Text<'static>> {
-        &self.text
+    pub fn text(&self) -> Identified<&Text<'static>> {
+        self.text.as_ref()
     }
 
     /// Send a message triggering a render of this template. The rendered

@@ -249,9 +249,8 @@ impl ActionMenuContent {
 
     /// Get the area for each open layer, starting from the given position
     ///
-    /// Each area will include margin for a border. This is used by both
-    /// both [ModalQueue] and our own [Draw::draw] to get consistent area
-    /// calculations.
+    /// Each area will include margin for a border. This is used in multiple
+    /// places to get consistent results.
     fn areas(&self, position: Position) -> Vec<Rect> {
         fn layer_width(layer: &Select<MenuItemDisplay>) -> u16 {
             // Get the longest item

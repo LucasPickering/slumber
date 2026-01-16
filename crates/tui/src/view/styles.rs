@@ -225,7 +225,7 @@ impl Styles {
                 hint: Style::default().fg(Color::DarkGray),
                 primary: Style::default().fg(theme.primary_color),
                 edited: Style::default().add_modifier(Modifier::ITALIC),
-                error: Style::default().bg(theme.error_color),
+                error: Style::default().fg(theme.error_color),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
             text_box: TextBoxStyle {

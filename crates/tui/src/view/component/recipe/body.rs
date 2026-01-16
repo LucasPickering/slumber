@@ -1,8 +1,9 @@
 use crate::{
+    context::TuiContext,
     message::{Message, RecipeCopyTarget},
     util::{ResultReported, TempFile},
     view::{
-        Component, ViewContext,
+        Component, Generate, ViewContext,
         common::{
             actions::MenuItem,
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
@@ -16,20 +17,25 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch},
         persistent::{PersistentKey, SessionKey},
+        state::Identified,
         util::view_text,
     },
 };
 use anyhow::Context;
 use indexmap::IndexMap;
 use mime::Mime;
+use ratatui::{
+    layout::{Constraint, Layout},
+    text::Text,
+};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
     http::content_type::ContentType,
 };
-use slumber_template::Template;
-use std::fs;
+use slumber_template::{Template, TemplateParseError};
+use std::{error::Error as StdError, fs};
 use tracing::{debug, error};
 
 /// Render recipe body. The variant is based on the incoming body type, and
@@ -152,6 +158,11 @@ pub struct TextBody {
     /// because the content could be too big to comfortably navigate in the
     /// in-app editor.
     body: OverrideTemplate<BodyKey>,
+    /// Error parsing the override template. If this is populated, we'll
+    /// display the invalid template with the error. We need the `Identified`
+    /// wrapper so `TextWindow` can detect when this changes to reset
+    /// window/scroll state.
+    override_error: Option<Identified<TemplateParseError>>,
     /// Body MIME type, used for syntax highlighting and pager selection. This
     /// has no impact on content of the rendered body
     mime: Option<Mime>,
@@ -175,12 +186,13 @@ impl TextBody {
             ),
             mime,
             text_window: TextWindow::default(),
+            override_error: None,
         }
     }
 
     /// Open rendered body in the pager
     fn view_body(&self) {
-        view_text(self.body.preview().text(), self.mime.clone());
+        view_text(*self.body.preview().text(), self.mime.clone());
     }
 
     /// Send a message to open the body in an external editor. We have to write
@@ -225,16 +237,20 @@ impl TextBody {
             return;
         };
 
-        let Some(template) = body
-            .parse::<Template>()
-            .reported(&ViewContext::messages_tx())
-        else {
-            // Whatever the user wrote isn't a valid template
-            return;
-        };
-
-        // Update state and regenerate the preview
-        self.body.set_override(template);
+        // Parse the template. If parsing fails, set the error
+        match body.parse::<Template>() {
+            Ok(template) => {
+                self.body.set_override(template);
+                self.override_error = None;
+            }
+            Err(error) => {
+                // Override is invalid. We'll show the invalid text with
+                // the error, but if a request is built it'll use the stock
+                // template
+                self.body.reset_override();
+                self.override_error = Some(Identified::new(error));
+            }
+        }
     }
 }
 
@@ -293,18 +309,52 @@ impl Component for TextBody {
 impl Draw for TextBody {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
-        canvas.draw(
-            &self.text_window,
-            TextWindowProps {
-                text: self.body.preview().text(),
-                margins: ScrollbarMargins {
-                    right: 1,
-                    bottom: 1,
+        let margins = ScrollbarMargins {
+            right: 1,
+            bottom: 1,
+        };
+        if let Some(error) = &self.override_error {
+            // We have an override but it's invalid - show the source+error
+
+            // Convert the error into text, keeping the same ID so the text
+            // window retains its scroll state
+            let text: Identified<Text> =
+                error.as_ref().map(|error| error.input().into());
+
+            let [text_area, _, error_area] = Layout::vertical([
+                Constraint::Length(text.height() as u16),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .areas(area);
+            canvas.draw(
+                &self.text_window,
+                TextWindowProps {
+                    text: text.as_ref(),
+                    margins,
                 },
-            },
-            area,
-            true,
-        );
+                text_area,
+                true,
+            );
+
+            // Draw the error down below
+            let styles = &TuiContext::get().styles;
+            let error_text = (&**error as &dyn StdError)
+                .generate()
+                .style(styles.text.error);
+            canvas.render_widget(error_text, error_area);
+        } else {
+            // Override is missing/invalid - render normally
+            canvas.draw(
+                &self.text_window,
+                TextWindowProps {
+                    text: self.body.preview().text(),
+                    margins,
+                },
+                area,
+                true,
+            );
+        }
     }
 }
 
@@ -425,22 +475,8 @@ mod tests {
         assert_eq!(component.override_value(), None);
         terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
-        // Open the editor
-        harness.messages().clear();
-        component.int().send_key(KeyCode::Char('e')).assert_empty();
-        let (file, on_complete) = assert_matches!(
-            harness.messages().pop_now(),
-            Message::FileEdit {
-                file,
-                on_complete,
-            } => (file, on_complete),
-        );
-        assert_eq!(fs::read_to_string(file.path()).unwrap(), "hello!");
-
-        // Simulate the editor modifying the file
-        fs::write(file.path(), "goodbye!").unwrap();
-        on_complete(file);
-        component.int().drain_draw().assert_empty();
+        // Edit the template
+        edit(&mut component, &mut harness, "hello!", "goodbye!");
 
         assert_eq!(component.override_value(), Some("goodbye!".into()));
         terminal.assert_buffer_lines([vec![
@@ -457,6 +493,46 @@ mod tests {
         // Reset edited state
         component.int().send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.override_value(), None);
+    }
+
+    /// Test edit and provide an invalid template. It should show the template
+    /// with the error
+    #[rstest]
+    fn test_edit_invalid(
+        mut harness: TestHarness,
+        #[with(20, 5)] terminal: TestTerminal,
+    ) {
+        let recipe = Recipe {
+            body: Some(RecipeBody::Raw("init".into())),
+            ..Recipe::factory(())
+        };
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
+        );
+
+        // Open the editor
+        edit(&mut component, &mut harness, "init", "{{");
+
+        // We don't have a valid override, so we'll let the HTTP engine use the
+        // original template
+        assert_eq!(component.override_value(), None);
+        terminal.assert_buffer_lines([
+            vec![gutter("1"), " ".into(), "{{".into()],
+            vec![],
+            vec![error("{{                  ")],
+            vec![error("  ^                 ")],
+            vec![error("invalid expression  ")],
+        ]);
+
+        // Invalid template is *not* persisted. This is a little shitty but it's
+        // annoying to get it to be supported. We'd have to move the support for
+        // invalid templates from here into OverrideTemplate, or duplicate a
+        // bunch of persistence logic
+        let persisted =
+            PersistentStore::get_session(&BodyKey(recipe.id.clone()));
+        assert_eq!(persisted, None);
     }
 
     /// Test editing a JSON body, which should open a file for the user to edit,
@@ -490,21 +566,7 @@ mod tests {
         ]]);
 
         // Open the editor
-        harness.messages().clear();
-        component.int().send_key(KeyCode::Char('e')).assert_empty();
-        let (file, on_complete) = assert_matches!(
-            harness.messages().pop_now(),
-            Message::FileEdit {
-                file,
-                on_complete,
-            } => (file, on_complete),
-        );
-        assert_eq!(fs::read_to_string(file.path()).unwrap(), initial_text);
-
-        // Simulate the editor modifying the file
-        fs::write(file.path(), override_text).unwrap();
-        on_complete(file);
-        component.int().drain_draw().assert_empty();
+        edit(&mut component, &mut harness, initial_text, override_text);
 
         assert_eq!(component.override_value(), Some(override_text.into()));
         terminal.assert_buffer_lines([vec![
@@ -594,5 +656,40 @@ mod tests {
     fn edited(text: &str) -> Span<'_> {
         let styles = &TuiContext::get().styles;
         Span::from(text).set_style(styles.text.edited)
+    }
+
+    /// Style text as an error
+    fn error(text: &str) -> Span<'_> {
+        let style = &TuiContext::get().styles;
+        Span::from(text).set_style(style.text.error)
+    }
+
+    /// Simulate template editing in a raw/JSON body. This will send an event
+    /// to open the editor, assert the opened file has the expected initial
+    /// content, write the new content (overwriting old content), then close the
+    /// file and allow the component to update with the new template.
+    fn edit(
+        component: &mut TestComponent<RecipeBodyDisplay>,
+        harness: &mut TestHarness,
+        initial_content: &str,
+        content: &str,
+    ) {
+        harness.messages().clear();
+        component.int().send_key(KeyCode::Char('e')).assert_empty();
+        let (file, on_complete) = assert_matches!(
+            harness.messages().pop_now(),
+            Message::FileEdit {
+                file,
+                on_complete,
+            } => (file, on_complete),
+        );
+        // Make sure the initial content is present as expected
+        assert_eq!(fs::read_to_string(file.path()).unwrap(), initial_content);
+
+        // Simulate the editor modifying the file
+        fs::write(file.path(), content).unwrap();
+        on_complete(file);
+        // Handle completion event
+        component.int().drain_draw().assert_empty();
     }
 }

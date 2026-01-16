@@ -216,7 +216,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         );
 
         // Draw the text content
-        self.render_chars(props.text, canvas.buffer_mut(), text_area);
+        self.render_chars(*props.text, canvas.buffer_mut(), text_area);
 
         // Scrollbars
         if has_vertical_scroll {
@@ -252,7 +252,7 @@ pub struct TextWindowProps<'a> {
     /// This uses `Identified` as a wrapper so that each text object has a
     /// unique ID attached. When the text content changes, the ID will change.
     /// We use that to detect when the text dimensions need to be recalculated.
-    pub text: &'a Identified<Text<'a>>,
+    pub text: Identified<&'a Text<'a>>,
     pub margins: ScrollbarMargins,
 }
 
@@ -289,7 +289,7 @@ struct TextSize {
 
 impl TextSize {
     /// Calculate dimensions of the given text
-    fn new(text: &Identified<Text>) -> Self {
+    fn new(text: Identified<&Text>) -> Self {
         // Note: Paragraph has methods for this, but that requires an
         // owned copy of Text, which involves a lot of cloning
 
@@ -323,11 +323,11 @@ mod tests {
         #[with(10, 4)] terminal: TestTerminal,
         harness: TestHarness,
     ) {
-        let text =
+        let text: Identified<_> =
             Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5")
                 .into();
         let props = TextWindowProps {
-            text: &text,
+            text: text.as_ref(),
             // Don't overflow the frame
             margins: ScrollbarMargins {
                 right: 0,
@@ -406,11 +406,11 @@ mod tests {
         #[with(35, 3)] terminal: TestTerminal,
         harness: TestHarness,
     ) {
-        let text =
+        let text: Identified<_> =
             Text::from("intro\n💚💙💜 this is a longer line\noutro").into();
         TestComponent::builder(&harness, &terminal, TextWindow::default())
             .with_props(TextWindowProps {
-                text: &text,
+                text: text.as_ref(),
                 // Don't overflow the frame
                 margins: ScrollbarMargins {
                     right: 0,
@@ -430,10 +430,10 @@ mod tests {
         #[with(10, 2)] terminal: TestTerminal,
         harness: TestHarness,
     ) {
-        let text = Text::raw("💚💙💜💚💙💜").into();
+        let text: Identified<_> = Text::raw("💚💙💜💚💙💜").into();
         TestComponent::builder(&harness, &terminal, TextWindow::default())
             .with_props(TextWindowProps {
-                text: &text,
+                text: text.as_ref(),
                 // Don't overflow the frame
                 margins: ScrollbarMargins {
                     right: 0,
@@ -454,13 +454,13 @@ mod tests {
         #[with(10, 3)] terminal: TestTerminal,
         harness: TestHarness,
     ) {
-        let text =
+        let text: Identified<_> =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
                 .into();
         let mut component =
             TestComponent::builder(&harness, &terminal, TextWindow::default())
                 .with_props(TextWindowProps {
-                    text: &text,
+                    text: text.as_ref(),
                     // Don't overflow the frame
                     margins: ScrollbarMargins {
                         right: 0,
@@ -475,10 +475,11 @@ mod tests {
         assert_eq!(component.offset_x.get(), 10);
         assert_eq!(component.offset_y.get(), 2);
 
-        let text = Text::from_iter(["1 less long line", "2", "3", "4"]).into();
+        let text: Identified<_> =
+            Text::from_iter(["1 less long line", "2", "3", "4"]).into();
         component
             .int_props(|| TextWindowProps {
-                text: &text,
+                text: text.as_ref(),
                 margins: ScrollbarMargins {
                     right: 0,
                     bottom: 0,
@@ -495,11 +496,11 @@ mod tests {
     /// automatically be clamped to match
     #[rstest]
     fn test_grow_window(terminal: TestTerminal, harness: TestHarness) {
-        let text =
+        let text: Identified<_> =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
                 .into();
         let props = TextWindowProps {
-            text: &text,
+            text: text.as_ref(),
             // Don't overflow the frame
             margins: ScrollbarMargins {
                 right: 0,

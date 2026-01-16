@@ -27,12 +27,13 @@ use itertools::{Itertools, Position};
 use ratatui::{
     prelude::{Buffer, Rect},
     symbols::merge::MergeStrategy,
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Widget, Wrap},
+    text::{Span, Text},
+    widgets::{Block, Borders, Widget},
 };
 use reqwest::{StatusCode, header::HeaderValue};
 use slumber_core::{collection::Profile, util::MaybeStr};
 use std::{error::Error, ops::Deref, ptr};
+use unicode_width::UnicodeWidthStr;
 
 /// A container with a title and border
 pub struct Pane<'a> {
@@ -205,7 +206,7 @@ impl Generate for &HeaderValue {
 impl Generate for &dyn Error {
     /// 'static because string is generated
     type Output<'this>
-        = Paragraph<'static>
+        = Text<'static>
     where
         Self: 'this;
 
@@ -213,42 +214,52 @@ impl Generate for &dyn Error {
     where
         Self: 'this,
     {
-        let mut lines: Vec<Line> = Vec::new();
+        let mut text = Text::default();
         // Walk down the error chain and build out a tree thing
         let mut next = Some(self);
+        // How far in should the next error be indented? +1 per error
+        let mut indent: usize = 0;
+
         // unstable: Use error.sources()
         // https://github.com/rust-lang/rust/issues/58520
         while let Some(error) = next {
             next = error.source();
+            // First error doesn't get an icon
             let icon = if ptr::eq(self, error) {
-                // This is the first in the chain
                 ""
             } else if next.is_some() {
+                // If there's a following error, leave a little dangler
                 "└┬"
             } else {
                 "└─"
             };
+            // Add additional indentation for account for the icon (-1 for the
+            // dangler overlap). All lines for this error should start at the
+            // same column (right of the icon). We don't want to accumulate this
+            // width across errors though.
+            let line_indent = (indent + icon.width()).saturating_sub(1);
+
             for (position, line) in error.to_string().lines().with_position() {
-                let line = if let Position::First | Position::Only = position {
-                    format!(
-                        "{indent:width$}{icon}{line}",
-                        indent = "",
-                        width = lines.len().saturating_sub(1)
-                    )
-                } else {
-                    line.to_owned()
+                // Show a different icon for continuation lines
+                let icon = match position {
+                    Position::First | Position::Only => icon,
+                    // If there's an error after, extend the dangler
+                    Position::Middle | Position::Last if next.is_some() => "│",
+                    Position::Middle | Position::Last => "",
                 };
-                lines.push(line.into());
+                text.push_line(format!("{icon:>line_indent$}{line}"));
             }
+            indent += 1;
         }
-        Paragraph::new(lines).wrap(Wrap::default())
+
+        text
     }
 }
 
 impl Generate for &anyhow::Error {
     /// 'static because string is generated
     type Output<'this>
-        = Paragraph<'static>
+        = Text<'static>
     where
         Self: 'this;
 
@@ -257,5 +268,33 @@ impl Generate for &anyhow::Error {
         Self: 'this,
     {
         (self.deref() as &dyn Error).generate()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::anyhow;
+
+    /// Test error chain display
+    ///
+    /// - First error is displayed without indentation
+    /// - Subsequent errors get a little tree guy with indentation
+    /// - Continuation lines from a single error are indented as well
+    #[test]
+    fn test_error() {
+        // Build the error inside-out
+        let error = anyhow!("Third\nPoint at ! ^^\nthird line")
+            .context("Second\nanother line!!")
+            .context("First");
+        let expected = "\
+First
+└┬Second
+ │another line!!
+ └─Third
+   Point at ! ^^
+   third line";
+        let actual = error.generate().into_iter().join("\n");
+        assert_eq!(actual, expected);
     }
 }

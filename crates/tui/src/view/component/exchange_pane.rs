@@ -23,8 +23,7 @@ use derive_more::Display;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     style::Style,
-    text::{Line, Span},
-    widgets::Paragraph,
+    text::{Line, Span, Text},
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
@@ -546,7 +545,7 @@ impl Draw for ExchangePaneContent {
 enum ExchangePaneContentState {
     Building,
     BuildError {
-        error: Paragraph<'static>,
+        error: Text<'static>,
     },
     Loading {
         request: RequestView,
@@ -559,7 +558,7 @@ enum ExchangePaneContentState {
     },
     RequestError {
         request: RequestView,
-        error: Paragraph<'static>,
+        error: Text<'static>,
     },
 }
 

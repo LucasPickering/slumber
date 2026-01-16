@@ -78,6 +78,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 ### Fixed
 
 - Fix panic when SIGTERM is sent to a TUI process that failed to start and is display a collection error
+- Fix indentation in TUI display of multi-line errors
 
 ## [4.3.1] - 2026-01-02
 

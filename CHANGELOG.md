@@ -75,6 +75,10 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Help modal has been moved to a fullscreen page
 - Make `slumber request` aliases `rq` and `req` visible
 
+### Fixed
+
+- Fix panic when SIGTERM is sent to a TUI process that failed to start and is display a collection error
+
 ## [4.3.1] - 2026-01-02
 
 <!-- ANCHOR: changelog -->

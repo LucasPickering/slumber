@@ -100,13 +100,6 @@ impl HttpEngine {
             Client::builder()
                 .user_agent(USER_AGENT)
                 .redirect(redirect_policy)
-                // Disabling loading native certs in tests. It adds 100-300ms
-                // per test and we never need them because we only make requests
-                // to localhost
-                //
-                // Why we use native certs:
-                // https://github.com/LucasPickering/slumber/issues/275
-                .tls_built_in_native_certs(!cfg!(any(test, feature = "test")))
         };
 
         let client = make_builder()

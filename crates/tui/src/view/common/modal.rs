@@ -20,9 +20,9 @@ use std::{collections::VecDeque, fmt::Debug};
 /// all of the same type. It provides all the boilerplate logic needed to work
 /// with modals, including:
 ///
-/// - Rendering on top (via [Portal])
+/// - Rendering centered on the full screen
 /// - Drawing the modal frame
-/// - Closing on Escape/Enter
+/// - Closing on Escape/Enter or when clicked outside the content
 #[derive(Debug)]
 pub struct ModalQueue<T> {
     id: ComponentId,

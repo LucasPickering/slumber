@@ -32,13 +32,6 @@ use unicode_width::UnicodeWidthStr;
 /// Each component that provides actions should store an [Emitter] specifically
 /// for its actions, which will be provided to each supplied action and can be
 /// used to check and consume the action events.
-///
-/// This is implemented as its own [Portal] type instead of using
-/// [ModalQueue](super::modal::ModalQueue) because the behavior is sufficiently
-/// different:
-/// - It doesn't use the modal's standard border styling
-/// - The location isn't necessarily centered
-/// - The event handling is more complex (indirect submission)
 #[derive(Debug, Default)]
 pub struct ActionMenu {
     id: ComponentId,
@@ -257,7 +250,8 @@ impl ActionMenuContent {
     /// Get the area for each open layer, starting from the given position
     ///
     /// Each area will include margin for a border. This is used by both
-    /// [Portal::area] and [Draw::draw] to get consistent area calculations.
+    /// both [ModalQueue] and our own [Draw::draw] to get consistent area
+    /// calculations.
     fn areas(&self, position: Position) -> Vec<Rect> {
         fn layer_width(layer: &Select<MenuItemDisplay>) -> u16 {
             // Get the longest item

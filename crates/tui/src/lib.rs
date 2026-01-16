@@ -243,10 +243,9 @@ impl Tui {
     /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
         let messages_tx = self.messages_tx();
-        util::spawn_result(async move {
-            util::signals().await?;
+        util::spawn(async move {
+            util::signals().await.reported(&messages_tx);
             messages_tx.send(Message::Quit);
-            Ok(())
         });
     }
 

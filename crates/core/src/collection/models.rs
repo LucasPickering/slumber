@@ -8,7 +8,7 @@ use crate::{
     },
     http::HttpMethod,
 };
-use derive_more::{Deref, Display, From, Into};
+use derive_more::{Deref, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::header;
@@ -19,7 +19,9 @@ use slumber_util::{
     yaml::{self, SourceLocation, YamlError, YamlErrorKind},
 };
 use std::{
-    fmt, io, iter,
+    error::Error as StdError,
+    fmt::{self, Display},
+    io, iter,
     path::{Path, PathBuf},
 };
 use thiserror::Error;
@@ -58,14 +60,14 @@ impl Collection {
     pub fn load(path: &Path) -> Result<Self, CollectionError> {
         info!(?path, "Loading collection file");
         yaml::deserialize_file(path)
-            .map_err(CollectionError::Yaml)
+            .map_err(CollectionError::from)
             .traced()
     }
 
     /// Load collection from a YAML string
     pub fn parse(input: &str) -> Result<Self, CollectionError> {
         yaml::deserialize_str(input)
-            .map_err(CollectionError::Yaml)
+            .map_err(CollectionError::from)
             .traced()
     }
 }
@@ -189,7 +191,7 @@ impl slumber_util::Factory for Profile {
     Debug,
     Deref,
     Default,
-    Display,
+    derive_more::Display,
     Eq,
     From,
     Hash,
@@ -405,7 +407,7 @@ fn persist_default() -> bool {
     Debug,
     Deref,
     Default,
-    Display,
+    derive_more::Display,
     Eq,
     From,
     Hash,
@@ -576,44 +578,71 @@ pub enum CollectionError {
     NoFile { path: PathBuf },
 
     /// Error parsing/deserializing the YAML
-    #[error(fmt = fmt_yaml_error)]
-    Yaml(#[source] YamlError),
+    #[error(transparent)]
+    Yaml(YamlCollectionError),
 }
 
-/// Display a YAML error.  If the error makes it look like the user's trying to
-/// load a v3 collection in v4, give some extra help
-fn fmt_yaml_error(error: &YamlError, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{error}")?;
-    if is_v3_error(error) {
-        write!(
-            f,
-            "\nThis looks like a collection from Slumber v3. \
-            Migrate to v4 or downgrade your installation to 3.x.\
-            \n{}",
-            doc_link("other/v4_migration")
-        )?;
+impl From<YamlError> for CollectionError {
+    fn from(error: YamlError) -> Self {
+        Self::Yaml(YamlCollectionError(error))
     }
-    Ok(())
 }
 
-/// Does the deserialization error lead us to believe the collection is in
-/// the v3 format? If so we'll give the user an extra message suggesting an
-/// upgrade to v4
-fn is_v3_error(error: &YamlError) -> bool {
-    match &error.kind {
-        // Look for:
-        // - `chains` field
-        // - `<<` merge key
-        // - `!tag`
-        // - `chains.` in a template
-        YamlErrorKind::UnexpectedField(field) => field == "chains",
-        YamlErrorKind::UnsupportedMerge => true,
-        YamlErrorKind::Unexpected { actual, .. } => actual.starts_with("tag"),
-        YamlErrorKind::Other(error) => error
-            // Check if there's a template containing a chain reference
-            .downcast_ref::<TemplateParseError>()
-            .is_some_and(|error| error.to_string().contains("{{chains.")),
-        _ => false,
+/// Wrapper around [YamlError] that adds additional context if the error
+/// suggests we deserialized a v3 collection. The [Display] impl will provide a
+/// hint on migrating to v4.
+///
+/// This has to be a separate error struct instead of just applying the
+/// formatting on [CollectionError::Yaml] because we need the [StdError::source]
+/// implementation to be transparent while the [Display] impl isn't. That isn't
+/// possible with `thiserror`.
+#[derive(Debug)]
+pub struct YamlCollectionError(YamlError);
+
+impl YamlCollectionError {
+    /// Does the deserialization error suggest that the collection is in the v3
+    /// format? If so we'll give the user an extra message suggesting an upgrade
+    /// to v4
+    fn is_v3_error(&self) -> bool {
+        match &self.0.kind {
+            // Look for:
+            // - `chains` field
+            // - `<<` merge key
+            // - `!tag`
+            // - `chains.` in a template
+            YamlErrorKind::UnexpectedField(field) => field == "chains",
+            YamlErrorKind::UnsupportedMerge => true,
+            YamlErrorKind::Unexpected { actual, .. } => {
+                actual.starts_with("tag")
+            }
+            YamlErrorKind::Other(error) => error
+                // Check if there's a template containing a chain reference
+                .downcast_ref::<TemplateParseError>()
+                .is_some_and(|error| error.to_string().contains("{{chains.")),
+            _ => false,
+        }
+    }
+}
+
+impl Display for YamlCollectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+        if self.is_v3_error() {
+            write!(
+                f,
+                "\nThis looks like a collection from Slumber v3. \
+                Migrate to v4 or downgrade your installation to 3.x.\
+                \n{}",
+                doc_link("other/v4_migration")
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl StdError for YamlCollectionError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.0.source()
     }
 }
 

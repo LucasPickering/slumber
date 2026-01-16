@@ -7,7 +7,7 @@ use uuid::Uuid;
 /// A uniquely identified immutable value. Useful for detecting changes in
 /// values that are expensive to do full comparisons on (e.g. large blocks of
 /// text).
-#[derive(Debug, Deref)]
+#[derive(Copy, Clone, Debug, Deref)]
 pub struct Identified<T> {
     id: Uuid,
     #[deref]
@@ -24,6 +24,24 @@ impl<T> Identified<T> {
 
     pub fn id(&self) -> Uuid {
         self.id
+    }
+}
+
+impl<T> Identified<T> {
+    /// Map the internal `T` into a `U`, retaining the same ID
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Identified<U> {
+        Identified {
+            id: self.id,
+            value: f(self.value),
+        }
+    }
+
+    /// Map the internal `T` into `&T`, retaining the same ID
+    pub fn as_ref(&self) -> Identified<&T> {
+        Identified {
+            id: self.id,
+            value: &self.value,
+        }
     }
 }
 

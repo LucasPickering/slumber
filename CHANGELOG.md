@@ -77,6 +77,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 
 ### Fixed
 
+- Invalid body override template is displayed instead of being thrown away [#531](https://github.com/LucasPickering/slumber/issues/531)
 - Fix panic when SIGTERM is sent to a TUI process that failed to start and is display a collection error
 - Fix indentation in TUI display of multi-line errors
 

@@ -327,7 +327,7 @@ impl<K: PersistentKey<Value = String>> Draw for QueryableBody<K> {
             canvas.draw(
                 &self.text_window,
                 TextWindowProps {
-                    text: &self.text_state.text,
+                    text: self.text_state.text.as_ref(),
                     margins: ScrollbarMargins {
                         bottom: 2, // Extra margin to jump over the search box
                         ..Default::default()

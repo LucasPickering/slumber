@@ -12,7 +12,7 @@ use crate::{
     http::{Exchange, ExchangeSummary, RequestId},
 };
 use chrono::Utc;
-use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
+use rusqlite::{Connection, OptionalExtension, named_params};
 use slumber_util::{ResultTraced, paths};
 use std::{
     borrow::Cow,
@@ -76,11 +76,7 @@ impl Database {
         info!(?path, "Loading database");
         let mut connection = Connection::open(path)
             .and_then(|conn| {
-                conn.pragma_update(
-                    Some(DatabaseName::Main),
-                    "foreign_keys",
-                    "ON",
-                )?;
+                conn.pragma_update(None, "foreign_keys", "ON")?;
                 // Use WAL for concurrency
                 conn.pragma_update(None, "journal_mode", "WAL")?;
                 Ok(conn)

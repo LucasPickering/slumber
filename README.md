@@ -43,7 +43,12 @@ requests:
     body:
       type: json
       data:
-        { "name": "Barry", "species": "Barracuda", "age": 3, "weight_kg": 6.2 }
+        {
+          "name": "Barry Bartlett",
+          "species": "Barracuda",
+          "age": 3,
+          "weight_kg": 6.2,
+        }
 ```
 
 Create this file, then run the TUI with `slumber`.

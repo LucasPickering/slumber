@@ -33,8 +33,8 @@ bytes = {version = "1.6.1", default-features = false}
 chrono = {version = "0.4.31", default-features = false}
 clap = "4.4.2"
 derive_more = {version = "2.1.0", default-features = false}
-dialoguer = {version = "0.11.0", default-features = false}
-dirs = "5.0.1"
+dialoguer = {version = "0.12.0", default-features = false}
+dirs = "6.0.0"
 env-lock = "1.0.1"
 futures = "0.3.28"
 indexmap = {version = "2.0.0", default-features = false}
@@ -42,11 +42,11 @@ itertools = "0.14.0"
 mime = "0.3.17"
 pretty_assertions = "1.4.0"
 proptest = "1.5.0"
-proptest-derive = "0.5.0"
+proptest-derive = "0.7.0"
 quote = "1.0.40"
 regex = {version = "1.10.5", default-features = false}
 reqwest = {version = "0.13.1", default-features = false}
-rstest = {version = "0.24.0", default-features = false}
+rstest = {version = "0.26.0", default-features = false}
 saphyr = "0.0.6"
 schemars = "1.0.2"
 serde = {version = "1.0.204", default-features = false}
@@ -62,7 +62,7 @@ slumber_macros = {path = "./crates/macros", version = "4.3.1" }
 slumber_template = {path = "./crates/template", version = "4.3.1" }
 slumber_tui = {path = "./crates/tui", version = "4.3.1" }
 slumber_util = {path = "./crates/util", version = "4.3.1" }
-strum = {version = "0.26.3", default-features = false}
+strum = {version = "0.27.0", default-features = false}
 syn = "2.0.101"
 terminput = "0.5.3"
 thiserror = "2.0.12"

@@ -40,7 +40,7 @@ tokio-util = {workspace = true}
 tracing = {workspace = true}
 tree-sitter-highlight = "0.26.0"
 tree-sitter-json = "0.24.8"
-unicode-width = "0.1.13"
+unicode-width = "0.2.0"
 uuid = {workspace = true}
 
 [dev-dependencies]

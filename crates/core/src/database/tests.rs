@@ -15,9 +15,9 @@ impl CollectionDatabase {
                 named_params! {
                     ":collection_id": self.collection_id(),
                 },
-                |row| row.get(0),
+                |row| row.get::<_, u32>(0),
             )
-            .unwrap()
+            .unwrap() as usize
     }
 }
 
@@ -451,14 +451,14 @@ fn test_commands_max_history_size(request_db: RequestDb) {
     // Sanity check
     assert_eq!(
         collection1.get_commands("").unwrap().len(),
-        MAX_COMMAND_HISTORY_SIZE
+        MAX_COMMAND_HISTORY_SIZE as usize
     );
 
     // Add one more command; oldest should be evicted
     collection1.insert_command("new command").unwrap();
     assert_eq!(
         collection1.get_commands("").unwrap().len(),
-        MAX_COMMAND_HISTORY_SIZE
+        MAX_COMMAND_HISTORY_SIZE as usize
     );
     assert_eq!(
         collection1.get_command(0, "").unwrap().as_deref(),

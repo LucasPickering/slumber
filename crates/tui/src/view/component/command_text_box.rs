@@ -230,7 +230,7 @@ enum Scrollback {
         original: String,
         /// How many commands back have we gone? 0 is the most recent command,
         /// and increases go further back in history
-        offset: usize,
+        offset: u32,
     },
 }
 
@@ -290,7 +290,7 @@ impl Scrollback {
     /// Get the historical command at the given offset. The original command
     /// (whatever was in the text box when the user entered scrollback) is
     /// always excluded from historical results.
-    fn get(offset: usize, exclude: &str) -> Option<String> {
+    fn get(offset: u32, exclude: &str) -> Option<String> {
         ViewContext::with_database(|db| db.get_command(offset, exclude))
             .unwrap_or(None)
     }
@@ -309,7 +309,7 @@ mod tests {
     use terminput::{KeyCode, KeyModifiers};
 
     impl Scrollback {
-        fn active(original: &str, offset: usize) -> Self {
+        fn active(original: &str, offset: u32) -> Self {
             Self::Active {
                 original: original.to_owned(),
                 offset,

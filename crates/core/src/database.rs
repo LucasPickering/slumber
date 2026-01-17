@@ -28,7 +28,7 @@ use uuid::Uuid;
 
 /// Maximum number of commands to store in history **per collection**. When we
 /// hit the cap, the oldest commands get evicted.
-const MAX_COMMAND_HISTORY_SIZE: usize = 100;
+const MAX_COMMAND_HISTORY_SIZE: u32 = 100;
 
 /// A SQLite database for persisting data. Generally speaking, any error that
 /// occurs *after* opening the DB connection should be an internal bug, but
@@ -838,7 +838,7 @@ impl CollectionDatabase {
     ///   prompt excludes the current text from results to prevent duplicates.
     pub fn get_command(
         &self,
-        offset: usize,
+        offset: u32,
         exclude: &str,
     ) -> Result<Option<String>, DatabaseError> {
         trace!(offset, "Getting command from history with offset");

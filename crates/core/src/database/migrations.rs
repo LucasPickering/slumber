@@ -140,7 +140,7 @@ fn migrate_requests_v2(transaction: &Transaction) -> HookResult {
     //     need to do an intermediate upgrade
     let old_requests_count =
         transaction.query_row("SELECT COUNT(*) FROM requests", (), |row| {
-            row.get::<_, u64>(0)
+            row.get::<_, u32>(0)
         })?;
     if old_requests_count > 0 {
         let delete = confirm(
@@ -180,7 +180,7 @@ mod tests {
         migrations.to_latest(&mut connection).unwrap();
         let request_count = connection
             .query_row("SELECT COUNT(*) FROM requests_v2", [], |row| {
-                row.get::<_, usize>(0)
+                row.get::<_, u32>(0)
             })
             .unwrap();
         assert_eq!(request_count, 0);

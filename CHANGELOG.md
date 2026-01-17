@@ -74,6 +74,7 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Recipe templates are now edited inline instead of in a pop-up modal
 - Help modal has been moved to a fullscreen page
 - Make `slumber request` aliases `rq` and `req` visible
+- JSON body object keys are now parsed as templates and can be dynamically modified
 
 ### Fixed
 

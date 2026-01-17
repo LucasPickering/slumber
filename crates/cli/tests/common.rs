@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use assert_cmd::Command;
+use assert_cmd::{Command, cargo::cargo_bin_cmd};
 use slumber_core::collection::CollectionFile;
 use slumber_util::{TempDir, paths::DATA_DIRECTORY_ENV_VARIABLE, temp_dir};
 use std::{
@@ -13,7 +13,7 @@ use std::{
 /// will be used for the database. Most tests can just ignore this.
 pub fn slumber() -> (Command, TempDir) {
     let data_dir = temp_dir();
-    let mut command = Command::cargo_bin("slumber_cli").unwrap();
+    let mut command = cargo_bin_cmd!("slumber_cli");
     command
         .current_dir(tests_dir())
         .env(DATA_DIRECTORY_ENV_VARIABLE, data_dir.deref());

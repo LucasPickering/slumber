@@ -76,8 +76,13 @@ impl JsonTemplate {
             Self::Object(map) => {
                 let map = future::try_join_all(map.iter().map(
                     |(key, value)| async {
+                        let key_template: Template =
+                            key.parse().map_err(RenderError::other)?;
+                        let rendered_key = key_template
+                            .render_string(&context.streaming(false))
+                            .await?;
                         let value = value.render(context).await?;
-                        Ok::<_, RenderError>((key.clone(), value))
+                        Ok::<_, RenderError>((rendered_key, value))
                     },
                 ))
                 .await?;
@@ -147,6 +152,8 @@ impl TryFrom<serde_json::Value> for JsonTemplate {
             serde_json::Value::Object(map) => Self::Object(
                 map.into_iter()
                     .map(|(key, value)| {
+                        // Validate that the key is a valid template
+                        let _: Template = key.parse()?;
                         let value = value.try_into()?;
                         Ok::<_, TemplateParseError>((key, value))
                     })
@@ -174,4 +181,54 @@ pub enum JsonTemplateError {
     /// template
     #[error(transparent)]
     TemplateParse(#[from] TemplateParseError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        collection::Profile, render::TemplateContext, test_util::by_id,
+    };
+    use indexmap::indexmap;
+    use rstest::rstest;
+    use serde_json::json;
+    use slumber_util::Factory;
+
+    #[rstest]
+    #[case(
+        json!({"{{ user_id }}": {"name": "{{ username }}"}}),
+        indexmap!{"user_id".into() => "123".into(), "username".into() => "testuser".into()},
+        json!({"123": {"name": "testuser"}})
+    )]
+    #[case(
+        json!({"key_{{ suffix }}": "value_{{ suffix }}"}),
+        indexmap!{"suffix".into() => "test".into()},
+        json!({"key_test": "value_test"})
+    )]
+    #[case(
+        json!({"key": "value_{{ suffix }}"}),
+        indexmap!{"suffix".into() => "test".into()},
+        json!({"key": "value_test"})
+    )]
+    #[tokio::test]
+    async fn test_render_template_keys(
+        #[case] input: serde_json::Value,
+        #[case] profile_data: indexmap::IndexMap<
+            String,
+            slumber_template::Template,
+        >,
+        #[case] expected: serde_json::Value,
+    ) {
+        let json_template: JsonTemplate = input.try_into().unwrap();
+
+        let profile = Profile {
+            data: profile_data,
+            ..Profile::factory(())
+        };
+        let context =
+            TemplateContext::factory((by_id([profile]), indexmap! {}));
+
+        let rendered = json_template.render(&context).await.unwrap();
+        assert_eq!(rendered, expected);
+    }
 }

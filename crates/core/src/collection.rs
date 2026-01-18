@@ -405,7 +405,10 @@ requests:
                             url: "{{ host }}/anything/{{ user_guid }}".into(),
                             body: Some(
                                 RecipeBody::json(
-                                    json!({"username": "new username"}),
+                                    json!({
+                                        "username": "new username",
+                                        "{{ dynamic_key }}": "{{ dynamic_value }}",
+                                    }),
                                 )
                                 .unwrap(),
                             ),

@@ -20,8 +20,9 @@ While is is a major release with breaking changes, the breakages are fairly limi
 
 ### Breaking
 
-The breaking changes in this release are mostly limited to CLI commands. Unless you have an automated workflow defined that uses this command, you won't see any breakage in your experience.
+The breaking changes in this release are mostly limited to CLI commands. The only change to the collection format is that JSON keys are now treated as templates. This will only impact you if you have any JSON **keys** containing `{{`. If you want these to be treated literally, you'll need to [escape them](https://slumber.lucaspickering.me/user_guide/templates/index.html#escape-sequences): `{_{`
 
+- JSON body object keys are now parsed as templates and can be dynamically modified (@SignalWhisperer [#698](https://github.com/LucasPickering/slumber/issues/698))
 - `slumber show` command has been removed; its functionality has be split up across a set of more discoverable subcommands:
   - `slumber show config` -> `slumber config`
   - `slumber show collection` -> `slumber collection`
@@ -74,7 +75,6 @@ The breaking changes in this release are mostly limited to CLI commands. Unless 
 - Recipe templates are now edited inline instead of in a pop-up modal
 - Help modal has been moved to a fullscreen page
 - Make `slumber request` aliases `rq` and `req` visible
-- JSON body object keys are now parsed as templates and can be dynamically modified
 
 ### Fixed
 

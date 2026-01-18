@@ -239,7 +239,14 @@ impl IntoV4 for v3::JsonTemplate {
                 array.into_v4(chains).map(v4::JsonTemplate::Array)
             }
             Self::Object(object) => {
-                object.into_v4(chains).map(v4::JsonTemplate::Object)
+                let entries = object
+                    .into_v4(chains)?
+                    .into_iter()
+                    // Keys are plain strings in v3 but templates in v4. Escape
+                    // the keys instead of parsing to retain the same behavior
+                    .map(|(k, v)| (slumber_template::Template::raw(k), v))
+                    .collect();
+                Ok(v4::JsonTemplate::Object(entries))
             }
         }
     }

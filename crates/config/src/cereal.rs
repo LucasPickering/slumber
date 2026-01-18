@@ -74,7 +74,7 @@ fn deserialize_http_config(
 /// TUI-specific config deserialization
 #[cfg(feature = "tui")]
 mod tui {
-    use crate::tui::{CommandsConfig, Theme, TuiConfig};
+    use crate::tui::{CommandsConfig, SyntaxHighlighting, Theme, TuiConfig};
     use ratatui_core::style::Color;
     use serde::de::{self, value::StringDeserializer};
     use slumber_util::yaml::{
@@ -146,38 +146,122 @@ mod tui {
             let default = Self::default();
             let mut deserializer = StructDeserializer::new(yaml)?;
             let config = Self {
-                primary_color: deserializer
+                primary: deserializer
                     .get::<Adopt<_>>(
-                        Field::new("primary_color")
-                            .or(Adopt(default.primary_color)),
+                        Field::new("primary").or(Adopt(default.primary)),
                         source_map,
                     )?
                     .0,
-                primary_text_color: deserializer
+                inactive: deserializer
                     .get::<Adopt<_>>(
-                        Field::new("primary_text_color")
-                            .or(Adopt(default.primary_text_color)),
+                        Field::new("inactive").or(Adopt(default.inactive)),
                         source_map,
                     )?
                     .0,
-                secondary_color: deserializer
+                secondary: deserializer
                     .get::<Adopt<_>>(
-                        Field::new("secondary_color")
-                            .or(Adopt(default.secondary_color)),
+                        Field::new("secondary").or(Adopt(default.secondary)),
                         source_map,
                     )?
                     .0,
-                success_color: deserializer
+                success: deserializer
                     .get::<Adopt<_>>(
-                        Field::new("success_color")
-                            .or(Adopt(default.success_color)),
+                        Field::new("success").or(Adopt(default.success)),
                         source_map,
                     )?
                     .0,
-                error_color: deserializer
+                error: deserializer
                     .get::<Adopt<_>>(
-                        Field::new("error_color")
-                            .or(Adopt(default.error_color)),
+                        Field::new("error").or(Adopt(default.error)),
+                        source_map,
+                    )?
+                    .0,
+                gutter: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("gutter").or(Adopt(default.gutter)),
+                        source_map,
+                    )?
+                    .0,
+                text: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("text").or(Adopt(default.text)),
+                        source_map,
+                    )?
+                    .0,
+                text_highlight: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("text_highlight")
+                            .or(Adopt(default.text_highlight)),
+                        source_map,
+                    )?
+                    .0,
+                background: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("background").or(Adopt(default.background)),
+                        source_map,
+                    )?
+                    .0,
+                border: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("border").or(Adopt(default.border)),
+                        source_map,
+                    )?
+                    .0,
+                syntax_highlighting: deserializer.get(
+                    Field::new("syntax").or(default.syntax_highlighting),
+                    source_map,
+                )?,
+            };
+            deserializer.done()?;
+            Ok(config)
+        }
+    }
+
+    impl DeserializeYaml for SyntaxHighlighting {
+        fn expected() -> Expected {
+            Expected::Mapping
+        }
+
+        fn deserialize(
+            yaml: SourcedYaml,
+            source_map: &SourceMap,
+        ) -> yaml::Result<Self> {
+            let default = Self::default();
+            let mut deserializer = StructDeserializer::new(yaml)?;
+            let config = Self {
+                comment: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("comment").or(Adopt(default.comment)),
+                        source_map,
+                    )?
+                    .0,
+                builtin: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("builtin").or(Adopt(default.builtin)),
+                        source_map,
+                    )?
+                    .0,
+                escape: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("escape").or(Adopt(default.escape)),
+                        source_map,
+                    )?
+                    .0,
+                number: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("number").or(Adopt(default.number)),
+                        source_map,
+                    )?
+                    .0,
+                string: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("string").or(Adopt(default.string)),
+                        source_map,
+                    )?
+                    .0,
+                special: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("special").or(Adopt(default.special)),
                         source_map,
                     )?
                     .0,

@@ -12,9 +12,9 @@ use crate::{
 use derive_more::derive::{Deref, DerefMut};
 use itertools::Itertools;
 use ratatui::{
-    buffer::Buffer,
+    buffer::{Buffer, Cell},
     layout::{Constraint, Layout, Rect, Spacing},
-    style::Style,
+    style::{Color, Style},
     widgets::Block,
 };
 use std::cmp;
@@ -188,19 +188,25 @@ where
         // themselves are arbitrary Component implementations so it's not
         // possible to tell them to only draw themselves partially.
 
+        let mut empty_cell = Cell::default();
+        empty_cell.set_bg(props.styles.background_color);
+
         // Build a new buffer that's large enough to fit the entire window
-        let mut virtual_buffer = Buffer::empty(Rect {
-            x: 0,
-            y: 0,
-            width,
-            // Height of the virtual buffer is either the height of all visible
-            // elements or, if the view is big enough to fit the entire list,
-            // the height of the view
-            height: cmp::max(
-                window.iter().map(|friend| friend.height).sum(),
-                target_area.height,
-            ),
-        });
+        let mut virtual_buffer = Buffer::filled(
+            Rect {
+                x: 0,
+                y: 0,
+                width,
+                // Height of the virtual buffer is either the height of all visible
+                // elements or, if the view is big enough to fit the entire list,
+                // the height of the view
+                height: cmp::max(
+                    window.iter().map(|friend| friend.height).sum(),
+                    target_area.height,
+                ),
+            },
+            empty_cell,
+        );
         let mut virtual_canvas = Canvas::new(&mut virtual_buffer);
 
         // Render each complete item into the virtual buffer. We know the buffer
@@ -296,14 +302,17 @@ where
 pub struct SelectStyles {
     pub disabled: Style,
     pub highlight: Style,
+    pub background_color: Color,
 }
 
 impl SelectStyles {
     /// Apply no extra styling to each item
     pub fn none() -> Self {
+        let styles = &TuiContext::get().styles.table;
         Self {
             disabled: Style::default(),
             highlight: Style::default(),
+            background_color: styles.background_color,
         }
     }
 
@@ -313,6 +322,7 @@ impl SelectStyles {
         Self {
             disabled: styles.disabled,
             highlight: styles.highlight,
+            background_color: styles.background_color,
         }
     }
 }

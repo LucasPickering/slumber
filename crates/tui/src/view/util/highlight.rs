@@ -20,6 +20,8 @@ use tree_sitter_highlight::{
     Highlight, HighlightConfiguration, HighlightEvent, Highlighter,
 };
 
+use crate::context::TuiContext;
+
 thread_local! {
     /// Cache the highlighter and its configurations, because we only need one
     /// per thread. The view is single threaded, which means we only create one
@@ -152,16 +154,15 @@ impl HighlightName {
     }
 
     fn style(self) -> Style {
-        // We only style by foreground for syntax
-        let fg = match self {
-            Self::Comment => Color::Gray,
-            Self::ConstantBuiltin => Color::Blue,
-            Self::Escape => Color::Green,
-            Self::Number => Color::Cyan,
-            Self::String => Color::LightGreen,
-            Self::StringSpecial => Color::Green,
-        };
-        Style::default().fg(fg)
+        let styles = &TuiContext::get().styles.syntax_highlighting;
+        match self {
+            Self::Comment => styles.comment,
+            Self::ConstantBuiltin => styles.builtin,
+            Self::Escape => styles.escape,
+            Self::Number => styles.number,
+            Self::String => styles.string,
+            Self::StringSpecial => styles.special,
+        }
     }
 }
 

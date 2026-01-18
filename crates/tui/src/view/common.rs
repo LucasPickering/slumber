@@ -26,6 +26,7 @@ use chrono::{DateTime, Duration, Utc};
 use itertools::{Itertools, Position};
 use ratatui::{
     prelude::{Buffer, Rect},
+    style::Stylize,
     symbols::merge::MergeStrategy,
     text::{Span, Text},
     widgets::{Block, Borders, Widget},
@@ -58,6 +59,8 @@ impl Generate for Pane<'_> {
             .border_type(border_type)
             .border_style(border_style)
             .merge_borders(MergeStrategy::Fuzzy)
+            .fg(TuiContext::get().styles.pane.foreground)
+            .bg(TuiContext::get().styles.pane.background)
             .title(self.title)
     }
 }
@@ -85,7 +88,7 @@ impl Generate for String {
     where
         Self: 'this,
     {
-        self.into()
+        Text::styled(self, TuiContext::get().styles.text.primary)
     }
 }
 
@@ -100,7 +103,7 @@ impl Generate for &String {
     where
         Self: 'this,
     {
-        self.as_str().into()
+        Text::styled(self, TuiContext::get().styles.text.primary)
     }
 }
 
@@ -114,7 +117,7 @@ impl Generate for &Profile {
     where
         Self: 'this,
     {
-        self.name().to_owned().into()
+        Span::styled(self.name(), TuiContext::get().styles.text.primary)
     }
 }
 
@@ -214,7 +217,8 @@ impl Generate for &dyn Error {
     where
         Self: 'this,
     {
-        let mut text = Text::default();
+        let mut text =
+            Text::default().style(TuiContext::get().styles.text.error);
         // Walk down the error chain and build out a tree thing
         let mut next = Some(self);
         // How far in should the next error be indented? +1 per error

@@ -566,6 +566,7 @@ where
         };
         let list = List::new(items)
             .highlight_style(highlight_style)
+            .style(styles.item)
             .direction(self.direction);
         let area = metadata.area();
         let state = &mut self.state.borrow_mut();

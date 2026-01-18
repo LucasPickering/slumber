@@ -1,4 +1,5 @@
 use crate::{
+    context::TuiContext,
     util,
     view::{
         UpdateContext,
@@ -10,7 +11,11 @@ use crate::{
         state::Notification,
     },
 };
-use ratatui::layout::{Constraint, Layout};
+use ratatui::{
+    layout::{Constraint, Layout},
+    style::Stylize,
+    widgets::{Block, Clear},
+};
 use tokio::time;
 use uuid::Uuid;
 
@@ -91,6 +96,11 @@ impl Draw for Footer {
             Constraint::Min(0),
         ])
         .areas(metadata.area());
+
+        canvas.render_widget(
+            Block::new().bg(TuiContext::get().styles.table.background_color),
+            metadata.area(),
+        );
 
         canvas.draw(&self.collection_select, (), collection_area, true);
 

@@ -10,34 +10,78 @@ use serde::{Deserialize, Serialize};
 pub struct Theme {
     /// Color for primary content such as the selected pane
     #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
-    pub primary_color: Color,
-    // Theoretically we could calculate this bsed on primary color, but for
-    // named or indexed colors, we don't know the exact RGB code since it
-    // depends on the user's terminal theme. It's much easier and less
-    // fallible to just have the user specify it.
-    /// Color for text on top of the primary color. This should contrast with
-    /// the primary color well
-    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
-    pub primary_text_color: Color,
+    pub primary: Color,
     /// Color for secondary accented content
     #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
-    pub secondary_color: Color,
+    pub secondary: Color,
     /// Color representing success (e.g. for 2xx status codes)
     #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
-    pub success_color: Color,
+    pub success: Color,
     /// Color representing error (e.g. for 4xx status codes)
     #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
-    pub error_color: Color,
+    pub error: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub gutter: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub text: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub text_highlight: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub background: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub border: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub inactive: Color,
+
+    pub syntax_highlighting: SyntaxHighlighting,
 }
 
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            primary_color: Color::Blue,
-            primary_text_color: Color::White,
-            secondary_color: Color::Yellow,
-            success_color: Color::Green,
-            error_color: Color::Red,
+            primary: Color::Blue,
+            inactive: Color::DarkGray,
+            secondary: Color::Yellow,
+            success: Color::Green,
+            error: Color::Red,
+            gutter: Color::DarkGray,
+            text: Color::White,
+            background: Color::Reset,
+            border: Color::Reset,
+            text_highlight: Color::White,
+            syntax_highlighting: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct SyntaxHighlighting {
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub comment: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub builtin: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub escape: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub number: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub string: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "schema::Color"))]
+    pub special: Color,
+}
+
+impl Default for SyntaxHighlighting {
+    fn default() -> Self {
+        Self {
+            comment: Color::Gray,
+            builtin: Color::Blue,
+            escape: Color::Green,
+            number: Color::Cyan,
+            string: Color::LightGreen,
+            special: Color::Green,
         }
     }
 }

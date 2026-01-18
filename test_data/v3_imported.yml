@@ -59,7 +59,7 @@ requests:
           Accept: application/json
         body:
           type: json
-          data: { "username": "new username" }
+          data: { "username": "new username", "{_{ not a template }}": "value" }
 
       json_body_but_not:
         method: PUT

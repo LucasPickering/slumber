@@ -395,7 +395,6 @@ impl DeserializeYaml for JsonTemplate {
         ])
     }
 
-    #[expect(clippy::only_used_in_recursion)]
     fn deserialize(
         yaml: SourcedYaml,
         source_map: &SourceMap,
@@ -433,7 +432,7 @@ impl DeserializeYaml for JsonTemplate {
                 let fields = mapping
                     .into_iter()
                     .map(|(key, value)| {
-                        let key = key.try_into_string()?;
+                        let key = Template::deserialize(key, source_map)?;
                         let value = Self::deserialize(value, source_map)?;
                         Ok((key, value))
                     })

@@ -59,7 +59,11 @@ requests:
           token: "{{ response('login') | jsonpath('$.token') }}"
         body:
           type: json
-          data: { "username": "new username" }
+          data:
+            {
+              "username": "new username",
+              "{{ dynamic_key }}": "{{ dynamic_value }}",
+            }
 
       json_body_but_not:
         $ref: "#/.base_recipe"

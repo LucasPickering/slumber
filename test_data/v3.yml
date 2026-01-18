@@ -148,7 +148,8 @@ requests:
         method: PUT
         url: "{{host}}/anything/{{user_guid}}"
         authentication: !bearer "{{chains.request_selector_auto}}"
-        body: !json { "username": "new username" }
+        body:
+          !json { "username": "new username", "{{ not a template }}": "value" }
         query: # Should parse as an empty map
 
       json_body_but_not: !request

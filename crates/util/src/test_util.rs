@@ -102,7 +102,7 @@ macro_rules! assert_err {
 pub fn assert_err<T, E>(result: Result<T, E>, expected_error: &str)
 where
     T: Debug,
-    E: 'static + Debug + Error + Send + Sync,
+    E: 'static + Debug + Error,
 {
     let error = result.unwrap_err();
     let actual = format_error_chain(error);
@@ -128,7 +128,7 @@ pub fn assert_result<TA, TE, E>(
 ) where
     TA: Debug + PartialEq<TE>,
     TE: Debug,
-    E: 'static + Debug + Error + Send + Sync,
+    E: 'static + Debug + Error,
 {
     match expected {
         Ok(expected) => {

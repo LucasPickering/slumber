@@ -198,6 +198,13 @@ requests:
             "size": "HUGE"
           }
 
+      large_body:
+        $ref: "#/.base_request"
+        name: Large Body
+        method: POST
+        url: "{{ host }}/anything"
+        body: "{{ file('Cargo.toml') | string() }}"
+
   delay:
     $ref: "#/.base_request"
     name: Delay

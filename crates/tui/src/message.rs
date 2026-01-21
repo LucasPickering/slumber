@@ -7,7 +7,6 @@ use crate::{
     util::TempFile,
     view::Question,
 };
-use anyhow::Context;
 use derive_more::From;
 use mime::Mime;
 use slumber_core::{
@@ -19,7 +18,7 @@ use slumber_core::{
     render::{Prompt, ReplyChannel},
 };
 use slumber_template::{RenderedOutput, Template};
-use slumber_util::{ResultTracedAnyhow, yaml::SourceLocation};
+use slumber_util::{ResultTraced, yaml::SourceLocation};
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
@@ -37,11 +36,7 @@ impl MessageSender {
     pub fn send(&self, message: impl Into<Message>) {
         let message: Message = message.into();
         trace!(?message, "Queueing message");
-        let _ = self
-            .0
-            .send(message)
-            .context("Error enqueueing message")
-            .traced();
+        let _ = self.0.send(message).traced();
     }
 }
 
@@ -219,4 +214,4 @@ pub enum RecipeCopyTarget {
 }
 
 /// A static callback included in a message
-pub type Callback<T> = Box<dyn 'static + Send + Sync + FnOnce(T)>;
+pub type Callback<T> = Box<dyn 'static + Send + FnOnce(T)>;

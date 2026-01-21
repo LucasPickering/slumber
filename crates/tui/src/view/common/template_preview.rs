@@ -3,134 +3,164 @@ use crate::{
     message::Message,
     view::{
         UpdateContext, ViewContext,
-        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        event::{BroadcastEvent, Emitter, Event, EventMatch},
-        state::Identified,
-        util::highlight,
+        component::{Component, ComponentId},
+        event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
+        persistent::{PersistentStore, SessionKey},
     },
 };
 use ratatui::{
     style::{Style, Styled},
     text::{Line, Span, Text},
 };
-use slumber_core::http::content_type::ContentType;
 use slumber_template::{LazyValue, RenderedChunk, RenderedOutput, Template};
 use std::ops::Deref;
 
-/// A preview of a template string, which can show either the raw text or the
-/// rendered version. The global config is used to enable/disable previews.
+/// Generate template preview text
+///
+/// This component is a text *generator*. It does not store the text itself.
+/// Different consumers do different things with the resulting text (e.g. the
+/// recipe body puts it in a `TextWindow`), so it's up to the parent to decide
+/// how to store and display.
+///
+/// This works by spawning a background task to render the template, and
+/// emitting an event whenever the template text changes. An event is **not**
+/// emitted for the initial text. Instead, call [Self::render_raw] to get the
+/// initial raw template text. Avoiding an emitted event on startup avoids some
+/// issues in tests with loose emitted events.
+///
+/// In addition to handling the preview, this also handles template overriding.
+/// Use [Self::set_override] and [Self::reset_override] to modify the override.
+///
+/// `PK` is the persistent key used to store override state in the session store
 #[derive(Debug)]
-pub struct TemplatePreview {
+pub struct TemplatePreview<PK> {
     id: ComponentId,
-    /// Emitter for rendered text from the preview task
-    callback_emitter: Emitter<Identified<Text<'static>>>,
-    template: Template,
-    /// Content-Type of the output, which can be used to apply syntax
-    /// highlighting
-    content_type: Option<ContentType>,
-    /// Has the template been overridden by the user in the current session?
-    /// Applies additional styling
-    overridden: bool,
+    /// The template from the collection
+    original_template: Template,
+    /// Temporary override entered by the user
+    override_template: Option<Template>,
+    /// Session store key to persist the override template
+    persistent_key: PK,
+    /// Emitter for events whenever new text is rendered
+    emitter: Emitter<TemplatePreviewEvent>,
     /// Does this component of the recipe support streaming? If so, the
     /// template will be rendered to a stream if possible and its metadata will
     /// be displayed rather than the resolved value.
     can_stream: bool,
-    /// Text to display, which could be either the raw template, or the
-    /// rendered template. Either way, it may or may not be syntax
-    /// highlighted. On init we send a message which will trigger a task to
-    /// start the render. When the task is done, it'll emit an event to set the
-    /// text.
-    text: Identified<Text<'static>>,
 }
 
-impl TemplatePreview {
-    /// Create a new template preview. This will spawn a background task to
-    /// render the template, *if* template preview is enabled. Profile ID
-    /// defines which profile to use for the render. Optionally provide content
-    /// type to enable syntax highlighting, which will be applied to both
-    /// unrendered and rendered content.
+impl<PK> TemplatePreview<PK> {
+    /// Create a new template preview
+    ///
+    /// If the template is dynamic, this will spawn a task to render the preview
+    /// in the background. There will be a subsequent [TemplatePreviewEvent]
+    /// emitted with the rendered text.
     ///
     /// ## Params
     ///
-    /// - `template`: Template to render
-    /// - `content_type`: Content-Type of the output, which can be used to apply
-    ///   syntax highlighting
-    /// - `overridden`: Has the template been overridden by the user in the
-    ///   current session? Applies additional styling
-    /// - `can_stream`: Does this component of the recipe support streaming? If
-    ///   so, the template will be rendered to a stream if possible and its
-    ///   metadata will be displayed rather than the resolved value.
-    pub fn new(
-        template: Template,
-        content_type: Option<ContentType>,
-        overridden: bool,
-        can_stream: bool,
-    ) -> Self {
-        // Calculate raw text
-        let text: Identified<Text> = highlight::highlight_if(
-            content_type,
-            // We have to clone the template to detach the lifetime. We're
-            // choosing to pay one upfront cost here so we don't have to
-            // recompute the text on each render. Ideally we could hold onto
-            // the template and have this text reference it, but that would be
-            // self-referential
-            template.display().into_owned().into(),
-        )
-        .set_style(Self::style(overridden))
-        .into();
-
-        let mut slf = Self {
+    /// - `persistent_key`: Key under which to persist the override template in
+    ///   the session store
+    /// - `template`: Template to be displayed/rendered
+    /// - `can_stream`: Does the consumer support streaming template output? If
+    ///   `true`, streams will *not* be resolved, and instead displayed as
+    ///   metadata. If `false`, streams will be resolved in the preview.
+    pub fn new(persistent_key: PK, template: Template, can_stream: bool) -> Self
+    where
+        PK: SessionKey<Value = Template>,
+    {
+        let override_template = PersistentStore::get_session(&persistent_key);
+        let slf = Self {
             id: ComponentId::new(),
-            callback_emitter: Emitter::default(),
-            template,
-            content_type,
-            overridden,
+            original_template: template,
+            override_template,
+            persistent_key,
+            emitter: Emitter::default(),
             can_stream,
-            text,
         };
-        slf.render_preview();
+        slf.render_preview(); // Render preview in the background
         slf
     }
 
-    pub fn text(&self) -> Identified<&Text<'static>> {
-        self.text.as_ref()
+    /// Get the active template. If an override is present, return that.
+    /// Otherwise return the original.
+    pub fn template(&self) -> &Template {
+        self.override_template
+            .as_ref()
+            .unwrap_or(&self.original_template)
     }
 
-    /// Send a message triggering a render of this template. The rendered
-    /// preview will be stored back in our lock. Used for both initial render
-    /// and refreshes.
-    fn render_preview(&mut self) {
-        // Trigger a task to render the preview and write the answer back into
-        // the mutex. If the template is static (has no dynamic chunks), there's
-        // no need to do this. We'll display the raw template text by default,
-        // which will be equivalent to the rendered text
+    /// Override the recipe with a new template
+    pub fn set_override(&mut self, template: Template) {
+        if template == self.original_template {
+            // If this matches the original template, it's not an override
+            self.set_override_opt(None);
+        } else if Some(&template) != self.override_template.as_ref() {
+            // Only rerender if the override changed
+            self.set_override_opt(Some(template));
+        }
+    }
+
+    /// Reset the template override to the default from the recipe, and
+    /// recompute the template preview
+    pub fn reset_override(&mut self) {
+        self.set_override_opt(None);
+    }
+
+    /// Internal helper to set/reset the override template and refresh the
+    /// preview
+    fn set_override_opt(&mut self, override_template: Option<Template>) {
+        self.override_template = override_template;
+
+        // The template has changed, so we should show the raw template while
+        // the preview is rendering
+        let raw_text = self.render_raw();
+        self.emitter.emit(TemplatePreviewEvent(raw_text));
+
+        self.render_preview();
+    }
+
+    /// Is a override template set?
+    pub fn is_overridden(&self) -> bool {
+        self.override_template.is_some()
+    }
+
+    /// Convert the raw template (without any preview rendering) into `Text` for
+    /// display
+    pub fn render_raw(&self) -> Text<'static> {
+        Text::styled(self.template().display().to_string(), self.style())
+    }
+
+    /// Send a message to render a preview of the template in the background
+    ///
+    /// If preview rendering is disabled or the template is static, this will
+    /// do nothing.
+    fn render_preview(&self) {
+        // If preview is disabled or the template is static, can skip the work
         let config = &TuiContext::get().config;
-        if config.tui.preview_templates && self.template.is_dynamic() {
-            let content_type = self.content_type;
-            let style = Self::style(self.overridden);
-            let emitter = self.callback_emitter;
+
+        if config.tui.preview_templates && self.template().is_dynamic() {
+            let emitter = self.emitter;
+            let style = self.style();
             let on_complete = move |output| {
-                // Stitch the output together into Text, then apply highlighting
-                let text = TextStitcher::stitch_chunks(output);
-                let text = highlight::highlight_if(content_type, text)
-                    .set_style(style);
+                // Stitch the output together into Text
+                let text = TextStitcher::stitch_chunks(output).set_style(style);
+
                 // We can emit the event directly from the callback because
                 // the task is run on a local set. This is maybe a bit jank and
                 // it should be routed through Message instead?
-                emitter.emit(text.into());
+                emitter.emit(TemplatePreviewEvent(text));
             };
 
             ViewContext::send_message(Message::TemplatePreview {
-                template: self.template.clone(),
+                template: self.template().clone(),
                 can_stream: self.can_stream,
                 on_complete: Box::new(on_complete),
             });
         }
     }
 
-    /// Get styling for the preview, based on overridden state
-    fn style(overridden: bool) -> Style {
-        if overridden {
+    fn style(&self) -> Style {
+        if self.override_template.is_some() {
             TuiContext::get().styles.text.edited
         } else {
             Style::default()
@@ -138,22 +168,29 @@ impl TemplatePreview {
     }
 }
 
-impl From<Template> for TemplatePreview {
-    fn from(template: Template) -> Self {
-        Self::new(template, None, false, false)
-    }
-}
-
-impl Component for TemplatePreview {
+impl<PK> Component for TemplatePreview<PK>
+where
+    PK: Clone + SessionKey<Value = Template>,
+{
     fn id(&self) -> ComponentId {
         self.id
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        // Persist to the session store. Overrides are meant to be temporary, so
+        // we don't want to encourage users to rely on them long-term. They
+        // should be making edits to their YAML file instead.
+        if let Some(template) = &self.override_template {
+            store.set_session(self.persistent_key.clone(), template.clone());
+        } else {
+            store.remove_session(&self.persistent_key);
+        }
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
             // Update text with emitted event from the preview task
-            .emitted(self.callback_emitter, |text| self.text = text)
             .broadcast(|event| {
                 if let BroadcastEvent::RefreshPreviews = event {
                     self.render_preview();
@@ -162,11 +199,15 @@ impl Component for TemplatePreview {
     }
 }
 
-impl Draw for TemplatePreview {
-    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        canvas.render_widget(&**self.text(), metadata.area());
+impl<PK> ToEmitter<TemplatePreviewEvent> for TemplatePreview<PK> {
+    fn to_emitter(&self) -> Emitter<TemplatePreviewEvent> {
+        self.emitter
     }
 }
+
+/// Emitted event from [TemplatePreview] containing rendered text for a template
+#[derive(Debug)]
+pub struct TemplatePreviewEvent(pub Text<'static>);
 
 /// A helper for stitching rendered template chunks into ratatui `Text`. This
 /// requires some effort because ratatui *loves* line breaks, so we have to
@@ -283,6 +324,13 @@ mod tests {
     };
     use slumber_util::{Factory, assert_matches};
 
+    #[derive(Debug, PartialEq)]
+    struct TestKey;
+
+    impl SessionKey for TestKey {
+        type Value = Template;
+    }
+
     /// TemplatePreview message should only be sent for dynamic templates
     #[rstest]
     #[case::static_("static!", false)]
@@ -292,7 +340,7 @@ mod tests {
         #[case] template: Template,
         #[case] should_send: bool,
     ) {
-        TemplatePreview::new(template, None, false, false);
+        TemplatePreview::new(TestKey, template, false);
         if should_send {
             assert_matches!(
                 harness.messages().pop_now(),

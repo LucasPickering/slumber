@@ -53,6 +53,7 @@ impl ResponseBodyView {
         }
     }
 
+    /// Open the visible body in the pager
     pub fn view_body(&self) {
         view_text(self.body.visible_text(), self.response.mime());
     }

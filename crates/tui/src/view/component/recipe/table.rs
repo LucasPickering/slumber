@@ -10,7 +10,7 @@ use crate::{
         },
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
-            internal::Child, override_template::EditableTemplate,
+            editable_template::EditableTemplate, internal::Child,
         },
         context::UpdateContext,
         event::{Event, EventMatch, ToEmitter},

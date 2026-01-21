@@ -31,7 +31,6 @@ use slumber_core::{
 #[derive(Debug)]
 pub struct History {
     id: ComponentId,
-    emitter: Emitter<HistoryEvent>,
     actions_emitter: Emitter<HistoryAction>,
     select: Select<RequestStateSummary>,
     // We need to retain the selected profile/recipe IDs so we can access both
@@ -51,7 +50,6 @@ impl History {
     ) -> Self {
         Self {
             id: ComponentId::default(),
-            emitter: Emitter::default(),
             actions_emitter: Emitter::default(),
             // Always start with an empty list. On startup, we'll populate when
             // the initial SelectedRecipe/SelectedProfile events are received
@@ -100,7 +98,7 @@ impl History {
         requests: Vec<RequestStateSummary>,
     ) -> Select<RequestStateSummary> {
         Select::builder(requests)
-            .subscribe([SelectEventKind::Select, SelectEventKind::Submit])
+            .subscribe([SelectEventKind::Select])
             .persisted(&SelectedRequestKey)
             .build()
     }
@@ -145,11 +143,7 @@ impl Component for History {
                         Some(id),
                     ));
                 }
-                SelectEventKind::Submit => {
-                    // Close sidebar on Enter
-                    self.emitter.emit(HistoryEvent::Close);
-                }
-                SelectEventKind::Toggle => {}
+                SelectEventKind::Submit | SelectEventKind::Toggle => {}
             })
             .broadcast(|event| match event {
                 // When the profile or recipe select changes, rebuild our list
@@ -222,12 +216,6 @@ impl Draw for History {
     }
 }
 
-impl ToEmitter<HistoryEvent> for History {
-    fn to_emitter(&self) -> Emitter<HistoryEvent> {
-        self.emitter
-    }
-}
-
 impl Generate for &RequestStateSummary {
     type Output<'this>
         = Text<'this>
@@ -291,13 +279,6 @@ enum HistoryAction {
     DeleteRecipeProfile,
     /// Delete all requests for this recipe across all profiles
     DeleteRecipeAll,
-}
-
-/// Emitted event from [History]
-#[derive(Copy, Clone, Debug)]
-pub enum HistoryEvent {
-    /// History sidebar should be closed
-    Close,
 }
 
 #[cfg(test)]

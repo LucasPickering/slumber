@@ -10,11 +10,12 @@ mod util;
 
 pub use util::print_error;
 
+#[cfg(feature = "import")]
+use crate::commands::import::ImportCommand;
 use crate::{
     commands::{
         collection::CollectionCommand, config::ConfigCommand, db::DbCommand,
-        generate::GenerateCommand, import::ImportCommand, new::NewCommand,
-        request::RequestCommand,
+        generate::GenerateCommand, new::NewCommand, request::RequestCommand,
     },
     completions::{complete_collection_path, complete_log_level},
 };
@@ -104,6 +105,7 @@ pub enum CliCommand {
     Config(ConfigCommand),
     Db(DbCommand),
     Generate(GenerateCommand),
+    #[cfg(feature = "import")]
     Import(ImportCommand),
     New(NewCommand),
     Request(RequestCommand),
@@ -122,6 +124,7 @@ impl CliCommand {
             Self::Config(command) => command.execute(global).await,
             Self::Db(command) => command.execute(global).await,
             Self::Generate(command) => command.execute(global).await,
+            #[cfg(feature = "import")]
             Self::Import(command) => command.execute(global).await,
             Self::New(command) => command.execute(global).await,
             Self::Request(command) => command.execute(global).await,

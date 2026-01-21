@@ -34,10 +34,6 @@ pub struct SidebarList<State: SidebarListState> {
     select: Select<ItemWrapper<State::Item>>,
     /// Implementation-specific list state
     state: State,
-    /// The index of the last item that was selected when the list was closed.
-    /// We store this so we can revert to the previous selection when the user
-    /// closes the sidebar without submitting (via Escape).
-    last_submitted: Option<usize>,
 
     /// Text box for filtering down items in the list
     filter: TextBox,
@@ -54,7 +50,6 @@ impl<State: SidebarListState> SidebarList<State> {
         let input_engine = &TuiContext::get().input_engine;
         let title = input_engine.add_hint(State::TITLE, State::ACTION);
         let select = Self::build_select(&state, "");
-        let last_submitted = select.selected_index();
         let filter = TextBox::default()
             .placeholder(format!(
                 "{binding} to filter",
@@ -72,7 +67,6 @@ impl<State: SidebarListState> SidebarList<State> {
             title,
             select,
             state,
-            last_submitted,
             filter,
             filter_focused: false,
         }
@@ -128,7 +122,7 @@ impl<State: SidebarListState> SidebarList<State> {
             .collect();
 
         Select::builder(items)
-            .subscribe([SelectEventKind::Select, SelectEventKind::Submit])
+            .subscribe([SelectEventKind::Select])
             .persisted(&state.persistent_key())
             .build()
     }
@@ -150,15 +144,7 @@ impl<State: SidebarListState> Component for SidebarList<State> {
             .m()
             .click(|_, _| self.emitter.emit(SidebarListEvent::Open))
             .action(|action, propagate| match action {
-                Action::Cancel => {
-                    // Revert to whatever was selected when the list was opened,
-                    // then close
-                    if let Some(index) = self.last_submitted {
-                        self.select.select_index(index);
-                    }
-                    self.emitter.emit(SidebarListEvent::Close);
-                }
-
+                Action::Cancel => self.emitter.emit(SidebarListEvent::Close),
                 Action::Search => self.filter_focused = true,
 
                 // We can't check for our own action to open here because we
@@ -170,13 +156,7 @@ impl<State: SidebarListState> Component for SidebarList<State> {
                 SelectEventKind::Select => {
                     self.emitter.emit(SidebarListEvent::Select);
                 }
-                SelectEventKind::Submit => {
-                    // Close with the current item selected. Checkpoint this
-                    // item for the next time we're opened
-                    self.last_submitted = self.select.selected_index();
-                    self.emitter.emit(SidebarListEvent::Close);
-                }
-                SelectEventKind::Toggle => {}
+                SelectEventKind::Submit | SelectEventKind::Toggle => {}
             })
             // Emitted events from filter
             .emitted(self.filter.to_emitter(), |event| match event {

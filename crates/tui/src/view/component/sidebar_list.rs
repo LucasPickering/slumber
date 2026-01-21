@@ -414,15 +414,20 @@ mod tests {
         use std::iter;
 
         let mut component: TestComponent<SidebarList<TestState>> =
-            TestComponent::new(&harness, &terminal, SidebarList::default());
-        // Clear initial events
-        component
-            .int()
-            .drain_draw()
-            .assert_emitted([SidebarListEvent::Select]);
+            TestComponent::builder(&harness, &terminal, SidebarList::default())
+                .with_default_props()
+                // Event is emitted for the initial selection
+                .with_assert_events(|assert| {
+                    assert.emitted([SidebarListEvent::Select]);
+                })
+                .build();
 
         // Enter filter mode
-        component.int().send_key(KeyCode::Char('/')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('/'))
+            .assert()
+            .empty();
         assert!(component.filter_focused);
 
         // Type the input
@@ -431,10 +436,8 @@ mod tests {
             .send_text(filter)
             // A select event is emitted each time the select is rebuilt, which
             // is after each entered character
-            .assert_emitted(iter::repeat_n(
-                SidebarListEvent::Select,
-                filter.len(),
-            ));
+            .assert()
+            .emitted(iter::repeat_n(SidebarListEvent::Select, filter.len()));
         let select = &component.select;
         assert_eq!(
             select
@@ -446,7 +449,7 @@ mod tests {
         );
 
         // Exit filter
-        component.int().send_key(KeyCode::Esc).assert_empty();
+        component.int().send_key(KeyCode::Esc).assert().empty();
         assert!(!component.filter_focused);
     }
 

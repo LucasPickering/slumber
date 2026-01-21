@@ -379,7 +379,7 @@ mod tests {
         );
         assert!(component.is_empty());
         // This shouldn't panic!
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
     }
 
     /// View window calculation and scrolling with variable-height items
@@ -424,7 +424,8 @@ mod tests {
                 ..Default::default()
             })
             .drain_draw()
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Check the state directly first
         let view_height = terminal.area().height;
@@ -497,7 +498,8 @@ mod tests {
                     ..Default::default()
                 })
                 .drain_draw()
-                .assert_empty();
+                .assert()
+                .empty();
 
             // At this point, if the list is empty there isn't anything to test
             if component.is_empty() {

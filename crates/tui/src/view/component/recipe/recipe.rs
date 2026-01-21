@@ -297,7 +297,8 @@ mod tests {
             .int()
             .drain_draw() // Drain initial events
             .send_key(KeyCode::Right)
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(component.tabs.selected(), Tab::Query);
 
         // Test persistence of both disable and override state, with a mixture
@@ -311,7 +312,8 @@ mod tests {
             // Disable+override (p1,v2)
             .send_keys([KeyCode::Down, KeyCode::Char(' '), KeyCode::Char('e')])
             .send_text("xxx")
-            .assert_empty();
+            .assert()
+            .empty();
 
         let expected = IndexMap::<_, _>::from_iter([
             (("p1".to_owned(), 0), BuildFieldOverride::Omit),

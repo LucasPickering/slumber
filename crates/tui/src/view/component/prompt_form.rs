@@ -520,7 +520,8 @@ mod tests {
             .send_key_modifiers(KeyCode::Up, KeyModifiers::SHIFT) // Wrap to pw
             .send_text("456") // Modify password
             .send_key(KeyCode::Enter) // Submit
-            .assert_empty();
+            .assert()
+            .empty();
 
         let (actual_request_id, replies) = assert_matches!(
             harness.messages().pop_now(),
@@ -568,7 +569,8 @@ mod tests {
             .send_text("user") // Enter username
             .send_key(KeyCode::Tab) // Switch to Select
             .send_key(KeyCode::Down) // Select second item
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Values should be in the session store
         assert_eq!(
@@ -586,7 +588,7 @@ mod tests {
             &terminal,
             PromptForm::new(request_id, &prompts),
         );
-        component.int().send_key(KeyCode::Enter).assert_empty();
+        component.int().send_key(KeyCode::Enter).assert().empty();
 
         // Our previous values were submitted
         let replies = assert_matches!(
@@ -632,7 +634,8 @@ mod tests {
             .send_text("12") // Modify username
             .send_key(KeyCode::Tab) // Switch to password
             .send_text("2") // Modify password
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Check terminal contents
         let styles = &TuiContext::get().styles;
@@ -654,7 +657,8 @@ mod tests {
             .int()
             // Done editing, then submit
             .send_keys([KeyCode::Enter, KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
         let replies = assert_matches!(
             harness.messages().pop_now(),
             Message::Http(HttpMessage::FormSubmit {
@@ -696,7 +700,8 @@ mod tests {
             .int()
             .drain_draw() // Draw so children are visible
             .send_key(KeyCode::Down)
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Check terminal contents
         let styles = &TuiContext::get().styles;
@@ -710,7 +715,7 @@ mod tests {
         ]);
 
         // Submit
-        component.int().send_key(KeyCode::Enter).assert_empty();
+        component.int().send_key(KeyCode::Enter).assert().empty();
         let replies = assert_matches!(
             harness.messages().pop_now(),
             Message::Http(HttpMessage::FormSubmit {

@@ -313,11 +313,11 @@ mod tests {
         // Edit username
         component
             .int()
-            .drain_draw() // Clear initial messages
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(
             component.override_value(),
             Some(Authentication::Basic {
@@ -327,7 +327,11 @@ mod tests {
         );
 
         // Reset username
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('z'))
+            .assert()
+            .empty();
         assert_eq!(component.override_value(), None);
 
         // Edit password
@@ -336,7 +340,8 @@ mod tests {
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("???")
             .send_key(KeyCode::Enter)
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(
             component.override_value(),
             Some(Authentication::Basic {
@@ -346,7 +351,11 @@ mod tests {
         );
 
         // Reset password
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('z'))
+            .assert()
+            .empty();
         assert_eq!(component.override_value(), None);
     }
 
@@ -369,9 +378,9 @@ mod tests {
         // Edit password
         component
             .int()
-            .drain_draw() // Clear initial messages
             .send_keys([KeyCode::Down, KeyCode::Char('e'), KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
         // There's no override because the password wasn't actually modified
         assert_eq!(component.override_value(), None);
     }
@@ -397,7 +406,8 @@ mod tests {
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(
             component.override_value(),
             Some(Authentication::Bearer {
@@ -406,7 +416,11 @@ mod tests {
         );
 
         // Reset token
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('z'))
+            .assert()
+            .empty();
         assert_eq!(component.override_value(), None);
     }
 
@@ -426,7 +440,8 @@ mod tests {
             .int()
             .action(&["Edit Token"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(
             component.override_value(),
             Some(Authentication::Bearer {
@@ -434,7 +449,7 @@ mod tests {
             })
         );
 
-        component.int().action(&["Reset Token"]).assert_empty();
+        component.int().action(&["Reset Token"]).assert().empty();
         assert_eq!(component.override_value(), None);
     }
 

@@ -30,7 +30,7 @@ serde_json = {workspace = true, optional = true}
 serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
-slumber_import = {workspace = true}
+slumber_import = {workspace = true, optional = true}
 slumber_template = {workspace = true}
 slumber_util = {workspace = true}
 tokio = {workspace = true, features = ["rt", "macros"]}
@@ -49,6 +49,10 @@ slumber_core = {workspace = true, features = ["test"]}
 slumber_util = {workspace = true, features = ["test"]}
 uuid = {workspace = true}
 wiremock = {workspace = true}
+
+[features]
+# Import can be disabled in dev for speed. It has a big dep tree
+import = ["dep:slumber_import"]
 
 [lints]
 workspace = true

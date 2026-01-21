@@ -1,7 +1,7 @@
 [tasks.cli]
 description = "Run a CLI command"
 quiet = true
-run = "cargo run --no-default-features --features cli --"
+run = "cargo run --no-default-features --features cli"
 
 [tasks.docs]
 description = "Build and serve docs"

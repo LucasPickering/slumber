@@ -117,9 +117,10 @@ tracing = {workspace = true}
 tracing-subscriber = {workspace = true}
 
 [features]
-default = ["cli", "tui"]
-# TUI and CLI can be disabled in dev to speed compilation while not in use
+default = ["cli", "import", "tui"]
+# TUI and CLI can be disabled in dev to speed up compilation while not in use
 cli = ["dep:slumber_cli"]
+import = ["slumber_cli/import"]
 tui = ["dep:slumber_tui"]
 # Enable tokio-console tracing
 tokio_tracing = ["dep:console-subscriber"]

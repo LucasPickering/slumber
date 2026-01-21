@@ -552,17 +552,19 @@ impl<Comp> AssertEvents<'_, '_, Comp> {
     /// should have bene propagated.
     #[track_caller]
     pub fn broadcast(self, expected: impl IntoIterator<Item = BroadcastEvent>) {
-        let actual = self
-            .propagated
-            .into_iter()
-            .map(|event| {
-                if let Event::Broadcast(event) = event {
-                    event
-                } else {
-                    panic!("Expected only broadcasts, but received: {event:#?}")
-                }
-            })
-            .collect_vec();
+        let mut actual = Vec::new();
+        for event in self.propagated {
+            // Do this map in a for loop instead of map() so the panic gets
+            // attributed to our caller
+            if let Event::Broadcast(event) = event {
+                actual.push(event);
+            } else {
+                panic!(
+                    "Expected only broadcasts to have been propagated,\
+                        but received: {event:#?}"
+                )
+            }
+        }
         let expected = expected.into_iter().collect_vec();
         assert_eq!(actual, expected);
     }
@@ -577,18 +579,18 @@ impl<Comp> AssertEvents<'_, '_, Comp> {
         E: LocalEvent + PartialEq,
     {
         let emitter = self.component.to_emitter();
-        let emitted = self
-            .propagated
-            .into_iter()
-            .map(|event| {
-                emitter.emitted(event).unwrap_or_else(|event| {
-                    panic!(
-                        "Expected only events emitted by {emitter} to have \
+        let mut emitted = Vec::new();
+        for event in self.propagated {
+            // Do this map in a for loop instead of map() so the panic gets
+            // attributed to our caller
+            match emitter.emitted(event) {
+                Ok(event) => emitted.push(event),
+                Err(event) => panic!(
+                    "Expected only events emitted by {emitter} to have \
                         been propagated, but received: {event:#?}",
-                    )
-                })
-            })
-            .collect_vec();
+                ),
+            }
+        }
         let expected = expected.into_iter().collect_vec();
         assert_eq!(emitted, expected);
     }

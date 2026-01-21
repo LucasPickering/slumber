@@ -1,11 +1,11 @@
 use crate::view::{
-    common::template_preview::TemplatePreview,
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        override_template::EditableTemplate,
+        editable_template::EditableTemplate,
     },
     persistent::SessionKey,
 };
+use ratatui::text::Text;
 use slumber_core::collection::RecipeId;
 use slumber_template::Template;
 
@@ -27,10 +27,10 @@ impl UrlDisplay {
         }
     }
 
-    /// Get the preview widget. This is used where the URL is drawn
+    /// Get the preview text widget. This is used where the URL is drawn
     /// non-interactively
-    pub fn preview(&self) -> &TemplatePreview {
-        self.url.preview()
+    pub fn preview(&self) -> &Text {
+        self.url.text()
     }
 
     /// If the template has been overridden, get the new template

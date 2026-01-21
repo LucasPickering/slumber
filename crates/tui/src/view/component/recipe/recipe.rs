@@ -164,7 +164,7 @@ impl Draw for RecipeDisplay {
 
         // First line: Method + URL
         canvas.render_widget(Paragraph::new(method), method_area);
-        canvas.draw(self.url.preview(), (), url_area, false);
+        canvas.render_widget(self.url.preview(), url_area);
 
         // Navigation tabs
         canvas.draw(&self.tabs, (), tabs_area, true);

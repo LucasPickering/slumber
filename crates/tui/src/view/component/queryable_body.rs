@@ -16,7 +16,6 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, PersistentStore},
-        state::Identified,
         util::{highlight, str_to_text},
     },
 };
@@ -57,9 +56,6 @@ pub struct QueryableBody<K> {
     export_text_box: CommandTextBox,
 
     /// Filtered text display
-    text_window: TextWindow,
-
-    /// Data that can update as the query changes
     text_state: TextState,
 }
 
@@ -114,7 +110,6 @@ impl<K> QueryableBody<K> {
             query_text_box,
             last_executed_query: None,
             export_text_box,
-            text_window: Default::default(),
             text_state,
         };
         // If we have an initial query from the default value, run it now
@@ -131,7 +126,7 @@ impl<K> QueryableBody<K> {
         if matches!(self.query_state, CommandState::Ok)
             || self.text_state.pretty
         {
-            Some(self.text_state.text.to_string())
+            Some(self.text_state.text_window.text().to_string())
         } else {
             None
         }
@@ -139,7 +134,7 @@ impl<K> QueryableBody<K> {
 
     /// Get whatever text the user sees
     pub fn visible_text(&self) -> &Text<'_> {
-        &self.text_state.text
+        self.text_state.text_window.text()
     }
 
     fn focus(&mut self, focus: CommandFocus) {
@@ -310,7 +305,7 @@ impl<K: PersistentKey<Value = String>> Component for QueryableBody<K> {
         vec![
             self.query_text_box.to_child_mut(),
             self.export_text_box.to_child_mut(),
-            self.text_window.to_child_mut(),
+            self.text_state.text_window.to_child_mut(),
         ]
     }
 }
@@ -325,9 +320,8 @@ impl<K: PersistentKey<Value = String>> Draw for QueryableBody<K> {
             canvas.render_widget(error.generate(), body_area);
         } else {
             canvas.draw(
-                &self.text_window,
+                &self.text_state.text_window,
                 TextWindowProps {
-                    text: self.text_state.text.as_ref(),
                     margins: ScrollbarMargins {
                         bottom: 2, // Extra margin to jump over the search box
                         ..Default::default()
@@ -369,10 +363,12 @@ impl<K> ToEmitter<CommandComplete> for QueryableBody<K> {
     }
 }
 
+/// Rendered body text. This encapsulates everything that can change when the
+/// body or command changes.
 #[derive(Debug)]
 struct TextState {
-    /// The full body, which we need to track for launching commands
-    text: Identified<Text<'static>>,
+    /// Visible text
+    text_window: TextWindow,
     /// Was the text prettified? We track this so we know if we've modified the
     /// original text
     pretty: bool,
@@ -396,16 +392,16 @@ impl TextState {
             // worth the screen real estate
             if let Some(text) = body.text() {
                 TextState {
-                    text: str_to_text(text).into(),
+                    text_window: TextWindow::new(str_to_text(text)),
                     pretty: false,
                 }
             } else {
                 // Showing binary content is a bit of a novelty, there's not
-                // much value in it. For large bodies it's not
-                // worth the CPU cycles
+                // much value in it. For large bodies it's not worth the CPU
+                // cycles
                 let text: Text = "<binary>".into();
                 TextState {
-                    text: text.into(),
+                    text_window: TextWindow::new(text),
                     pretty: false,
                 }
             }
@@ -429,7 +425,7 @@ impl TextState {
             let text =
                 highlight::highlight_if(content_type, str_to_text(&text));
             TextState {
-                text: text.into(),
+                text_window: TextWindow::new(text),
                 pretty,
             }
         } else {
@@ -437,7 +433,7 @@ impl TextState {
             let text: Text =
                 format!("{:#}", MaybeStr(body.bytes().as_ref())).into();
             TextState {
-                text: text.into(),
+                text_window: TextWindow::new(text),
                 pretty: false,
             }
         }

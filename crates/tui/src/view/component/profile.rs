@@ -14,7 +14,7 @@ use crate::{
         },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-            override_template::EditableTemplate,
+            editable_template::EditableTemplate,
             sidebar_list::{SidebarListItem, SidebarListState},
         },
         persistent::{PersistentKey, PersistentStore, SessionKey},

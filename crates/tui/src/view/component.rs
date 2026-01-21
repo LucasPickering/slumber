@@ -1,12 +1,12 @@
 mod collection_select;
 mod command_text_box;
+mod editable_template;
 mod exchange_pane;
 mod footer;
 mod help;
 mod history;
 mod internal;
 mod misc;
-mod override_template;
 mod primary;
 mod profile;
 mod prompt_form;

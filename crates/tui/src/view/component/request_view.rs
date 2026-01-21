@@ -13,7 +13,6 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        state::Identified,
         util::{format_byte_size, highlight, view_text},
     },
 };
@@ -32,25 +31,22 @@ pub struct RequestView {
     id: ComponentId,
     /// Store pointer to the request, so we can access it in the update step
     request: Arc<RequestRecord>,
-    /// Persist the visible body, because it may vary from the actual body.
-    /// `None` iff the request has no body
-    body: Option<Identified<Text<'static>>>,
-    body_text_window: TextWindow,
+    /// Body display. `None` if the request has no body
+    body_text_window: Option<TextWindow>,
 }
 
 impl RequestView {
     pub fn new(request: Arc<RequestRecord>) -> Self {
-        let body = init_body(&request);
+        let text = init_body(&request);
         Self {
             id: ComponentId::default(),
             request,
-            body,
-            body_text_window: Default::default(),
+            body_text_window: text.map(TextWindow::new),
         }
     }
 
     pub fn has_body(&self) -> bool {
-        self.body.is_some()
+        self.body_text_window.is_some()
     }
 
     pub fn copy_url(&self) {
@@ -60,16 +56,17 @@ impl RequestView {
     }
 
     pub fn view_body(&self) {
-        if let Some(body) = &self.body {
-            view_text(body, self.request.mime());
+        if let Some(text_window) = &self.body_text_window {
+            view_text(text_window.text(), self.request.mime());
         }
     }
 
     pub fn copy_body(&self) {
         // Copy exactly what the user sees. Currently requests don't support
         // formatting/querying but that could change
-        if let Some(body) = &self.body {
-            ViewContext::send_message(Message::CopyText(body.to_string()));
+        if let Some(text_window) = &self.body_text_window {
+            let body = text_window.text().to_string();
+            ViewContext::send_message(Message::CopyText(body));
         }
     }
 }
@@ -116,13 +113,10 @@ impl Draw for RequestView {
             },
             headers_area,
         );
-        if let Some(body) = &self.body {
+        if let Some(text_window) = &self.body_text_window {
             canvas.draw(
-                &self.body_text_window,
-                TextWindowProps {
-                    text: body.as_ref(),
-                    margins: Default::default(),
-                },
+                text_window,
+                TextWindowProps::default(),
                 body_area,
                 true,
             );
@@ -131,8 +125,8 @@ impl Draw for RequestView {
 }
 
 /// Calculate body text, including syntax highlighting. We have to clone the
-/// body to prevent a self-reference
-fn init_body(request: &RequestRecord) -> Option<Identified<Text<'static>>> {
+/// body to prevent a self-reference. Return `None` if the request has no body
+fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
     let content_type = ContentType::from_headers(&request.headers).ok();
     request
         .body()
@@ -141,7 +135,6 @@ fn init_body(request: &RequestRecord) -> Option<Identified<Text<'static>>> {
                 content_type,
                 format!("{:#}", MaybeStr(body)).into(),
             )
-            .into()
         })
         .or_else(|| {
             // No body available: check if it's because the recipe has no body,
@@ -153,15 +146,11 @@ fn init_body(request: &RequestRecord) -> Option<Identified<Text<'static>>> {
                 collection.recipes.get(&request.recipe_id)?.recipe()?;
             if recipe.body.is_some() {
                 let config = &TuiContext::get().config;
-
-                Some(
-                    Text::raw(format!(
-                        "Body not available. Streamed bodies, or bodies over \
+                Some(Text::raw(format!(
+                    "Body not available. Streamed bodies, or bodies over \
                         {}, are not persisted",
-                        format_byte_size(config.http.large_body_size)
-                    ))
-                    .into(),
-                )
+                    format_byte_size(config.http.large_body_size)
+                )))
             } else {
                 None
             }

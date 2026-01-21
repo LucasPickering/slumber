@@ -97,14 +97,19 @@ mod tests {
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(
             component.override_value(),
             Some("/users/{{ username }}!!!".into())
         );
 
         // Reset token
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('z'))
+            .assert()
+            .empty();
         assert_eq!(component.override_value(), None);
     }
 
@@ -128,14 +133,15 @@ mod tests {
             .int()
             .action(&["Edit URL"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(
             component.override_value(),
             Some("/users/{{ username }}!".into())
         );
 
         // Edit URL
-        component.int().action(&["Reset URL"]).assert_empty();
+        component.int().action(&["Reset URL"]).assert().empty();
         assert_eq!(component.override_value(), None);
     }
 

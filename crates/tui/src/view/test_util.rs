@@ -81,6 +81,8 @@ where
             area: terminal.area(),
             component: TestWrapper::new(data),
             props: None,
+            // Most components shouldn't emit any events on init
+            assert_events: Box::new(|assert| assert.empty()),
         }
     }
 
@@ -160,13 +162,6 @@ where
     /// the events that were propagated (i.e. not consumed by the component or
     /// its children), in the order they were queued/handled.
     fn drain_events(&mut self) -> Vec<Event> {
-        // Safety check, prevent annoying bugs
-        assert!(
-            self.component_map.is_visible(&self.component),
-            "Component {component:?} is not visible, it can't handle events",
-            component = self.component
-        );
-
         let mut persistent_store = PersistentStore::new(self.database.clone());
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
@@ -214,6 +209,11 @@ pub struct TestComponentBuilder<'term, T, Props> {
     area: Rect,
     component: TestWrapper<T>,
     props: Option<Props>,
+    /// Function to call after component initialization to assert on the list
+    /// of propagated events in the event queue. By default, it should use
+    /// [AssertPropagated::empty] to assert that the queue is empty.
+    #[expect(clippy::type_complexity)]
+    assert_events: Box<dyn FnOnce(AssertEvents<'_, '_, T>)>,
 }
 
 impl<'term, T, Props> TestComponentBuilder<'term, T, Props>
@@ -241,10 +241,32 @@ where
         self
     }
 
-    /// Build the component and do its initial draw. Components aren't useful
-    /// until they've been drawn once, because they won't receive events
-    /// until they're marked as visible. For this reason, this constructor
-    /// takes care of all the things you would immediately have to do anyway.
+    /// Customize the assertion that is run on the list of events propagated on
+    /// init
+    ///
+    /// After the test component is created, all events in the queue are
+    /// drained, then the component is drawn. If there are any remaining
+    /// events in the queue from the initialization OR subsequent updates, they
+    /// can be asserted on here. By default, this calls
+    /// [AssertPropagated::empty], meaning the test will fail if any events
+    /// were queued and not handled in the initial update call.
+    ///
+    /// Call this with a custom assertion if your component intentionally queues
+    /// events during startup.
+    pub fn with_assert_events(
+        mut self,
+        assert_events: impl 'static + FnOnce(AssertEvents<'_, '_, T>),
+    ) -> Self {
+        self.assert_events = Box::new(assert_events);
+        self
+    }
+
+    /// Build the component, process its initialization events, then do an
+    /// initial draw
+    ///
+    /// Draining initial events and drawing are considered universal
+    /// functionality that all components will receive as part of their
+    /// normal operation.
     pub fn build(self) -> TestComponent<'term, T> {
         let mut component = TestComponent {
             terminal: self.terminal,
@@ -255,11 +277,20 @@ where
             component: self.component,
             has_focus: true,
         };
-        // Do an initial draw to set up state, then handle any triggered events
-        TestComponent::draw(
-            &mut component,
-            self.props.expect("Props not set for test component"),
-        );
+
+        // Drain any events that may have been queued during component init,
+        // then draw with the latest state
+        let props = self.props.expect("Props not set for test component");
+        let propagated = component.drain_events();
+        component.draw(props);
+
+        // Use our closure to decide what events are expected
+        let assert = AssertEvents {
+            component: &mut component,
+            propagated,
+        };
+        (self.assert_events)(assert);
+
         component
     }
 }
@@ -268,19 +299,19 @@ where
 /// various interactions. All chains should be terminated with an assertion
 /// on the events propagated by the interactions. Each interaction will be
 /// succeeded by a single draw, to update the view as needed.
-#[must_use = "Propagated events must be checked"]
+#[must_use = "Complete interaction with assert()"]
 #[derive(derive_more::Debug)]
-pub struct Interact<'term, 'a, Component, Props> {
-    component: &'a mut TestComponent<'term, Component>,
+pub struct Interact<'term, 'comp, Component, Props> {
+    component: &'comp mut TestComponent<'term, Component>,
     /// A repeatable function that generates a props object for each draw. In
     /// most cases this will just be `Props::default` or a function that
     /// repeatedly returns the same static value. In some cases though, the
     /// value can't be held across draws and must be recreated each time.
-    props_factory: Box<dyn 'a + Fn() -> Props>,
+    props_factory: Box<dyn 'comp + Fn() -> Props>,
     propagated: Vec<Event>,
 }
 
-impl<Comp, Props> Interact<'_, '_, Comp, Props>
+impl<'term, 'comp, Comp, Props> Interact<'term, 'comp, Comp, Props>
 where
     Comp: Component + Draw<Props> + Debug,
 {
@@ -473,10 +504,43 @@ where
         self
     }
 
+    /// Get the underlying component value
+    pub fn component_data(&self) -> &Comp {
+        &self.component.component.inner
+    }
+
+    /// Get propagated events as a slice
+    pub fn propagated(&self) -> &[Event] {
+        &self.propagated
+    }
+
+    /// Get an [AssertEvents] to assert properties about the list of events
+    /// propagated by this interaction
+    pub fn assert(self) -> AssertEvents<'term, 'comp, Comp> {
+        AssertEvents {
+            component: self.component,
+            propagated: self.propagated,
+        }
+    }
+}
+
+/// Assert on the list of propagated events
+#[must_use = "Propagated events must be checked"]
+pub struct AssertEvents<'term, 'comp, Comp> {
+    component: &'comp mut TestComponent<'term, Comp>,
+    propagated: Vec<Event>,
+}
+
+impl<Comp> AssertEvents<'_, '_, Comp> {
+    /// Get the underlying component value
+    pub fn component_data(&self) -> &Comp {
+        &*self.component
+    }
+
     /// Assert that no events were propagated, i.e. the component handled all
     /// given and generated events.
     #[track_caller]
-    pub fn assert_empty(self) {
+    pub fn empty(self) {
         assert!(
             self.propagated.is_empty(),
             "Expected no propagated events, but got {:?}",
@@ -487,10 +551,7 @@ where
     /// Assert that one or more [BroadcastEvent]s were emitted. No other events
     /// should have bene propagated.
     #[track_caller]
-    pub fn assert_broadcast(
-        self,
-        expected: impl IntoIterator<Item = BroadcastEvent>,
-    ) {
+    pub fn broadcast(self, expected: impl IntoIterator<Item = BroadcastEvent>) {
         let actual = self
             .propagated
             .into_iter()
@@ -510,7 +571,7 @@ where
     /// a specific sequence. Requires `PartialEq` to be implemented for the
     /// emitted event type.
     #[track_caller]
-    pub fn assert_emitted<E>(self, expected: impl IntoIterator<Item = E>)
+    pub fn emitted<E>(self, expected: impl IntoIterator<Item = E>)
     where
         Comp: ToEmitter<E>,
         E: LocalEvent + PartialEq,
@@ -530,16 +591,6 @@ where
             .collect_vec();
         let expected = expected.into_iter().collect_vec();
         assert_eq!(emitted, expected);
-    }
-
-    /// Get the underlying component value
-    pub fn component_data(&self) -> &Comp {
-        &self.component.component.inner
-    }
-
-    /// Get propagated events as a slice
-    pub fn into_propagated(self) -> Vec<Event> {
-        self.propagated
     }
 }
 

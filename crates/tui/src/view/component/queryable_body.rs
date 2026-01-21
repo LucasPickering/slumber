@@ -557,7 +557,11 @@ mod tests {
         ]);
 
         // Type something into the query box
-        component.int().send_key(KeyCode::Char('/')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('/'))
+            .assert()
+            .empty();
         // The subprocess uses local tasks, so we need to run in a local set.
         // When this future exits, all tasks are done
         run_local(async {
@@ -565,11 +569,12 @@ mod tests {
                 .int()
                 .send_text("head -c 1")
                 .send_key(KeyCode::Enter)
-                .assert_empty();
+                .assert()
+                .empty();
         })
         .await;
         // Command is done, handle its resulting event
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
 
         // Make sure state updated correctly
         assert_eq!(component.last_executed_query.as_deref(), Some("head -c 1"));
@@ -577,12 +582,17 @@ mod tests {
         assert_eq!(component.command_focus, CommandFocus::None);
 
         // Cancelling out of the text box should reset the query value
-        component.int().send_key(KeyCode::Char('/')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('/'))
+            .assert()
+            .empty();
         component
             .int()
             .send_text("more text")
             .send_key(KeyCode::Esc)
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(component.last_executed_query.as_deref(), Some("head -c 1"));
         assert_eq!(component.query_text_box.text(), "head -c 1");
         assert_eq!(component.command_focus, CommandFocus::None);
@@ -622,7 +632,7 @@ mod tests {
         .await;
 
         // After the command is done, there's a subsequent event with the result
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
 
         assert_eq!(component.last_executed_query.as_deref(), Some("head -c 1"));
         assert_eq!(&component.visible_text().to_string(), "{");
@@ -702,10 +712,11 @@ mod tests {
             .int()
             .send_key(KeyCode::Char(':'))
             .send_text(&command)
-            .assert_empty();
+            .assert()
+            .empty();
         // Triggers the background task
         run_local(async {
-            component.int().send_key(KeyCode::Enter).assert_empty();
+            component.int().send_key(KeyCode::Enter).assert().empty();
         })
         .await;
         // Success should push a notification
@@ -719,12 +730,13 @@ mod tests {
             .int()
             .send_key(KeyCode::Char(':'))
             .send_text("bad!")
-            .assert_empty();
+            .assert()
+            .empty();
         run_local(async {
-            component.int().send_key(KeyCode::Enter).assert_empty();
+            component.int().send_key(KeyCode::Enter).assert().empty();
         })
         .await;
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
         assert_matches!(harness.messages().pop_now(), Message::Error { .. });
     }
 }

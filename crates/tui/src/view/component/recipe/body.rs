@@ -491,7 +491,11 @@ mod tests {
         assert_eq!(persisted, Some("goodbye!".into()));
 
         // Reset edited state
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('z'))
+            .assert()
+            .empty();
         assert_eq!(component.override_value(), None);
     }
 
@@ -582,7 +586,11 @@ mod tests {
         assert_eq!(persisted, Some(override_text.into()));
 
         // Reset edited state
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('z'))
+            .assert()
+            .empty();
         assert_eq!(component.override_value(), None);
     }
 
@@ -675,7 +683,11 @@ mod tests {
         content: &str,
     ) {
         harness.messages().clear();
-        component.int().send_key(KeyCode::Char('e')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('e'))
+            .assert()
+            .empty();
         let (file, on_complete) = assert_matches!(
             harness.messages().pop_now(),
             Message::FileEdit {
@@ -690,6 +702,6 @@ mod tests {
         fs::write(file.path(), content).unwrap();
         on_complete(file);
         // Handle completion event
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
     }
 }

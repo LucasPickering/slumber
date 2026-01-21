@@ -321,7 +321,7 @@ mod tests {
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
 
         // Make sure profile+recipe were preselected correctly
         let primary = &component.primary_view;
@@ -355,7 +355,7 @@ mod tests {
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
 
         // Make sure everything was preselected correctly
         let primary = &component.primary_view;
@@ -386,7 +386,7 @@ mod tests {
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
 
         assert_eq!(
             component.primary_view.selected_request_id(),
@@ -417,7 +417,7 @@ mod tests {
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
 
         assert_eq!(
             component.primary_view.selected_request_id(),
@@ -428,7 +428,8 @@ mod tests {
         component
             .int()
             .send_keys([KeyCode::Char('r'), KeyCode::Down])
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(
             component.primary_view.selected_request_id(),
             Some(exchange2.id)
@@ -458,7 +459,7 @@ mod tests {
 
         let mut component =
             TestComponent::new(&harness, &terminal, Root::new());
-        component.int().drain_draw().assert_empty();
+        component.int().drain_draw().assert().empty();
 
         assert_eq!(
             component.primary_view.selected_request_id(),
@@ -469,7 +470,8 @@ mod tests {
         component
             .int()
             .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
         // The exchange from profile2 should be selected now
         assert_eq!(
             component.primary_view.selected_request_id(),
@@ -499,7 +501,8 @@ mod tests {
             .int()
             .drain_draw()
             .send_key(KeyCode::Char('h'))
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Sanity check for initial state
         assert_eq!(
@@ -514,7 +517,8 @@ mod tests {
             .action(action_path)
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Same request is still selected
         assert_eq!(
@@ -528,7 +532,8 @@ mod tests {
             .action(action_path)
             // Confirm
             .send_keys([KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
 
         // It'd be nice to test that the request is actually deleted, but I
         // haven't figured out a way to test messages in the event loop.
@@ -564,7 +569,8 @@ mod tests {
             .int()
             .drain_draw()
             .send_key(KeyCode::Char('2'))
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Sanity check for initial state
         assert_eq!(
@@ -577,7 +583,8 @@ mod tests {
             .int()
             .action(&["Delete Request"])
             .send_keys([KeyCode::Left, KeyCode::Enter]) // Decline
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Same request is still selected
         assert_eq!(
@@ -589,7 +596,8 @@ mod tests {
             .int()
             .action(&["Delete Request"])
             .send_keys([KeyCode::Enter]) // Confirm
-            .assert_empty();
+            .assert()
+            .empty();
 
         // It'd be nice to test that the request is actually deleted, but I
         // haven't figured out a way to test messages in the event loop.

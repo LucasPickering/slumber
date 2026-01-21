@@ -191,14 +191,17 @@ mod tests {
         // Open help
         component
             .int()
-            .drain_draw() // Clear initial events
             .send_key(KeyCode::Char('?'))
-            .assert_empty();
+            .assert()
+            .empty();
         assert!(component.open);
 
         // Any key should close. Events are *not* handled by anyone else
-        //
-        component.int().send_key(KeyCode::Char('x')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('x'))
+            .assert()
+            .empty();
         assert!(!component.open);
     }
 }

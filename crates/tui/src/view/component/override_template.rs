@@ -400,12 +400,17 @@ mod tests {
             .send_keys(iter::repeat_n(KeyCode::Backspace, 10))
             .send_text("override")
             .send_key(KeyCode::Enter)
-            .assert_empty();
+            .assert()
+            .empty();
         assert_eq!(component.template(), &"override".into());
         assert_eq!(PersistentStore::get_session(&Key), Some("override".into()));
 
         // Clear the override; should be removed from the store
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char('z'))
+            .assert()
+            .empty();
         component.persist(&mut PersistentStore::new(harness.database));
         assert_eq!(component.template(), &"default".into());
         assert_eq!(PersistentStore::get_session(&Key), None);

@@ -373,7 +373,8 @@ mod tests {
             .send_text("123")
             .send_key(KeyCode::Enter)
             // Tell all other previews to re-render
-            .assert_broadcast([BroadcastEvent::RefreshPreviews]);
+            .assert()
+            .broadcast([BroadcastEvent::RefreshPreviews]);
         let field = &component.select[1];
         assert_eq!(field.template.template(), &"def123".into());
     }

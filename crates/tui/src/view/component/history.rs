@@ -341,12 +341,12 @@ mod tests {
         component.refresh(&mut harness.request_store_mut());
 
         // Initial state
-        component.int().drain_draw().assert_broadcast([
+        component.int().drain_draw().assert().broadcast([
             BroadcastEvent::SelectedRequest(Some(exchanges[0].id)),
         ]);
 
         // Select the next one
-        component.int().send_key(KeyCode::Down).assert_broadcast([
+        component.int().send_key(KeyCode::Down).assert().broadcast([
             BroadcastEvent::SelectedRequest(Some(exchanges[1].id)),
         ]);
     }

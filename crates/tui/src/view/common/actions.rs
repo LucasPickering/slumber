@@ -716,19 +716,22 @@ mod tests {
         component
             .int()
             .action(&["Action 2"])
-            .assert_emitted([TestAction::Action2]);
+            .assert()
+            .emitted([TestAction::Action2]);
 
         // Actions can be performed by shortcut
         component
             .int()
             .send_keys([KeyCode::Char('x'), KeyCode::Char('e')])
-            .assert_emitted([TestAction::Shortcutted]);
+            .assert()
+            .emitted([TestAction::Shortcutted]);
 
         // Disabled action *cannot* be performed by shortcut
         component
             .int()
             .send_keys([KeyCode::Char('x'), KeyCode::Char('z')])
-            .assert_emitted([]);
+            .assert()
+            .emitted([]);
     }
 
     /// Various input sequences on multiple levels of nested actions
@@ -770,7 +773,8 @@ mod tests {
             .int()
             .send_key(KeyCode::Char('x'))
             .send_keys(inputs.iter().copied())
-            .assert_emitted([expected_action]);
+            .assert()
+            .emitted([expected_action]);
     }
 
     /// There once was a bug where the select event wasn't handled correctly
@@ -798,6 +802,7 @@ mod tests {
         component
             .int()
             .send_keys([KeyCode::Char('x'), KeyCode::Right, KeyCode::Enter])
-            .assert_emitted([TestAction::Nested1]);
+            .assert()
+            .emitted([TestAction::Nested1]);
     }
 }

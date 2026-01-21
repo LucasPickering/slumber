@@ -483,9 +483,9 @@ mod tests {
         // Disable the second row
         component
             .int_props(props_factory)
-            .drain_draw() // Clear initial events
             .send_keys([KeyCode::Down, KeyCode::Char(' ')])
-            .assert_empty();
+            .assert()
+            .empty();
         let selected_row = component.select.selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
         assert!(!selected_row.enabled);
@@ -501,7 +501,8 @@ mod tests {
         component
             .int_props(props_factory)
             .send_key(KeyCode::Char(' '))
-            .assert_empty();
+            .assert()
+            .empty();
         let selected_row = component.select.selected().unwrap();
         assert!(selected_row.enabled);
         assert_eq!(component.to_build_overrides(), IndexMap::new());
@@ -530,12 +531,12 @@ mod tests {
         // Edit the second row
         component
             .int_props(props_factory)
-            .drain_draw() // Clear initial events
             // Open the modal
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("!!!")
             .send_key(KeyCode::Enter)
-            .assert_empty();
+            .assert()
+            .empty();
 
         let selected_row = component.select.selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
@@ -553,7 +554,8 @@ mod tests {
         component
             .int_props(props_factory)
             .send_key(KeyCode::Char('z'))
-            .assert_empty();
+            .assert()
+            .empty();
         let selected_row = component.select.selected().unwrap();
         assert!(!selected_row.value.is_overridden());
     }
@@ -574,10 +576,10 @@ mod tests {
 
         component
             .int_props(props_factory)
-            .drain_draw() // Clear initial events
             .action(&["Edit Row"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
-            .assert_empty();
+            .assert()
+            .empty();
 
         let selected_row = component.select.selected().unwrap();
         assert_eq!(selected_row.value.template().display(), "value0!");

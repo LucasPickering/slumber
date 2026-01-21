@@ -349,7 +349,8 @@ mod tests {
         component
             .int_props(|| props.clone())
             .send_key(KeyCode::Down)
-            .assert_empty();
+            .assert()
+            .empty();
         terminal.assert_buffer_lines([
             vec![line_num(2), " line 2 ▲".into()],
             vec![line_num(3), " line 3 █".into()],
@@ -362,7 +363,8 @@ mod tests {
             .int_props(|| props.clone())
             // Second does nothing
             .send_keys([KeyCode::Up, KeyCode::Up])
-            .assert_empty();
+            .assert()
+            .empty();
         terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
@@ -376,7 +378,8 @@ mod tests {
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
-            .assert_empty();
+            .assert()
+            .empty();
         terminal.assert_buffer_lines([
             vec![line_num(1), " e 1    ▲".into()],
             vec![line_num(2), " e 2 is █".into()],
@@ -392,7 +395,8 @@ mod tests {
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
             // Does nothing
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
-            .assert_empty();
+            .assert()
+            .empty();
         terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
@@ -486,7 +490,8 @@ mod tests {
                 },
             })
             .drain_draw()
-            .assert_empty();
+            .assert()
+            .empty();
 
         assert_eq!(component.offset_x.get(), 8);
         assert_eq!(component.offset_y.get(), 1);
@@ -516,7 +521,8 @@ mod tests {
         component
             .int_props(|| props.clone())
             .drain_draw()
-            .assert_empty();
+            .assert()
+            .empty();
 
         // Scroll out a bit
         component.scroll_down(2);
@@ -528,7 +534,8 @@ mod tests {
         component
             .int_props(|| props.clone())
             .drain_draw()
-            .assert_empty();
+            .assert()
+            .empty();
 
         assert_eq!(component.offset_x.get(), 8);
         assert_eq!(component.offset_y.get(), 1);

@@ -292,12 +292,13 @@ mod tests {
                     .send_key(KeyCode::Char('/'))
                     .send_text(query)
                     .send_key(KeyCode::Enter)
-                    .assert_empty();
+                    .assert()
+                    .empty();
                 // Wait for the command to finish, pass results back to the
                 // component
             })
             .await;
-            component.int().drain_draw().assert_empty();
+            component.int().drain_draw().assert().empty();
         }
 
         component.save_response_body();

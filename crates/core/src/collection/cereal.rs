@@ -11,7 +11,7 @@ use crate::{
     collection::{
         Authentication, Collection, Folder, JsonTemplate, Profile, ProfileId,
         QueryParameterValue, Recipe, RecipeBody, RecipeId, RecipeTree,
-        recipe_tree::RecipeNode,
+        ValueTemplate, recipe_tree::RecipeNode,
     },
     http::HttpMethod,
 };
@@ -379,6 +379,62 @@ impl DeserializeYaml for RecipeBody {
         } else {
             // Otherwise it's a raw body - deserialize as a template
             Template::deserialize(yaml, source_map).map(Self::Raw)
+        }
+    }
+}
+
+impl DeserializeYaml for ValueTemplate {
+    fn expected() -> Expected {
+        Expected::OneOf(&[
+            &Expected::Null,
+            &Expected::Boolean,
+            &Expected::Number,
+            &Expected::String,
+            &Expected::Sequence,
+            &Expected::Mapping,
+        ])
+    }
+
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        match yaml.data {
+            YamlData::Representation(_, _, _)
+            | YamlData::BadValue
+            | YamlData::Alias(_) => yaml_parse_panic(),
+            YamlData::Value(Scalar::Null) => Ok(Self::Null),
+            YamlData::Value(Scalar::Boolean(b)) => Ok(Self::Boolean(b)),
+            YamlData::Value(Scalar::Integer(i)) => Ok(Self::Integer(i)),
+            YamlData::Value(Scalar::FloatingPoint(f)) => Ok(Self::Float(f.0)),
+            // Parse string as a template
+            YamlData::Value(Scalar::String(s)) => {
+                let template = s.parse::<Template>().map_err(|error| {
+                    LocatedError::other(error, yaml.location)
+                })?;
+                Ok(Self::String(template))
+            }
+            YamlData::Sequence(sequence) => {
+                let values = sequence
+                    .into_iter()
+                    .map(|yaml| Self::deserialize(yaml, source_map))
+                    .collect::<yaml::Result<_>>()?;
+                Ok(Self::Array(values))
+            }
+            YamlData::Mapping(mapping) => {
+                let fields = mapping
+                    .into_iter()
+                    .map(|(key, value)| {
+                        let key = Template::deserialize(key, source_map)?;
+                        let value = Self::deserialize(value, source_map)?;
+                        Ok((key, value))
+                    })
+                    .collect::<yaml::Result<_>>()?;
+                Ok(Self::Object(fields))
+            }
+            YamlData::Tagged(_, _) => {
+                Err(LocatedError::unexpected(Self::expected(), yaml))
+            }
         }
     }
 }

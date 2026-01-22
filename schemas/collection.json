@@ -110,9 +110,10 @@
           "type": "boolean"
         },
         "data": {
+          "description": "TODO",
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/$defs/Template"
+            "$ref": "#/$defs/ValueTemplate"
           }
         }
       },
@@ -125,6 +126,40 @@
           "default": true,
           "data": {
             "host": "http://localhost:8000"
+          }
+        }
+      ]
+    },
+    "ValueTemplate": {
+      "description": "TODO comment\nTODO move this",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "number",
+          "format": "double"
+        },
+        {
+          "$ref": "#/$defs/Template"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValueTemplate"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ValueTemplate"
           }
         }
       ]

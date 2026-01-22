@@ -23,9 +23,12 @@ use crate::{
 };
 use anyhow::Context;
 use crossterm::event::{self, EventStream};
-use futures::{StreamExt, pin_mut};
+use futures::{Stream, StreamExt, pin_mut};
 use ratatui::{
-    Terminal, buffer::Buffer, layout::Position, prelude::CrosstermBackend,
+    Terminal,
+    buffer::Buffer,
+    layout::Position,
+    prelude::{Backend, CrosstermBackend},
 };
 use slumber_config::{Action, Config};
 use slumber_core::{collection::CollectionFile, database::Database};
@@ -45,8 +48,9 @@ use tracing::{error, info, trace};
 /// Main controller struct for the TUI. The app uses a React-ish architecture
 /// for the view, with a wrapping controller (this struct)
 #[derive(Debug)]
-pub struct Tui {
-    terminal: Term,
+pub struct Tui<B: Backend> {
+    /// TODO
+    terminal: Terminal<B>,
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
     /// touch this
@@ -58,15 +62,53 @@ pub struct Tui {
     should_run: bool,
 }
 
-type Term = Terminal<CrosstermBackend<Stdout>>;
+impl Tui<CrosstermBackend<Stdout>> {
+    /// Start the TUI on a real terminal. Any errors that occur during startup
+    /// will be panics, because they prevent TUI execution.
+    pub async fn start(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
+        // The code to revert the terminal takeover is in `Tui::drop`, so we
+        // shouldn't take over the terminal until right before creating the
+        // `Tui`.
+        initialize_panic_handler();
+        util::initialize_terminal()?;
 
-impl Tui {
+        let mut app =
+            Self::new(CrosstermBackend::new(io::stdout()), collection_path)?;
+
+        // Run everything in one local set, so that we can use !Send values
+        let local = task::LocalSet::new();
+        let input_stream = EventStream::new().map(|event_result| {
+            let event = event_result.expect("Error reading terminal input");
+            // Convert from crossterm to the common terminput format. This
+            // enables support for multiple terminal backends
+            terminput_crossterm::to_terminput(event).unwrap()
+        });
+        local.spawn_local(async move { app.run(input_stream).await });
+        local.await;
+
+        // Restore terminal
+        // TODO make sure this is always called
+        if let Err(err) = util::restore_terminal() {
+            error!(error = err.deref(), "Error restoring terminal, sorry!");
+        }
+
+        Ok(())
+    }
+}
+
+impl<B> Tui<B>
+where
+    B: Backend,
+    B::Error: 'static + Send + Sync,
+{
     /// Rough **maximum** time for each iteration of the main loop
     const TICK_TIME: Duration = Duration::from_millis(250);
 
-    /// Start the TUI. Any errors that occur during startup will be panics,
-    /// because they prevent TUI execution.
-    pub async fn start(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
+    /// TODO
+    pub fn new(
+        backend: B,
+        collection_path: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
@@ -87,48 +129,34 @@ impl Tui {
         let state =
             TuiState::load(database, collection_file, messages_tx.clone());
 
-        // The code to revert the terminal takeover is in `Tui::drop`, so we
-        // shouldn't take over the terminal until right before creating the
-        // `Tui`.
-        initialize_panic_handler();
-        util::initialize_terminal()?;
-        let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+        let terminal = Terminal::new(backend)?;
 
-        let app = Tui {
+        Ok(Self {
             terminal,
             messages_rx,
             messages_tx,
-
             state,
             should_run: true,
-        };
-
-        // Run everything in one local set, so that we can use !Send values
-        let local = task::LocalSet::new();
-        local.spawn_local(app.run());
-        local.await;
-        Ok(())
+        })
     }
 
     /// Run the main TUI update loop. Any error returned from this is fatal. See
     /// the struct definition for a description of the different phases of the
     /// run loop.
-    async fn run(mut self) -> anyhow::Result<()> {
+    async fn run(
+        &mut self,
+        input_stream: impl Stream<Item = terminput::Event>,
+    ) -> anyhow::Result<()> {
         // Spawn background tasks
         self.listen_for_signals();
 
         let input_engine = &TuiContext::get().input_engine;
-        // Stream of terminal input events
-        let input_stream =
-            // Events that don't map to a message (cursor move, focus, etc.)
-            // should be filtered out entirely so they don't trigger any updates
-            EventStream::new().filter_map(|event_result| async move {
-                let event = event_result.expect("Error reading terminal input");
-                // Convert from crossterm to the common terminput format. This
-                // enables support for multiple terminal backends
-                let event = terminput_crossterm::to_terminput(event).unwrap();
-                input_engine.convert_event(event)
-            });
+        // Stream of terminal input events. Events that don't map to a message
+        // (cursor move, focus, etc.) should be filtered out entirely so
+        // they don't trigger any updates
+        let input_stream = input_stream.filter_map(|event| async move {
+            input_engine.convert_event(event)
+        });
         pin_mut!(input_stream);
 
         self.draw(false)?; // Initial draw
@@ -274,15 +302,6 @@ impl Tui {
                 .draw(|frame| self.state.draw(frame.buffer_mut()))?;
         }
         Ok(())
-    }
-}
-
-/// Restore terminal on app exit
-impl Drop for Tui {
-    fn drop(&mut self) {
-        if let Err(err) = util::restore_terminal() {
-            error!(error = err.deref(), "Error restoring terminal, sorry!");
-        }
     }
 }
 

@@ -4,10 +4,86 @@ use crate::render::TemplateContext;
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_template::{
-    RenderError, Template, TemplateParseError, TryFromValue,
+    RenderError, RenderedOutput, Template, TemplateParseError, TryFromValue,
+    Value,
 };
 use std::str::FromStr;
 use thiserror::Error;
+
+/// TODO comment
+/// TODO move this
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(any(test, feature = "test"), derive(derive_more::From, PartialEq))]
+#[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum ValueTemplate {
+    Null,
+    Boolean(bool),
+    Integer(i64),
+    Float(f64),
+    String(Template),
+    #[cfg_attr(any(test, feature = "test"), from(ignore))]
+    Array(Vec<Self>),
+    // A key-value mapping. Stored as a `Vec` instead of `IndexMap` because
+    // the keys are templates, which aren't hashable. We never do key lookups
+    // on this so there's no need for a map anyway.
+    #[serde(serialize_with = "serialize_object")]
+    #[cfg_attr(
+        feature = "schema",
+        schemars(with = "std::collections::HashMap<Template, Self>")
+    )]
+    Object(Vec<(Template, Self)>),
+}
+
+impl ValueTemplate {
+    /// Render all templates to strings and return a static JSON value
+    pub async fn render(&self, context: &TemplateContext) -> RenderedOutput {
+        match self {
+            Self::Null => Value::Null.into(),
+            Self::Boolean(b) => Value::Boolean(*b).into(),
+            Self::Integer(i) => Value::Integer(*i).into(),
+            Self::Float(f) => Value::Float(*f).into(),
+            Self::String(template) => {
+                // TODO take SingleRenderContext here
+                template.render(&context.streaming(true)).await
+            }
+            Self::Array(array) => {
+                todo!()
+            }
+            Self::Object(map) => {
+                todo!()
+            }
+        }
+    }
+}
+
+/// Parse template from a string literal. Panic if invalid
+#[cfg(any(test, feature = "test"))]
+impl From<&str> for ValueTemplate {
+    fn from(value: &str) -> Self {
+        let template = value.parse().unwrap();
+        Self::String(template)
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl<T: Into<ValueTemplate>> From<Vec<T>> for ValueTemplate {
+    fn from(value: Vec<T>) -> Self {
+        Self::Array(value.into_iter().map(T::into).collect())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl<T: Into<ValueTemplate>> From<Vec<(&str, T)>> for ValueTemplate {
+    fn from(value: Vec<(&str, T)>) -> Self {
+        Self::Object(
+            value
+                .into_iter()
+                .map(|(k, v)| (k.parse().unwrap(), v.into()))
+                .collect(),
+        )
+    }
+}
 
 /// A JSON value like [serde_json::Value], but all strings are templates
 #[derive(Clone, Debug, Serialize)]
@@ -180,12 +256,16 @@ impl From<&'static str> for JsonTemplate {
 
 /// Serialize a JSON object as a mapping. The derived impl serializes as a
 /// sequence
-fn serialize_object<S>(
-    object: &Vec<(Template, JsonTemplate)>,
+///
+/// TODO make this static instead of generic once JsonTemplate and ValueTemplate
+/// are merged
+fn serialize_object<S, T>(
+    object: &Vec<(Template, T)>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    T: Serialize,
 {
     let mut map = serializer.serialize_map(Some(object.len()))?;
     for (k, v) in object {

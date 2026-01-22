@@ -9,9 +9,9 @@
 
 use crate::{
     collection::{
-        Authentication, Collection, Folder, JsonTemplate, Profile, ProfileId,
+        Authentication, Collection, Folder, Profile, ProfileId,
         QueryParameterValue, Recipe, RecipeBody, RecipeId, RecipeTree,
-        recipe_tree::RecipeNode,
+        ValueTemplate, recipe_tree::RecipeNode,
     },
     http::HttpMethod,
 };
@@ -383,7 +383,7 @@ impl DeserializeYaml for RecipeBody {
     }
 }
 
-impl DeserializeYaml for JsonTemplate {
+impl DeserializeYaml for ValueTemplate {
     fn expected() -> Expected {
         Expected::OneOf(&[
             &Expected::Null,
@@ -404,16 +404,9 @@ impl DeserializeYaml for JsonTemplate {
             | YamlData::BadValue
             | YamlData::Alias(_) => yaml_parse_panic(),
             YamlData::Value(Scalar::Null) => Ok(Self::Null),
-            YamlData::Value(Scalar::Boolean(b)) => Ok(Self::Bool(b)),
-            YamlData::Value(Scalar::Integer(i)) => Ok(Self::Number(i.into())),
-            YamlData::Value(Scalar::FloatingPoint(f)) => Ok(Self::Number(
-                serde_json::Number::from_f64(f.0).ok_or_else(|| {
-                    LocatedError::other(
-                        CerealError::InvalidJsonFloat(f.0),
-                        yaml.location,
-                    )
-                })?,
-            )),
+            YamlData::Value(Scalar::Boolean(b)) => Ok(Self::Boolean(b)),
+            YamlData::Value(Scalar::Integer(i)) => Ok(Self::Integer(i)),
+            YamlData::Value(Scalar::FloatingPoint(f)) => Ok(Self::Float(f.0)),
             // Parse string as a template
             YamlData::Value(Scalar::String(s)) => {
                 let template = s.parse::<Template>().map_err(|error| {
@@ -451,10 +444,6 @@ impl DeserializeYaml for JsonTemplate {
 /// only holds errors specific to collection deserialization.
 #[derive(Debug, thiserror::Error)]
 enum CerealError {
-    /// JSON body contained a float value that isn't representable in JSON
-    #[error("Invalid float `{0}`; JSON does not support NaN or Infinity")]
-    InvalidJsonFloat(f64),
-
     #[error(
         "Cannot set profile `{second}` as default; `{first}` is already default"
     )]

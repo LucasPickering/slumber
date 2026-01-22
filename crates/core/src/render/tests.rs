@@ -2,7 +2,7 @@
 //! syntax/parsing here because that's handled in the template lib.
 
 use crate::{
-    collection::{Profile, Recipe},
+    collection::{Profile, Recipe, ValueTemplate},
     database::CollectionDatabase,
     http::{Exchange, HttpEngine, RequestId, RequestRecord, ResponseRecord},
     render::TemplateContext,
@@ -26,25 +26,77 @@ use std::time::Duration;
 use tokio::fs;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
-/// Profile fields
+/// Render profile fields. Fields can be assigned to arbitrary values
+#[rstest]
+#[case::null("{{ null }}", Value::Null, false)]
+#[case::bool("{{ bool }}", true.into(), false)]
+#[case::int("{{ int }}", 4.into(), false)]
+#[case::float("{{ float }}", 123.45.into(), false)]
+#[case::string("{{ string }}", "localhost".into(), false)]
+#[case::unpack("{{ int_deferred }}", 4.into(), false)]
+#[case::stream("content: {{ file }}", "content: first".into(), true)]
+#[case::array("{{ array }}", vec![1, 2, 3].into(), false)]
+#[case::object(
+    "{{ object }}",
+    vec![("localhost", 1), ("raw", 2)].into(),
+    false,
+)]
+// Stream is resolved eagerly when it's a nested expression
+#[case::array_stream("{{ array_stream }}", vec!["first"].into(), false)]
 #[tokio::test]
-async fn test_profile() {
-    let template: Template = "{{ host }}/users/{{ user_id }}".parse().unwrap();
-
+async fn test_profile(
+    #[case] template: Template,
+    #[case] expected: Value,
+    #[case] expected_has_stream: bool,
+) {
     // Put some profile data in the context
-    let profile_data = indexmap! {
-        "host".into() => "http://localhost".into(),
-        "user_id".into() => "1".into(),
-    };
+    let profile_data = [
+        ("null", ValueTemplate::Null),
+        ("bool", true.into()),
+        ("int", 4.into()), // chosen by fair dice roll
+        ("float", 123.45.into()),
+        ("string", "localhost".into()),
+        ("array", vec![1, 2, 3].into()),
+        ("object", vec![("{{ string }}", 1), ("raw", 2)].into()),
+        ("int_deferred", "{{ int }}".into()), // Unpacked into an int
+        ("file", "{{ file('first.txt') }}".into()),
+        ("array_stream", vec!["{{ file }}"].into()),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), v))
+    .collect::<IndexMap<String, ValueTemplate>>();
     let profile = Profile {
         data: profile_data,
         ..Profile::factory(())
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
+    let output = template.render(&context.stream()).await;
+    assert_eq!(output.has_stream(), expected_has_stream);
+    assert_eq!(output.try_collect_value().await.unwrap(), expected);
+}
+
+/// Rendering a profile field propagates the streaming setting
+#[rstest]
+#[tokio::test]
+async fn test_profile_stream_disabled() {
+    let template: Template = "content: {{ file }}".into();
+    // Put some profile data in the context
+    let profile_data = [("file", "{{ file('first.txt') }}".into())]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect::<IndexMap<String, ValueTemplate>>();
+    let profile = Profile {
+        data: profile_data,
+        ..Profile::factory(())
+    };
+    let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
+
+    let output = template.render(&context).await;
+    assert!(!output.has_stream());
     assert_eq!(
-        template.render_bytes(&context).await.unwrap(),
-        "http://localhost/users/1"
+        output.try_collect_value().await.unwrap(),
+        "content: first".into()
     );
 }
 

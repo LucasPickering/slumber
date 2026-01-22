@@ -301,12 +301,8 @@ impl RenderedOutput {
     pub fn has_stream(&self) -> bool {
         self.0.iter().any(|chunk| match chunk {
             RenderedChunk::Raw(_) => false,
-            RenderedChunk::Rendered(LazyValue::Value(_)) => false,
-            RenderedChunk::Rendered(LazyValue::Stream { .. }) => true,
-            // Recursion!!
-            RenderedChunk::Rendered(LazyValue::Nested(output)) => {
-                output.has_stream()
-            }
+            // Recursion! Mutual!!
+            RenderedChunk::Rendered(lazy_value) => lazy_value.has_stream(),
             RenderedChunk::Error(_) => true,
         })
     }
@@ -329,8 +325,8 @@ impl RenderedOutput {
 
     /// Convert this output into a byte stream. Each chunk will be yielded as a
     /// separate `Bytes` output from the stream, except for inner stream chunks,
-    /// which can yield any number of values based on their
-    /// implementation. Return `Err` if any of the rendered chunks are errors.
+    /// which can yield any number of values based on their implementation.
+    /// Return `Err` if any of the rendered chunks are errors.
     pub fn try_into_stream(
         self,
     ) -> Result<
@@ -409,7 +405,9 @@ impl RenderedOutput {
 /// Create render output of a single chunk with a value
 impl From<Value> for RenderedOutput {
     fn from(value: Value) -> Self {
-        Self(vec![RenderedChunk::Rendered(value.into())])
+        // TODO should there be a first-class type for single-values so we don't
+        // have to do the unpack heuristic?
+        Self(vec![RenderedChunk::Rendered(LazyValue::Value(value))])
     }
 }
 

@@ -188,6 +188,7 @@ pub enum LazyValue {
         stream: BoxStream<'static, Result<Bytes, RenderError>>,
     },
     /// A template chunk that rendered a nested template with multiple chunks
+    /// TODO explain more (where is it used? do a search)
     Nested(RenderedOutput),
 }
 
@@ -204,6 +205,16 @@ impl LazyValue {
                 .map(|bytes| Value::Bytes(bytes.into())),
             // Box needed for recursion
             Self::Nested(output) => Box::pin(output.try_collect_value()).await,
+        }
+    }
+
+    /// TODO
+    pub fn has_stream(&self) -> bool {
+        match self {
+            LazyValue::Value(_) => false,
+            LazyValue::Stream { .. } => true,
+            // Recursion!
+            LazyValue::Nested(rendered_output) => rendered_output.has_stream(),
         }
     }
 }

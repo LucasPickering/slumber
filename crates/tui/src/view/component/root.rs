@@ -25,10 +25,10 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{
         Collection, CollectionError, CollectionFile, HasId, Profile, ProfileId,
+        ValueTemplate,
     },
     database::ProfileFilter,
 };
-use slumber_template::Template;
 use std::{error::Error as StdError, sync::Arc};
 use tracing::warn;
 
@@ -106,7 +106,7 @@ impl Root {
     }
 
     /// Get a map of overridden profile fields
-    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+    pub fn profile_overrides(&self) -> IndexMap<String, ValueTemplate> {
         match &self.primary {
             Ok(primary) => primary.profile_overrides(),
             Err(_) => IndexMap::default(),

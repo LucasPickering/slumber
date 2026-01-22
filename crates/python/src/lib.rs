@@ -410,7 +410,7 @@ impl Request {
             .overrides
             .into_iter()
             // Don't support templates in overrides (yet)
-            .map(|(field, value)| (field, Template::raw(value)))
+            .map(|(field, value)| (field, Template::raw(value).into()))
             .collect();
         let context = TemplateContext {
             collection: self.collection,

@@ -25,7 +25,7 @@ use ratatui::{
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::collection::ProfileId;
+use slumber_core::collection::{ProfileId, ValueTemplate};
 use slumber_template::Template;
 use std::iter;
 use unicode_width::UnicodeWidthStr;

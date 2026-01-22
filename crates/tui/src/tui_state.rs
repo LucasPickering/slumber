@@ -858,11 +858,11 @@ mod tests {
                     }
                     Some(other) => panic!(
                         "Unexpected message {other:?} does not match pattern {expected}",
-                        expected = stringify!($pattern),
+                        expected = stringify!($expected),
                     ),
                     None => panic!(
                         "Message queue is empty but expected {expected}",
-                        expected = stringify!($pattern),
+                        expected = stringify!($expected),
                     )
                 }
             )*

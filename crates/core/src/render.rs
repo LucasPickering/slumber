@@ -10,7 +10,7 @@ mod util;
 #[cfg(any(test, feature = "test"))]
 use crate::collection::Recipe;
 use crate::{
-    collection::{Collection, Profile, ProfileId, RecipeId},
+    collection::{Collection, Profile, ProfileId, RecipeId, ValueTemplate},
     http::{
         Exchange, RequestSeed, ResponseRecord, StoredRequestError,
         TriggeredRequestError,
@@ -225,10 +225,12 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             .context
             .overrides
             .get(field.as_str())
+            // TODO remove clones
+            .map(|template| ValueTemplate::String(template.clone()))
             .or_else(|| {
                 // Check the current profile
                 let profile = self.context.current_profile()?;
-                profile.data.get(field.as_str())
+                profile.data.get(field.as_str()).cloned()
             })
             .ok_or_else(|| FunctionError::UnknownField {
                 field: field.to_string(),

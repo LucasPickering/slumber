@@ -3,7 +3,7 @@
 use crate::{
     collection::{
         cereal,
-        json::JsonTemplate,
+        json::{JsonTemplate, ValueTemplate},
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::HttpMethod,
@@ -157,7 +157,8 @@ pub struct Profile {
     #[serde(skip_serializing_if = "cereal::is_false")] // Skip if default
     #[cfg_attr(feature = "schema", schemars(default))]
     pub default: bool,
-    pub data: IndexMap<String, Template>,
+    /// TODO
+    pub data: IndexMap<String, ValueTemplate>,
 }
 
 impl Profile {

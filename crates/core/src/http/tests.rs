@@ -34,14 +34,14 @@ thread_local! {
 /// collection
 fn template_context(recipe: Recipe, host: Option<&str>) -> TemplateContext {
     let profile_data = indexmap! {
-        "host".into() => host.unwrap_or("http://localhost").parse().unwrap(),
+        "host".into() => host.unwrap_or("http://localhost").into(),
         "mode".into() => "sudo".into(),
         "user_id".into() => "1".into(),
         "group_id".into() => "3".into(),
         "username".into() => "user".into(),
         "password".into() => "hunter2".into(),
         "token".into() => "tokenzzz".into(),
-        "test_data_dir".into() => test_data_dir().to_str().unwrap().parse().unwrap(),
+        "test_data_dir".into() => test_data_dir().to_str().unwrap().into(),
         "prompt".into() => "{{ prompt() }}".into(),
         "stream".into() => "{{ file('data.json') }}".into(),
         // Streamed value that we can use to test deduping

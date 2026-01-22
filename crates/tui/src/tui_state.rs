@@ -191,6 +191,22 @@ impl TuiState {
         }
     }
 
+    /// TODO
+    pub fn collection(&self) -> Option<&Collection> {
+        match &self.0 {
+            TuiStateInner::Loaded(state) => Some(&state.collection),
+            TuiStateInner::Error { .. } => None,
+        }
+    }
+
+    /// TODO
+    pub fn database(&self) -> &CollectionDatabase {
+        match &self.0 {
+            TuiStateInner::Loaded(state) => &state.database,
+            TuiStateInner::Error { database, .. } => database,
+        }
+    }
+
     /// Select a new collection file, replacing this state entirely
     fn select_collection(&mut self, path: PathBuf) -> anyhow::Result<()> {
         let collection_file = CollectionFile::new(Some(path))?;
@@ -869,66 +885,6 @@ mod tests {
             // We got all the messages
             $harness.messages().assert_empty();
         }
-    }
-
-    /// Load a collection, then change the file to trigger a reload
-    #[rstest]
-    #[tokio::test]
-    async fn test_reload_collection(
-        temp_dir: TempDir,
-        mut harness: TestHarness,
-    ) {
-        // Start with an empty collection
-        let file = collection_file(&temp_dir);
-        let mut state = tui_state(&harness, file.clone());
-
-        // Make sure it loaded correctly
-        let collection = assert_matches!(
-            &state.0,
-            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
-        );
-        assert_eq!(collection.recipes.iter().count(), 0);
-        // Collection name should be set in the DB
-        assert_eq!(
-            harness.database.metadata().unwrap().name.as_deref(),
-            Some("Test")
-        );
-
-        // Update the file, make sure it's reflected
-        fs::write(
-            file.path(),
-            r#"
-name: Test Reloaded
-
-requests:
-    test:
-        method: "GET"
-        url: "test"
-"#,
-        )
-        .unwrap();
-
-        // Handle all queued messages
-        drain!(
-            harness,
-            state,
-            [
-                Message::CollectionStartReload,
-                Message::CollectionEndReload { .. },
-            ]
-        );
-
-        // And it's done!
-        let collection = assert_matches!(
-            &state.0,
-            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
-        );
-        assert_eq!(collection.recipes.iter().count(), 1);
-        // Name was updatd too
-        assert_eq!(
-            harness.database.metadata().unwrap().name.as_deref(),
-            Some("Test Reloaded")
-        );
     }
 
     /// Test an error in the collection during initial load. Should shove us

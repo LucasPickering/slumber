@@ -14,11 +14,13 @@ mod tui_state;
 mod util;
 mod view;
 
+// TODO
+pub use tui_state::*;
+
 use crate::{
     context::TuiContext,
     input::InputEvent,
     message::{Message, MessageSender},
-    tui_state::TuiState,
     util::{CANCEL_TOKEN, ResultReported},
 };
 use anyhow::Context;
@@ -31,7 +33,10 @@ use ratatui::{
     prelude::{Backend, CrosstermBackend},
 };
 use slumber_config::{Action, Config};
-use slumber_core::{collection::CollectionFile, database::Database};
+use slumber_core::{
+    collection::{Collection, CollectionFile},
+    database::{CollectionDatabase, Database},
+};
 use std::{
     io::{self, Stdout},
     ops::Deref,
@@ -72,18 +77,19 @@ impl Tui<CrosstermBackend<Stdout>> {
         initialize_panic_handler();
         util::initialize_terminal()?;
 
-        let mut app =
+        let app =
             Self::new(CrosstermBackend::new(io::stdout()), collection_path)?;
-
-        // Run everything in one local set, so that we can use !Send values
-        let local = task::LocalSet::new();
+        // Stream input from the terminal
         let input_stream = EventStream::new().map(|event_result| {
             let event = event_result.expect("Error reading terminal input");
             // Convert from crossterm to the common terminput format. This
             // enables support for multiple terminal backends
             terminput_crossterm::to_terminput(event).unwrap()
         });
-        local.spawn_local(async move { app.run(input_stream).await });
+
+        // Run everything in one local set, so that we can use !Send values
+        let local = task::LocalSet::new();
+        local.spawn_local(app.run(input_stream));
         local.await;
 
         // Restore terminal
@@ -142,11 +148,11 @@ where
 
     /// Run the main TUI update loop. Any error returned from this is fatal. See
     /// the struct definition for a description of the different phases of the
-    /// run loop.
-    async fn run(
-        &mut self,
+    /// run loop. TODO update ^^
+    pub async fn run(
+        mut self,
         input_stream: impl Stream<Item = terminput::Event>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Self> {
         // Spawn background tasks
         self.listen_for_signals();
 
@@ -163,6 +169,7 @@ where
 
         // This loop is limited by the rate that messages come in, with a
         // minimum rate enforced by a timeout
+        self.should_run = true; // In tests, this may be called more than once
         while self.should_run {
             // ===== Message Phase =====
             // Wait for one of 3 things to happen:
@@ -228,7 +235,7 @@ where
             }
         }
 
-        Ok(())
+        Ok(self)
     }
 
     /// Handle an incoming message. Any error here will be displayed as a modal
@@ -302,6 +309,16 @@ where
                 .draw(|frame| self.state.draw(frame.buffer_mut()))?;
         }
         Ok(())
+    }
+
+    /// TODO
+    pub fn collection(&self) -> Option<&Collection> {
+        self.state.collection()
+    }
+
+    /// TODO
+    pub fn database(&self) -> &CollectionDatabase {
+        self.state.database()
     }
 }
 

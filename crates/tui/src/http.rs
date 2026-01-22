@@ -1015,6 +1015,12 @@ impl PromptId {
     }
 }
 
+impl Default for PromptId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A UI-provided reply to a prompt. This is the data passed from the UI back
 /// to the request store, to be forwarded via channel to the HTTP engine.
 #[derive(Debug, PartialEq)]

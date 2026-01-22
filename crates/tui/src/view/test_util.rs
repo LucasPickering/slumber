@@ -379,13 +379,13 @@ where
     /// Simulate a left click at the given location, then drain events and draw.
     /// See [Self::update_draw] about return value.
     pub fn click(self, x: u16, y: u16) -> Self {
-        let crossterm_event = terminput::Event::Mouse(MouseEvent {
+        let term_event = terminput::Event::Mouse(MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),
             column: x,
             row: y,
             modifiers: KeyModifiers::NONE,
         });
-        self.send_input(crossterm_event)
+        self.send_input(term_event)
     }
 
     /// Simulate a key press on this component. This will generate the
@@ -402,13 +402,13 @@ where
         code: KeyCode,
         modifiers: KeyModifiers,
     ) -> Self {
-        let crossterm_event = terminput::Event::Key(KeyEvent {
+        let term_event = terminput::Event::Key(KeyEvent {
             code,
             modifiers,
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         });
-        self.send_input(crossterm_event)
+        self.send_input(term_event)
     }
 
     /// Send multiple key events in sequence

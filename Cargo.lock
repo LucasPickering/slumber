@@ -3587,6 +3587,7 @@ dependencies = [
  "chrono",
  "crossterm",
  "derive_more",
+ "env-lock",
  "futures",
  "indexmap",
  "itertools",

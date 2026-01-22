@@ -91,7 +91,7 @@ impl Component for CollectionSelect {
             })
             .emitted(self.select.to_emitter(), |event| match event.kind {
                 // The ol' Tennessee Switcharoo
-                SelectEventKind::Select => {
+                SelectEventKind::Submit => {
                     let item = &self.select[event];
                     ViewContext::send_message(Message::CollectionSelect(
                         item.path.clone(),

@@ -188,6 +188,7 @@ pub enum LazyValue {
         stream: BoxStream<'static, Result<Bytes, RenderError>>,
     },
     /// A template chunk that rendered a nested template with multiple chunks
+    /// TODO explain more (where is it used? do a search)
     Nested(RenderedOutput),
 }
 

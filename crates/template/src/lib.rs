@@ -346,8 +346,8 @@ impl RenderedOutput {
 
     /// Convert this output into a byte stream. Each chunk will be yielded as a
     /// separate `Bytes` output from the stream, except for inner stream chunks,
-    /// which can yield any number of values based on their
-    /// implementation. Return `Err` if any of the rendered chunks are errors.
+    /// which can yield any number of values based on their implementation.
+    /// Return `Err` if any of the rendered chunks are errors.
     pub fn try_into_stream(
         self,
     ) -> Result<
@@ -430,6 +430,15 @@ impl IntoIterator for RenderedOutput {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
+    }
+}
+
+/// TODO
+impl From<Value> for RenderedOutput {
+    fn from(value: Value) -> Self {
+        // TODO should there be a first-class type for single-values so we don't
+        // have to do the unpack heuristic?
+        Self(vec![RenderedChunk::Rendered(LazyValue::Value(value))])
     }
 }
 

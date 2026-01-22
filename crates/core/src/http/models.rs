@@ -4,8 +4,8 @@
 //! exchange is incomplete or failed.
 
 use crate::collection::{
-    Authentication, JsonTemplate, JsonTemplateError, ProfileId, RecipeId,
-    UnknownRecipeError,
+    Authentication, JsonTemplateError, ProfileId, RecipeId, UnknownRecipeError,
+    ValueTemplate,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
@@ -343,7 +343,7 @@ pub enum BodyOverride {
     /// stream
     Raw(Template),
     /// Override with a JSON value
-    Json(JsonTemplate),
+    Json(ValueTemplate),
 }
 
 #[cfg(any(test, feature = "test"))]

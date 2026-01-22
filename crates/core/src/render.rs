@@ -10,7 +10,7 @@ mod util;
 #[cfg(any(test, feature = "test"))]
 use crate::collection::Recipe;
 use crate::{
-    collection::{Collection, Profile, ProfileId, RecipeId},
+    collection::{Collection, Profile, ProfileId, RecipeId, ValueTemplate},
     http::{
         Exchange, RequestSeed, ResponseRecord, StoredRequestError,
         TriggeredRequestError,
@@ -26,9 +26,7 @@ use derive_more::{Deref, From, derive::Display};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
-use slumber_template::{
-    Arguments, Identifier, LazyValue, RenderError, Template, Value,
-};
+use slumber_template::{Arguments, Identifier, LazyValue, RenderError, Value};
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
 };
@@ -65,7 +63,7 @@ pub struct TemplateContext {
     /// These will be applied to both the root and triggered requests, which is
     /// why they are part of the context instead of
     /// [BuildOptions](super::http::BuildOptions).
-    pub overrides: IndexMap<String, Template>,
+    pub overrides: IndexMap<String, ValueTemplate>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
     /// Should sensitive values be shown normally or masked? Enabled for

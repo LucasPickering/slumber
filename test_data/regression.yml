@@ -18,6 +18,15 @@ profiles:
       $ref: "#/.base_profile_data"
       username: xX{{ command(['whoami']) | trim() }}Xx
       user_guid: abc123
+      # Test all data types
+      "null": null
+      bool: true
+      int: 4
+      float: 123.45
+      array: [1, 2, "test"]
+      object:
+        a: 1
+        b: [1, 2, 7]
   profile2:
     name: Profile 2
     default: true

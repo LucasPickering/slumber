@@ -27,12 +27,11 @@ use indexmap::IndexMap;
 use ratatui::{buffer::Buffer, text::Span};
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{Collection, ProfileId, RecipeId, ValueTemplate},
     database::CollectionDatabase,
     http::RequestId,
     render::Prompt,
 };
-use slumber_template::Template;
 use std::{
     fmt::{Debug, Display},
     sync::Arc,
@@ -119,7 +118,7 @@ impl View {
     }
 
     /// Get a map of overridden profile fields
-    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+    pub fn profile_overrides(&self) -> IndexMap<String, ValueTemplate> {
         self.root.profile_overrides()
     }
 

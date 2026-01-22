@@ -11,8 +11,8 @@ use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
     collection::{
-        Authentication, JsonTemplate, ProfileId, QueryParameterValue, Recipe,
-        RecipeBody, RecipeId,
+        Authentication, ProfileId, QueryParameterValue, Recipe, RecipeBody,
+        RecipeId, ValueTemplate,
     },
     database::{CollectionDatabase, Database},
     http::{
@@ -352,7 +352,7 @@ impl BuildRequestCommand {
                 }
                 Some(RecipeBody::Json(_)) => {
                     // Parse the override as json
-                    let json: JsonTemplate = ovr.parse()?;
+                    let json = ValueTemplate::parse_json(&ovr)?;
                     Ok(BodyOverride::Json(json))
                 }
                 Some(
@@ -380,7 +380,12 @@ impl BuildRequestCommand {
                 http_engine: http_engine.clone(),
                 trigger_dependencies,
             }),
-            overrides: IndexMap::from_iter(self.overrides),
+            overrides: self
+                .overrides
+                .into_iter()
+                // CLI only supports string overrides
+                .map(|(key, template)| (key, ValueTemplate::String(template)))
+                .collect(),
             prompter: Box::new(CliPrompter),
             show_sensitive: true,
             root_dir: collection_file.parent().to_owned(),

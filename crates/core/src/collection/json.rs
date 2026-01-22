@@ -1,24 +1,26 @@
 //! Utilities for working with templated JSON
 
-use crate::{render::TemplateContext, util::value_to_json};
+use crate::util::value_to_json;
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_template::{
-    RenderError, RenderedOutput, Template, TemplateParseError, Value,
-    ValueError,
+    Context, RenderError, RenderedOutput, Template, TemplateParseError, Value,
 };
-use std::str::FromStr;
 use thiserror::Error;
 
-/// A JSON value like [serde_json::Value], but all strings are templates
+/// TODO comment
+/// TODO move this
 #[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(any(test, feature = "test"), derive(derive_more::From))]
 #[serde(untagged)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub enum JsonTemplate {
+pub enum ValueTemplate {
     Null,
-    Bool(bool),
-    Number(serde_json::Number),
+    Boolean(bool),
+    Integer(i64),
+    Float(f64),
     String(Template),
+    #[cfg_attr(any(test, feature = "test"), from(ignore))]
     Array(Vec<Self>),
     // A key-value mapping. Stored as a `Vec` instead of `IndexMap` because
     // the keys are templates, which aren't hashable. We never do key lookups
@@ -31,23 +33,42 @@ pub enum JsonTemplate {
     Object(Vec<(Template, Self)>),
 }
 
-impl JsonTemplate {
+impl ValueTemplate {
     /// Build a JSON value without parsing strings as templates
-    pub fn raw(json: serde_json::Value) -> Self {
+    pub fn from_raw_json(json: serde_json::Value) -> Self {
         match json {
             serde_json::Value::Null => Self::Null,
-            serde_json::Value::Bool(b) => Self::Bool(b),
-            serde_json::Value::Number(number) => Self::Number(number),
-            serde_json::Value::String(s) => Self::String(Template::raw(s)),
-            serde_json::Value::Array(values) => {
-                Self::Array(values.into_iter().map(Self::raw).collect())
+            serde_json::Value::Bool(b) => Self::Boolean(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Self::Integer(i)
+                } else if let Some(f) = n.as_f64() {
+                    Self::Float(f)
+                } else {
+                    todo!("integer out of range")
+                }
             }
+            serde_json::Value::String(s) => Self::String(Template::raw(s)),
+            serde_json::Value::Array(values) => Self::Array(
+                values.into_iter().map(Self::from_raw_json).collect(),
+            ),
             serde_json::Value::Object(map) => Self::Object(
                 map.into_iter()
-                    .map(|(key, value)| (Template::raw(key), Self::raw(value)))
+                    .map(|(key, value)| {
+                        (Template::raw(key), Self::from_raw_json(value))
+                    })
                     .collect(),
             ),
         }
+    }
+
+    /// TODO
+    pub fn parse_json(s: &str) -> Result<Self, JsonTemplateError> {
+        // First, parse it as regular JSON
+        let json: serde_json::Value = serde_json::from_str(s)?;
+        // Then map all the strings as templates
+        let mapped = json.try_into()?;
+        Ok(mapped)
     }
 
     /// Render to previewable chunks
@@ -55,27 +76,16 @@ impl JsonTemplate {
     /// The return value is *usually* a single chunk, but if the JSON value is
     /// a multi-chunk template string, then its multi-chunk output will be the
     /// output for this.
-    pub async fn render(&self, context: &TemplateContext) -> RenderedOutput {
+    ///
+    /// TODO update comment
+    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedOutput {
         match self {
-            JsonTemplate::Null => Value::Null.into(),
-            JsonTemplate::Bool(b) => Value::Boolean(*b).into(),
-            JsonTemplate::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    Value::Integer(i).into()
-                } else if let Some(f) = n.as_f64() {
-                    Value::Float(f).into()
-                } else {
-                    // Integer is out of i64 range. Template values really
-                    // should be a superset of JSON values, but right now that's
-                    // not the case.
-                    Err(RenderError::from(ValueError::other(
-                        "JSON integer out of range",
-                    )))
-                    .into()
-                }
-            }
-            JsonTemplate::String(template) => template.render(context).await,
-            JsonTemplate::Array(array) => {
+            Self::Null => Value::Null.into(),
+            Self::Boolean(b) => Value::Boolean(*b).into(),
+            Self::Integer(i) => Value::Integer(*i).into(),
+            Self::Float(f) => Value::Float(*f).into(),
+            Self::String(template) => template.render(context).await,
+            Self::Array(array) => {
                 // Render each value and collection into an Array
                 future::try_join_all(array.iter().map(|value| async {
                     value.render(context).await.try_collect_value().await
@@ -84,7 +94,7 @@ impl JsonTemplate {
                 .map(Value::from)
                 .into() // Wrap into RenderedOutput
             }
-            JsonTemplate::Object(map) => {
+            Self::Object(map) => {
                 // Render each key/value and collect into an Object
                 future::try_join_all(map.iter().map(|(key, value)| async {
                     let key = key.render_string(context).await?;
@@ -100,9 +110,9 @@ impl JsonTemplate {
     }
 
     /// Render all templates to strings and return a static JSON value
-    pub async fn render_json(
+    pub async fn render_json<Ctx: Context>(
         &self,
-        context: &TemplateContext,
+        context: &Ctx,
     ) -> Result<serde_json::Value, RenderError> {
         // Collect render output as a single value. The renderer should always
         // output a single chunk, so it gets unpacked back to one value.
@@ -111,32 +121,24 @@ impl JsonTemplate {
     }
 }
 
-impl FromStr for JsonTemplate {
-    type Err = JsonTemplateError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // First, parse it as regular JSON
-        let json: serde_json::Value = serde_json::from_str(s)?;
-        // Then map all the strings as templates
-        let mapped = json.try_into()?;
-        Ok(mapped)
-    }
-}
-
-impl TryFrom<serde_json::Value> for JsonTemplate {
+impl TryFrom<serde_json::Value> for ValueTemplate {
     type Error = TemplateParseError;
 
     /// Convert static JSON to templated JSON, parsing each string as a template
     fn try_from(json: serde_json::Value) -> Result<Self, Self::Error> {
         let mapped = match json {
-            serde_json::Value::Null => Self::Null,
-            serde_json::Value::Bool(b) => Self::Bool(b),
-            serde_json::Value::Number(number) => Self::Number(number),
+            // Primitive values are always static, so we can re-use raw_json()
+            primitive @ (serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)) => {
+                ValueTemplate::from_raw_json(primitive)
+            }
+            // These values could all potentially be dynamic
             serde_json::Value::String(s) => Self::String(s.parse()?),
             serde_json::Value::Array(values) => Self::Array(
                 values
                     .into_iter()
-                    .map(JsonTemplate::try_from)
+                    .map(Self::try_from)
                     .collect::<Result<Vec<_>, _>>()?,
             ),
             serde_json::Value::Object(map) => Self::Object(
@@ -153,21 +155,46 @@ impl TryFrom<serde_json::Value> for JsonTemplate {
     }
 }
 
+/// Parse template from a string literal. Panic if invalid
 #[cfg(any(test, feature = "test"))]
-impl From<&'static str> for JsonTemplate {
-    fn from(value: &'static str) -> Self {
-        Self::String(value.into())
+impl From<&str> for ValueTemplate {
+    fn from(value: &str) -> Self {
+        let template = value.parse().unwrap();
+        Self::String(template)
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl<T: Into<ValueTemplate>> From<Vec<T>> for ValueTemplate {
+    fn from(value: Vec<T>) -> Self {
+        Self::Array(value.into_iter().map(T::into).collect())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl<T: Into<ValueTemplate>> From<Vec<(&str, T)>> for ValueTemplate {
+    fn from(value: Vec<(&str, T)>) -> Self {
+        Self::Object(
+            value
+                .into_iter()
+                .map(|(k, v)| (k.parse().unwrap(), v.into()))
+                .collect(),
+        )
     }
 }
 
 /// Serialize a JSON object as a mapping. The derived impl serializes as a
 /// sequence
-fn serialize_object<S>(
-    object: &Vec<(Template, JsonTemplate)>,
+///
+/// TODO make this static instead of generic once JsonTemplate and ValueTemplate
+/// are merged
+fn serialize_object<S, T>(
+    object: &Vec<(Template, T)>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    T: Serialize,
 {
     let mut map = serializer.serialize_map(Some(object.len()))?;
     for (k, v) in object {
@@ -231,14 +258,15 @@ mod tests {
             data: indexmap! {
                 "user_id".into() => "123".into(),
                 "username".into() => "testuser".into(),
-                "invalid_utf8".into() => invalid_utf8(),
+                "invalid_utf8".into() => invalid_utf8().into(),
             },
             ..Profile::factory(())
         };
         let context =
             TemplateContext::factory((by_id([profile]), indexmap! {}));
 
-        let template = JsonTemplate::try_from(input).expect("Invalid template");
+        let template =
+            ValueTemplate::try_from(input).expect("Invalid template");
         let result = template.render_json(&context).await;
         assert_result(result, expected);
     }
@@ -247,6 +275,6 @@ mod tests {
     #[test]
     fn test_invalid_key_template() {
         let json = json!({"{{ invalid_key": {"name": "{{ username }}"}});
-        assert_result(JsonTemplate::try_from(json), Err("invalid expression"));
+        assert_result(ValueTemplate::try_from(json), Err("invalid expression"));
     }
 }

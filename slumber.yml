@@ -10,6 +10,7 @@
     | select(message='Fish ID') }}"
   stream_compound: "command: {{ command(['echo', 'test']) }}\nfile: {{ file('Cargo.toml') }}"
   large_body_command: "head -c {{ prompt(message='Bytes', default=500000) }} < /dev/urandom | base64"
+  weights: [1.2, 3.4, 5.6]
 
 profiles:
   prd:
@@ -83,7 +84,7 @@ requests:
               "name": "{{ prompt(message='Name', default='Fishy') }}",
               "species": "{{ select(['Sunfish', 'baby fuckin wheel'], message='Species') }}",
               "age": "{{ prompt(message='Age', default=3) | integer() }}",
-              "weight_kg": "{{ prompt(message='Weight (kg)', default='1000.5') | float() }}",
+              "weight_kg": "{{ select(weights, message='Weight (kg)') }}",
             }
 
       modify_fish:

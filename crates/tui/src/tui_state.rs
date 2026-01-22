@@ -12,10 +12,7 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
-use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{
-    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
-};
+use notify::{PollWatcher, RecursiveMode, Watcher};
 use ratatui::buffer::Buffer;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
@@ -31,7 +28,7 @@ use std::{
     time::Duration,
 };
 use tokio::task;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 /// Main TUI state. This is responsible for handling most of the TUI messages
 /// and state updates, as well the case of the collection failing to load on
@@ -780,7 +777,7 @@ impl LoadedState {
     }
 }
 
-type FileWatcher = Debouncer<RecommendedWatcher, RecommendedCache>;
+type FileWatcher = PollWatcher;
 
 /// Spawn a file system watcher that watches the collection file for changes.
 /// When it changes, trigger a collection reload by sending a message. **The
@@ -790,51 +787,55 @@ fn watch_collection(
     messages_tx: MessageSender,
 ) -> notify::Result<FileWatcher> {
     /// Should this event trigger a reload?
-    fn should_reload(event: &DebouncedEvent) -> bool {
+    fn should_reload(event: &notify::Event) -> bool {
         // Only reload if the file is modified. Some editors may truncrate
         // and recreate files instead of modifying
         // https://docs.rs/notify/latest/notify/#editor-behaviour
         // Modify/create type is useless on Windows
         // https://github.com/notify-rs/notify/issues/633
         matches!(
-            event.event.kind,
+            event.kind,
             notify::EventKind::Modify(_) | notify::EventKind::Create(_),
         )
     }
 
-    let on_file_event = move |result: DebounceEventResult| {
+    let on_file_event = move |result: notify::Result<notify::Event>| {
         match result {
-            Ok(events) if events.iter().any(should_reload) => {
-                info!(?events, "Collection file changed, reloading");
+            Ok(event) if should_reload(&event) => {
+                info!(?event, "Collection file changed, reloading");
                 messages_tx.send(Message::CollectionStartReload);
             }
             // Do nothing for other event kinds
-            Ok(_) => {}
+            Ok(event) => debug!(?event, "Ignoring file event(s)"),
             Err(errors) => {
                 error!(?errors, "Error watching file");
             }
         }
     };
 
-    // Spawn the watcher
-    let mut debouncer = notify_debouncer_full::new_debouncer(
-        // Collection loading is very fast so we can use a short debounce. If
-        // the user is saving several times rapidly, we can afford to reload
-        // after each one. We just want to batch together related events that
-        // happen simultaneously
-        Duration::from_millis(100),
-        None,
+    // Spawn the watcher. We use polling instead of event-based watching because
+    // it works even when the file is wholesale replaced (which vim and other
+    // editors do). We could watch the parent directory, but that adds
+    // complexity and requires debouncing. Polling is very cheap for a single
+    // file.
+    // https://github.com/LucasPickering/slumber/issues/706
+    let mut watcher = PollWatcher::new(
         on_file_event,
+        notify::Config::default()
+            .with_poll_interval(Duration::from_millis(500)),
     )?;
-    debouncer.watch(path, RecursiveMode::NonRecursive)?;
-    info!(path = ?path, ?debouncer, "Watching file for changes");
-    Ok(debouncer)
+    watcher.watch(path, RecursiveMode::NonRecursive)?;
+    info!(?path, ?watcher, "Watching file for changes");
+    Ok(watcher)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TestHarness, harness};
+    use crate::{
+        test_util::{TestHarness, harness},
+        util::TempFile,
+    };
     use rstest::rstest;
     use slumber_util::{TempDir, assert_matches, temp_dir};
     use std::fs;
@@ -924,10 +925,28 @@ requests:
             TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
         );
         assert_eq!(collection.recipes.iter().count(), 1);
-        // Name was updatd too
+
+        // Name was updated too
         assert_eq!(
             harness.database.metadata().unwrap().name.as_deref(),
             Some("Test Reloaded")
+        );
+
+        // Now test swapping out the file. Emulates how vim/helix save
+        // https://github.com/LucasPickering/slumber/issues/706
+        let temp_file = TempFile::new(b"name: Test Swapped").unwrap();
+        fs::rename(temp_file.path(), file.path()).unwrap();
+        drain!(
+            harness,
+            state,
+            [
+                Message::CollectionStartReload,
+                Message::CollectionEndReload { .. },
+            ]
+        );
+        assert_eq!(
+            harness.database.metadata().unwrap().name.as_deref(),
+            Some("Test Swapped")
         );
     }
 

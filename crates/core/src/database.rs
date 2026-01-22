@@ -705,7 +705,7 @@ impl CollectionDatabase {
                 "Querying UI state key `{key:?}`"
             )))
             .traced()?;
-        debug!(?key, ?value, "Fetched UI state");
+        trace!(?key, ?value, "Fetched UI state");
         Ok(value)
     }
 
@@ -716,7 +716,7 @@ impl CollectionDatabase {
         key: &str,
         value: &str,
     ) -> Result<(), DatabaseError> {
-        debug!(?key, ?value, "Setting UI state");
+        trace!(?key, ?value, "Setting UI state");
         self.database
             .connection()
             .execute(

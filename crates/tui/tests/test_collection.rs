@@ -55,7 +55,7 @@ requests:
         ))
         .await
         // Wait for it to be picked up by the TUI
-        .wait_for_content("Reloaded collection", (0, 19).into())
+        .wait_for_content("GET test", (1, 3).into())
         .await
         .done()
         .await;
@@ -67,6 +67,24 @@ requests:
     assert_eq!(
         tui.database().metadata().unwrap().name.as_deref(),
         Some("Test Reloaded")
+    );
+
+    // Now test swapping out the file. Emulates how vim/helix save
+    // https://github.com/LucasPickering/slumber/issues/706
+    let temp_file = temp_dir.join("tmp.yml");
+    fs::write(&temp_file, "name: Test Swapped").await.unwrap();
+
+    let tui = Runner::new(tui)
+        .run_until(fs::rename(&temp_file, &collection_path))
+        .await
+        .wait_for_content("No recipes defined", (1, 3).into())
+        .await
+        .done()
+        .await;
+
+    assert_eq!(
+        tui.database().metadata().unwrap().name.as_deref(),
+        Some("Test Swapped")
     );
 }
 

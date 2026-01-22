@@ -9,7 +9,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{FutureExt, future};
-use slumber_util::{ResultTracedAnyhow, paths::expand_home};
+use slumber_util::{ResultTraced, ResultTracedAnyhow, paths::expand_home};
 use std::{
     cell::RefCell,
     env,
@@ -19,13 +19,14 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 use tokio::{
     fs::OpenOptions,
     io::AsyncWriteExt,
     sync::oneshot,
     task::{self, JoinHandle},
+    time::{self, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, debug_span, error, info, info_span, warn};
@@ -264,6 +265,55 @@ pub async fn signals() -> anyhow::Result<()> {
     future::select_all(futures).await;
     info!("Received exit signal");
     Ok(())
+}
+
+/// Watch a file and call a callback when it changes
+///
+/// This is a simple async polling file watcher. The `notify` crate is neat and
+/// all, but it's overkill for what we need. Home-rolled polling is better
+/// because:
+/// - We're only watching one file at a time, so it's cheap
+/// - It's cross-platform
+/// - It works with swap-based editors (e.g. vim) that replace files on save
+/// - It's async, whereas `notify` uses a separate thread
+pub async fn watch_file(path: PathBuf, f: impl Fn()) {
+    /// Time between polls on the collection file. This is a tradeoff between
+    /// CPU/IO usage and responsiveness. Shorter interval also speeds up tests
+    /// that rely on reloading.
+    const FILE_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+    // Watch the modified timestamp for changes
+    info!(?path, "Watching file for changes");
+
+    let mut has_logged_error = false;
+    let mut get_last_modified = || -> SystemTime {
+        // This call should be very fast, so not worth asyncing. Async fs
+        // operations spawn background threads in tokio.
+        let mut result =
+            std::fs::metadata(&path).and_then(|metadata| metadata.modified());
+        // If this is the first time seeing the error, log it.
+        // We don't want to log the same error every 100ms
+        if !has_logged_error {
+            result = result.traced();
+            has_logged_error = true;
+        }
+        // Use a placeholder time that will always be old if
+        // we get a valid time later on
+        result.unwrap_or(SystemTime::UNIX_EPOCH)
+    };
+
+    let mut last_modified = get_last_modified();
+    let mut interval = time::interval(FILE_POLL_INTERVAL);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    loop {
+        let lm = get_last_modified();
+        if lm != last_modified {
+            info!(?path, "File changed, reloading");
+            last_modified = lm;
+            f();
+        }
+        interval.tick().await;
+    }
 }
 
 /// Spawn a task on the main thread. Most tasks can use this because the app is

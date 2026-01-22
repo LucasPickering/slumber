@@ -81,6 +81,8 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
 - Invalid body override template is displayed instead of being thrown away [#531](https://github.com/LucasPickering/slumber/issues/531)
 - Fix panic when SIGTERM is sent to a TUI process that failed to start and is display a collection error
 - Fix indentation in TUI display of multi-line errors
+- Fix collection file watching for vim, helix, and other editors that swap instead of writing [#706](https://github.com/LucasPickering/slumber/issues/706)
+  - Previously, the file watching would break after the first write because these editors replace the edited file (specifically, the inode) instead of just writing to it
 
 ## [4.3.1] - 2026-01-02
 

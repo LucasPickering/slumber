@@ -12,10 +12,6 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
-use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{
-    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
-};
 use ratatui::buffer::Buffer;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
@@ -25,13 +21,8 @@ use slumber_core::{
 };
 use slumber_template::{RenderedOutput, Template};
 use slumber_util::{ResultTraced, yaml::SourceLocation};
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc};
 use tokio::task;
-use tracing::{error, info};
 
 /// Main TUI state. This is responsible for handling most of the TUI messages
 /// and state updates, as well the case of the collection failing to load on
@@ -61,22 +52,11 @@ impl TuiState {
                     // Collection failed to load. Store the error so we can show
                     // it to the user, and watch the file for changes so they
                     // don't have to restart the TUI once it's fixed
-                    let Ok(watcher) = watch_collection(
-                        collection_file.path(),
-                        messages_tx.clone(),
-                    ) else {
-                        // If the watcher fails to initialize, there's no point
-                        // in sitting in this error state. Show the original
-                        // collection error. The watcher error is much less
-                        // useful. It's accessible in the logs if needed.
-                        panic!("{error:#}")
-                    };
                     Self(TuiStateInner::Error {
                         database,
                         collection_file,
                         error: error.into(),
                         messages_tx,
-                        _watcher: watcher,
                     })
                 };
             }
@@ -132,6 +112,16 @@ impl TuiState {
                 // Any other message is not useful to us
                 _ => Ok(()),
             },
+        }
+    }
+
+    /// Get a reference to the [CollectionFile] in use
+    pub fn collection_file(&self) -> &CollectionFile {
+        match &self.0 {
+            TuiStateInner::Loaded(state) => &state.collection_file,
+            TuiStateInner::Error {
+                collection_file, ..
+            } => collection_file,
         }
     }
 
@@ -249,10 +239,6 @@ enum TuiStateInner {
         /// Error that occurred while loading the collection
         error: anyhow::Error,
         messages_tx: MessageSender,
-        /// Watch the collection file and wait for changes that will hopefully
-        /// fix it. We have to hang onto this because watching stops when it's
-        /// dropped.
-        _watcher: FileWatcher,
     },
 }
 
@@ -277,11 +263,6 @@ struct LoadedState {
     request_store: RequestStore,
     /// UI presentation and state
     view: View,
-
-    /// Watcher for changes to the collection file. Whenever the file changes,
-    /// the collection will be reloaded. This will be `None` iff the watcher
-    /// fails to initialize
-    _watcher: Option<FileWatcher>,
 }
 
 impl LoadedState {
@@ -296,8 +277,6 @@ impl LoadedState {
         let request_store = RequestStore::new(database.clone());
         let view =
             View::new(&collection, database.clone(), messages_tx.clone());
-        let watcher =
-            watch_collection(collection_file.path(), messages_tx.clone()).ok();
 
         let state = LoadedState {
             collection_file,
@@ -307,7 +286,6 @@ impl LoadedState {
             component_map: ComponentMap::default(),
             request_store,
             view,
-            _watcher: watcher,
         };
         state.update_collection_name();
         state
@@ -797,55 +775,4 @@ impl LoadedState {
 
         Ok(())
     }
-}
-
-type FileWatcher = Debouncer<RecommendedWatcher, RecommendedCache>;
-
-/// Spawn a file system watcher that watches the collection file for changes.
-/// When it changes, trigger a collection reload by sending a message. **The
-/// watcher will stop when it is dropped, so hang onto the return value!!**
-fn watch_collection(
-    path: &Path,
-    messages_tx: MessageSender,
-) -> notify::Result<FileWatcher> {
-    /// Should this event trigger a reload?
-    fn should_reload(event: &DebouncedEvent) -> bool {
-        // Only reload if the file is modified. Some editors may truncrate
-        // and recreate files instead of modifying
-        // https://docs.rs/notify/latest/notify/#editor-behaviour
-        // Modify/create type is useless on Windows
-        // https://github.com/notify-rs/notify/issues/633
-        matches!(
-            event.event.kind,
-            notify::EventKind::Modify(_) | notify::EventKind::Create(_),
-        )
-    }
-
-    let on_file_event = move |result: DebounceEventResult| {
-        match result {
-            Ok(events) if events.iter().any(should_reload) => {
-                info!(?events, "Collection file changed, reloading");
-                messages_tx.send(Message::CollectionStartReload);
-            }
-            // Do nothing for other event kinds
-            Ok(_) => {}
-            Err(errors) => {
-                error!(?errors, "Error watching file");
-            }
-        }
-    };
-
-    // Spawn the watcher
-    let mut debouncer = notify_debouncer_full::new_debouncer(
-        // Collection loading is very fast so we can use a short debounce. If
-        // the user is saving several times rapidly, we can afford to reload
-        // after each one. We just want to batch together related events that
-        // happen simultaneously
-        Duration::from_millis(100),
-        None,
-        on_file_event,
-    )?;
-    debouncer.watch(path, RecursiveMode::NonRecursive)?;
-    info!(path = ?path, ?debouncer, "Watching file for changes");
-    Ok(debouncer)
 }

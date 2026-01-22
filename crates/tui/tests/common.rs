@@ -116,8 +116,11 @@ impl Runner {
         self,
         future: impl Future<Output = Result<(), E>>,
     ) -> Self {
-        // Drive the whole task set, so the TUI loop runs concurrently
+        // Yield the thread momentarily to the TUI loop. This helps ensure the
+        // TUI has all background tasks spawned before we do any operations.
+        self.local.run_until(time::sleep(Duration::ZERO)).await;
 
+        // Drive the whole task set, so the TUI loop runs concurrently
         time::timeout(TIMEOUT, self.local.run_until(future))
             .await
             .unwrap_or_else(|_| panic!("Future timed out after {TIMEOUT:?}"))
@@ -149,7 +152,7 @@ impl Runner {
         time::timeout(TIMEOUT, self.local.run_until(future))
             .await
             // If we time out, panic with the most recent error message
-            .unwrap_or_else(|_| panic!("{error}"));
+            .unwrap_or_else(|_| panic!("After {TIMEOUT:?}: {error}"));
 
         self
     }

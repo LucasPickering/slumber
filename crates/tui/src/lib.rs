@@ -176,6 +176,7 @@ where
 
         // Spawn background tasks
         self.listen_for_signals();
+        self.watch_collection();
 
         let input_engine = &TuiContext::get().input_engine;
         // Stream of terminal input events. Events that don't map to a message
@@ -303,6 +304,16 @@ where
             util::signals().await.reported(&messages_tx);
             messages_tx.send(Message::Quit);
         });
+    }
+
+    /// Spawn a task to watch the collection file for changes
+    fn watch_collection(&self) {
+        let path = self.state.collection_file().path().to_owned();
+        let messages_tx = self.messages_tx();
+
+        util::spawn(util::watch_file(path, move || {
+            messages_tx.send(Message::CollectionStartReload);
+        }));
     }
 
     /// GOODBYE

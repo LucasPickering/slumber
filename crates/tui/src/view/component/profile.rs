@@ -337,8 +337,11 @@ struct ProfileFieldProps {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, terminal},
-        view::{event::BroadcastEvent, test_util::TestComponent},
+        test_util::{TestTerminal, terminal},
+        view::{
+            event::BroadcastEvent,
+            test_util::{TestComponent, TestHarness},
+        },
     };
     use indexmap::indexmap;
     use rstest::rstest;

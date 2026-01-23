@@ -158,8 +158,11 @@ pub struct UpdateContext<'a> {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, assert_events, harness},
-        view::event::DeleteTarget,
+        test_util::assert_events,
+        view::{
+            event::DeleteTarget,
+            test_util::{TestHarness, harness},
+        },
     };
     use rstest::rstest;
     use slumber_util::assert_matches;

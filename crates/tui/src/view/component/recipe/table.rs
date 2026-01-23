@@ -441,8 +441,8 @@ impl<T> Serialize for TypeName<T> {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        test_util::{TestTerminal, terminal},
+        view::test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
     use slumber_core::collection::RecipeId;

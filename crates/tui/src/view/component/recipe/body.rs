@@ -455,8 +455,11 @@ mod tests {
     use super::*;
     use crate::{
         context::TuiContext,
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{persistent::PersistentStore, test_util::TestComponent},
+        test_util::{TestTerminal, terminal},
+        view::{
+            persistent::PersistentStore,
+            test_util::{TestComponent, TestHarness, harness},
+        },
     };
     use ratatui::{
         style::{Color, Styled},

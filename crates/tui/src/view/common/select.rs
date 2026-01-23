@@ -697,8 +697,11 @@ mod tests {
     use super::*;
     use crate::{
         input::InputEvent,
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{Generate, test_util::TestComponent},
+        test_util::{TestTerminal, terminal},
+        view::{
+            Generate,
+            test_util::{TestComponent, TestHarness, harness},
+        },
     };
     use proptest::{collection, sample, test_runner::TestRunner};
     use ratatui::text::Span;

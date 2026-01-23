@@ -489,8 +489,8 @@ mod tests {
     use super::*;
     use crate::{
         context::TuiContext,
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        test_util::{TestTerminal, terminal},
+        view::test_util::{TestComponent, TestHarness, harness},
     };
     use ratatui::{layout::Margin, text::Span};
     use rstest::{fixture, rstest};

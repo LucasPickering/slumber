@@ -75,6 +75,7 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
 - Recipe templates are now edited inline instead of in a pop-up modal
 - Help modal has been moved to a fullscreen page
 - Make `slumber request` aliases `rq` and `req` visible
+- `slumber db collection delete` now accepts more than 1 collection at a time
 
 ### Fixed
 

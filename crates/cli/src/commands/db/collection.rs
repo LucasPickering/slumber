@@ -26,11 +26,12 @@ enum DbCollectionSubcommand {
     /// Delete all history for a collection
     ///
     /// This will delete all record of the collection from the history database.
-    /// It will NOT delete the collection file from disk.
+    /// It will NOT delete the collection YAML file.
     #[command(visible_alias = "rm")]
     Delete {
-        /// Path or ID of the collection to delete
-        collection: CollectionSpecifier,
+        /// Path or ID of the collection(s) to delete
+        #[clap(num_args = 1..)]
+        collection: Vec<CollectionSpecifier>,
     },
     /// Move all data from one collection to another.
     ///
@@ -64,9 +65,11 @@ impl Subcommand for DbCollectionCommand {
                 print_table(["ID", "Path", "Name"], &rows);
             }
             DbCollectionSubcommand::Delete { collection } => {
-                let id = collection.to_id(&database)?;
-                database.delete_collection(id)?;
-                println!("Deleted collection {id}");
+                for collection in collection {
+                    let id = collection.to_id(&database)?;
+                    database.delete_collection(id)?;
+                    println!("Deleted collection {id}");
+                }
             }
             DbCollectionSubcommand::Migrate { from, to } => {
                 let from_id = from.to_id(&database)?;

@@ -65,7 +65,6 @@ pub struct Tui<B: Backend> {
     /// passed around
     messages_tx: MessageSender,
     state: TuiState,
-    should_run: bool,
 }
 
 impl Tui<CrosstermBackend<Stdout>> {
@@ -151,7 +150,6 @@ where
             messages_rx,
             messages_tx,
             state,
-            should_run: true,
         })
     }
 
@@ -168,10 +166,11 @@ where
         // This assumes there are no background tasks running, which should be
         // the case because they're all killed at the end of one loop, and we
         // haven't started any new ones yet.
-        CANCEL_TOKEN.with_borrow_mut(|cancel_token| {
+        let cancel_token = CANCEL_TOKEN.with_borrow_mut(|cancel_token| {
             if cancel_token.is_cancelled() {
                 *cancel_token = CancellationToken::new();
             }
+            cancel_token.clone()
         });
 
         // Spawn background tasks
@@ -190,9 +189,9 @@ where
         self.draw(false)?; // Initial draw
 
         // This loop is limited by the rate that messages come in, with a
-        // minimum rate enforced by a timeout
-        self.should_run = true; // In tests, this may be called more than once
-        while self.should_run {
+        // minimum rate enforced by a timeout.
+        // The loop terminates when the cancel token is set
+        loop {
             // ===== Message Phase =====
             // Wait for one of 3 things to happen:
             // - Message appears in the queue
@@ -228,6 +227,7 @@ where
                     }
                 },
                 () = time::sleep(Self::TICK_TIME) => None,
+                () = cancel_token.cancelled() => break,
             };
 
             // We'll try to skip draws if nothing on the screen has changed, to
@@ -319,8 +319,7 @@ where
     /// GOODBYE
     fn quit(&mut self) {
         info!("Initiating graceful shutdown");
-        self.should_run = false;
-        // Kill all background tasks
+        // Kill the main loop and all background tasks
         CANCEL_TOKEN.with_borrow(CancellationToken::cancel);
     }
 

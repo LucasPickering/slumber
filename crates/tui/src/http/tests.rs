@@ -1,5 +1,8 @@
 use super::*;
-use crate::test_util::{TestHarness, harness};
+use crate::{
+    test_util::{TestHarness, harness},
+    util,
+};
 use chrono::Utc;
 use rstest::rstest;
 use slumber_core::http::{
@@ -193,7 +196,7 @@ async fn test_life_cycle_building_cancel() {
     let future_finished: Arc<AtomicBool> = Default::default();
     let ff = Arc::clone(&future_finished);
     let cancel_token = CancellationToken::new();
-    tokio::spawn(cancel_token.clone().run_until_cancelled_owned(async move {
+    tokio::spawn(util::cancellable(&cancel_token, async move {
         time::sleep(Duration::from_secs(1)).await;
         ff.store(true, Ordering::Relaxed);
     }));
@@ -223,7 +226,7 @@ async fn test_life_cycle_loading_cancel() {
     let future_finished: Arc<AtomicBool> = Default::default();
     let ff = Arc::clone(&future_finished);
     let cancel_token = CancellationToken::new();
-    tokio::spawn(cancel_token.clone().run_until_cancelled_owned(async move {
+    tokio::spawn(util::cancellable(&cancel_token, async move {
         time::sleep(Duration::from_secs(1)).await;
         ff.store(true, Ordering::Relaxed);
     }));

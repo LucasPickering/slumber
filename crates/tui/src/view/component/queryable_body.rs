@@ -31,7 +31,7 @@ use slumber_core::{
     util::MaybeStr,
 };
 use std::{borrow::Cow, mem, sync::Arc};
-use tokio::task::AbortHandle;
+use tokio_util::sync::CancellationToken;
 
 /// Display response body as text, with a query box to run commands on the body.
 /// The query state can be persisted by persisting this entire container.
@@ -152,8 +152,8 @@ impl<K> QueryableBody<K> {
         }
 
         // If a different command is already running, abort it
-        if let Some(handle) = self.query_state.take_abort_handle() {
-            handle.abort();
+        if let Some(token) = self.query_state.take_cancel_token() {
+            token.cancel();
         }
 
         if command.is_empty() {
@@ -174,11 +174,11 @@ impl<K> QueryableBody<K> {
             let body = self.response.body.bytes().clone();
             let command = command.to_owned();
             let emitter = self.emitter;
-            let abort_handle =
+            let cancel_token =
                 self.spawn_command(command, body, move |_, result| {
                     emitter.emit(CommandComplete(result));
                 });
-            self.query_state = CommandState::Running(abort_handle);
+            self.query_state = CommandState::Running(cancel_token);
         }
     }
 
@@ -212,13 +212,16 @@ impl<K> QueryableBody<K> {
     }
 
     /// Run the current text as a shell command in a background task
+    ///
+    /// Return a cancellation token that can be used to cancel the process
     fn spawn_command(
         &self,
         command: String,
         body: Bytes,
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
-    ) -> AbortHandle {
-        util::spawn(async move {
+    ) -> CancellationToken {
+        let cancel_token = CancellationToken::new();
+        let future = async move {
             // Store the command in history. Query and export commands are
             // stored together. We can toss the error; it gets traced by the DB
             let _ =
@@ -228,8 +231,9 @@ impl<K> QueryableBody<K> {
                 .await
                 .with_context(|| format!("Error running `{command}`"));
             on_complete(command, result);
-        })
-        .abort_handle()
+        };
+        ViewContext::spawn(util::cancellable(&cancel_token, future));
+        cancel_token
     }
 }
 
@@ -458,8 +462,8 @@ enum CommandState {
     /// Command has not been run yet
     #[default]
     None,
-    /// Command is running. Handle can be used to kill it
-    Running(AbortHandle),
+    /// Command is running. Token can be used to kill it
+    Running(CancellationToken),
     /// Command failed
     Error(anyhow::Error),
     // Success! The result is immediately transformed and stored in the text
@@ -468,9 +472,9 @@ enum CommandState {
 }
 
 impl CommandState {
-    fn take_abort_handle(&mut self) -> Option<AbortHandle> {
+    fn take_cancel_token(&mut self) -> Option<CancellationToken> {
         match mem::take(self) {
-            Self::Running(handle) => Some(handle),
+            Self::Running(token) => Some(token),
             other => {
                 // Put it back!
                 *self = other;

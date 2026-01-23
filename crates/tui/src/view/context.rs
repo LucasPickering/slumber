@@ -7,6 +7,7 @@ use crate::{
         persistent::PersistentStore,
     },
 };
+use futures::FutureExt;
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use std::{cell::RefCell, sync::Arc};
 use tracing::debug;
@@ -117,6 +118,11 @@ impl ViewContext {
     /// Send an async message on the channel
     pub fn send_message(message: impl Into<Message>) {
         Self::with(|context| context.messages_tx.send(message));
+    }
+
+    /// Spawn a future in a new task on the main thread. See [Message::Spawn]
+    pub fn spawn(future: impl 'static + Future<Output = ()>) {
+        Self::send_message(Message::Spawn(future.boxed_local()));
     }
 }
 

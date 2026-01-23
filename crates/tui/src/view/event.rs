@@ -287,15 +287,16 @@ impl<T: Any + Debug> LocalEvent for T {}
 /// components to communicate with themselves from async actions, e.g. reporting
 /// back the result of a modal interaction.
 ///
-/// It would be good to impl `!Send` for this type because this relies on the
-/// ViewContext and therefore shouldn't be passed off the main thread, but there
-/// is one use case where it needs to be Send to be passed to the main loop via
-/// Message without actually changing threads.
+/// This is `!Send` it relies on the event queue in the ViewContext, which is
+/// only present on the main thread.
 #[derive(Debug, derive_more::Display)]
 #[display("{id}")]
 pub struct Emitter<T: ?Sized> {
     id: EmitterId,
-    phantom: PhantomData<T>,
+    /// Store the emitted type so we can enforce it when it's emitted. *const
+    /// makes this type !Send. Explicit unimplementation is unstable
+    /// <https://github.com/rust-lang/rust/issues/68318>
+    phantom: PhantomData<*const T>,
 }
 
 impl<T: ?Sized> Emitter<T> {

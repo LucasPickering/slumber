@@ -1,3 +1,5 @@
+#![cfg(feature = "import")]
+
 mod common;
 
 use rstest::rstest;

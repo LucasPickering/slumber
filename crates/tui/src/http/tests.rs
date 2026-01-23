@@ -1,10 +1,7 @@
 use super::*;
-use crate::{
-    util,
-    view::test_util::{TestHarness, harness},
-};
+use crate::util;
 use chrono::Utc;
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use slumber_core::http::{
     Exchange, RequestBuildError, RequestBuildErrorKind, RequestError,
     RequestRecord,
@@ -245,9 +242,7 @@ async fn test_life_cycle_loading_cancel() {
 }
 
 #[rstest]
-fn test_load(harness: TestHarness) {
-    let mut store = harness.request_store_mut();
-
+fn test_load(mut store: RequestStore) {
     // Generally we would expect this to be in the DB, but in this case omit
     // it so we can ensure the store *isn't* going to the DB for it
     let present_exchange = Exchange::factory(());
@@ -258,7 +253,7 @@ fn test_load(harness: TestHarness) {
 
     let missing_exchange = Exchange::factory(());
     let missing_id = missing_exchange.id;
-    harness.database.insert_exchange(&missing_exchange).unwrap();
+    store.database.insert_exchange(&missing_exchange).unwrap();
 
     // Already in store, don't fetch
     assert_matches!(store.get(present_id), Some(RequestState::Response { .. }));
@@ -281,17 +276,16 @@ fn test_load(harness: TestHarness) {
 }
 
 #[rstest]
-fn test_load_latest_exchange(harness: TestHarness) {
-    let mut store = harness.request_store_mut();
+fn test_load_latest_exchange(mut store: RequestStore) {
     let profile_id = ProfileId::factory(());
     let recipe_id = RecipeId::factory(());
 
     // Create some confounding exchanges, that we don't expected to load
-    create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
-    create_exchange(&harness, Some(&profile_id), None);
-    create_exchange(&harness, None, Some(&recipe_id));
+    create_exchange(&store, Some(&profile_id), Some(&recipe_id));
+    create_exchange(&store, Some(&profile_id), None);
+    create_exchange(&store, None, Some(&recipe_id));
     let expected_exchange =
-        create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
+        create_exchange(&store, Some(&profile_id), Some(&recipe_id));
 
     assert_eq!(
         store
@@ -309,20 +303,19 @@ fn test_load_latest_exchange(harness: TestHarness) {
 
 #[rstest]
 #[tokio::test]
-async fn test_load_summaries(harness: TestHarness) {
+async fn test_load_summaries(mut store: RequestStore) {
     // reqwest doesn't let you build an error directly. We'll use this later
     let error = reqwest::get("fake").await.unwrap_err();
 
-    let mut store = harness.request_store_mut();
     let profile_id = ProfileId::factory(());
     let recipe_id = RecipeId::factory(());
 
     let mut exchanges = (0..5)
-        .map(|_| create_exchange(&harness, Some(&profile_id), Some(&recipe_id)))
+        .map(|_| create_exchange(&store, Some(&profile_id), Some(&recipe_id)))
         .collect_vec();
     // Create some confounders
-    create_exchange(&harness, None, Some(&recipe_id));
-    create_exchange(&harness, Some(&profile_id), None);
+    create_exchange(&store, None, Some(&recipe_id));
+    create_exchange(&store, Some(&profile_id), None);
 
     // Add one request of each possible state. We expect to get em all back
     // Pre-load one from the DB, to make sure it gets de-duped
@@ -443,18 +436,16 @@ async fn test_load_summaries(harness: TestHarness) {
 /// Test deleting all requests for a recipe. This tests a single profile filter
 /// as well as all profiles
 #[rstest]
-fn test_delete_recipe_requests(harness: TestHarness) {
+fn test_delete_recipe_requests(mut store: RequestStore) {
     let recipe1 = RecipeId::factory(());
     let recipe2 = RecipeId::factory(());
     let profile1 = ProfileId::factory(());
     let profile2 = ProfileId::factory(());
-    let r1p1_id = create_exchange(&harness, Some(&profile1), Some(&recipe1)).id;
-    let r1p2_id = create_exchange(&harness, Some(&profile2), Some(&recipe1)).id;
-    let r2p1_id = create_exchange(&harness, Some(&profile1), Some(&recipe2)).id;
-    let r2p2_id = create_exchange(&harness, Some(&profile2), Some(&recipe2)).id;
+    let r1p1_id = create_exchange(&store, Some(&profile1), Some(&recipe1)).id;
+    let r1p2_id = create_exchange(&store, Some(&profile2), Some(&recipe1)).id;
+    let r2p1_id = create_exchange(&store, Some(&profile1), Some(&recipe2)).id;
+    let r2p2_id = create_exchange(&store, Some(&profile2), Some(&recipe2)).id;
     let all_ids = [r1p1_id, r2p1_id, r1p2_id, r2p2_id];
-
-    let mut store = harness.request_store_mut();
 
     // Load everything into the cache. We'll do this after each modification to
     // make sure we're deleting from the cache AND the DB
@@ -470,7 +461,7 @@ fn test_delete_recipe_requests(harness: TestHarness) {
             // cache *and* the DB
             for id in all_ids {
                 let cached = store.get(id);
-                let db = harness.database.get_request(id).unwrap();
+                let db = store.database.get_request(id).unwrap();
                 if expected_present.contains(&id) {
                     assert!(
                         cached.is_some(),
@@ -512,24 +503,29 @@ fn test_delete_recipe_requests(harness: TestHarness) {
 
 /// Test deleting a single request
 #[rstest]
-fn test_delete_request(harness: TestHarness) {
-    let id = create_exchange(&harness, None, None).id;
+fn test_delete_request(mut store: RequestStore) {
+    let id = create_exchange(&store, None, None).id;
 
     // Load the exchange into the cache
-    let mut store = harness.request_store_mut();
     assert!(store.load(id).unwrap().is_some());
 
     store.delete_request(id).unwrap();
 
     // It's gone
     assert_eq!(store.get(id), None);
-    assert_eq!(harness.database.get_request(id).unwrap(), None);
+    assert_eq!(store.database.get_request(id).unwrap(), None);
+}
+
+#[fixture]
+fn store() -> RequestStore {
+    let database = CollectionDatabase::factory(());
+    RequestStore::new(database)
 }
 
 /// Create a exchange with the given profile+recipe ID (or random if
 /// None), and insert it into the DB
 fn create_exchange(
-    harness: &TestHarness,
+    store: &RequestStore,
     profile_id: Option<&ProfileId>,
     recipe_id: Option<&RecipeId>,
 ) -> Exchange {
@@ -541,6 +537,6 @@ fn create_exchange(
         ),
         recipe_id.cloned().unwrap_or_else(|| RecipeId::factory(())),
     ));
-    harness.database.insert_exchange(&exchange).unwrap();
+    store.database.insert_exchange(&exchange).unwrap();
     exchange
 }

@@ -7,7 +7,7 @@ pub mod persistent;
 mod state;
 mod styles;
 #[cfg(test)]
-pub mod test_util;
+mod test_util;
 mod util;
 
 pub use component::ComponentMap;

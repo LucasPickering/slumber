@@ -7,7 +7,7 @@ mod migrations;
 mod tests;
 
 use crate::{
-    collection::{CollectionFile, ProfileId, RecipeId},
+    collection::{Collection, CollectionFile, ProfileId, RecipeId},
     database::convert::{CollectionPath, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
 };
@@ -372,12 +372,15 @@ impl CollectionDatabase {
         &self.database
     }
 
-    /// Set the collection's display name. This should be set whenever the
-    /// collection file is loaded to ensure it's up to date in the database.
+    /// Store the collection's display name in the DB
     ///
-    /// If this fails it will log the result, but not return it. There's nothing
-    /// meaningful for the caller to do with the result beyond log it again.
-    pub fn set_name(&self, name: Option<&str>) {
+    /// This should be set
+    /// whenever the collection file is loaded to ensure it's up to date in
+    /// the database. If this fails it will log the result, but not return it.
+    /// There's nothing meaningful for the caller to do with the result
+    /// beyond log it again.
+    pub fn set_name(&self, collection: &Collection) {
+        let name = collection.name.as_deref();
         let _ = self
             .database
             .connection()

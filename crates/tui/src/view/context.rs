@@ -70,6 +70,12 @@ impl ViewContext {
         });
     }
 
+    /// TODO
+    pub fn reset() {
+        debug!("Resetting view context");
+        Self::INSTANCE.with_borrow_mut(|context| *context = None);
+    }
+
     /// Execute a function with read-only access to the context
     fn with<T>(f: impl FnOnce(&ViewContext) -> T) -> T {
         Self::INSTANCE.with_borrow(|context| {

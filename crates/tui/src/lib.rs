@@ -4,21 +4,21 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
+mod collection_state;
 mod context;
 mod http;
 mod input;
 mod message;
 #[cfg(test)]
 mod test_util;
-mod tui_state;
 mod util;
 mod view;
 
 use crate::{
+    collection_state::CollectionState,
     context::TuiContext,
     input::InputEvent,
     message::{Message, MessageSender},
-    tui_state::TuiState,
     util::ResultReported,
 };
 use anyhow::Context;
@@ -35,6 +35,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile},
     database::{CollectionDatabase, Database},
 };
+use slumber_util::yaml::SourceLocation;
 use std::{
     io::{self, Stdout},
     ops::Deref,
@@ -55,8 +56,16 @@ use tracing::{error, info, trace};
 /// `B` is the terminal backend type; see [Backend]
 #[derive(Debug)]
 pub struct Tui<B: Backend> {
-    /// Output terminal. Parameterized for testing.
-    terminal: Terminal<B>,
+    /// Token to manage cancellation of the main loop and all background tasks
+    ///
+    /// If run() is called multiple times (e.g. in a test), a new token will be
+    /// generated for each call because they are single-use.
+    cancel_token: CancellationToken,
+    /// Persistence database, for storing request state, UI state, etc.
+    ///
+    /// This is the root database, *not* scoped to a specific collection. We'll
+    /// mostly used the scoped version from [CollectionState].
+    database: Database,
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
     /// touch this
@@ -64,12 +73,12 @@ pub struct Tui<B: Backend> {
     /// Transmitter for the async message queue, which can be freely cloned and
     /// passed around
     messages_tx: MessageSender,
-    /// Token to manage cancellation of the main loop and all background tasks
+    /// All state related to the current collection file
     ///
-    /// If run() is called multiple times (e.g. in a test), a new token will be
-    /// generated for each call because they are single-use.
-    cancel_token: CancellationToken,
-    state: TuiState,
+    /// This gets replaced wholesale when switching collection files
+    state: CollectionState,
+    /// Output terminal. Parameterized for testing.
+    terminal: Terminal<B>,
 }
 
 impl Tui<CrosstermBackend<Stdout>> {
@@ -137,26 +146,46 @@ where
         let config = Config::load().reported(&messages_tx).unwrap_or_default();
         // Initialize global view context
         TuiContext::init(config);
+        let database = Database::load()?;
 
         // Initialize TUI state, which will try to load the collection. If it
         // fails to load, we'll dump the user into an error state that watches
         // the file
         let collection_file = CollectionFile::new(collection_path)?;
-        let database = Database::load()?
-            .into_collection(&collection_file)
-            .context("Error initializing database")?;
-        let state =
-            TuiState::load(database, collection_file, messages_tx.clone());
+        let state = CollectionState::load(
+            collection_file,
+            database.clone(),
+            messages_tx.clone(),
+        );
 
         let terminal = Terminal::new(backend)?;
 
         Ok(Self {
-            terminal,
+            cancel_token: CancellationToken::new(),
+            database,
             messages_rx,
             messages_tx,
-            cancel_token: CancellationToken::new(),
             state,
+            terminal,
         })
+    }
+
+    /// Get a reference to the terminal backend
+    pub fn backend(&self) -> &B {
+        self.terminal.backend()
+    }
+
+    /// Get a reference to the collection
+    ///
+    /// Return `None` iff the collection failed to load and we're in an error
+    /// state
+    pub fn collection(&self) -> Option<&Collection> {
+        self.state.collection.as_deref().ok()
+    }
+
+    /// Get a reference to the database handle
+    pub fn database(&self) -> &CollectionDatabase {
+        &self.state.database
     }
 
     /// Run the main TUI update loop
@@ -228,7 +257,7 @@ where
             // We'll try to skip draws if nothing on the screen has changed, to
             // limit idle CPU usage. If a request is running we always need to
             // update though, because the timer will be ticking.
-            let mut needs_draw = self.state.has_active_requests();
+            let mut needs_draw = self.state.request_store.has_active_requests();
 
             if let Some(message) = message {
                 trace!(?message, "Handling message");
@@ -262,9 +291,68 @@ where
     /// Handle an incoming message. Any error here will be displayed as a modal
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
-            Message::ClearTerminal => {
-                self.terminal.clear()?;
-                Ok(())
+            Message::ClearTerminal => self.terminal.clear()?,
+
+            Message::CollectionEndReload(collection) => {
+                // Because we're just swapping out the collection value and
+                // using the same file, we can just update state instead of
+                // replacing it
+                self.state
+                    .set_collection(collection, self.messages_tx.clone());
+            }
+            Message::CollectionSelect(path) => {
+                // Collection file has changed, so we have to rebuild state
+                let collection_file = CollectionFile::new(Some(path))?;
+                self.state = CollectionState::load(
+                    collection_file,
+                    self.database.clone(),
+                    self.messages_tx.clone(),
+                );
+            }
+            Message::CollectionStartReload => self.reload_collection(),
+            Message::CollectionEdit { location } => {
+                self.edit_collection(location)?;
+            }
+
+            Message::CopyRecipe(target) => self.state.copy_recipe(target)?,
+            Message::CopyText(text) => self.state.view.copy_text(text)?,
+
+            Message::Error { error } => self.state.view.error(error),
+
+            Message::FileEdit { file, on_complete } => {
+                let editor = TuiContext::get().config.editor()?;
+                util::yield_terminal(
+                    editor.open(file.path()),
+                    &self.messages_tx,
+                )?;
+                on_complete(file);
+            }
+            Message::FileView { file, mime } => {
+                let pager =
+                    TuiContext::get().config.tui.pager(mime.as_ref())?;
+                util::yield_terminal(
+                    pager.open(file.path()),
+                    &self.messages_tx,
+                )?;
+                // Dropping the file deletes it, so we can't do it until after
+                // the command is done
+                drop(file);
+            }
+
+            Message::Http(message) => self.state.handle_http(message)?,
+            Message::HttpGetLatest {
+                profile_id,
+                recipe_id,
+                channel,
+            } => {
+                let exchange = self
+                    .state
+                    .request_store
+                    .load_latest_exchange(profile_id.as_ref(), &recipe_id)
+                    .reported(&self.messages_tx)
+                    .flatten()
+                    .cloned();
+                channel.reply(exchange);
             }
 
             // Force quit short-circuits the view/message cycle, to make sure
@@ -273,36 +361,55 @@ where
                 action: Some(Action::ForceQuit),
                 ..
             })
-            | Message::Quit => {
-                self.quit();
-                Ok(())
-            }
+            | Message::Quit => self.quit(),
             Message::Input(InputEvent::Resize { .. }) => {
                 // Redraw the entire screen. There are certain scenarios where
                 // the terminal gets cleared but ratatui's (e.g. waking from
                 // sleep) buffer doesn't, so the two get out of sync
                 self.terminal.clear()?;
                 self.draw(false)?;
-                Ok(())
+            }
+            Message::Input(event) => self.state.view.handle_input(event),
+
+            Message::Notify(message) => self.state.view.notify(message),
+            Message::Question(question) => self.state.view.question(question),
+            Message::SaveResponseBody { request_id, data } => {
+                self.state
+                    .save_response_body(request_id, data)
+                    .with_context(|| {
+                        format!(
+                            "Error saving response body \
+                            for request {request_id}"
+                        )
+                    })?;
             }
             Message::Spawn(future) => {
                 self.spawn(future);
-                Ok(())
             }
-
-            // Defer everything else to the inner state
-            message => self.state.handle_message(message),
+            Message::TemplatePreview {
+                template,
+                can_stream,
+                on_complete,
+            } => {
+                // Note: there's a potential bug here, if the selected profile
+                // changed since this message was queued. In practice is
+                // extremely unlikely (potentially impossible), and this
+                // shortcut saves us a lot of plumbing so it's worth it
+                let profile_id = self.state.view.selected_profile_id().cloned();
+                self.state.render_template_preview(
+                    template,
+                    profile_id,
+                    can_stream,
+                    on_complete,
+                );
+            }
         }
-    }
-
-    /// Get a cheap clone of the message queue transmitter
-    fn messages_tx(&self) -> MessageSender {
-        self.messages_tx.clone()
+        Ok(())
     }
 
     /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
-        let messages_tx = self.messages_tx();
+        let messages_tx = self.messages_tx.clone();
         self.spawn(async move {
             util::signals().await.reported(&messages_tx);
             messages_tx.send(Message::Quit);
@@ -311,12 +418,58 @@ where
 
     /// Spawn a task to watch the collection file for changes
     fn watch_collection(&self) {
-        let path = self.state.collection_file().path().to_owned();
-        let messages_tx = self.messages_tx();
+        let path = self.state.collection_file.path().to_owned();
+        let messages_tx = self.messages_tx.clone();
 
         self.spawn(util::watch_file(path, move || {
             messages_tx.send(Message::CollectionStartReload);
         }));
+    }
+
+    /// Spawn a background task to load+parse the collection file
+    ///
+    /// YAML parsing is CPU-bound so do it in a blocking task. In all likelihood
+    /// this will be extremely fast, but it's possible there's some edge case
+    /// that causes it to be slow and we don't want to block the render loop.
+    fn reload_collection(&self) {
+        let messages_tx = self.messages_tx.clone();
+        let collection_file = self.state.collection_file.clone();
+        // We need two tasks here:
+        // - Inner blocking task runs on another thread and parses the YAML
+        // - Outer local task runs on the main thread and just waits on the
+        //   inner task. Once it's done, it sends the result back to the loop
+        // We can't do the parsing on the local task because it would block the
+        // loop, and we can't send the message from the blocking thread because
+        // messages are !Send
+        task::spawn_local(async move {
+            let result = task::spawn_blocking(move || collection_file.load())
+                .await
+                .context("Collection loading panicked");
+            let message = match result {
+                Ok(Ok(collection)) => Message::CollectionEndReload(collection),
+                // Load error
+                Ok(Err(error)) => Message::Error {
+                    error: error.into(),
+                },
+                // Join error - panic in the thread
+                Err(error) => Message::Error { error },
+            };
+            messages_tx.send(message);
+        });
+    }
+
+    /// Open the collection file in the user's editor
+    fn edit_collection(
+        &self,
+        location: Option<SourceLocation>,
+    ) -> anyhow::Result<()> {
+        let editor = TuiContext::get().config.editor()?;
+        let command = if let Some(location) = location {
+            editor.open_at(location.source, location.line, location.column)
+        } else {
+            editor.open(self.state.collection_file.path())
+        };
+        util::yield_terminal(command, &self.messages_tx)
     }
 
     /// Spawn a task on the main thread
@@ -352,24 +505,6 @@ where
                 .draw(|frame| self.state.draw(frame.buffer_mut()))?;
         }
         Ok(())
-    }
-
-    /// Get a reference to the terminal backend
-    pub fn backend(&self) -> &B {
-        self.terminal.backend()
-    }
-
-    /// Get a reference to the collection
-    ///
-    /// Return `None` iff the collection failed to load and we're in an error
-    /// state
-    pub fn collection(&self) -> Option<&Collection> {
-        self.state.collection()
-    }
-
-    /// Get a reference to the database handle
-    pub fn database(&self) -> &CollectionDatabase {
-        self.state.database()
     }
 }
 

@@ -38,12 +38,13 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, CollectionFile, ProfileId},
+    collection::{Collection, CollectionError, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
 };
 use slumber_template::Template;
 use std::{
+    error::Error as StdError,
     fmt::{Debug, Display},
     io,
     sync::Arc,
@@ -63,19 +64,30 @@ use tracing::{trace, trace_span, warn};
 /// events), so we need to make sure the queue is constantly being drained.
 #[derive(Debug)]
 pub struct View {
-    root: Root,
+    /// TODO
+    root: Result<Root, CollectionError>,
     /// Populated iff the `debug` config field is enabled. This tracks view
     /// metrics and displays them to the user.
     debug_monitor: Option<DebugMonitor>,
 }
 
 impl View {
+    /// TODO
     pub fn new(
-        collection: &Arc<Collection>,
+        collection: Result<Arc<Collection>, CollectionError>,
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) -> Self {
-        ViewContext::init(Arc::clone(collection), database, messages_tx);
+        let root = match collection {
+            Ok(collection) => {
+                ViewContext::init(collection, database, messages_tx);
+                Ok(Root::new())
+            }
+            Err(error) => {
+                ViewContext::reset();
+                Err(error)
+            }
+        };
 
         let debug_monitor = if TuiContext::get().config.tui.debug {
             Some(DebugMonitor::default())
@@ -84,7 +96,7 @@ impl View {
         };
 
         Self {
-            root: Root::new(),
+            root,
             debug_monitor,
         }
     }
@@ -101,43 +113,46 @@ impl View {
             return ComponentMap::default();
         }
 
-        // If debug monitor is enabled, use it to capture the view duration
-        if let Some(debug_monitor) = &self.debug_monitor {
-            debug_monitor
-                .draw(buffer, |buffer| Canvas::draw_all(buffer, &self.root, ()))
-        } else {
-            Canvas::draw_all(buffer, &self.root, ())
+        match &self.root {
+            Ok(root) => {
+                // If debug monitor is enabled, use it to capture view duration
+                if let Some(debug_monitor) = &self.debug_monitor {
+                    debug_monitor.draw(buffer, |buffer| {
+                        Canvas::draw_all(buffer, root, ())
+                    })
+                } else {
+                    Canvas::draw_all(buffer, root, ())
+                }
+            }
+            Err(error) => {
+                let context = TuiContext::get();
+                let [message_area, _, error_area] = Layout::vertical([
+                    Constraint::Length(2),
+                    Constraint::Length(1), // A nice gap
+                    Constraint::Min(1),
+                ])
+                .areas(*buffer.area());
+                Widget::render(
+                    (error as &dyn StdError).generate(),
+                    error_area,
+                    buffer,
+                );
+                Widget::render(
+                    Text::styled(
+                        format!(
+                            "Watching {collection_file} for changes...\n{} to exit",
+                            context
+                                .input_engine
+                                .binding_display(Action::ForceQuit),
+                        ),
+                        context.styles.text.primary,
+                    ),
+                    message_area,
+                    buffer,
+                );
+                ComponentMap::default()
+            }
         }
-    }
-
-    /// When the collection fails to load on first launch, we can't show the
-    /// full UI yet. This draws an error state. The TUI loop should be watching
-    /// the collection file so we can retry initialization when the error is
-    /// fixed.
-    pub fn draw_collection_load_error(
-        buffer: &mut Buffer,
-        collection_file: &CollectionFile,
-        error: &anyhow::Error,
-    ) {
-        let context = TuiContext::get();
-        let [message_area, _, error_area] = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Length(1), // A nice gap
-            Constraint::Min(1),
-        ])
-        .areas(*buffer.area());
-        Widget::render(error.generate(), error_area, buffer);
-        Widget::render(
-            Text::styled(
-                format!(
-                    "Watching {collection_file} for changes...\n{} to exit",
-                    context.input_engine.binding_display(Action::ForceQuit),
-                ),
-                context.styles.text.primary,
-            ),
-            message_area,
-            buffer,
-        );
     }
 
     /// Persist all UI state to the database. This should be called at the end
@@ -147,24 +162,37 @@ impl View {
     /// This takes `&mut self` because we dynamically load children, and those
     /// are always mutable.
     pub fn persist(&mut self, database: CollectionDatabase) {
-        self.root
-            .persist_all(&mut persistent::PersistentStore::new(database));
+        if let Ok(root) = &mut self.root {
+            root.persist_all(&mut persistent::PersistentStore::new(database));
+        }
     }
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.root.selected_profile_id()
+        if let Ok(root) = &self.root {
+            root.selected_profile_id()
+        } else {
+            None
+        }
     }
 
     /// Get a definition of the request that should be sent from the current
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
-        self.root.request_config()
+        if let Ok(root) = &self.root {
+            root.request_config()
+        } else {
+            None
+        }
     }
 
     /// Get a map of overridden profile fields
     pub fn profile_overrides(&self) -> IndexMap<String, Template> {
-        self.root.profile_overrides()
+        if let Ok(root) = &self.root {
+            root.profile_overrides()
+        } else {
+            IndexMap::default()
+        }
     }
 
     /// Update the displayed request based on a change in HTTP request state.
@@ -175,22 +203,30 @@ impl View {
         store: &mut RequestStore,
         disposition: RequestDisposition,
     ) {
-        self.root.refresh_request(store, disposition);
+        if let Ok(root) = &mut self.root {
+            root.refresh_request(store, disposition);
+        }
     }
 
     /// Ask the user a [Question]
     pub fn question(&mut self, question: Question) {
-        self.root.question(question);
+        if let Ok(root) = &mut self.root {
+            root.question(question);
+        }
     }
 
     /// Display an error to the user in a modal
     pub fn error(&mut self, error: anyhow::Error) {
-        self.root.error(error);
+        if let Ok(root) = &mut self.root {
+            root.error(error);
+        }
     }
 
     /// Display an informational notification to the user
     pub fn notify(&mut self, message: impl ToString) {
-        self.root.notify(message.to_string());
+        if let Ok(root) = &mut self.root {
+            root.notify(message.to_string());
+        }
     }
 
     /// Queue an event to update the view according to an input event from the
@@ -204,10 +240,15 @@ impl View {
     /// events one by one. This should be called on every TUI loop. Return
     /// whether or not an event was handled.
     pub fn handle_events(&mut self, mut context: UpdateContext) -> bool {
+        let Ok(root) = &mut self.root else {
+            // No way to handle events in error mode
+            return false;
+        };
+
         // If we haven't done first render yet, don't drain the queue. This can
         // happen after a collection reload, because of the structure of the
         // main loop
-        if !context.component_map.is_visible(&self.root) {
+        if !context.component_map.is_visible(root) {
             return false;
         }
 
@@ -217,7 +258,7 @@ impl View {
         while let Some(event) = ViewContext::pop_event() {
             handled = true;
             trace_span!("Handling event", ?event).in_scope(|| {
-                match self.root.update_all(&mut context, event) {
+                match root.update_all(&mut context, event) {
                     None => trace!("Event consumed"),
                     // Consumer didn't eat the event - huh?
                     Some(event) => warn!(?event, "Event was unhandled"),
@@ -308,7 +349,7 @@ mod tests {
     fn test_initial_draw(harness: TestHarness, terminal: TestTerminal) {
         let collection = Collection::factory(());
         let mut view = View::new(
-            &collection.into(),
+            Ok(collection.into()),
             harness.database.clone(),
             harness.messages_tx(),
         );

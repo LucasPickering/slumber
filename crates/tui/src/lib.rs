@@ -19,7 +19,7 @@ use crate::{
     input::InputEvent,
     message::{Message, MessageSender},
     tui_state::TuiState,
-    util::{CANCEL_TOKEN, ResultReported},
+    util::ResultReported,
 };
 use anyhow::Context;
 use crossterm::event::{self, EventStream};
@@ -64,6 +64,11 @@ pub struct Tui<B: Backend> {
     /// Transmitter for the async message queue, which can be freely cloned and
     /// passed around
     messages_tx: MessageSender,
+    /// Token to manage cancellation of the main loop and all background tasks
+    ///
+    /// If run() is called multiple times (e.g. in a test), a new token will be
+    /// generated for each call because they are single-use.
+    cancel_token: CancellationToken,
     state: TuiState,
 }
 
@@ -149,6 +154,7 @@ where
             terminal,
             messages_rx,
             messages_tx,
+            cancel_token: CancellationToken::new(),
             state,
         })
     }
@@ -162,17 +168,6 @@ where
         mut self,
         input_stream: impl Stream<Item = terminput::Event>,
     ) -> anyhow::Result<Self> {
-        // If the cancel token is already set from a previous run, reset it.
-        // This assumes there are no background tasks running, which should be
-        // the case because they're all killed at the end of one loop, and we
-        // haven't started any new ones yet.
-        let cancel_token = CANCEL_TOKEN.with_borrow_mut(|cancel_token| {
-            if cancel_token.is_cancelled() {
-                *cancel_token = CancellationToken::new();
-            }
-            cancel_token.clone()
-        });
-
         // Spawn background tasks
         self.listen_for_signals();
         self.watch_collection();
@@ -227,7 +222,7 @@ where
                     }
                 },
                 () = time::sleep(Self::TICK_TIME) => None,
-                () = cancel_token.cancelled() => break,
+                () = self.cancel_token.cancelled() => break,
             };
 
             // We'll try to skip draws if nothing on the screen has changed, to
@@ -256,6 +251,10 @@ where
                 self.draw(has_message || has_input)?;
             }
         }
+
+        // The loop may be called again (in a test), so leave a fresh token for
+        // the next run
+        self.cancel_token = CancellationToken::new();
 
         Ok(self)
     }
@@ -326,16 +325,14 @@ where
     /// allows view tasks to access the event queue. The task will be
     /// automatically cancelled when the TUI exits.
     fn spawn(&self, future: impl 'static + Future<Output = ()>) {
-        CANCEL_TOKEN.with_borrow(|cancel_token| {
-            task::spawn_local(util::cancellable(cancel_token, future));
-        });
+        task::spawn_local(util::cancellable(&self.cancel_token, future));
     }
 
     /// GOODBYE
     fn quit(&mut self) {
         info!("Initiating graceful shutdown");
         // Kill the main loop and all background tasks
-        CANCEL_TOKEN.with_borrow(CancellationToken::cancel);
+        self.cancel_token.cancel();
     }
 
     /// Draw the view onto the screen.

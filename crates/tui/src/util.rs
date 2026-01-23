@@ -11,7 +11,6 @@ use crossterm::{
 use futures::{FutureExt, future};
 use slumber_util::{ResultTraced, ResultTracedAnyhow, paths::expand_home};
 use std::{
-    cell::RefCell,
     env,
     fs::{self, File},
     future::Future,
@@ -31,18 +30,6 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, debug_span, error, info, info_span, warn};
 use uuid::Uuid;
-
-thread_local! {
-    /// Token to manage cancellation of background tasks. This assumes all tasks
-    /// are spawned from the main thread. Any task spawned from a background
-    /// thread will get a different cancel token and will never get cancelled.
-    /// This assumption is *probably* safe because we run in a single-thread
-    /// runtime, so the only background threads are from `spawn_blocking`.
-    ///
-    /// Putting this in TLS means we can reset it after each loop run in
-    /// integration tests.
-    pub static CANCEL_TOKEN: RefCell<CancellationToken> = Default::default();
-}
 
 /// Extension trait for [Result]
 pub trait ResultReported<T, E>: Sized {

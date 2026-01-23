@@ -12,6 +12,7 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
+use futures::FutureExt;
 use ratatui::buffer::Buffer;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
@@ -23,6 +24,7 @@ use slumber_template::{RenderedOutput, Template};
 use slumber_util::{ResultTraced, yaml::SourceLocation};
 use std::{path::PathBuf, sync::Arc};
 use tokio::task;
+use tokio_util::sync::CancellationToken;
 
 /// Main TUI state. This is responsible for handling most of the TUI messages
 /// and state updates, as well the case of the collection failing to load on
@@ -605,7 +607,7 @@ impl LoadedState {
 
         // Don't use spawn_result here, because errors are handled specially for
         // requests
-        let join_handle = util::spawn(async move {
+        let future = async move {
             // Build the request
             let result = TuiContext::get()
                 .http_engine
@@ -626,7 +628,14 @@ impl LoadedState {
             // Send the request and report the result to the main thread
             let result = ticket.send().await.map_err(Arc::new);
             messages_tx.send(HttpMessage::Complete(result));
-        });
+        };
+        let cancel_token = CancellationToken::new();
+        util::spawn(
+            cancel_token
+                .clone()
+                .run_until_cancelled_owned(future)
+                .map(|_| ()),
+        );
 
         // Add the new request to the store. This has to go after spawning the
         // task so we can include the join handle (for cancellation)
@@ -634,7 +643,7 @@ impl LoadedState {
             request_id,
             profile_id,
             recipe_id,
-            Some(join_handle.abort_handle()),
+            Some(cancel_token),
         );
 
         Ok(request_id)

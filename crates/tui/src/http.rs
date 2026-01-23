@@ -31,7 +31,8 @@ use std::{
     sync::Arc,
 };
 use strum::EnumDiscriminants;
-use tokio::{sync::oneshot, task::AbortHandle};
+use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -137,7 +138,7 @@ impl RequestStore {
 
     /// Insert a new request. This will construct a [RequestState::Building]
     ///
-    /// `abort_handle` is the handle that can be used to cancel the request.
+    /// `cancel_token` is the handle that can be used to cancel the request.
     /// `None` for triggered requests. Triggerd requests run in the same task
     /// as their parent, so they can't be aborted directly.
     pub fn start(
@@ -145,7 +146,7 @@ impl RequestStore {
         id: RequestId,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
-        abort_handle: Option<AbortHandle>,
+        cancel_token: Option<CancellationToken>,
     ) -> &RequestState {
         let state = RequestState::Building {
             id,
@@ -153,7 +154,7 @@ impl RequestStore {
             profile_id,
             recipe_id,
             prompts: IndexMap::new(), // Collect prompts later, as they come in
-            abort_handle,
+            cancel_token,
         };
         match self.requests.entry(id) {
             Entry::Vacant(entry) => entry.insert(state),
@@ -219,12 +220,12 @@ impl RequestStore {
         self.replace(request.id, |state| {
             // Requests should go building->loading, but it's possible it got
             // cancelled right before this was called
-            if let RequestState::Building { abort_handle, .. } = state {
+            if let RequestState::Building { cancel_token, .. } = state {
                 RequestState::Loading {
                     request,
                     // Reset timer
                     start_time: Utc::now(),
-                    abort_handle,
+                    cancel_token,
                 }
             } else {
                 // Can't create loading state since we don't have a join handle
@@ -307,9 +308,9 @@ impl RequestStore {
                 profile_id,
                 recipe_id,
                 prompts: _, // Drop all prompts
-                abort_handle: Some(abort_handle),
+                cancel_token: Some(cancel_token),
             } => {
-                abort_handle.abort();
+                cancel_token.cancel();
                 RequestState::Cancelled {
                     id,
                     recipe_id,
@@ -321,9 +322,9 @@ impl RequestStore {
             RequestState::Loading {
                 request,
                 start_time,
-                abort_handle: Some(abort_handle),
+                cancel_token: Some(cancel_token),
             } => {
-                abort_handle.abort();
+                cancel_token.cancel();
                 RequestState::Cancelled {
                     id,
                     recipe_id: request.recipe_id.clone(),
@@ -448,10 +449,10 @@ impl RequestStore {
             self.get(id),
             Some(
                 RequestState::Building {
-                    abort_handle: Some(_),
+                    cancel_token: Some(_),
                     ..
                 } | RequestState::Loading {
-                    abort_handle: Some(_),
+                    cancel_token: Some(_),
                     ..
                 }
             )
@@ -605,10 +606,10 @@ pub enum RequestState {
         start_time: DateTime<Utc>,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
-        /// A handle to abort the task running the request. Used to cancel the
-        /// request. `None` for triggered requests, because they don't run at
-        /// the root of a task and therefore can't be aborted independently.
-        abort_handle: Option<AbortHandle>,
+        /// A token to cancel the task running the request.`None` for triggered
+        /// requests, because they don't run at the root of a task and
+        /// therefore can't be cancelled independently.
+        cancel_token: Option<CancellationToken>,
         /// Any prompts sent by the HTTP engine to be shown to the user. This
         /// is empty when the request first starts building, and we'll insert
         /// as prompts are received by the main loop. The UI will show an input
@@ -631,7 +632,7 @@ pub enum RequestState {
         /// A handle to abort the task running the request. Used to cancel the
         /// request. `None` for triggered requests, because they don't run at
         /// the root of a task and therefore can't be aborted independently.
-        abort_handle: Option<AbortHandle>,
+        cancel_token: Option<CancellationToken>,
     },
 
     /// User cancelled the request mid-flight. We don't store the request here,
@@ -771,7 +772,7 @@ impl PartialEq for RequestState {
                     start_time: l_start_time,
                     profile_id: l_profile_id,
                     recipe_id: l_recipe_id,
-                    abort_handle: _,
+                    cancel_token: _,
                     prompts: _,
                 },
                 Self::Building {
@@ -779,7 +780,7 @@ impl PartialEq for RequestState {
                     start_time: r_start_time,
                     profile_id: r_profile_id,
                     recipe_id: r_recipe_id,
-                    abort_handle: _,
+                    cancel_token: _,
                     prompts: _,
                 },
             ) => {
@@ -796,12 +797,12 @@ impl PartialEq for RequestState {
                 Self::Loading {
                     request: l_request,
                     start_time: l_start_time,
-                    abort_handle: _,
+                    cancel_token: _,
                 },
                 Self::Loading {
                     request: r_request,
                     start_time: r_start_time,
-                    abort_handle: _,
+                    cancel_token: _,
                 },
             ) => l_request == r_request && l_start_time == r_start_time,
             (

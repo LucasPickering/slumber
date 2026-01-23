@@ -191,7 +191,10 @@ impl TuiState {
         }
     }
 
-    /// TODO
+    /// Get a reference to the collection
+    ///
+    /// Return `None` iff the collection failed to load and we're in an error
+    /// state
     pub fn collection(&self) -> Option<&Collection> {
         match &self.0 {
             TuiStateInner::Loaded(state) => Some(&state.collection),
@@ -199,7 +202,7 @@ impl TuiState {
         }
     }
 
-    /// TODO
+    /// Get a reference to the database handle
     pub fn database(&self) -> &CollectionDatabase {
         match &self.0 {
             TuiStateInner::Loaded(state) => &state.database,
@@ -845,163 +848,4 @@ fn watch_collection(
     debouncer.watch(path, RecursiveMode::NonRecursive)?;
     info!(path = ?path, ?debouncer, "Watching file for changes");
     Ok(debouncer)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_util::{TestHarness, harness};
-    use rstest::rstest;
-    use slumber_util::{TempDir, assert_matches, temp_dir};
-    use std::fs;
-
-    /// Drain all messages from the message queue and handle each one
-    /// sequentially. The list of drained messages must match the given list
-    /// of patterns.
-    ///
-    /// This is needed because [TuiState] doesn't drain the message queue on its
-    /// own. We could do this testing directly on the parent `Tui` struct, but
-    /// that adds additional complexity because that struct is designed to be
-    /// run as a persistent loop attached to a real terminal. This macro makes
-    /// it easy to test [TuiState] in a functional way without any I/O.
-    macro_rules! drain {
-        ($harness:expr, $state:expr, [$($expected:pat), *$(,)?]) => {
-            // For each expected message, pop from the queue and handle it
-            $(
-                match $harness.messages().pop_wait().await {
-                    Some(message @ $expected) => {
-                        $state.handle_message(message).unwrap();
-                    }
-                    Some(other) => panic!(
-                        "Unexpected message {other:?} does not match pattern {expected}",
-                        expected = stringify!($pattern),
-                    ),
-                    None => panic!(
-                        "Message queue is empty but expected {expected}",
-                        expected = stringify!($pattern),
-                    )
-                }
-            )*
-            // We got all the messages
-            $harness.messages().assert_empty();
-        }
-    }
-
-    /// Test an error in the collection during initial load. Should shove us
-    /// into an error state. After fixing the error, it will reload with the
-    /// valid collection.
-    #[rstest]
-    #[tokio::test]
-    async fn test_initial_load_error(
-        temp_dir: TempDir,
-        mut harness: TestHarness,
-    ) {
-        // Start with an invalid collection
-        let file = collection_file(&temp_dir);
-        fs::write(file.path(), "requests: 3").unwrap();
-
-        // Should load into an error state
-        let mut state = tui_state(&harness, file.clone());
-        assert_matches!(&state.0, TuiStateInner::Error { error, .. });
-
-        // Update the file, make sure it's reflected
-        fs::write(file.path(), "requests: {}").unwrap();
-
-        // Handle all queued messages. The error state loads the collection in
-        // the main thread so there's no CollectionEndReload message
-        drain!(harness, state, [Message::CollectionStartReload]);
-
-        // And it's done!
-        let collection = assert_matches!(
-            &state.0,
-            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
-        );
-        assert_eq!(collection.recipes.iter().count(), 0);
-    }
-
-    /// Collection is loaded successfully on startup, but then changed to have
-    /// an error. The old collection should remain in use but the error is
-    /// shown.
-    #[rstest]
-    #[tokio::test]
-    async fn test_reload_error(temp_dir: TempDir, mut harness: TestHarness) {
-        // Start with an empty collection
-        let file = collection_file(&temp_dir);
-        let mut state = tui_state(&harness, file.clone());
-
-        // Make sure it loaded correctly
-        let collection = assert_matches!(
-            &state.0,
-            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
-        );
-        assert_eq!(collection.recipes.iter().count(), 0);
-
-        // Update the file with an invalid colletion
-        fs::write(file.path(), "requests: 3").unwrap();
-
-        // Handle all queued messages
-        drain!(
-            harness,
-            state,
-            // Load failed!!
-            [Message::CollectionStartReload, Message::Error { .. }]
-        );
-
-        // We remain in valid mode with the original collection
-        let collection = assert_matches!(
-            &state.0,
-            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
-        );
-        assert_eq!(collection.recipes.iter().count(), 0);
-    }
-
-    /// Switch the selected request, which should rebuild the state entirely
-    #[rstest]
-    #[tokio::test]
-    async fn test_collection_switch(temp_dir: TempDir, harness: TestHarness) {
-        // Create a second collection
-        let other_collection = temp_dir.join("other_slumber.yml");
-        fs::write(
-            &other_collection,
-            r#"requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
-        )
-        .unwrap();
-
-        let mut state = tui_state(&harness, collection_file(&temp_dir));
-        // Make sure it loaded correctly
-        let collection = assert_matches!(
-            &state.0,
-            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
-        );
-        assert_eq!(collection.recipes.iter().count(), 0);
-
-        state
-            .handle_message(Message::CollectionSelect(other_collection.clone()))
-            .unwrap();
-        let collection = assert_matches!(
-            &state.0,
-            TuiStateInner::Loaded(LoadedState { collection, ..}) => collection,
-        );
-        assert_eq!(collection.recipes.iter().count(), 1);
-    }
-
-    /// Create a new [TuiState]
-    fn tui_state(
-        harness: &TestHarness,
-        collection_file: CollectionFile,
-    ) -> TuiState {
-        TuiState::load(
-            harness.database.clone(),
-            collection_file,
-            harness.messages_tx(),
-        )
-    }
-
-    /// Get a path to a collection file in a directory. The file will be created
-    /// with an empty collection
-    fn collection_file(directory: &Path) -> CollectionFile {
-        let path = directory.join("slumber.yml");
-        fs::write(&path, "name: Test").unwrap();
-        CollectionFile::new(Some(path)).unwrap()
-    }
 }

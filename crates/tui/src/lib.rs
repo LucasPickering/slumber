@@ -14,13 +14,11 @@ mod tui_state;
 mod util;
 mod view;
 
-// TODO
-pub use tui_state::*;
-
 use crate::{
     context::TuiContext,
     input::InputEvent,
     message::{Message, MessageSender},
+    tui_state::TuiState,
     util::{CANCEL_TOKEN, ResultReported},
 };
 use anyhow::Context;
@@ -52,9 +50,11 @@ use tracing::{error, info, trace};
 
 /// Main controller struct for the TUI. The app uses a React-ish architecture
 /// for the view, with a wrapping controller (this struct)
+///
+/// `B` is the terminal backend type; see [Backend]
 #[derive(Debug)]
 pub struct Tui<B: Backend> {
-    /// TODO
+    /// Output terminal. Parameterized for testing.
     terminal: Terminal<B>,
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
@@ -71,12 +71,6 @@ impl Tui<CrosstermBackend<Stdout>> {
     /// Start the TUI on a real terminal. Any errors that occur during startup
     /// will be panics, because they prevent TUI execution.
     pub async fn start(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
-        // The code to revert the terminal takeover is in `Tui::drop`, so we
-        // shouldn't take over the terminal until right before creating the
-        // `Tui`.
-        initialize_panic_handler();
-        util::initialize_terminal()?;
-
         let app =
             Self::new(CrosstermBackend::new(io::stdout()), collection_path)?;
         // Stream input from the terminal
@@ -87,13 +81,23 @@ impl Tui<CrosstermBackend<Stdout>> {
             terminput_crossterm::to_terminput(event).unwrap()
         });
 
+        // The code to revert the terminal takeover is in `Tui::drop`, so we
+        // shouldn't take over the terminal until right before creating the
+        // `Tui`.
+        initialize_panic_handler();
+        util::initialize_terminal()?;
+
+        // ===== CRITICAL SECTION =====
+        // Do not exit from here (other than panic) to ensure the terminal gets
+        // restored below
+        //
         // Run everything in one local set, so that we can use !Send values
         let local = task::LocalSet::new();
         local.spawn_local(app.run(input_stream));
         local.await;
+        // ===== END CRITICAL SECTION =====
 
         // Restore terminal
-        // TODO make sure this is always called
         if let Err(err) = util::restore_terminal() {
             error!(error = err.deref(), "Error restoring terminal, sorry!");
         }
@@ -110,7 +114,11 @@ where
     /// Rough **maximum** time for each iteration of the main loop
     const TICK_TIME: Duration = Duration::from_millis(250);
 
-    /// TODO
+    /// Create a new TUI
+    ///
+    /// This will *not* start the TUI process. It initializes all needed state,
+    /// config, etc. but will not write to the terminal or read input yet. Call
+    /// [Self::run] to run the main loop.
     pub fn new(
         backend: B,
         collection_path: Option<PathBuf>,
@@ -146,9 +154,11 @@ where
         })
     }
 
-    /// Run the main TUI update loop. Any error returned from this is fatal. See
-    /// the struct definition for a description of the different phases of the
-    /// run loop. TODO update ^^
+    /// Run the main TUI update loop
+    ///
+    /// Any error returned from this is fatal. See the struct definition for a
+    /// description of the different phases of the run loop. If the loop exits
+    /// gracefully, return `self`. This is useful in integration tests.
     pub async fn run(
         mut self,
         input_stream: impl Stream<Item = terminput::Event>,
@@ -311,12 +321,20 @@ where
         Ok(())
     }
 
-    /// TODO
+    /// Get a reference to the terminal backend
+    pub fn backend(&self) -> &B {
+        self.terminal.backend()
+    }
+
+    /// Get a reference to the collection
+    ///
+    /// Return `None` iff the collection failed to load and we're in an error
+    /// state
     pub fn collection(&self) -> Option<&Collection> {
         self.state.collection()
     }
 
-    /// TODO
+    /// Get a reference to the database handle
     pub fn database(&self) -> &CollectionDatabase {
         self.state.database()
     }

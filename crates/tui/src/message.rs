@@ -214,4 +214,4 @@ pub enum RecipeCopyTarget {
 }
 
 /// A static callback included in a message
-pub type Callback<T> = Box<dyn 'static + Send + FnOnce(T)>;
+pub type Callback<T> = Box<dyn 'static + FnOnce(T)>;

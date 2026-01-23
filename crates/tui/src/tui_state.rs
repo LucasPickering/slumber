@@ -303,25 +303,7 @@ impl LoadedState {
     /// to handle.
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
-            Message::CollectionStartReload => {
-                let messages_tx = self.messages_tx();
-                let collection_file = self.collection_file.clone();
-                // YAML parsing is CPU-bound so do it in a blocking task. In all
-                // likelihood this will be extremely fast, but it's possible
-                // there's some edge case that causes it to be slow and we don't
-                // want to block the render loop
-                task::spawn_blocking(move || {
-                    let message = match collection_file.load() {
-                        Ok(collection) => {
-                            Message::CollectionEndReload(collection)
-                        }
-                        Err(error) => Message::Error {
-                            error: error.into(),
-                        },
-                    };
-                    messages_tx.send(message);
-                });
-            }
+            Message::CollectionStartReload => self.load_collection(),
             Message::CollectionEndReload(collection) => {
                 self.reload_collection(collection);
             }
@@ -412,6 +394,38 @@ impl LoadedState {
     /// Get a cheap clone of the message queue transmitter
     fn messages_tx(&self) -> MessageSender {
         self.messages_tx.clone()
+    }
+
+    /// Spawn a background task to load+parse the collection file
+    ///
+    /// YAML parsing is CPU-bound so do it in a blocking task. In all likelihood
+    /// this will be extremely fast, but it's possible there's some edge case
+    /// that causes it to be slow and we don't want to block the render loop.
+    fn load_collection(&self) {
+        let messages_tx = self.messages_tx();
+        let collection_file = self.collection_file.clone();
+        // We need two tasks here:
+        // - Inner blocking task runs on another thread and parses the YAML
+        // - Outer local task runs on the main thread and just waits on the
+        //   inner task. Once it's done, it sends the result back to the loop
+        // We can't do the parsing on the local task because it would block the
+        // loop, and we can't send the message from the blocking thread because
+        // messages are !Send
+        task::spawn_local(async move {
+            let result = task::spawn_blocking(move || collection_file.load())
+                .await
+                .context("Collection loading panicked");
+            let message = match result {
+                Ok(Ok(collection)) => Message::CollectionEndReload(collection),
+                // Load error
+                Ok(Err(error)) => Message::Error {
+                    error: error.into(),
+                },
+                // Join error - panic in the thread
+                Err(error) => Message::Error { error },
+            };
+            messages_tx.send(message);
+        });
     }
 
     /// Reload state with a new collection

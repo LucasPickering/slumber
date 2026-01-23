@@ -44,51 +44,47 @@ pub enum Expression {
 
 impl Expression {
     /// Render this expression to bytes
-    #[expect(clippy::manual_async_fn, reason = "Doesn't work with recursion")]
-    pub(crate) fn render<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> impl Future<Output = RenderResult> + Send {
-        async move {
-            match self {
-                Self::Literal(literal) => Ok(literal.into()),
-                Self::Array(expressions) => {
-                    // Render each inner expression
-                    let values =
-                        future::try_join_all(expressions.iter().map(
-                            |expression| expression.render_value(context),
-                        ))
-                        // Box for recursion
-                        .boxed()
-                        .await?;
-                    Ok(Value::Array(values).into())
-                }
-                Self::Object(entries) => {
-                    let pairs: Vec<(String, Value)> = future::try_join_all(
-                        entries.iter().map(|(key, value)| {
-                            let key_future = async move {
-                                let key = key.render_value(context).await?;
-                                // Keys must be strings, so convert here
-                                key.try_into_string().map_err(|error| {
-                                    RenderError::Value(error.error)
-                                })
-                            };
-                            try_join(key_future, value.render_value(context))
-                        }),
-                    )
-                    .boxed() // Box for recursion
+    pub(crate) async fn render<Ctx>(&self, context: &Ctx) -> RenderResult
+    where
+        Ctx: Context,
+    {
+        match self {
+            Self::Literal(literal) => Ok(literal.into()),
+            Self::Array(expressions) => {
+                // Render each inner expression
+                let values = future::try_join_all(
+                    expressions
+                        .iter()
+                        .map(|expression| expression.render_value(context)),
+                )
+                .boxed_local() // Box for recursion
+                .await?;
+                Ok(Value::Array(values).into())
+            }
+            Self::Object(entries) => {
+                let pairs: Vec<(String, Value)> =
+                    future::try_join_all(entries.iter().map(|(key, value)| {
+                        let key_future = async move {
+                            let key = key.render_value(context).await?;
+                            // Keys must be strings, so convert here
+                            key.try_into_string().map_err(|error| {
+                                RenderError::Value(error.error)
+                            })
+                        };
+                        try_join(key_future, value.render_value(context))
+                    }))
+                    .boxed_local() // Box for recursion
                     .await?;
-                    // Keys will be deduped here, with the last taking priority
-                    Ok(Value::Object(IndexMap::from_iter(pairs)).into())
-                }
-                Self::Field(field) => context.get_field(field).await,
-                Self::Call(call) => call.call(context, None).await,
-                Self::Pipe { expression, call } => {
-                    // Compute the left hand side first. Box for recursion
-                    let value =
-                        expression.render_value(context).boxed().await?;
-                    call.call(context, Some(value)).await
-                }
+                // Keys will be deduped here, with the last taking priority
+                Ok(Value::Object(IndexMap::from_iter(pairs)).into())
+            }
+            Self::Field(field) => context.get_field(field).await,
+            Self::Call(call) => call.call(context, None).await,
+            Self::Pipe { expression, call } => {
+                // Compute the left hand side first. Box for recursion
+                let value =
+                    expression.render_value(context).boxed_local().await?;
+                call.call(context, Some(value)).await
             }
         }
     }
@@ -349,8 +345,7 @@ impl FunctionCall {
         ));
         let (position, keyword) =
             future::try_join(position_future, keyword_future)
-                // Box for recursion
-                .boxed()
+                .boxed_local() // Box for recursion
                 .await?;
         Ok(Arguments::new(
             context,

@@ -509,7 +509,7 @@ pub async fn confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::MessageQueue;
+    use crate::test_util::{MessageQueue, run_local};
     use rstest::rstest;
     use slumber_config::CommandsConfig;
     use slumber_util::{TempDir, assert_matches, temp_dir};
@@ -531,50 +531,56 @@ mod tests {
             fs::write(&expected_path, b"already here").await.unwrap();
         }
 
-        // This will run in the background and save the file after prompts
+        // We need to run two futures concurrently:
+        // - save_file() procedure
+        // - Respondent that will pop the prompt messages and handle them
+        // Our futures are !Send so this has to happen on a single local set
         let mut messages = MessageQueue::new();
-        let handle = tokio::spawn(save_file(
+        let save_file_fut = save_file(
             messages.tx(),
             Some("default.txt".into()),
             b"hello!".as_slice().into(),
-        ));
-
-        // First we expect a prompt for the file path
-        let (message, default, channel) = assert_matches!(
-            messages.pop_wait().await,
-            Some(Message::Question(Question::Text {
-                message, default, channel, ..
-            })) => {
-                (message, default, channel)
-            },
         );
-        assert_eq!(&message, "Enter a path for the file");
-        assert_eq!(default.as_deref(), Some("default.txt"));
-        channel.reply(expected_path.to_str().unwrap().to_owned());
 
-        if exists {
-            // Now we expect a confirmation prompt
-            let (message, channel) = assert_matches!(
+        let assertions_fut = async {
+            // First we expect a prompt for the file path
+            let (message, default, channel) = assert_matches!(
                 messages.pop_wait().await,
-                Some(Message::Question(Question::Confirm { message, channel })) => {
-                    (message, channel)
+                Some(Message::Question(Question::Text {
+                    message, default, channel, ..
+                })) => {
+                    (message, default, channel)
                 },
             );
-            assert_eq!(
-                message,
-                format!(
-                    "`{}` already exists, overwrite?",
-                    expected_path.display()
-                )
-            );
-            channel.reply(overwrite);
-        }
+            assert_eq!(&message, "Enter a path for the file");
+            assert_eq!(default.as_deref(), Some("default.txt"));
+            channel.reply(expected_path.to_str().unwrap().to_owned());
+
+            if exists {
+                // Now we expect a confirmation prompt
+                let (message, channel) = assert_matches!(
+                    messages.pop_wait().await,
+                    Some(Message::Question(Question::Confirm { message, channel })) => {
+                        (message, channel)
+                    },
+                );
+                assert_eq!(
+                    message,
+                    format!(
+                        "`{}` already exists, overwrite?",
+                        expected_path.display()
+                    )
+                );
+                channel.reply(overwrite);
+            }
+        };
+
+        // Run the two futures together
+        let (result, ()) =
+            run_local(future::join(save_file_fut, assertions_fut)).await;
+        result.unwrap();
 
         // Now the file should be created
-        handle
-            .await
-            .expect("Task dropped")
-            .expect("save_file failed");
         let expected = if !exists || overwrite {
             "hello!"
         } else {

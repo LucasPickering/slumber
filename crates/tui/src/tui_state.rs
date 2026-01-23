@@ -12,7 +12,6 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
-use futures::FutureExt;
 use ratatui::buffer::Buffer;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
@@ -314,16 +313,6 @@ impl LoadedState {
             }
             Message::CopyRecipe(target) => self.copy_recipe(target)?,
             Message::CopyText(text) => self.view.copy_text(text)?,
-            Message::SaveResponseBody { request_id, data } => {
-                self.save_response_body(request_id, data).with_context(
-                    || {
-                        format!(
-                            "Error saving response body \
-                            for request {request_id}"
-                        )
-                    },
-                )?;
-            }
             Message::FileEdit { file, on_complete } => {
                 let editor = TuiContext::get().config.editor()?;
                 util::yield_terminal(
@@ -361,6 +350,16 @@ impl LoadedState {
             Message::Input(event) => self.view.handle_input(event),
             Message::Notify(message) => self.view.notify(message),
             Message::Question(question) => self.view.question(question),
+            Message::SaveResponseBody { request_id, data } => {
+                self.save_response_body(request_id, data).with_context(
+                    || {
+                        format!(
+                            "Error saving response body \
+                            for request {request_id}"
+                        )
+                    },
+                )?;
+            }
             Message::TemplatePreview {
                 template,
                 can_stream,
@@ -383,7 +382,8 @@ impl LoadedState {
             // get here
             Message::CollectionSelect(_)
             | Message::ClearTerminal
-            | Message::Quit => {
+            | Message::Quit
+            | Message::Spawn(_) => {
                 panic!(
                     "Unexpected message in TuiState; should have been handled \
                     by parent: {message:?}"
@@ -537,7 +537,7 @@ impl LoadedState {
         let context = self.template_context(profile_id, Some(seed.id));
 
         let future = render(context, seed);
-        util::spawn_result(async move {
+        self.messages_tx.spawn_result(async move {
             let text = future.await?;
             messages_tx.send(Message::CopyText(text));
             Ok(())
@@ -570,7 +570,7 @@ impl LoadedState {
             // never parsed. This clone is cheap so we're being efficient!
             exchange.response.body.bytes().clone()
         });
-        util::spawn_result(util::save_file(
+        self.messages_tx.spawn_result(util::save_file(
             self.messages_tx(),
             default_path,
             data,
@@ -607,6 +607,7 @@ impl LoadedState {
 
         // Don't use spawn_result here, because errors are handled specially for
         // requests
+        let cancel_token = CancellationToken::new();
         let future = async move {
             // Build the request
             let result = TuiContext::get()
@@ -629,13 +630,8 @@ impl LoadedState {
             let result = ticket.send().await.map_err(Arc::new);
             messages_tx.send(HttpMessage::Complete(result));
         };
-        let cancel_token = CancellationToken::new();
-        util::spawn(
-            cancel_token
-                .clone()
-                .run_until_cancelled_owned(future)
-                .map(|_| ()),
-        );
+        self.messages_tx
+            .spawn(util::cancellable(&cancel_token, future));
 
         // Add the new request to the store. This has to go after spawning the
         // task so we can include the join handle (for cancellation)
@@ -684,7 +680,7 @@ impl LoadedState {
         on_complete: Callback<RenderedOutput>,
     ) {
         let context = self.template_context(profile_id, None);
-        util::spawn(async move {
+        self.messages_tx.spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render(&context.streaming(can_stream)).await;
             on_complete(chunks);

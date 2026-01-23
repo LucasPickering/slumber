@@ -286,6 +286,10 @@ where
                 self.draw(false)?;
                 Ok(())
             }
+            Message::Spawn(future) => {
+                self.spawn(future);
+                Ok(())
+            }
 
             // Defer everything else to the inner state
             message => self.state.handle_message(message),
@@ -300,7 +304,7 @@ where
     /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
         let messages_tx = self.messages_tx();
-        util::spawn(async move {
+        self.spawn(async move {
             util::signals().await.reported(&messages_tx);
             messages_tx.send(Message::Quit);
         });
@@ -311,9 +315,20 @@ where
         let path = self.state.collection_file().path().to_owned();
         let messages_tx = self.messages_tx();
 
-        util::spawn(util::watch_file(path, move || {
+        self.spawn(util::watch_file(path, move || {
             messages_tx.send(Message::CollectionStartReload);
         }));
+    }
+
+    /// Spawn a task on the main thread
+    ///
+    /// Because the task is run on the main thread, it can be `!Send`. This
+    /// allows view tasks to access the event queue. The task will be
+    /// automatically cancelled when the TUI exits.
+    fn spawn(&self, future: impl 'static + Future<Output = ()>) {
+        CANCEL_TOKEN.with_borrow(|cancel_token| {
+            task::spawn_local(util::cancellable(cancel_token, future));
+        });
     }
 
     /// GOODBYE

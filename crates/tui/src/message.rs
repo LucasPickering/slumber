@@ -4,10 +4,11 @@
 use crate::{
     http::{PromptId, PromptReply},
     input::InputEvent,
-    util::TempFile,
+    util::{ResultReported, TempFile},
     view::Question,
 };
 use derive_more::From;
+use futures::{FutureExt, future::LocalBoxFuture};
 use mime::Mime;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
@@ -37,6 +38,25 @@ impl MessageSender {
         let message: Message = message.into();
         trace!(?message, "Queueing message");
         let _ = self.0.send(message).traced();
+    }
+
+    /// Spawn a future in a new task on the main thread. See [Message::Spawn]
+    pub fn spawn(&self, future: impl 'static + Future<Output = ()>) {
+        self.send(Message::Spawn(future.boxed_local()));
+    }
+
+    /// Spawn a fallible future in a new task on the main thread
+    ///
+    /// If the task fails, show the error to the user.
+    pub fn spawn_result(
+        &self,
+        future: impl 'static + Future<Output = anyhow::Result<()>>,
+    ) {
+        let tx = self.clone();
+        let future = async move {
+            future.await.reported(&tx);
+        };
+        self.send(Message::Spawn(future.boxed_local()));
     }
 }
 
@@ -123,6 +143,13 @@ pub enum Message {
         /// `None`, and the original response bytes will be used.
         data: Option<String>,
     },
+
+    /// Spawn a task on the main thread
+    ///
+    /// Because the task is run on the main thread, it can be `!Send`. This
+    /// allows view tasks to access the event queue. The task will be
+    /// automatically cancelled when the TUI exits.
+    Spawn(#[debug(skip)] LocalBoxFuture<'static, ()>),
 
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the

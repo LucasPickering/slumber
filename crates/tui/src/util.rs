@@ -1,6 +1,6 @@
 use crate::{
     message::{Message, MessageSender},
-    view::{Question, ViewContext},
+    view::Question,
 };
 use anyhow::{Context, bail};
 use bytes::Bytes;
@@ -24,8 +24,8 @@ use std::{
 use tokio::{
     fs::OpenOptions,
     io::AsyncWriteExt,
+    select,
     sync::oneshot,
-    task::{self, JoinHandle},
     time::{self, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
@@ -316,24 +316,18 @@ pub async fn watch_file(path: PathBuf, f: impl Fn()) {
     }
 }
 
-/// Spawn a task on the main thread. Most tasks can use this because the app is
-/// generally I/O bound, so we can handle all async stuff on a single thread.
-/// The UI will be redrawn when the task is done. This redraw may be redundant,
-/// but it's thorough and the cost is minimal.
-pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
-    let cancel_token = CANCEL_TOKEN.with_borrow(CancellationToken::clone);
-    task::spawn_local(async move {
-        cancel_token.run_until_cancelled_owned(future).await;
-    })
-}
-
-/// Spawn a fallible task. If it fails, report the error to the user
-pub fn spawn_result(
-    future: impl 'static + Future<Output = anyhow::Result<()>>,
-) -> JoinHandle<()> {
-    spawn(async move {
-        future.await.reported(&ViewContext::messages_tx());
-    })
+/// Make a future cancellable with the given token
+pub fn cancellable(
+    cancel_token: &CancellationToken,
+    future: impl 'static + Future<Output = ()>,
+) -> impl 'static + Future<Output = ()> {
+    let cancel_token = cancel_token.clone();
+    async move {
+        select! {
+            () = future => {},
+            () = cancel_token.cancelled() => {}
+        }
+    }
 }
 
 /// Save some data to disk. This will:

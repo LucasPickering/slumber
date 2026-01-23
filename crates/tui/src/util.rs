@@ -11,6 +11,7 @@ use crossterm::{
 use futures::{FutureExt, future};
 use slumber_util::{ResultTracedAnyhow, paths::expand_home};
 use std::{
+    cell::RefCell,
     env,
     fs::{self, File},
     future::Future,
@@ -18,13 +19,11 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::LazyLock,
     time::Duration,
 };
 use tokio::{
     fs::OpenOptions,
     io::AsyncWriteExt,
-    select,
     sync::oneshot,
     task::{self, JoinHandle},
 };
@@ -32,9 +31,17 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, debug_span, error, info, info_span, warn};
 use uuid::Uuid;
 
-/// Token to manage cancellation of background tasks
-pub static CANCEL_TOKEN: LazyLock<CancellationToken> =
-    LazyLock::new(CancellationToken::new);
+thread_local! {
+    /// Token to manage cancellation of background tasks. This assumes all tasks
+    /// are spawned from the main thread. Any task spawned from a background
+    /// thread will get a different cancel token and will never get cancelled.
+    /// This assumption is *probably* safe because we run in a single-thread
+    /// runtime, so the only background threads are from `spawn_blocking`.
+    ///
+    /// Putting this in TLS means we can reset it after each loop run in
+    /// integration tests.
+    pub static CANCEL_TOKEN: RefCell<CancellationToken> = Default::default();
+}
 
 /// Extension trait for [Result]
 pub trait ResultReported<T, E>: Sized {
@@ -264,11 +271,9 @@ pub async fn signals() -> anyhow::Result<()> {
 /// The UI will be redrawn when the task is done. This redraw may be redundant,
 /// but it's thorough and the cost is minimal.
 pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
+    let cancel_token = CANCEL_TOKEN.with_borrow(CancellationToken::clone);
     task::spawn_local(async move {
-        select! {
-            () = future => {},
-            () = CANCEL_TOKEN.cancelled() => {},
-        }
+        cancel_token.run_until_cancelled_owned(future).await;
     })
 }
 

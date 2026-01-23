@@ -46,6 +46,7 @@ use tokio::{
     sync::mpsc::{self, UnboundedReceiver},
     task, time,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, trace};
 
 /// Main controller struct for the TUI. The app uses a React-ish architecture
@@ -163,6 +164,16 @@ where
         mut self,
         input_stream: impl Stream<Item = terminput::Event>,
     ) -> anyhow::Result<Self> {
+        // If the cancel token is already set from a previous run, reset it.
+        // This assumes there are no background tasks running, which should be
+        // the case because they're all killed at the end of one loop, and we
+        // haven't started any new ones yet.
+        CANCEL_TOKEN.with_borrow_mut(|cancel_token| {
+            if cancel_token.is_cancelled() {
+                *cancel_token = CancellationToken::new();
+            }
+        });
+
         // Spawn background tasks
         self.listen_for_signals();
 
@@ -299,7 +310,7 @@ where
         info!("Initiating graceful shutdown");
         self.should_run = false;
         // Kill all background tasks
-        CANCEL_TOKEN.cancel();
+        CANCEL_TOKEN.with_borrow(CancellationToken::cancel);
     }
 
     /// Draw the view onto the screen.

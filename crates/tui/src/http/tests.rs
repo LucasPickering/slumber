@@ -191,19 +191,18 @@ async fn test_life_cycle_building_cancel() {
 
     // This flag confirms the future never finishes
     let future_finished: Arc<AtomicBool> = Default::default();
-
     let ff = Arc::clone(&future_finished);
+    let cancel_token = CancellationToken::new();
+    tokio::spawn(cancel_token.clone().run_until_cancelled_owned(async move {
+        time::sleep(Duration::from_secs(1)).await;
+        ff.store(true, Ordering::Relaxed);
+    }));
+
     store.start(
         id,
         profile_id.clone(),
         recipe_id.clone(),
-        Some(
-            tokio::spawn(async move {
-                time::sleep(Duration::from_secs(1)).await;
-                ff.store(true, Ordering::Relaxed);
-            })
-            .abort_handle(),
-        ),
+        Some(cancel_token),
     );
     store.cancel(id);
     assert_matches!(store.get(id), Some(RequestState::Cancelled { .. }));
@@ -222,19 +221,18 @@ async fn test_life_cycle_loading_cancel() {
 
     // This flag confirms the future never finishes
     let future_finished: Arc<AtomicBool> = Default::default();
-
     let ff = Arc::clone(&future_finished);
+    let cancel_token = CancellationToken::new();
+    tokio::spawn(cancel_token.clone().run_until_cancelled_owned(async move {
+        time::sleep(Duration::from_secs(1)).await;
+        ff.store(true, Ordering::Relaxed);
+    }));
+
     store.start(
         id,
         profile_id.clone(),
         recipe_id.clone(),
-        Some(
-            tokio::spawn(async move {
-                time::sleep(Duration::from_secs(1)).await;
-                ff.store(true, Ordering::Relaxed);
-            })
-            .abort_handle(),
-        ),
+        Some(cancel_token),
     );
     store.loading(exchange.request);
     assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
@@ -365,7 +363,7 @@ async fn test_load_summaries(harness: TestHarness) {
         RequestState::Loading {
             request: request.into(),
             start_time: Utc::now(),
-            abort_handle: None,
+            cancel_token: None,
         },
     );
 

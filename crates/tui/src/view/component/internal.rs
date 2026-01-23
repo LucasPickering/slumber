@@ -324,16 +324,17 @@ impl<'buf> Canvas<'buf> {
     }
 }
 
-/// All components that were drawn during the last draw phase. The purpose
-/// of this is to allow each component to return an exhaustive list of its
-/// children during event handling, then we can automatically filter that
+/// All components that were drawn during the most recent draw phase
+///
+/// A new map is built for each [Canvas::draw_all] call, which means a new map
+/// every draw frame.
+///
+/// The purpose of this is to allow each component to return an exhaustive list
+/// of its children during event handling, then we can automatically filter that
 /// list down to just the ones that are visible. This prevents the need to
 /// duplicate visibility logic in both the draw and the children getters.
 /// For each drawn component, this stores metadata related to its last
 /// draw.
-///
-/// A new map is built for each [Canvas], which means a new map every draw
-/// frame.
 #[derive(Debug, Default)]
 pub struct ComponentMap(HashMap<ComponentId, DrawMetadata>);
 

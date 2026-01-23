@@ -876,9 +876,9 @@ dependencies = [
 
 [[package]]
 name = "env-lock"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2afbd3cff67810192b5bdb76b77feff72775314d41195c1d779bc92e0e83285d"
+checksum = "bcb71a32ab9582e2756554e84b24aee90d7187034049c35921ec3296b70c13ad"
 
 [[package]]
 name = "equivalent"

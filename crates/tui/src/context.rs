@@ -30,9 +30,11 @@ pub struct TuiContext {
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
     pub fn init(config: Config) {
-        INSTANCE
-            .set(Self::new(config))
-            .expect("Global context is already initialized");
+        // This *should* panic if the thing is already set, but I disabled that
+        // when adding integration tests. Need to figure out an alternative to
+        // this.
+        // TODO re-enable panic or fix this some other way
+        let _ = INSTANCE.set(Self::new(config));
     }
 
     /// Initialize the global context for tests. This will use a default config,

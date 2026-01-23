@@ -24,7 +24,11 @@ use std::{
     str::Utf8Error,
     sync::{Arc, LazyLock},
 };
-use tokio::runtime::{self, Runtime};
+use tokio::{
+    runtime::{self, Runtime},
+    sync::oneshot,
+    task::LocalSet,
+};
 
 /// reqwest specifically needs a tokio runtime, so we need to spawn this in
 /// addition to the python asyncio runtime. We'll spawn tasks on this rt and
@@ -125,50 +129,35 @@ impl Collection {
         overrides: IndexMap<String, String>,
         trigger: bool,
     ) -> PyResult<Response> {
-        let recipe_id = RecipeId::from(recipe);
-        let selected_profile = profile.map(ProfileId::from).or_else(|| {
-            // Use the default profile if none is given
-            self.collection
-                .default_profile()
-                .map(|profile| profile.id.clone())
-        });
-
-        let http_provider = PythonHttpProvider {
+        // reqwest/hyper need to be run in tokio, so we have to spawn this in
+        // a background task instead of executing it in the python event loop.
+        // Most of the context is !Send so we have to pin it to a single thread.
+        // We can't use tokio::spawn because those futures require Send for
+        // work-stealing.
+        // https://docs.rs/tokio/1.49.0/tokio/task/struct.LocalSet.html#use-inside-tokiospawn
+        let (tx, rx) = oneshot::channel();
+        let rt = self.tokio_handle.clone();
+        let request = Request {
+            recipe_id: RecipeId::from(recipe),
+            profile_id: profile.map(ProfileId::from),
+            overrides,
+            trigger,
+            collection: Arc::clone(&self.collection),
             database: self.database.clone(),
             http_engine: self.http_engine.clone(),
-            trigger_dependencies: trigger,
-        };
-        let overrides = overrides
-            .into_iter()
-            // Don't support templates in overrides (yet)
-            .map(|(field, value)| (field, Template::raw(value)))
-            .collect();
-        let context = TemplateContext {
-            collection: Arc::clone(&self.collection),
-            selected_profile,
-            http_provider: Box::new(http_provider),
-            overrides,
-            prompter: Box::new(PythonPrompter),
-            show_sensitive: true,
             root_dir: self.collection_file.parent().to_owned(),
-            state: Default::default(),
         };
-        let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-        let http_engine = self.http_engine.clone();
+        std::thread::spawn(move || {
+            let local = LocalSet::new();
+            local.spawn_local(async move {
+                let result = request.send().await;
+                tx.send(result).unwrap();
+            });
+            rt.block_on(local);
+        });
 
-        // reqwest/hyper need to be run in tokio, so we have to spawn this in
-        // a background task instead of executing it in the python event loop
-        let exchange = self
-            .tokio_handle
-            .spawn(async move {
-                let ticket = http_engine
-                    .build(seed, &context)
-                    .await
-                    .map_err(ErrorDisplay::new)?;
-                ticket.send().await.map_err(ErrorDisplay::new)
-            })
-            .await
-            .map_err(ErrorDisplay::new)??;
+        // We can await this in python's async engine because it's Send
+        let exchange = rx.await.map_err(ErrorDisplay::new)??;
 
         // This is safe because no one else has the request/response
         let Ok(request) = Arc::try_unwrap(exchange.request) else {
@@ -384,5 +373,62 @@ impl Display for ErrorDisplay {
 impl From<ErrorDisplay> for PyErr {
     fn from(value: ErrorDisplay) -> Self {
         PyRuntimeError::new_err(value.to_string())
+    }
+}
+
+struct Request {
+    recipe_id: RecipeId,
+    profile_id: Option<ProfileId>,
+    overrides: IndexMap<String, String>,
+    trigger: bool,
+    collection: Arc<slumber_core::collection::Collection>,
+    database: CollectionDatabase,
+    http_engine: HttpEngine,
+    root_dir: PathBuf,
+}
+
+impl Request {
+    /// Send a request and return the request+response
+    async fn send(self) -> PyResult<Exchange> {
+        let selected_profile = self.profile_id.or_else(|| {
+            // Use the default profile if none is given
+            self.collection
+                .default_profile()
+                .map(|profile| profile.id.clone())
+        });
+
+        // reqwest/hyper need to be run in tokio, so we have to spawn this in
+        // a background task instead of executing it in the python event loop.
+        // Most of the context is !Send so we have to move it all in.
+        let http_provider = PythonHttpProvider {
+            database: self.database,
+            http_engine: self.http_engine.clone(),
+            trigger_dependencies: self.trigger,
+        };
+        let overrides = self
+            .overrides
+            .into_iter()
+            // Don't support templates in overrides (yet)
+            .map(|(field, value)| (field, Template::raw(value)))
+            .collect();
+        let context = TemplateContext {
+            collection: self.collection,
+            selected_profile,
+            http_provider: Box::new(http_provider),
+            overrides,
+            prompter: Box::new(PythonPrompter),
+            show_sensitive: true,
+            root_dir: self.root_dir,
+            state: Default::default(),
+        };
+        let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
+
+        let ticket = self
+            .http_engine
+            .build(seed, &context)
+            .await
+            .map_err(ErrorDisplay::new)?;
+        let exchange = ticket.send().await.map_err(ErrorDisplay::new)?;
+        Ok(exchange)
     }
 }

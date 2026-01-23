@@ -163,7 +163,7 @@ impl Draw for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
+        test_util::{TestHarness, TestTerminal, harness, run_local, terminal},
         view::test_util::TestComponent,
     };
     use indexmap::indexmap;
@@ -268,8 +268,6 @@ mod tests {
         #[case] query: Option<&str>,
         #[case] expected_body: Option<&str>,
     ) {
-        use crate::test_util::run_local;
-
         let exchange_id = response.id;
         let exchange = Exchange {
             response: response.into(),

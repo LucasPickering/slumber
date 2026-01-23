@@ -32,7 +32,7 @@ use std::{fmt::Debug, sync::Arc};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
-pub trait Context: Sized + Send + Sync {
+pub trait Context: Sized {
     /// Does the render target support streaming? Typically this should return
     /// `false`.
     ///
@@ -45,17 +45,17 @@ pub trait Context: Sized + Send + Sync {
     /// and be `async`. For example, fields can be loaded from a map of nested
     /// templates, in which case the nested template would need to be rendered
     /// before this can be returned.
-    fn get_field(
+    async fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> impl Future<Output = Result<LazyValue, RenderError>> + Send;
+    ) -> Result<LazyValue, RenderError>;
 
     /// Call a function by name
-    fn call(
+    async fn call(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> impl Future<Output = Result<LazyValue, RenderError>> + Send;
+    ) -> Result<LazyValue, RenderError>;
 }
 
 /// A parsed template, which can contain raw and/or templated content. The

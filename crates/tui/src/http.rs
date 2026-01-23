@@ -136,6 +136,10 @@ impl RequestStore {
     }
 
     /// Insert a new request. This will construct a [RequestState::Building]
+    ///
+    /// `abort_handle` is the handle that can be used to cancel the request.
+    /// `None` for triggered requests. Triggerd requests run in the same task
+    /// as their parent, so they can't be aborted directly.
     pub fn start(
         &mut self,
         id: RequestId,
@@ -523,7 +527,7 @@ impl TuiHttpProvider {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl HttpProvider for TuiHttpProvider {
     async fn get_latest_request(
         &self,

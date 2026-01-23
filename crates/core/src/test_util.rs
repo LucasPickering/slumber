@@ -58,7 +58,7 @@ impl TestHttpProvider {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl HttpProvider for TestHttpProvider {
     async fn get_latest_request(
         &self,

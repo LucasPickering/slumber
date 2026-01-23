@@ -97,7 +97,7 @@ async fn test_life_cycle_success() {
         id,
         exchange.request.profile_id.clone(),
         exchange.request.recipe_id.clone(),
-        Some(tokio::spawn(async {}).abort_handle()),
+        None,
     );
     assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
@@ -114,7 +114,7 @@ async fn test_life_cycle_success() {
         id2,
         exchange2.request.profile_id.clone(),
         exchange2.request.recipe_id.clone(),
-        Some(tokio::spawn(async {}).abort_handle()),
+        None,
     );
     assert_matches!(store.get(id), Some(RequestState::Response { .. }));
     assert_matches!(store.get(id2), Some(RequestState::Building { .. }));
@@ -130,12 +130,7 @@ async fn test_life_cycle_build_error() {
     let profile_id = &exchange.request.profile_id;
     let recipe_id = &exchange.request.recipe_id;
 
-    store.start(
-        id,
-        profile_id.clone(),
-        recipe_id.clone(),
-        Some(tokio::spawn(async {}).abort_handle()),
-    );
+    store.start(id, profile_id.clone(), recipe_id.clone(), None);
     assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
     store.build_error(
@@ -164,12 +159,7 @@ async fn test_life_cycle_request_error() {
     let profile_id = &exchange.request.profile_id;
     let recipe_id = &exchange.request.recipe_id;
 
-    store.start(
-        id,
-        profile_id.clone(),
-        recipe_id.clone(),
-        Some(tokio::spawn(async {}).abort_handle()),
-    );
+    store.start(id, profile_id.clone(), recipe_id.clone(), None);
     assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
     store.loading(Arc::clone(&exchange.request));
@@ -199,7 +189,7 @@ async fn test_life_cycle_building_cancel() {
     let profile_id = &exchange.request.profile_id;
     let recipe_id = &exchange.request.recipe_id;
 
-    // This flag confirms that neither the future never finishes
+    // This flag confirms the future never finishes
     let future_finished: Arc<AtomicBool> = Default::default();
 
     let ff = Arc::clone(&future_finished);
@@ -230,7 +220,7 @@ async fn test_life_cycle_loading_cancel() {
     let profile_id = &exchange.request.profile_id;
     let recipe_id = &exchange.request.recipe_id;
 
-    // This flag confirms that neither the future never finishes
+    // This flag confirms the future never finishes
     let future_finished: Arc<AtomicBool> = Default::default();
 
     let ff = Arc::clone(&future_finished);
@@ -346,7 +336,7 @@ async fn test_load_summaries(harness: TestHarness) {
         building_id,
         Some(profile_id.clone()),
         recipe_id.clone(),
-        Some(tokio::spawn(async {}).abort_handle()),
+        None,
     );
 
     let build_error_id = RequestId::new();
@@ -375,7 +365,7 @@ async fn test_load_summaries(harness: TestHarness) {
         RequestState::Loading {
             request: request.into(),
             start_time: Utc::now(),
-            abort_handle: Some(tokio::spawn(async {}).abort_handle()),
+            abort_handle: None,
         },
     );
 
@@ -400,13 +390,13 @@ async fn test_load_summaries(harness: TestHarness) {
         RequestId::new(),
         Some(ProfileId::factory(())),
         recipe_id.clone(),
-        Some(tokio::spawn(async {}).abort_handle()),
+        None,
     );
     store.start(
         RequestId::new(),
         Some(profile_id.clone()),
         RecipeId::factory(()),
-        Some(tokio::spawn(async {}).abort_handle()),
+        None,
     );
 
     // It's really annoying to do a full equality comparison because we'd

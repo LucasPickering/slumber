@@ -369,8 +369,8 @@ pub struct RenderGroupState {
 /// enables fetching past requests and sending requests. The implementor is
 /// responsible for providing the data store of the requests, and persisting
 /// the sent request as appropriate.
-#[async_trait] // Native async fn isn't dyn-compatible
-pub trait HttpProvider: Debug + Send + Sync {
+#[async_trait(?Send)] // Native async fn isn't dyn-compatible
+pub trait HttpProvider: Debug {
     /// Get the most recent request for a particular profile+recipe
     async fn get_latest_request(
         &self,
@@ -397,7 +397,7 @@ pub trait HttpProvider: Debug + Send + Sync {
 /// multiple templates with prompts are being rendered simultaneously. The
 /// implementor is responsible for queueing prompts to show to the user one at a
 /// time.
-pub trait Prompter: Debug + Send + Sync {
+pub trait Prompter: Debug {
     /// Ask the user a question, and use the given channel to return a response.
     /// To indicate "no response", simply drop the returner.
     ///

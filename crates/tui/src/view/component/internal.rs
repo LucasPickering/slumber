@@ -571,7 +571,10 @@ impl Default for ComponentId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TestHarness, TestTerminal, harness, terminal};
+    use crate::{
+        test_util::{TestTerminal, terminal},
+        view::test_util::{TestHarness, harness},
+    };
     use Mode::*;
     use ratatui::layout::{Layout, Position};
     use rstest::{fixture, rstest};

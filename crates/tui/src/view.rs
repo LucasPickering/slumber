@@ -11,7 +11,7 @@ pub mod test_util;
 mod util;
 
 pub use component::ComponentMap;
-pub use context::{UpdateContext, ViewContext};
+pub use context::UpdateContext;
 pub use styles::Styles;
 pub use util::{PreviewPrompter, Question, TuiPrompter};
 
@@ -22,6 +22,7 @@ use crate::{
     message::MessageSender,
     view::{
         component::{Canvas, Component, ComponentExt, Root},
+        context::ViewContext,
         debug::DebugMonitor,
         event::Event,
     },
@@ -294,8 +295,9 @@ pub enum RequestDisposition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{
-        TestHarness, TestTerminal, assert_events, harness, terminal,
+    use crate::{
+        test_util::{TestTerminal, assert_events, terminal},
+        view::test_util::{TestHarness, harness},
     };
     use rstest::rstest;
     use slumber_core::collection::Collection;

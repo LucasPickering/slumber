@@ -287,8 +287,8 @@ impl SessionKey for AuthenticationKey {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        test_util::{TestTerminal, terminal},
+        view::test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
     use slumber_util::Factory;

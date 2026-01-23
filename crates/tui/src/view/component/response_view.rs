@@ -163,8 +163,8 @@ impl Draw for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        test_util::{TestTerminal, terminal},
+        view::test_util::{TestComponent, TestHarness, harness},
     };
     use indexmap::indexmap;
     use rstest::rstest;

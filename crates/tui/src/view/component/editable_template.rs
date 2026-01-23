@@ -236,8 +236,11 @@ enum EditableTemplateMenuAction {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{persistent::PersistentStore, test_util::TestComponent},
+        test_util::{TestTerminal, terminal},
+        view::{
+            persistent::PersistentStore,
+            test_util::{TestComponent, TestHarness, harness},
+        },
     };
     use rstest::rstest;
     use std::iter;

@@ -3,7 +3,8 @@
 use crate::{
     context::TuiContext,
     http::RequestStore,
-    test_util::{TestHarness, TestTerminal},
+    message::{Message, MessageSender},
+    test_util::{MessageQueue, TestTerminal},
     view::{
         ComponentMap, UpdateContext,
         common::actions::{ActionMenu, MenuItem},
@@ -18,20 +19,100 @@ use crate::{
 };
 use itertools::Itertools;
 use ratatui::layout::Rect;
+use rstest::fixture;
 use slumber_config::Action;
-use slumber_core::database::CollectionDatabase;
+use slumber_core::{collection::Collection, database::CollectionDatabase};
+use slumber_util::{Factory, assert_matches};
 use std::{
     cell::RefCell,
     fmt::Debug,
     iter,
     ops::{Deref, DerefMut},
     rc::Rc,
+    sync::Arc,
 };
 use terminput::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
 use tracing::trace_span;
+
+/// Get a test harness, with a clean terminal etc. See [TestHarness].
+#[fixture]
+pub fn harness() -> TestHarness {
+    TestHarness::new(Collection::factory(()))
+}
+
+/// A container for all singleton types needed for tests. Most TUI tests will
+/// need one of these. This should be your interface for modifying any global
+/// state.
+pub struct TestHarness {
+    // These are public because we don't care about external mutation
+    pub collection: Arc<Collection>,
+    pub database: CollectionDatabase,
+    /// `RefCell` needed so multiple components can hang onto this at once.
+    /// Otherwise we would have to pass it to every single draw and update fn.
+    request_store: Rc<RefCell<RequestStore>>,
+    messages: MessageQueue,
+}
+
+impl TestHarness {
+    /// Create a new test harness and initialize state
+    pub fn new(collection: Collection) -> Self {
+        TuiContext::init_test();
+        let messages = MessageQueue::new();
+        let database = CollectionDatabase::factory(());
+        let request_store =
+            Rc::new(RefCell::new(RequestStore::new(database.clone())));
+        let collection = Arc::new(collection);
+        ViewContext::init(
+            Arc::clone(&collection),
+            database.clone(),
+            messages.tx(),
+        );
+        TestHarness {
+            collection,
+            database,
+            request_store,
+            messages,
+        }
+    }
+
+    /// Get a mutable reference to the request store
+    pub fn request_store_mut(&self) -> impl DerefMut<Target = RequestStore> {
+        self.request_store.borrow_mut()
+    }
+
+    /// Get an `Rc` clone to the request store
+    pub fn request_store_owned(&self) -> Rc<RefCell<RequestStore>> {
+        Rc::clone(&self.request_store)
+    }
+
+    /// Get a [PersistentStore] pointing at the test database
+    pub fn persistent_store(&self) -> PersistentStore {
+        PersistentStore::new(self.database.clone())
+    }
+
+    /// Get a mutable reference to the message queue
+    pub fn messages(&mut self) -> &mut MessageQueue {
+        &mut self.messages
+    }
+
+    /// Get a clone of the message sender
+    pub fn messages_tx(&self) -> MessageSender {
+        self.messages.tx()
+    }
+
+    /// Pop a [Message::Spawn] off the queue and run the task
+    ///
+    /// Panic if the queue is empty or the next message isn't `Spawn`.
+    pub async fn run_task(&mut self) {
+        let future = assert_matches!(
+            self.messages().pop_now(), Message::Spawn(future) => future
+        );
+        future.await;
+    }
+}
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make

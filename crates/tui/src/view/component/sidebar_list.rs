@@ -370,8 +370,8 @@ impl<T: SidebarListItem> Generate for &ItemWrapper<T> {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::test_util::TestComponent,
+        test_util::{TestTerminal, terminal},
+        view::test_util::{TestComponent, TestHarness, harness},
     };
     use itertools::Itertools;
     use rstest::rstest;

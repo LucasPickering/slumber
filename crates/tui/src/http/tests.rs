@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    test_util::{TestHarness, harness},
     util,
+    view::test_util::{TestHarness, harness},
 };
 use chrono::Utc;
 use rstest::rstest;

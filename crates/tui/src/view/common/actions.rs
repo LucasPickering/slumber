@@ -599,8 +599,11 @@ fn build_select(items: Vec<MenuItemDisplay>) -> Select<MenuItemDisplay> {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{event::ToEmitter, test_util::TestComponent},
+        test_util::{TestTerminal, terminal},
+        view::{
+            event::ToEmitter,
+            test_util::{TestComponent, TestHarness, harness},
+        },
     };
     use rstest::rstest;
     use terminput::KeyCode;

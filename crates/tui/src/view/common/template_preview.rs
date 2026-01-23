@@ -312,7 +312,7 @@ impl TextStitcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TestHarness, harness};
+    use crate::view::test_util::{TestHarness, harness};
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;

@@ -294,9 +294,10 @@ impl Draw for Root {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, terminal},
+        test_util::{TestTerminal, terminal},
         view::{
-            component::history::SelectedRequestKey, test_util::TestComponent,
+            component::history::SelectedRequestKey,
+            test_util::{TestComponent, TestHarness, harness},
         },
     };
     use rstest::rstest;

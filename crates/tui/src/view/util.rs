@@ -15,11 +15,19 @@ use itertools::Itertools;
 use mime::Mime;
 use ratatui::text::{Line, Text};
 use slumber_core::{
+    collection::{CollectionError, CollectionFile},
     http::RequestId,
     render::{Prompt, Prompter, ReplyChannel},
 };
-use std::io::Write;
+use std::{io::Write, sync::Arc};
 use tracing::trace;
+
+/// Container for the state the view needs to show a collection load error
+#[derive(Debug)]
+pub struct InvalidCollection {
+    pub file: CollectionFile,
+    pub error: Arc<CollectionError>,
+}
 
 /// A question posed to the user. [Prompt] is used exclusively for request
 /// building, while this value is used for any other kind of input requested

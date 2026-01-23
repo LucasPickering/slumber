@@ -1,8 +1,10 @@
 use crate::{
+    context::TuiContext,
     http::{RequestConfig, RequestStore},
     message::{HttpMessage, Message},
     view::{
-        Component, Question, RequestDisposition, ViewContext,
+        Component, Generate, InvalidCollection, Question, RequestDisposition,
+        ViewContext,
         common::{actions::ActionMenu, modal::ModalQueue},
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
@@ -16,13 +18,16 @@ use crate::{
     },
 };
 use indexmap::IndexMap;
-use ratatui::{layout::Layout, prelude::Constraint};
+use ratatui::{layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
-    collection::{HasId, Profile, ProfileId},
+    collection::{
+        Collection, CollectionError, CollectionFile, HasId, Profile, ProfileId,
+    },
     database::ProfileFilter,
 };
 use slumber_template::Template;
+use std::{error::Error as StdError, sync::Arc};
 use tracing::warn;
 
 /// The root view component
@@ -30,7 +35,11 @@ use tracing::warn;
 pub struct Root {
     id: ComponentId,
     /// The pane layout that forms the primary content
-    primary_view: PrimaryView,
+    ///
+    /// The state of this is based on whether the collection loaded correctly.
+    /// If it did, we can show the normal view. If the collection is invalid,
+    /// show an error view until it's fixed.
+    primary: Result<PrimaryView, CollectionErrorView>,
     footer: Footer,
     // Modals!!
     actions: ActionMenu,
@@ -39,10 +48,18 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new() -> Self {
+    pub fn new(
+        collection_result: Result<Arc<Collection>, InvalidCollection>,
+    ) -> Self {
+        let primary = match collection_result {
+            Ok(_) => Ok(PrimaryView::new()),
+            Err(invalid_collection) => {
+                Err(CollectionErrorView::new(invalid_collection))
+            }
+        };
         Self {
             id: ComponentId::default(),
-            primary_view: PrimaryView::new(),
+            primary,
             footer: Footer::default(),
             actions: ActionMenu::default(),
             questions: ModalQueue::default(),
@@ -67,18 +84,27 @@ impl Root {
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.primary_view.selected_profile_id()
+        match &self.primary {
+            Ok(primary) => primary.selected_profile_id(),
+            Err(_) => None,
+        }
     }
 
     /// Get a definition of the request that should be sent from the current
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
-        self.primary_view.request_config()
+        match &self.primary {
+            Ok(primary) => primary.request_config(),
+            Err(_) => None,
+        }
     }
 
     /// Get a map of overridden profile fields
     pub fn profile_overrides(&self) -> IndexMap<String, Template> {
-        self.primary_view.profile_overrides()
+        match &self.primary {
+            Ok(primary) => primary.profile_overrides(),
+            Err(_) => IndexMap::default(),
+        }
     }
 
     /// Update the UI to reflect the current state of an HTTP request
@@ -87,17 +113,23 @@ impl Root {
         store: &mut RequestStore,
         disposition: RequestDisposition,
     ) {
-        self.primary_view.refresh_request(store, disposition);
+        match &mut self.primary {
+            Ok(primary) => primary.refresh_request(store, disposition),
+            Err(_) => {}
+        }
     }
 
     /// Open a modal to confirm deletion one or more requests
     fn delete_requests(&mut self, target: DeleteTarget) {
+        let Ok(primary) = &mut self.primary else {
+            return;
+        };
+
         // Get the string to show to the user, and the message we should push
         // *if* they say yes
         let (title, message) = match target {
             DeleteTarget::Request => {
-                let Some(request_id) = self.primary_view.selected_request_id()
-                else {
+                let Some(request_id) = primary.selected_request_id() else {
                     // It shouldn't be possible to trigger this without a
                     // selected request
                     warn!("Cannot delete request; no request selected");
@@ -111,8 +143,7 @@ impl Root {
             }
             DeleteTarget::Recipe { all_profiles } => {
                 let collection = ViewContext::collection();
-                let Some(recipe) = self
-                    .primary_view
+                let Some(recipe) = primary
                     .selected_recipe_id()
                     .and_then(|id| collection.recipes.get_recipe(id))
                 else {
@@ -139,8 +170,7 @@ impl Root {
                 } else {
                     // Only a single profile. If there is no selected profile,
                     // we'll delete for profile=none
-                    let profile = self
-                        .primary_view
+                    let profile = primary
                         .selected_profile_id()
                         .and_then(|id| collection.profiles.get(id));
 
@@ -174,7 +204,11 @@ impl Root {
 
     /// Cancel the active request
     fn cancel_request(&mut self, context: &mut UpdateContext<'_>) {
-        if let Some(request_id) = self.primary_view.selected_request_id()
+        let Ok(primary) = &mut self.primary else {
+            return;
+        };
+
+        if let Some(request_id) = primary.selected_request_id()
             && context.request_store.can_cancel(request_id)
         {
             self.questions.open(QuestionModal::confirm(
@@ -208,7 +242,7 @@ impl Component for Root {
                 Action::OpenActions => {
                     // Walk down the component tree and collect actions from
                     // all visible+focused components
-                    let actions = self.primary_view.collect_actions(context);
+                    let actions = self.collect_actions(context);
                     // Actions can be empty if a modal is already open
                     if !actions.is_empty() {
                         self.actions.open(actions);
@@ -246,6 +280,10 @@ impl Component for Root {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
+        let primary = match &mut self.primary {
+            Ok(primary) => primary.to_child_mut(),
+            Err(error_view) => error_view.to_child_mut(),
+        };
         vec![
             // Modals first. They won't eat events when closed
             // Error modal is always shown first, so it gets events first
@@ -253,10 +291,10 @@ impl Component for Root {
             // Rest of the modals
             self.actions.to_child_mut(),
             self.questions.to_child_mut(),
+            // Non-modals
             // Footer has some high-priority pop-ups
             self.footer.to_child_mut(),
-            // Non-modals
-            self.primary_view.to_child_mut(),
+            primary,
         ]
     }
 }
@@ -269,14 +307,10 @@ impl Draw for Root {
                 .areas(metadata.area());
 
         // Main content
-        canvas.draw(
-            &self.primary_view,
-            (),
-            main_area,
-            // If any modals are open, the modal queue will eat all input
-            // events so we don't have to worry about catching stray events
-            true,
-        );
+        match &self.primary {
+            Ok(primary) => canvas.draw(primary, (), main_area, true),
+            Err(error_view) => canvas.draw(error_view, (), main_area, true),
+        }
 
         // Footer
         canvas.draw(&self.footer, (), footer_area, true);
@@ -287,6 +321,58 @@ impl Draw for Root {
         canvas.draw(&self.questions, (), metadata.area(), true);
         // Errors render last because they're drawn on top (highest priority)
         canvas.draw(&self.errors, (), metadata.area(), true);
+    }
+}
+
+/// Display a collection load error
+#[derive(Debug)]
+struct CollectionErrorView {
+    id: ComponentId,
+    collection_file: CollectionFile,
+    error: Arc<CollectionError>,
+}
+
+impl CollectionErrorView {
+    fn new(invalid_collection: InvalidCollection) -> Self {
+        Self {
+            id: ComponentId::new(),
+            collection_file: invalid_collection.file,
+            error: invalid_collection.error,
+        }
+    }
+}
+
+impl Component for CollectionErrorView {
+    fn id(&self) -> ComponentId {
+        self.id
+    }
+}
+
+impl Draw for CollectionErrorView {
+    fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let context = TuiContext::get();
+        let [message_area, _, error_area] = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Length(1), // A nice gap
+            Constraint::Min(1),
+        ])
+        .areas(metadata.area());
+        canvas.render_widget(
+            (&*self.error as &dyn StdError).generate(),
+            error_area,
+        );
+        canvas.render_widget(
+            Text::styled(
+                format!(
+                    "Watching {file} for changes...\n{key} to exit",
+                    file = self.collection_file,
+                    key =
+                        context.input_engine.binding_display(Action::ForceQuit),
+                ),
+                context.styles.text.primary,
+            ),
+            message_area,
+        );
     }
 }
 
@@ -320,12 +406,15 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(Ok(Arc::clone(&harness.collection))),
+        );
         component.int().drain_draw().assert().empty();
 
         // Make sure profile+recipe were preselected correctly
-        let primary = &component.primary_view;
+        let primary = component.primary.as_ref().unwrap();
         assert_eq!(primary.selected_profile_id(), Some(profile_id));
         assert_eq!(primary.selected_recipe_id(), Some(recipe_id));
         assert_eq!(primary.selected_request_id(), Some(exchange.id));
@@ -354,12 +443,15 @@ mod tests {
             .persistent_store()
             .set(&SelectedRequestKey, &old_exchange.id);
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(Ok(Arc::clone(&harness.collection))),
+        );
         component.int().drain_draw().assert().empty();
 
         // Make sure everything was preselected correctly
-        let primary = &component.primary_view;
+        let primary = component.primary.as_ref().unwrap();
         assert_eq!(primary.selected_profile_id(), Some(profile_id));
         assert_eq!(primary.selected_recipe_id(), Some(recipe_id));
         assert_eq!(primary.selected_request_id(), Some(old_exchange.id));
@@ -385,12 +477,15 @@ mod tests {
             .persistent_store()
             .set(&SelectedRequestKey, &RequestId::new());
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(Ok(Arc::clone(&harness.collection))),
+        );
         component.int().drain_draw().assert().empty();
 
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(new_exchange.id)
         );
     }
@@ -416,12 +511,15 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(Ok(Arc::clone(&harness.collection))),
+        );
         component.int().drain_draw().assert().empty();
 
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(exchange1.id)
         );
 
@@ -432,7 +530,7 @@ mod tests {
             .assert()
             .empty();
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(exchange2.id)
         );
     }
@@ -458,12 +556,15 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(Ok(Arc::clone(&harness.collection))),
+        );
         component.int().drain_draw().assert().empty();
 
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(exchange1.id)
         );
 
@@ -475,7 +576,7 @@ mod tests {
             .empty();
         // The exchange from profile2 should be selected now
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(exchange2.id)
         );
     }
@@ -495,8 +596,11 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(Ok(Arc::clone(&harness.collection))),
+        );
         // Select History list
         component
             .int()
@@ -507,7 +611,7 @@ mod tests {
 
         // Sanity check for initial state
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(new_exchange.id)
         );
 
@@ -523,7 +627,7 @@ mod tests {
 
         // Same request is still selected
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(new_exchange.id)
         );
 
@@ -563,8 +667,11 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let mut component =
-            TestComponent::new(&harness, &terminal, Root::new());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(Ok(Arc::clone(&harness.collection))),
+        );
         // Select exchange pane
         component
             .int()
@@ -575,7 +682,7 @@ mod tests {
 
         // Sanity check for initial state
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(new_exchange.id)
         );
 
@@ -589,7 +696,7 @@ mod tests {
 
         // Same request is still selected
         assert_eq!(
-            component.primary_view.selected_request_id(),
+            component.primary.as_ref().unwrap().selected_request_id(),
             Some(new_exchange.id)
         );
 

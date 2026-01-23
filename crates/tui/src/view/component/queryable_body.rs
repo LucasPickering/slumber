@@ -489,7 +489,7 @@ mod tests {
     use super::*;
     use crate::{
         context::TuiContext,
-        test_util::{TestHarness, TestTerminal, harness, run_local, terminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
     use ratatui::{layout::Margin, text::Span};
@@ -533,7 +533,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_text_body(
-        harness: TestHarness,
+        mut harness: TestHarness,
         #[with(27, 3)] terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
@@ -560,19 +560,11 @@ mod tests {
         component
             .int()
             .send_key(KeyCode::Char('/'))
+            .send_text("head -c 1")
+            .send_key(KeyCode::Enter)
             .assert()
             .empty();
-        // The subprocess uses local tasks, so we need to run in a local set.
-        // When this future exits, all tasks are done
-        run_local(async {
-            component
-                .int()
-                .send_text("head -c 1")
-                .send_key(KeyCode::Enter)
-                .assert()
-                .empty();
-        })
-        .await;
+        harness.run_task().await; // Run spawned command
         // Command is done, handle its resulting event
         component.int().drain_draw().assert().empty();
 
@@ -610,7 +602,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_persistence(
-        harness: TestHarness,
+        mut harness: TestHarness,
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
@@ -619,17 +611,13 @@ mod tests {
             .persistent_store()
             .set(&Key, &"head -c 1".to_owned());
 
-        // On init, we'll start executing the command in a local task. Wait for
-        // that to finish
-        let mut component = run_local(async {
-            TestComponent::new(
-                &harness,
-                &terminal,
-                // Default value should get tossed out
-                QueryableBody::new(Key, response, Some("initial".into())),
-            )
-        })
-        .await;
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            // Default value should get tossed out
+            QueryableBody::new(Key, response, Some("initial".into())),
+        );
+        harness.run_task().await; // Run the initial task
 
         // After the command is done, there's a subsequent event with the result
         component.int().drain_draw().assert().empty();
@@ -642,19 +630,16 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_default_query_initial(
-        harness: TestHarness,
+        mut harness: TestHarness,
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
-        // Local task is spawned to execute the initial subprocess
-        let component = run_local(async {
-            TestComponent::new(
-                &harness,
-                &terminal,
-                QueryableBody::new(Key, response, Some("head -n 1".into())),
-            )
-        })
-        .await;
+        let component = TestComponent::new(
+            &harness,
+            &terminal,
+            QueryableBody::new(Key, response, Some("head -n 1".into())),
+        );
+        harness.run_task().await; // Run the initial task
 
         assert_eq!(component.last_executed_query.as_deref(), Some("head -n 1"));
     }
@@ -664,22 +649,19 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_default_query_persisted(
-        harness: TestHarness,
+        mut harness: TestHarness,
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
         harness.persistent_store().set(&Key, &String::new());
 
-        // Local task is spawned to execute the initial subprocess
-        let component = run_local(async {
-            TestComponent::new(
-                &harness,
-                &terminal,
-                // Default should override the persisted value
-                QueryableBody::new(Key, response, Some("head -n 1".into())),
-            )
-        })
-        .await;
+        let component = TestComponent::new(
+            &harness,
+            &terminal,
+            // Default should override the persisted value
+            QueryableBody::new(Key, response, Some("head -n 1".into())),
+        );
+        harness.run_task().await; // Run the initial task
 
         assert_eq!(component.last_executed_query.as_deref(), Some("head -n 1"));
     }
@@ -714,11 +696,11 @@ mod tests {
             .send_text(&command)
             .assert()
             .empty();
-        // Triggers the background task
-        run_local(async {
-            component.int().send_key(KeyCode::Enter).assert().empty();
-        })
-        .await;
+
+        // Trigger the background task, then run it
+        component.int().send_key(KeyCode::Enter).assert().empty();
+        harness.run_task().await;
+
         // Success should push a notification
         assert_matches!(harness.messages().pop_now(), Message::Notify(_));
         let file_content = fs::read_to_string(&path).await.unwrap();
@@ -732,10 +714,8 @@ mod tests {
             .send_text("bad!")
             .assert()
             .empty();
-        run_local(async {
-            component.int().send_key(KeyCode::Enter).assert().empty();
-        })
-        .await;
+        component.int().send_key(KeyCode::Enter).assert().empty();
+        harness.run_task().await;
         component.int().drain_draw().assert().empty();
         assert_matches!(harness.messages().pop_now(), Message::Error { .. });
     }

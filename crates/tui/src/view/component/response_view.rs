@@ -163,7 +163,7 @@ impl Draw for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{TestHarness, TestTerminal, harness, run_local, terminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
     use indexmap::indexmap;
@@ -283,20 +283,15 @@ mod tests {
         );
 
         if let Some(query) = query {
-            // Querying requires a LocalSet to run the command in the background
-            run_local(async {
-                // Type something into the query box
-                component
-                    .int()
-                    .send_key(KeyCode::Char('/'))
-                    .send_text(query)
-                    .send_key(KeyCode::Enter)
-                    .assert()
-                    .empty();
-                // Wait for the command to finish, pass results back to the
-                // component
-            })
-            .await;
+            // Type something into the query box
+            component
+                .int()
+                .send_key(KeyCode::Char('/'))
+                .send_text(query)
+                .send_key(KeyCode::Enter)
+                .assert()
+                .empty();
+            harness.run_task().await; // Run the command
             component.int().drain_draw().assert().empty();
         }
 

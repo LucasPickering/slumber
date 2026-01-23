@@ -146,8 +146,7 @@ impl<PK> TemplatePreview<PK> {
                 let text = TextStitcher::stitch_chunks(output).set_style(style);
 
                 // We can emit the event directly from the callback because
-                // the task is run on a local set. This is maybe a bit jank and
-                // it should be routed through Message instead?
+                // the task is run on a local set
                 emitter.emit(TemplatePreviewEvent(text));
             };
 

@@ -14,14 +14,10 @@ use ratatui::{
 };
 use rstest::fixture;
 use slumber_core::{collection::Collection, database::CollectionDatabase};
-use slumber_util::Factory;
-use std::{
-    cell::RefCell, future::Future, ops::DerefMut, rc::Rc, sync::Arc,
-    time::Duration,
-};
+use slumber_util::{Factory, assert_matches};
+use std::{cell::RefCell, ops::DerefMut, rc::Rc, sync::Arc, time::Duration};
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver},
-    task::LocalSet,
     time,
 };
 
@@ -89,6 +85,16 @@ impl TestHarness {
     /// Get a clone of the message sender
     pub fn messages_tx(&self) -> MessageSender {
         self.messages.tx()
+    }
+
+    /// Pop a [Message::Spawn] off the queue and run the task
+    ///
+    /// Panic if the queue is empty or the next message isn't `Spawn`.
+    pub async fn run_task(&mut self) {
+        let future = assert_matches!(
+            self.messages().pop_now(), Message::Spawn(future) => future
+        );
+        future.await;
     }
 }
 
@@ -198,15 +204,6 @@ impl TestTerminal {
     pub fn draw(&self, f: impl FnOnce(&mut Frame)) {
         self.0.borrow_mut().draw(f).unwrap();
     }
-}
-
-/// Run a future in a local set, so it can use [tokio::task::spawn_local]. This
-/// will wait until all spawned tasks are done.
-pub async fn run_local<T>(future: impl Future<Output = T>) -> T {
-    let local = LocalSet::new();
-    let output = local.run_until(future).await; // Let the future spawn tasks
-    local.await; // Wait until all tasks are done
-    output
 }
 
 /// Assert that the event queue matches the given list of patterns. Each event

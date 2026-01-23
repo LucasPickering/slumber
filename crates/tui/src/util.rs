@@ -503,7 +503,7 @@ pub async fn confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{MessageQueue, run_local};
+    use crate::test_util::MessageQueue;
     use rstest::rstest;
     use slumber_config::CommandsConfig;
     use slumber_util::{TempDir, assert_matches, temp_dir};
@@ -528,7 +528,6 @@ mod tests {
         // We need to run two futures concurrently:
         // - save_file() procedure
         // - Respondent that will pop the prompt messages and handle them
-        // Our futures are !Send so this has to happen on a single local set
         let mut messages = MessageQueue::new();
         let save_file_fut = save_file(
             messages.tx(),
@@ -570,8 +569,7 @@ mod tests {
         };
 
         // Run the two futures together
-        let (result, ()) =
-            run_local(future::join(save_file_fut, assertions_fut)).await;
+        let (result, ()) = future::join(save_file_fut, assertions_fut).await;
         result.unwrap();
 
         // Now the file should be created

@@ -19,7 +19,7 @@ use crate::{
     input::InputEvent,
     message::{Message, MessageSender},
     tui_state::TuiState,
-    util::{CANCEL_TOKEN, ResultReported},
+    util::ResultReported,
 };
 use anyhow::Context;
 use crossterm::event::{self, EventStream};
@@ -288,7 +288,7 @@ where
     /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
         let messages_tx = self.messages_tx();
-        util::spawn(async move {
+        self.messages_tx.spawn(async move {
             util::signals().await.reported(&messages_tx);
             messages_tx.send(Message::Quit);
         });
@@ -299,7 +299,7 @@ where
         info!("Initiating graceful shutdown");
         self.should_run = false;
         // Kill all background tasks
-        CANCEL_TOKEN.cancel();
+        self.messages_tx.cancel();
     }
 
     /// Draw the view onto the screen.

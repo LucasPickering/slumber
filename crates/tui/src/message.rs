@@ -4,10 +4,9 @@
 use crate::{
     http::{PromptId, PromptReply},
     input::InputEvent,
-    util::TempFile,
+    util::{ResultReported, TempFile},
     view::Question,
 };
-use derive_more::From;
 use mime::Mime;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
@@ -20,23 +19,77 @@ use slumber_core::{
 use slumber_template::{RenderedOutput, Template};
 use slumber_util::{ResultTraced, yaml::SourceLocation};
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::{
+    select,
+    sync::mpsc::UnboundedSender,
+    task::{self, JoinHandle},
+};
+use tokio_util::sync::CancellationToken;
 use tracing::trace;
 
 /// Wrapper around a sender for async messages. Cheap to clone and pass around
-#[derive(Clone, Debug, From)]
-pub struct MessageSender(UnboundedSender<Message>);
+///
+/// Somewhat lazily, this also holds the cancellation token for all background
+/// tasks. It's not intuitive, but both the message tx and cancellation token
+/// need to be accessible throughout the app, but can't be `static` because
+/// that doesn't work with tests. Passing them together makes it much easier.
+#[derive(Clone, Debug)]
+pub struct MessageSender {
+    cancel_token: CancellationToken,
+    tx: UnboundedSender<Message>,
+}
 
 impl MessageSender {
-    pub fn new(sender: UnboundedSender<Message>) -> Self {
-        Self(sender)
+    pub fn new(tx: UnboundedSender<Message>) -> Self {
+        Self {
+            cancel_token: CancellationToken::new(),
+            tx,
+        }
     }
 
     /// Send an async message, to be handled by the main loop
     pub fn send(&self, message: impl Into<Message>) {
         let message: Message = message.into();
         trace!(?message, "Queueing message");
-        let _ = self.0.send(message).traced();
+        let _ = self.tx.send(message).traced();
+    }
+
+    /// Spawn a task on the main thread
+    ///
+    /// Most tasks can use this because the app is generally I/O bound, so we
+    /// can handle all async stuff on a single thread. The task will be
+    /// automatically cancelled on shutdown.
+    pub fn spawn(
+        &self,
+        future: impl 'static + Future<Output = ()>,
+    ) -> JoinHandle<()> {
+        let cancel_token = self.cancel_token.clone();
+        task::spawn_local(async move {
+            select! {
+                () = future => {},
+                () = cancel_token.cancelled() => {},
+            }
+        })
+    }
+
+    /// Spawn a fallible task. If it fails, report the error to the user
+    ///
+    /// The task will be automatically cancelled on shutdown.
+    pub fn spawn_result(
+        &self,
+        future: impl 'static + Future<Output = anyhow::Result<()>>,
+    ) -> JoinHandle<()> {
+        let messages_tx = self.clone();
+        self.spawn(async move {
+            future.await.reported(&messages_tx);
+        })
+    }
+
+    /// Cancel all background tasks
+    ///
+    /// Call this only on TUI shutdown.
+    pub fn cancel(&self) {
+        self.cancel_token.cancel();
     }
 }
 

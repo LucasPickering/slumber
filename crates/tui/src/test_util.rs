@@ -105,7 +105,10 @@ impl MessageQueue {
     /// Open a new MPSC channel
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
-        Self { rx, tx: tx.into() }
+        Self {
+            rx,
+            tx: MessageSender::new(tx),
+        }
     }
 
     /// Get a new message sender

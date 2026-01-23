@@ -1,6 +1,6 @@
 use crate::{
     message::{Message, MessageSender},
-    view::{Question, ViewContext},
+    view::Question,
 };
 use anyhow::{Context, bail};
 use bytes::Bytes;
@@ -13,28 +13,15 @@ use slumber_util::{ResultTracedAnyhow, paths::expand_home};
 use std::{
     env,
     fs::{self, File},
-    future::Future,
     io::{self, Write},
     ops::Deref,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::LazyLock,
     time::Duration,
 };
-use tokio::{
-    fs::OpenOptions,
-    io::AsyncWriteExt,
-    select,
-    sync::oneshot,
-    task::{self, JoinHandle},
-};
-use tokio_util::sync::CancellationToken;
+use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
 use tracing::{debug, debug_span, error, info, info_span, warn};
 use uuid::Uuid;
-
-/// Token to manage cancellation of background tasks
-pub static CANCEL_TOKEN: LazyLock<CancellationToken> =
-    LazyLock::new(CancellationToken::new);
 
 /// Extension trait for [Result]
 pub trait ResultReported<T, E>: Sized {
@@ -257,28 +244,6 @@ pub async fn signals() -> anyhow::Result<()> {
     future::select_all(futures).await;
     info!("Received exit signal");
     Ok(())
-}
-
-/// Spawn a task on the main thread. Most tasks can use this because the app is
-/// generally I/O bound, so we can handle all async stuff on a single thread.
-/// The UI will be redrawn when the task is done. This redraw may be redundant,
-/// but it's thorough and the cost is minimal.
-pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
-    task::spawn_local(async move {
-        select! {
-            () = future => {},
-            () = CANCEL_TOKEN.cancelled() => {},
-        }
-    })
-}
-
-/// Spawn a fallible task. If it fails, report the error to the user
-pub fn spawn_result(
-    future: impl 'static + Future<Output = anyhow::Result<()>>,
-) -> JoinHandle<()> {
-    spawn(async move {
-        future.await.reported(&ViewContext::messages_tx());
-    })
 }
 
 /// Save some data to disk. This will:

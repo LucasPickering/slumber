@@ -9,6 +9,7 @@ use crate::{
 };
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use std::{cell::RefCell, sync::Arc};
+use tokio::task::JoinHandle;
 use tracing::debug;
 
 /// Thread-local context container, which stores mutable state needed in the
@@ -117,6 +118,13 @@ impl ViewContext {
     /// Send an async message on the channel
     pub fn send_message(message: impl Into<Message>) {
         Self::with(|context| context.messages_tx.send(message));
+    }
+
+    /// Spawn a task on the main thread
+    ///
+    /// The task will be automatically cancelled on TUI shutdown.
+    pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
+        Self::with(|context| context.messages_tx.spawn(future))
     }
 }
 

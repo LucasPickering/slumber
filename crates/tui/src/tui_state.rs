@@ -543,7 +543,7 @@ impl LoadedState {
         let context = self.template_context(profile_id, Some(seed.id));
 
         let future = render(context, seed);
-        util::spawn_result(async move {
+        self.messages_tx.spawn_result(async move {
             let text = future.await?;
             messages_tx.send(Message::CopyText(text));
             Ok(())
@@ -576,7 +576,7 @@ impl LoadedState {
             // never parsed. This clone is cheap so we're being efficient!
             exchange.response.body.bytes().clone()
         });
-        util::spawn_result(util::save_file(
+        self.messages_tx.spawn_result(util::save_file(
             self.messages_tx(),
             default_path,
             data,
@@ -613,7 +613,7 @@ impl LoadedState {
 
         // Don't use spawn_result here, because errors are handled specially for
         // requests
-        let join_handle = util::spawn(async move {
+        let join_handle = self.messages_tx.spawn(async move {
             // Build the request
             let result = TuiContext::get()
                 .http_engine
@@ -683,7 +683,7 @@ impl LoadedState {
         on_complete: Callback<RenderedOutput>,
     ) {
         let context = self.template_context(profile_id, None);
-        util::spawn(async move {
+        self.messages_tx.spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render(&context.streaming(can_stream)).await;
             on_complete(chunks);

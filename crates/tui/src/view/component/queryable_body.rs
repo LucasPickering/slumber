@@ -218,7 +218,7 @@ impl<K> QueryableBody<K> {
         body: Bytes,
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
     ) -> AbortHandle {
-        util::spawn(async move {
+        ViewContext::spawn(async move {
             // Store the command in history. Query and export commands are
             // stored together. We can toss the error; it gets traced by the DB
             let _ =

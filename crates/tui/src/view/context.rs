@@ -53,7 +53,7 @@ impl ViewContext {
         static INSTANCE: RefCell<Option<ViewContext>> = RefCell::default();
     }
 
-    /// Initialize the view context for this thread
+    /// Initialize or overwrite the view context
     pub fn init(
         collection: Arc<Collection>,
         database: CollectionDatabase,
@@ -68,12 +68,6 @@ impl ViewContext {
                 messages_tx,
             });
         });
-    }
-
-    /// TODO
-    pub fn reset() {
-        debug!("Resetting view context");
-        Self::INSTANCE.with_borrow_mut(|context| *context = None);
     }
 
     /// Execute a function with read-only access to the context

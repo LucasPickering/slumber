@@ -38,7 +38,7 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, CollectionError, ProfileId},
+    collection::{Collection, CollectionError, CollectionFile, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
 };
@@ -64,17 +64,21 @@ use tracing::{trace, trace_span, warn};
 /// events), so we need to make sure the queue is constantly being drained.
 #[derive(Debug)]
 pub struct View {
-    /// TODO
-    root: Result<Root, CollectionError>,
+    /// Root component if the collection is valid. If not, this will be the
+    /// error that prevented the collection from loading.
+    root: Result<Root, InvalidCollection>,
     /// Populated iff the `debug` config field is enabled. This tracks view
     /// metrics and displays them to the user.
     debug_monitor: Option<DebugMonitor>,
 }
 
 impl View {
-    /// TODO
+    /// Initialize the view. This will build out the entire component tree
+    ///
+    /// This accepts a loaded collection *or* an error. If the collection fails
+    /// to load, we'll show the error and wait for the user to fix it or exit.
     pub fn new(
-        collection: Result<Arc<Collection>, CollectionError>,
+        collection: Result<Arc<Collection>, InvalidCollection>,
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) -> Self {
@@ -84,7 +88,11 @@ impl View {
                 Ok(Root::new())
             }
             Err(error) => {
-                ViewContext::reset();
+                // Put a placeholder collection in the context. This is a bit
+                // of a hack, but ensures the context is populated for other
+                // things that need it. We won't render any components that
+                // rely on the collection.
+                ViewContext::init(Default::default(), database, messages_tx);
                 Err(error)
             }
         };
@@ -124,7 +132,7 @@ impl View {
                     Canvas::draw_all(buffer, root, ())
                 }
             }
-            Err(error) => {
+            Err(invalid) => {
                 let context = TuiContext::get();
                 let [message_area, _, error_area] = Layout::vertical([
                     Constraint::Length(2),
@@ -133,15 +141,16 @@ impl View {
                 ])
                 .areas(*buffer.area());
                 Widget::render(
-                    (error as &dyn StdError).generate(),
+                    (&*invalid.error as &dyn StdError).generate(),
                     error_area,
                     buffer,
                 );
                 Widget::render(
                     Text::styled(
                         format!(
-                            "Watching {collection_file} for changes...\n{} to exit",
-                            context
+                            "Watching {file} for changes...\n{key} to exit",
+                            file = invalid.file,
+                            key = context
                                 .input_engine
                                 .binding_display(Action::ForceQuit),
                         ),
@@ -276,6 +285,13 @@ impl View {
                 anyhow::Error::from(error).context("Error copying text")
             })
     }
+}
+
+/// Container for the state the view needs to show a collection load error
+#[derive(Debug)]
+pub struct InvalidCollection {
+    pub file: CollectionFile,
+    pub error: Arc<CollectionError>,
 }
 
 /// A helper for building a UI. It can be converted into some UI element to be

@@ -6,8 +6,8 @@ use crate::{
     },
     util,
     view::{
-        ComponentMap, PreviewPrompter, RequestDisposition, TuiPrompter,
-        UpdateContext, View, persistent::PersistentStore,
+        ComponentMap, InvalidCollection, PreviewPrompter, RequestDisposition,
+        TuiPrompter, UpdateContext, View, persistent::PersistentStore,
     },
 };
 use anyhow::{Context, anyhow, bail};
@@ -38,7 +38,10 @@ pub struct CollectionState {
     /// If the collection loading failed, we store the error here so we can
     /// show it in the view. We'll display the error until the user fixes the
     /// issue or exits.
-    pub collection: Result<Arc<Collection>, CollectionError>,
+    ///
+    /// Both variants are wrapped in an `Arc` so we can share them cheaply with
+    /// the view.
+    pub collection: Result<Arc<Collection>, Arc<CollectionError>>,
     /// Handle for the file from which the collection will be loaded
     pub collection_file: CollectionFile,
     /// A map of all components drawn in the most recent draw phase
@@ -73,13 +76,19 @@ impl CollectionState {
         let request_store = RequestStore::new(database.clone());
 
         // Wrap the collection in Arc so it can be shared cheaply
-        let collection = collection_file.load().map(Arc::new);
+        let collection = collection_file.load().map(Arc::new).map_err(Arc::new);
         if let Ok(collection) = &collection {
             // Update the DB with the collection's name
             database.set_name(collection);
         }
 
-        let view = View::new(collection, database.clone(), messages_tx.clone());
+        let view_collection =
+            collection.clone().map_err(|error| InvalidCollection {
+                file: collection_file.clone(),
+                error,
+            });
+        let view =
+            View::new(view_collection, database.clone(), messages_tx.clone());
 
         Self {
             collection,

@@ -5,7 +5,6 @@
 //! do so at your own risk of breakage.
 
 mod collection_state;
-mod context;
 mod http;
 mod input;
 mod message;
@@ -16,7 +15,6 @@ mod view;
 
 use crate::{
     collection_state::CollectionState,
-    context::TuiContext,
     http::{RequestConfig, RequestState, TuiHttpProvider},
     input::{InputEngine, InputEvent},
     message::{
@@ -162,8 +160,6 @@ where
             .unwrap_or_default()
             .into();
         let http_engine = HttpEngine::new(&config.http);
-        // Initialize global view context
-        TuiContext::init(config.clone());
         let database = Database::load()?;
 
         // Initialize TUI state, which will try to load the collection. If it

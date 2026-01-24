@@ -16,15 +16,12 @@ use std::{cell::RefCell, fmt::Display, sync::Arc};
 use tracing::debug;
 
 /// Thread-local context container, which stores mutable state needed in the
-/// view thread. Unlike [TuiContext](crate::TuiContext), this state can be
-/// mutable because it's not shared between threads. Some pieces of this state
-/// *are* shared between threads, but that's because they are internally
-/// thread-safe.
+/// view thread
 ///
 /// The main purpose of this is to prevent an absurd amount of plumbing required
-/// to get all these individual pieces to every place they're needed in the
-/// view code. We're leaning heavily on the fact that the view is
-/// single-threaded here.
+/// to get all these individual pieces to every place they're needed in the view
+/// code. We're leaning heavily on the fact that the view is single-threaded
+/// here.
 pub struct ViewContext {
     /// App-level configuration
     config: Arc<Config>,

@@ -1,7 +1,6 @@
 //! Test utilities specific to the TUI *view*
 
 use crate::{
-    context::TuiContext,
     http::RequestStore,
     message::{Message, MessageSender},
     test_util::{MessageQueue, TestTerminal},
@@ -59,7 +58,6 @@ pub struct TestHarness {
 impl TestHarness {
     /// Create a new test harness and initialize state
     pub fn new(collection: Collection) -> Self {
-        TuiContext::init_test();
         let messages = MessageQueue::new();
         let database = CollectionDatabase::factory(());
         let request_store =

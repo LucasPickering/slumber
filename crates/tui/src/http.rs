@@ -3,10 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{
-    context::TuiContext,
-    message::{HttpMessage, Message, MessageSender},
-};
+use crate::message::{HttpMessage, Message, MessageSender};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use derive_more::derive::Display;
@@ -17,7 +14,7 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     database::{CollectionDatabase, DatabaseError, ProfileFilter},
     http::{
-        BuildOptions, Exchange, ExchangeSummary, RequestBuildError,
+        BuildOptions, Exchange, ExchangeSummary, HttpEngine, RequestBuildError,
         RequestError, RequestId, RequestRecord, RequestSeed,
         StoredRequestError, TriggeredRequestError,
     },
@@ -513,6 +510,8 @@ impl RequestStore {
 /// store type signatures a lot. This is self-contained with minimal perf impact
 #[derive(Debug)]
 pub struct TuiHttpProvider {
+    /// For to making more requests with
+    http_engine: HttpEngine,
     messages_tx: MessageSender,
     /// Are we rendering request previews, or the real deal? This controls
     /// whether we'll send triggered requests or not
@@ -520,8 +519,13 @@ pub struct TuiHttpProvider {
 }
 
 impl TuiHttpProvider {
-    pub fn new(messages_tx: MessageSender, preview: bool) -> Self {
+    pub fn new(
+        http_engine: HttpEngine,
+        messages_tx: MessageSender,
+        preview: bool,
+    ) -> Self {
         Self {
+            http_engine,
             messages_tx,
             preview,
         }
@@ -569,7 +573,7 @@ impl HttpProvider for TuiHttpProvider {
                 recipe_id,
             });
 
-            let ticket = TuiContext::get()
+            let ticket = self
                 .http_engine
                 .build(seed, template_context)
                 .await

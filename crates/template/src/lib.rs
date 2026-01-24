@@ -318,12 +318,8 @@ impl RenderedOutput {
     pub fn has_stream(&self) -> bool {
         self.0.iter().any(|chunk| match chunk {
             RenderedChunk::Raw(_) => false,
-            RenderedChunk::Rendered(LazyValue::Value(_)) => false,
-            RenderedChunk::Rendered(LazyValue::Stream { .. }) => true,
-            // Recursion!!
-            RenderedChunk::Rendered(LazyValue::Nested(output)) => {
-                output.has_stream()
-            }
+            // Recursion! Mutual!!
+            RenderedChunk::Rendered(lazy_value) => lazy_value.has_stream(),
             RenderedChunk::Error(_) => true,
         })
     }

@@ -17,11 +17,16 @@ mod view;
 use crate::{
     collection_state::CollectionState,
     context::TuiContext,
+    http::{RequestConfig, RequestState, TuiHttpProvider},
     input::InputEvent,
-    message::{Message, MessageSender},
+    message::{
+        Callback, HttpMessage, Message, MessageSender, RecipeCopyTarget,
+    },
     util::ResultReported,
+    view::{PreviewPrompter, RequestDisposition, TuiPrompter},
 };
-use anyhow::Context;
+use anyhow::{Context, anyhow, bail};
+use bytes::Bytes;
 use crossterm::event::{self, EventStream};
 use futures::{Stream, StreamExt, pin_mut};
 use ratatui::{
@@ -32,14 +37,18 @@ use ratatui::{
 };
 use slumber_config::{Action, Config};
 use slumber_core::{
-    collection::{Collection, CollectionFile},
+    collection::{Collection, CollectionFile, ProfileId},
     database::{CollectionDatabase, Database},
+    http::{Exchange, RequestError, RequestId, RequestSeed},
+    render::{Prompter, TemplateContext},
 };
-use slumber_util::yaml::SourceLocation;
+use slumber_template::{RenderedOutput, Template};
+use slumber_util::{ResultTraced, yaml::SourceLocation};
 use std::{
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
+    sync::Arc,
     time::Duration,
 };
 use tokio::{
@@ -314,7 +323,7 @@ where
                 self.edit_collection(location)?;
             }
 
-            Message::CopyRecipe(target) => self.state.copy_recipe(target)?,
+            Message::CopyRecipe(target) => self.copy_recipe(target)?,
             Message::CopyText(text) => self.state.view.copy_text(text)?,
 
             Message::Error { error } => self.state.view.error(error),
@@ -339,7 +348,7 @@ where
                 drop(file);
             }
 
-            Message::Http(message) => self.state.handle_http(message)?,
+            Message::Http(message) => self.handle_http(message)?,
             Message::HttpGetLatest {
                 profile_id,
                 recipe_id,
@@ -374,14 +383,14 @@ where
             Message::Notify(message) => self.state.view.notify(message),
             Message::Question(question) => self.state.view.question(question),
             Message::SaveResponseBody { request_id, data } => {
-                self.state
-                    .save_response_body(request_id, data)
-                    .with_context(|| {
+                self.save_response_body(request_id, data).with_context(
+                    || {
                         format!(
                             "Error saving response body \
                             for request {request_id}"
                         )
-                    })?;
+                    },
+                )?;
             }
             Message::Spawn(future) => {
                 self.spawn(future);
@@ -396,7 +405,7 @@ where
                 // extremely unlikely (potentially impossible), and this
                 // shortcut saves us a lot of plumbing so it's worth it
                 let profile_id = self.state.view.selected_profile_id().cloned();
-                self.state.render_template_preview(
+                self.render_template_preview(
                     template,
                     profile_id,
                     can_stream,
@@ -404,6 +413,87 @@ where
                 );
             }
         }
+        Ok(())
+    }
+
+    /// Handle an [HttpMessage]
+    fn handle_http(&mut self, message: HttpMessage) -> anyhow::Result<()> {
+        let disposition = match message {
+            HttpMessage::Triggered {
+                request_id,
+                profile_id,
+                recipe_id,
+            } => {
+                self.state
+                    .request_store
+                    .start(request_id, profile_id, recipe_id, None);
+                // Request is triggered in the background. Switching to it could
+                // be jarring
+                RequestDisposition::Change(request_id)
+            }
+            HttpMessage::Begin => {
+                let id = self.send_request()?;
+                // New requests should be shown immediately
+                RequestDisposition::Select(id)
+            }
+            HttpMessage::Prompt { request_id, prompt } => {
+                let id =
+                    self.state.request_store.prompt(request_id, prompt).id();
+                // For any new prompt, jump to the form. This may potentially
+                // be annoying for delayed prompts. If so we can change it :)
+                RequestDisposition::OpenForm(id)
+            }
+            HttpMessage::FormSubmit {
+                request_id,
+                replies: responses,
+            } => {
+                let id = self
+                    .state
+                    .request_store
+                    .submit_form(request_id, responses)
+                    .id();
+                RequestDisposition::Change(id)
+            }
+            HttpMessage::BuildError(error) => {
+                let id = self.state.request_store.build_error(error).id();
+                RequestDisposition::Change(id)
+            }
+            HttpMessage::Loading(request) => {
+                let id = self.state.request_store.loading(request).id();
+                RequestDisposition::Change(id)
+            }
+            HttpMessage::Complete(result) => {
+                let id = self.complete_request(result).id();
+                RequestDisposition::Change(id)
+            }
+            HttpMessage::Cancel(request_id) => {
+                let id = self.state.request_store.cancel(request_id).id();
+                RequestDisposition::Change(id)
+            }
+            HttpMessage::DeleteRequest(request_id) => {
+                self.state.request_store.delete_request(request_id)?;
+                RequestDisposition::Change(request_id)
+            }
+            HttpMessage::DeleteRecipe {
+                recipe_id,
+                profile_filter,
+            } => {
+                let deleted = self
+                    .state
+                    .request_store
+                    .delete_recipe_requests(profile_filter, &recipe_id)?;
+                RequestDisposition::ChangeAll(deleted)
+            }
+        };
+
+        // Tell the UI that *something* changed in the request store, and
+        // optionally the disposition will tell it if anything should change.
+        // The view is responsible for checking the store to see if the current
+        // request was changed at all, and modify the view if so.
+        self.state
+            .view
+            .refresh_request(&mut self.state.request_store, disposition);
+
         Ok(())
     }
 
@@ -505,6 +595,263 @@ where
                 .draw(|frame| self.state.draw(frame.buffer_mut()))?;
         }
         Ok(())
+    }
+
+    /// Launch an HTTP request in a separate task
+    fn send_request(&mut self) -> anyhow::Result<RequestId> {
+        let RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        } = self.state.request_config()?;
+        // Launch the request in a separate task so it doesn't block.
+        // These clones are all cheap.
+
+        let seed = RequestSeed::new(recipe_id.clone(), options);
+        let request_id = seed.id;
+        let template_context =
+            self.template_context(profile_id.clone(), Some(request_id));
+        let messages_tx = self.messages_tx.clone();
+
+        // Don't use spawn_result here, because errors are handled specially for
+        // requests
+        let cancel_token = CancellationToken::new();
+        let future = async move {
+            // Build the request
+            let result = TuiContext::get()
+                .http_engine
+                .build(seed, &template_context)
+                .await;
+            let ticket = match result {
+                Ok(ticket) => ticket,
+                Err(error) => {
+                    // Report the error, but don't actually return anything
+                    messages_tx.send(HttpMessage::BuildError(error.into()));
+                    return;
+                }
+            };
+
+            // Report liftoff
+            messages_tx.send(HttpMessage::Loading(Arc::clone(ticket.record())));
+
+            // Send the request and report the result to the main thread
+            let result = ticket.send().await.map_err(Arc::new);
+            messages_tx.send(HttpMessage::Complete(result));
+        };
+        self.messages_tx
+            .spawn(util::cancellable(&cancel_token, future));
+
+        // Add the new request to the store. This has to go after spawning the
+        // task so we can include the join handle (for cancellation)
+        self.state.request_store.start(
+            request_id,
+            profile_id,
+            recipe_id,
+            Some(cancel_token),
+        );
+
+        Ok(request_id)
+    }
+
+    /// Process the result of an HTTP request
+    fn complete_request(
+        &mut self,
+        result: Result<Exchange, Arc<RequestError>>,
+    ) -> &RequestState {
+        match result {
+            Ok(exchange) => {
+                // Shouldn't be reachable if the collection isn't defined
+                // TODO there's a bug here if the collection swaps while the
+                // request is in flight
+                let collection = self.collection().expect("Collection missing");
+
+                // Persist in the DB if not disabled by global config or recipe
+                let persist = TuiContext::get().config.tui.persist
+                    && collection
+                        .recipes
+                        .try_get_recipe(&exchange.request.recipe_id)
+                        .is_ok_and(|recipe| recipe.persist);
+                if persist {
+                    let _ =
+                        self.state.database.insert_exchange(&exchange).traced();
+                }
+
+                self.state.request_store.response(exchange)
+            }
+            Err(error) => self.state.request_store.request_error(error),
+        }
+    }
+
+    /// Copy some component of the current recipe. Depending on the target, this
+    /// may require rendering some or all of the recipe
+    fn copy_recipe(&mut self, target: RecipeCopyTarget) -> anyhow::Result<()> {
+        match target {
+            // Render+copy URL
+            RecipeCopyTarget::Url => self.render_copy(async |context, seed| {
+                let http_engine = &TuiContext::get().http_engine;
+                let url = http_engine.build_url(seed, &context).await?;
+                Ok(url.to_string())
+            }),
+
+            // Render+copy body
+            RecipeCopyTarget::Body => {
+                self.render_copy(async |context, seed| {
+                    let http_engine = &TuiContext::get().http_engine;
+                    let body = http_engine
+                        .build_body(seed, &context)
+                        .await?
+                        .ok_or(anyhow!("Request has no body"))?;
+                    // Clone the bytes :(
+                    String::from_utf8(body.into())
+                        .context("Cannot copy request body")
+                })
+            }
+
+            // Copy the recipe as a CLI command. This does *not* require
+            // rendering; the render is done when the command is executed
+            RecipeCopyTarget::Cli => {
+                let command = self
+                    .state
+                    .request_config()?
+                    .to_cli(self.state.collection_file.path());
+                self.state.view.copy_text(command)
+            }
+
+            // Render request, then copy the equivalent curl command
+            RecipeCopyTarget::Curl => {
+                self.render_copy(async |context, seed| {
+                    let http_engine = &TuiContext::get().http_engine;
+                    http_engine
+                        .build_curl(seed, &context)
+                        .await
+                        .map_err(anyhow::Error::from)
+                })
+            }
+
+            RecipeCopyTarget::Python => {
+                let code = self
+                    .state
+                    .request_config()?
+                    .to_python(self.state.collection_file.path());
+                self.state.view.copy_text(code)
+            }
+        }
+    }
+
+    /// Call an async function to render some part of a request to a string,
+    /// then copy that string to the clipboard
+    fn render_copy<F>(&self, render: F) -> anyhow::Result<()>
+    where
+        F: 'static
+            + AsyncFnOnce(TemplateContext, RequestSeed) -> anyhow::Result<String>,
+    {
+        let messages_tx = self.messages_tx.clone();
+        let RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        } = self.state.request_config()?;
+        let seed = RequestSeed::new(recipe_id, options);
+        // Even though this isn't a real request, we use a real request ID
+        // because we may need to show prompts to the user under that ID
+        let context = self.template_context(profile_id, Some(seed.id));
+
+        let future = render(context, seed);
+        self.messages_tx.spawn_result(async move {
+            let text = future.await?;
+            messages_tx.send(Message::CopyText(text));
+            Ok(())
+        });
+
+        Ok(())
+    }
+
+    /// Save the body of a response to a file, prompting the user for a file
+    /// path. If the body text is provided, that will be used. Useful when
+    /// what's being saved differs from the actual response body (because of
+    /// prettification/querying). If not provided, we'll pull the body from the
+    /// request store.
+    fn save_response_body(
+        &self,
+        request_id: RequestId,
+        text: Option<String>,
+    ) -> anyhow::Result<()> {
+        let Some(request_state) = self.state.request_store.get(request_id)
+        else {
+            bail!("Request not in store")
+        };
+        let RequestState::Response { exchange } = request_state else {
+            bail!("Request is not complete")
+        };
+        // Get a suggested file name from the response if possible
+        let default_path = exchange.response.file_name();
+
+        let data = text.map(Bytes::from).unwrap_or_else(|| {
+            // This is the path we hit for binary and/or large bodies that were
+            // never parsed. This clone is cheap so we're being efficient!
+            exchange.response.body.bytes().clone()
+        });
+        self.messages_tx.spawn_result(util::save_file(
+            self.messages_tx.clone(),
+            default_path,
+            data,
+        ));
+        Ok(())
+    }
+
+    /// Spawn a task to render a template, storing the result in a pre-defined
+    /// lock. As this is a preview, the user will *not* be prompted for any
+    /// input. A placeholder value will be used for any prompts.
+    fn render_template_preview(
+        &self,
+        template: Template,
+        profile_id: Option<ProfileId>,
+        can_stream: bool,
+        on_complete: Callback<RenderedOutput>,
+    ) {
+        let context = self.template_context(profile_id, None);
+        self.messages_tx.spawn(async move {
+            // Render chunks, then write them to the output destination
+            let chunks = template.render(&context.streaming(can_stream)).await;
+            on_complete(chunks);
+        });
+    }
+
+    /// Expose app state to the templater. Most of the data has to be cloned out
+    /// to be passed across async boundaries. This is annoying but in reality
+    /// it should be small data.
+    fn template_context(
+        &self,
+        profile_id: Option<ProfileId>,
+        // ID of the request being built is needed to group prompts that are
+        // generated
+        request_id: Option<RequestId>,
+    ) -> TemplateContext {
+        // Shouldn't be reachable if the collection isn't loaded
+        let collection =
+            self.state.collection.as_ref().expect("Collection missing");
+
+        // If request_id is given, it's a request build. Otherwise it's a
+        // preview
+        let is_preview = request_id.is_none();
+        let http_provider =
+            TuiHttpProvider::new(self.messages_tx.clone(), is_preview);
+        let prompter: Box<dyn Prompter> = if let Some(request_id) = request_id {
+            Box::new(TuiPrompter::new(request_id, self.messages_tx.clone()))
+        } else {
+            Box::new(PreviewPrompter)
+        };
+
+        TemplateContext {
+            selected_profile: profile_id,
+            collection: Arc::clone(collection),
+            http_provider: Box::new(http_provider),
+            prompter,
+            overrides: self.state.view.profile_overrides(),
+            show_sensitive: !is_preview,
+            root_dir: self.state.collection_file.parent().to_owned(),
+            state: Default::default(),
+        }
     }
 }
 

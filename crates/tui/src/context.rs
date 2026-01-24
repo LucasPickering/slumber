@@ -17,7 +17,7 @@ static INSTANCE: OnceLock<TuiContext> = OnceLock::new();
 #[derive(Debug)]
 pub struct TuiContext {
     /// Input:action bindings
-    pub input_engine: InputEngine,
+    input_engine: InputEngine,
 }
 
 impl TuiContext {

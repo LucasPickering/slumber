@@ -1,18 +1,16 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        Generate, UpdateContext,
-        common::{
-            Pane,
-            select::{Select, SelectEventKind, SelectListProps},
-            text_box::{TextBox, TextBoxEvent, TextBoxProps},
-        },
-        component::{
-            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        },
-        event::{Emitter, Event, EventMatch, ToEmitter},
-        persistent::{PersistentKey, PersistentStore},
+use crate::view::{
+    Generate, UpdateContext,
+    common::{
+        Pane,
+        select::{Select, SelectEventKind, SelectListProps},
+        text_box::{TextBox, TextBoxEvent, TextBoxProps},
     },
+    component::{
+        Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+    },
+    context::ViewContext,
+    event::{Emitter, Event, EventMatch, ToEmitter},
+    persistent::{PersistentKey, PersistentStore},
 };
 use ratatui::{
     layout::{Constraint, Layout},
@@ -47,13 +45,12 @@ impl<State: SidebarListState> SidebarList<State> {
     ///
     /// [SidebarListState::items] will be used to populate the list.
     pub fn new(state: State) -> Self {
-        let input_engine = &TuiContext::get().input_engine;
-        let title = input_engine.add_hint(State::TITLE, State::ACTION);
+        let title = ViewContext::add_binding_hint(State::TITLE, State::ACTION);
         let select = Self::build_select(&state, "");
         let filter = TextBox::default()
             .placeholder(format!(
                 "{binding} to filter",
-                binding = input_engine.binding_display(Action::Search)
+                binding = ViewContext::binding_display(Action::Search)
             ))
             .subscribe([
                 TextBoxEvent::Cancel,

@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     message::Message,
     util::ResultReported,
     view::{
@@ -58,9 +57,7 @@ impl CollectionSelect {
                 .map(|metadata| metadata.display_name())
                 .traced()
                 .unwrap_or_default();
-        TuiContext::get()
-            .input_engine
-            .add_hint(collection_name, Action::SelectCollection)
+        ViewContext::add_binding_hint(collection_name, Action::SelectCollection)
     }
 
     fn is_open(&self) -> bool {

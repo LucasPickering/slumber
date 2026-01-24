@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     http::{PromptId, PromptReply},
     message::HttpMessage,
     view::{
@@ -139,14 +138,13 @@ impl Draw for PromptForm {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
 
-        let input_engine = &TuiContext::get().input_engine;
         let styles = ViewContext::styles();
         let help = format!(
             "Change Field {previous}/{next} | Submit {submit} | Cancel {cancel}",
-            previous = input_engine.binding_display(Action::PreviousPane),
-            next = input_engine.binding_display(Action::NextPane),
-            submit = input_engine.binding_display(Action::Submit),
-            cancel = input_engine.binding_display(Action::Cancel),
+            previous = ViewContext::binding_display(Action::PreviousPane),
+            next = ViewContext::binding_display(Action::NextPane),
+            submit = ViewContext::binding_display(Action::Submit),
+            cancel = ViewContext::binding_display(Action::Cancel),
         );
         canvas
             .render_widget(Line::from(help).style(styles.text.hint), help_area);
@@ -397,14 +395,13 @@ impl Widget for InputTitle<'_> {
 
         // If focused, show a hint
         if self.has_focus {
-            let input_engine = &TuiContext::get().input_engine;
             let hint = if self.editing {
                 format!(
                     " Exit {}",
-                    input_engine.binding_display(Action::Cancel)
+                    ViewContext::binding_display(Action::Cancel)
                 )
             } else {
-                format!(" Edit {}", input_engine.binding_display(Action::Edit))
+                format!(" Edit {}", ViewContext::binding_display(Action::Edit))
             };
             title.push_span(Span::from(hint).style(styles.text.hint));
         }

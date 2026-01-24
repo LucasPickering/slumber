@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     http::{RequestConfig, RequestStore},
     message::{HttpMessage, Message},
     view::{
@@ -350,7 +349,6 @@ impl Component for CollectionErrorView {
 
 impl Draw for CollectionErrorView {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let input_engine = &TuiContext::get().input_engine;
         let [message_area, _, error_area] = Layout::vertical([
             Constraint::Length(2),
             Constraint::Length(1), // A nice gap
@@ -366,7 +364,7 @@ impl Draw for CollectionErrorView {
                 format!(
                     "Watching {file} for changes...\n{key} to exit",
                     file = self.collection_file,
-                    key = input_engine.binding_display(Action::ForceQuit),
+                    key = ViewContext::binding_display(Action::ForceQuit),
                 ),
                 ViewContext::styles().text.primary,
             ),

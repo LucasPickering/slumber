@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     http::{RequestStateSummary, RequestStore},
     util::ResultReported,
     view::{
@@ -198,8 +197,8 @@ impl Component for History {
 
 impl Draw for History {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let input_engine = &TuiContext::get().input_engine;
-        let title = input_engine.add_hint("Request History", Action::History);
+        let title =
+            ViewContext::add_binding_hint("Request History", Action::History);
         let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),

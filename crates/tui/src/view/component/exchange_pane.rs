@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     http::{RequestMetadata, ResponseMetadata},
     view::{
         Generate, RequestState, ViewContext,
@@ -82,9 +81,10 @@ impl Component for ExchangePane {
 
 impl Draw for ExchangePane {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let input_engine = &TuiContext::get().input_engine;
-        let title = input_engine
-            .add_hint("Request / Response", Action::SelectBottomPane);
+        let title = ViewContext::add_binding_hint(
+            "Request / Response",
+            Action::SelectBottomPane,
+        );
         let mut block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),
@@ -93,7 +93,7 @@ impl Draw for ExchangePane {
 
         // If a recipe is selected, history is available so show the hint
         if matches!(self.state, State::Content { .. }) {
-            let text = input_engine.add_hint("History", Action::History);
+            let text = ViewContext::add_binding_hint("History", Action::History);
             block = block.title(Line::from(text).alignment(Alignment::Right));
         }
         canvas.render_widget(&block, metadata.area());

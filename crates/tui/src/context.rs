@@ -1,6 +1,5 @@
 use crate::{input::InputEngine, view::Styles};
 use slumber_config::Config;
-use slumber_core::http::HttpEngine;
 use std::sync::OnceLock;
 
 /// The singleton value for the context. Initialized once during startup, then
@@ -23,8 +22,6 @@ pub struct TuiContext {
     pub styles: Styles,
     /// Input:action bindings
     pub input_engine: InputEngine,
-    /// For sending HTTP requests
-    pub http_engine: HttpEngine,
 }
 
 impl TuiContext {
@@ -47,12 +44,11 @@ impl TuiContext {
     fn new(config: Config) -> Self {
         let styles = Styles::new(&config.tui.theme);
         let input_engine = InputEngine::new(config.tui.input_bindings.clone());
-        let http_engine = HttpEngine::new(&config.http);
+
         Self {
             config,
             styles,
             input_engine,
-            http_engine,
         }
     }
 

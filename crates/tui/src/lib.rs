@@ -39,7 +39,7 @@ use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::{CollectionDatabase, Database},
-    http::{Exchange, RequestError, RequestId, RequestSeed},
+    http::{Exchange, HttpEngine, RequestError, RequestId, RequestSeed},
     render::{Prompter, TemplateContext},
 };
 use slumber_template::{RenderedOutput, Template};
@@ -75,6 +75,8 @@ pub struct Tui<B: Backend> {
     /// This is the root database, *not* scoped to a specific collection. We'll
     /// mostly used the scoped version from [CollectionState].
     database: Database,
+    /// Make request go brrr
+    http_engine: HttpEngine,
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
     /// touch this
@@ -153,6 +155,7 @@ where
         // Load config file. Failure shouldn't be fatal since we can fall back
         // to default, just show an error to the user
         let config = Config::load().reported(&messages_tx).unwrap_or_default();
+        let http_engine = HttpEngine::new(&config.http);
         // Initialize global view context
         TuiContext::init(config);
         let database = Database::load()?;
@@ -172,6 +175,7 @@ where
         Ok(Self {
             cancel_token: CancellationToken::new(),
             database,
+            http_engine,
             messages_rx,
             messages_tx,
             state,
@@ -611,6 +615,7 @@ where
         let request_id = seed.id;
         let template_context =
             self.template_context(profile_id.clone(), Some(request_id));
+        let http_engine = self.http_engine.clone();
         let messages_tx = self.messages_tx.clone();
 
         // Don't use spawn_result here, because errors are handled specially for
@@ -618,10 +623,7 @@ where
         let cancel_token = CancellationToken::new();
         let future = async move {
             // Build the request
-            let result = TuiContext::get()
-                .http_engine
-                .build(seed, &template_context)
-                .await;
+            let result = http_engine.build(seed, &template_context).await;
             let ticket = match result {
                 Ok(ticket) => ticket,
                 Err(error) => {
@@ -687,16 +689,18 @@ where
     fn copy_recipe(&mut self, target: RecipeCopyTarget) -> anyhow::Result<()> {
         match target {
             // Render+copy URL
-            RecipeCopyTarget::Url => self.render_copy(async |context, seed| {
-                let http_engine = &TuiContext::get().http_engine;
-                let url = http_engine.build_url(seed, &context).await?;
-                Ok(url.to_string())
-            }),
+            RecipeCopyTarget::Url => {
+                let http_engine = self.http_engine.clone();
+                self.render_copy(async move |context, seed| {
+                    let url = http_engine.build_url(seed, &context).await?;
+                    Ok(url.to_string())
+                })
+            }
 
             // Render+copy body
             RecipeCopyTarget::Body => {
-                self.render_copy(async |context, seed| {
-                    let http_engine = &TuiContext::get().http_engine;
+                let http_engine = self.http_engine.clone();
+                self.render_copy(async move |context, seed| {
                     let body = http_engine
                         .build_body(seed, &context)
                         .await?
@@ -719,8 +723,8 @@ where
 
             // Render request, then copy the equivalent curl command
             RecipeCopyTarget::Curl => {
-                self.render_copy(async |context, seed| {
-                    let http_engine = &TuiContext::get().http_engine;
+                let http_engine = self.http_engine.clone();
+                self.render_copy(async move |context, seed| {
                     http_engine
                         .build_curl(seed, &context)
                         .await
@@ -834,8 +838,11 @@ where
         // If request_id is given, it's a request build. Otherwise it's a
         // preview
         let is_preview = request_id.is_none();
-        let http_provider =
-            TuiHttpProvider::new(self.messages_tx.clone(), is_preview);
+        let http_provider = TuiHttpProvider::new(
+            self.http_engine.clone(),
+            self.messages_tx.clone(),
+            is_preview,
+        );
         let prompter: Box<dyn Prompter> = if let Some(request_id) = request_id {
             Box::new(TuiPrompter::new(request_id, self.messages_tx.clone()))
         } else {

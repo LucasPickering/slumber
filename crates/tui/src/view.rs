@@ -15,7 +15,6 @@ pub use context::UpdateContext;
 pub use util::{InvalidCollection, PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
-    context::TuiContext,
     http::{RequestConfig, RequestState, RequestStore},
     input::InputEvent,
     message::MessageSender,
@@ -85,7 +84,7 @@ impl View {
             messages_tx,
         );
 
-        let debug_monitor = if TuiContext::get().config.tui.debug {
+        let debug_monitor = if ViewContext::config().tui.debug {
             Some(DebugMonitor::default())
         } else {
             None

@@ -16,8 +16,6 @@ static INSTANCE: OnceLock<TuiContext> = OnceLock::new();
 /// This is purely for convenience.
 #[derive(Debug)]
 pub struct TuiContext {
-    /// App-level configuration
-    pub config: Arc<Config>,
     /// Input:action bindings
     pub input_engine: InputEngine,
 }
@@ -42,10 +40,7 @@ impl TuiContext {
     fn new(config: Arc<Config>) -> Self {
         let input_engine = InputEngine::new(config.tui.input_bindings.clone());
 
-        Self {
-            config,
-            input_engine,
-        }
+        Self { input_engine }
     }
 
     /// Get a reference to the global context

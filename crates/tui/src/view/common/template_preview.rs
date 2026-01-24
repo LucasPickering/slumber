@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     message::Message,
     view::{
         UpdateContext, ViewContext,
@@ -136,7 +135,7 @@ impl<PK> TemplatePreview<PK> {
     /// do nothing.
     fn render_preview(&self) {
         // If preview is disabled or the template is static, can skip the work
-        let config = &TuiContext::get().config;
+        let config = &ViewContext::config();
 
         if config.tui.preview_templates && self.template().is_dynamic() {
             let emitter = self.emitter;

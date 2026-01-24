@@ -436,10 +436,8 @@ impl Component for RecipeDetail {
 
 impl Draw for RecipeDetail {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let context = TuiContext::get();
-
         // Render outermost block
-        let title = context.input_engine.add_hint(
+        let title = TuiContext::get().input_engine.add_hint(
             match &self.state {
                 RecipeNodeState::Folder { .. } => "Folder",
                 RecipeNodeState::Recipe { .. } | RecipeNodeState::None => {
@@ -463,7 +461,7 @@ impl Draw for RecipeDetail {
                 block = block.title(
                     Line::from(id.to_string())
                         .alignment(Alignment::Right)
-                        .style(context.styles.text.title),
+                        .style(ViewContext::styles().text.title),
                 );
             }
         }

@@ -300,9 +300,11 @@ impl Scrollback {
 mod tests {
     use super::*;
     use crate::{
-        context::TuiContext,
         test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
+        view::{
+            context::ViewContext,
+            test_util::{TestComponent, TestHarness, harness},
+        },
     };
     use ratatui::{style::Styled, text::Line};
     use rstest::{fixture, rstest};
@@ -366,7 +368,7 @@ mod tests {
         #[with(6, 3)] terminal: TestTerminal,
         _history_db: (),
     ) {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         let mut component = TestComponent::new(
             &harness,
             &terminal,

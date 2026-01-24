@@ -1,21 +1,18 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        common::{
-            Checkbox,
-            component_select::{
-                ComponentSelect, ComponentSelectProps, SelectStyles,
-            },
-            select::{Select, SelectEventKind},
+use crate::view::{
+    common::{
+        Checkbox,
+        component_select::{
+            ComponentSelect, ComponentSelectProps, SelectStyles,
         },
-        component::{
-            Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
-            editable_template::EditableTemplate, internal::Child,
-        },
-        context::UpdateContext,
-        event::{Event, EventMatch, ToEmitter},
-        persistent::{PersistentKey, PersistentStore, SessionKey},
+        select::{Select, SelectEventKind},
     },
+    component::{
+        Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
+        editable_template::EditableTemplate, internal::Child,
+    },
+    context::{UpdateContext, ViewContext},
+    event::{Event, EventMatch, ToEmitter},
+    persistent::{PersistentKey, PersistentStore, SessionKey},
 };
 use indexmap::IndexMap;
 use ratatui::{
@@ -157,7 +154,7 @@ where
         .areas(header_area);
 
         // Draw header
-        let header_style = TuiContext::get().styles.table.header;
+        let header_style = ViewContext::styles().table.header;
         canvas.render_widget(
             props.key_header.set_style(header_style),
             key_header_area,
@@ -279,7 +276,7 @@ impl<Kind: RecipeTableKind> Draw<RecipeTableRowProps> for RecipeTableRow<Kind> {
         metadata: DrawMetadata,
     ) {
         if !self.enabled {
-            let styles = &TuiContext::get().styles;
+            let styles = ViewContext::styles();
             canvas.render_widget(
                 Block::new().style(styles.table.disabled),
                 metadata.area(),

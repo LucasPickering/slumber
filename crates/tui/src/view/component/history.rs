@@ -226,7 +226,7 @@ impl Generate for &RequestStateSummary {
     where
         Self: 'this,
     {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         let description: Span = match self {
             RequestStateSummary::Building { .. } => "Initializing...".into(),
             RequestStateSummary::BuildError { .. } => {

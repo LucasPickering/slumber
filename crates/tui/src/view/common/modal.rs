@@ -1,10 +1,8 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        Component, ComponentExt, UpdateContext,
-        component::{Canvas, Child, ComponentId, Draw, DrawMetadata},
-        event::{Event, EventMatch},
-    },
+use crate::view::{
+    Component, ComponentExt, UpdateContext,
+    component::{Canvas, Child, ComponentId, Draw, DrawMetadata},
+    context::ViewContext,
+    event::{Event, EventMatch},
 };
 use ratatui::{
     layout::{Constraint, Margin},
@@ -150,7 +148,7 @@ where
         // Clear content/styling from underneath
         canvas.render_widget(Clear, area);
 
-        let styles = &TuiContext::get().styles.modal;
+        let styles = ViewContext::styles().modal;
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(styles.border)

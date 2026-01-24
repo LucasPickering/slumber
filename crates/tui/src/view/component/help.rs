@@ -78,7 +78,7 @@ impl Draw for Help {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if self.open {
             // Fullscreen mode is open
-            let styles = &TuiContext::get().styles;
+            let styles = ViewContext::styles();
 
             // General info/metadata
             let doc_link = doc_link("");
@@ -140,18 +140,17 @@ impl Draw for Help {
             // Show minimal help in the footer
             let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
 
-            let tui_context = TuiContext::get();
+            let input_engine = &TuiContext::get().input_engine;
 
             let text = actions
                 .into_iter()
                 .map(|action| {
-                    let binding =
-                        tui_context.input_engine.binding_display(action);
+                    let binding = input_engine.binding_display(action);
                     format!("{binding} {action}")
                 })
                 .join(" / ");
 
-            let span = Span::styled(text, tui_context.styles.text.highlight)
+            let span = Span::styled(text, ViewContext::styles().text.highlight)
                 .into_right_aligned_line();
             canvas.render_widget(span, metadata.area());
         }

@@ -7,7 +7,7 @@ use crate::{
             Canvas, Child, Component, ComponentExt, ComponentId, Draw,
             DrawMetadata, ToChild,
         },
-        context::UpdateContext,
+        context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
     },
 };
@@ -386,7 +386,7 @@ impl Component for ActionMenuContent {
 
 impl Draw for ActionMenuContent {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let styles = &TuiContext::get().styles.menu;
+        let styles = ViewContext::styles().menu;
         let areas = self.areas(metadata.area().as_position());
 
         // Clear content/styling underneath all layers. This has to happen

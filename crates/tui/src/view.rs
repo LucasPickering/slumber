@@ -12,7 +12,6 @@ mod util;
 
 pub use component::ComponentMap;
 pub use context::UpdateContext;
-pub use styles::Styles;
 pub use util::{InvalidCollection, PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
@@ -30,6 +29,7 @@ use crate::{
 use crossterm::clipboard::CopyToClipboard;
 use indexmap::IndexMap;
 use ratatui::{buffer::Buffer, crossterm::execute, text::Span};
+use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, ProfileId},
     database::CollectionDatabase,
@@ -69,6 +69,7 @@ impl View {
     /// This accepts a loaded collection *or* an error. If the collection fails
     /// to load, we'll show the error and wait for the user to fix it or exit.
     pub fn new(
+        config: Arc<Config>,
         collection: Result<Arc<Collection>, InvalidCollection>,
         database: CollectionDatabase,
         messages_tx: MessageSender,
@@ -78,6 +79,7 @@ impl View {
         // we won't be drawing the normal view, but it's easiest just to have
         // it there anyway.
         ViewContext::init(
+            config,
             collection.as_ref().map(Arc::clone).unwrap_or_default(),
             database,
             messages_tx,
@@ -284,6 +286,7 @@ mod tests {
     fn test_initial_draw(harness: TestHarness, terminal: TestTerminal) {
         let collection = Collection::factory(());
         let mut view = View::new(
+            Config::default().into(),
             Ok(collection.into()),
             harness.database.clone(),
             harness.messages_tx(),

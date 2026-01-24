@@ -1,14 +1,11 @@
 //! Buttons and button accessories
 
-use crate::{
-    context::TuiContext,
-    view::{
-        Generate,
-        common::fixed_select::{FixedSelect, FixedSelectItem},
-        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        context::UpdateContext,
-        event::{Event, EventMatch},
-    },
+use crate::view::{
+    Generate,
+    common::fixed_select::{FixedSelect, FixedSelectItem},
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+    context::{UpdateContext, ViewContext},
+    event::{Event, EventMatch},
 };
 use ratatui::{
     layout::{Constraint, Flex, Layout},
@@ -34,7 +31,7 @@ impl Generate for Button<'_> {
     where
         Self: 'this,
     {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         Span {
             content: self.text.into(),
             style: if self.has_focus {

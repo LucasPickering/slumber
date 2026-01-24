@@ -220,7 +220,7 @@ impl Draw for ProfileDetail {
         .areas(header_area);
 
         // Draw header
-        let style = TuiContext::get().styles.table.header;
+        let style = ViewContext::styles().table.header;
         canvas.render_widget("Field".set_style(style), key_header_area);
         canvas.render_widget("Value".set_style(style), value_header_area);
 

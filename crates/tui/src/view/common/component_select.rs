@@ -1,13 +1,11 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        UpdateContext,
-        common::select::{Select, SelectItem, SelectState},
-        component::{
-            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        },
-        event::{Event, EventMatch},
+use crate::view::{
+    UpdateContext,
+    common::select::{Select, SelectItem, SelectState},
+    component::{
+        Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
+    context::ViewContext,
+    event::{Event, EventMatch},
 };
 use derive_more::derive::{Deref, DerefMut};
 use itertools::Itertools;
@@ -309,7 +307,7 @@ impl SelectStyles {
 
     /// Apply table styling to each item
     pub fn table() -> Self {
-        let styles = &TuiContext::get().styles.table;
+        let styles = ViewContext::styles().table;
         Self {
             disabled: styles.disabled,
             highlight: styles.highlight,
@@ -443,7 +441,7 @@ mod tests {
         // Now check what was rendered. We know the calculated window is correct
         // because we checked it against the expected list of items, so we can
         // use it generate the expected buffer
-        let highlight_style = TuiContext::get().styles.table.highlight;
+        let highlight_style = ViewContext::styles().table.highlight;
         // Generate the visible lines for *all* items
         let selected_index = component.selected_index().unwrap();
         let all_lines = component.items().enumerate().flat_map(|(i, item)| {

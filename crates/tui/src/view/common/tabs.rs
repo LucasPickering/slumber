@@ -1,14 +1,9 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        common::fixed_select::{
-            FixedSelect, FixedSelectBuilder, FixedSelectItem,
-        },
-        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        context::UpdateContext,
-        event::{Event, EventMatch},
-        persistent::{PersistentKey, PersistentStore},
-    },
+use crate::view::{
+    common::fixed_select::{FixedSelect, FixedSelectBuilder, FixedSelectItem},
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+    context::{UpdateContext, ViewContext},
+    event::{Event, EventMatch},
+    persistent::{PersistentKey, PersistentStore},
 };
 use ratatui::{style::Style, text::Line};
 use slumber_config::Action;
@@ -66,7 +61,7 @@ impl<K: PersistentKey<Value = T>, T: FixedSelectItem> Component for Tabs<K, T> {
 
 impl<K: PersistentKey<Value = T>, T: FixedSelectItem> Draw for Tabs<K, T> {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let styles = &TuiContext::get().styles.tab;
+        let styles = ViewContext::styles().tab;
         let titles = self.select.items_with_metadata().map(|item| {
             let style = if item.enabled() {
                 Style::default()

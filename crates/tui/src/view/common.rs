@@ -15,12 +15,10 @@ pub mod template_preview;
 pub mod text_box;
 pub mod text_window;
 
-use crate::{
-    context::TuiContext,
-    view::{
-        Generate,
-        util::{format_duration, format_time},
-    },
+use crate::view::{
+    Generate,
+    context::ViewContext,
+    util::{format_duration, format_time},
 };
 use chrono::{DateTime, Duration, Utc};
 use itertools::{Itertools, Position};
@@ -52,7 +50,7 @@ impl Generate for Pane<'_> {
         Self: 'this,
     {
         let (border_type, border_style) =
-            TuiContext::get().styles.pane.border(self.has_focus);
+            ViewContext::styles().pane.border(self.has_focus);
         Block::default()
             .borders(Borders::ALL)
             .border_type(border_type)
@@ -173,7 +171,7 @@ impl Generate for StatusCode {
     where
         Self: 'this,
     {
-        let styles = &TuiContext::get().styles.status_code;
+        let styles = ViewContext::styles().status_code;
         let is_error = self.is_client_error() || self.is_server_error();
         Span::styled(
             self.to_string(),

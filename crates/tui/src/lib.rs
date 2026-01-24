@@ -70,6 +70,9 @@ pub struct Tui<B: Backend> {
     /// If run() is called multiple times (e.g. in a test), a new token will be
     /// generated for each call because they are single-use.
     cancel_token: CancellationToken,
+    /// App-wide configuration. This never gets reloaded; it'll be the same for
+    /// the entire session. The Arc allows cheap sharing throughout the app.
+    config: Arc<Config>,
     /// Persistence database, for storing request state, UI state, etc.
     ///
     /// This is the root database, *not* scoped to a specific collection. We'll
@@ -154,10 +157,13 @@ where
 
         // Load config file. Failure shouldn't be fatal since we can fall back
         // to default, just show an error to the user
-        let config = Config::load().reported(&messages_tx).unwrap_or_default();
+        let config: Arc<Config> = Config::load()
+            .reported(&messages_tx)
+            .unwrap_or_default()
+            .into();
         let http_engine = HttpEngine::new(&config.http);
         // Initialize global view context
-        TuiContext::init(config);
+        TuiContext::init(config.clone());
         let database = Database::load()?;
 
         // Initialize TUI state, which will try to load the collection. If it
@@ -165,6 +171,7 @@ where
         // the file
         let collection_file = CollectionFile::new(collection_path)?;
         let state = CollectionState::load(
+            config.clone(),
             collection_file,
             database.clone(),
             messages_tx.clone(),
@@ -174,6 +181,7 @@ where
 
         Ok(Self {
             cancel_token: CancellationToken::new(),
+            config,
             database,
             http_engine,
             messages_rx,
@@ -310,13 +318,13 @@ where
                 // Because we're just swapping out the collection value and
                 // using the same file, we can just update state instead of
                 // replacing it
-                self.state
-                    .set_collection(collection, self.messages_tx.clone());
+                self.state.set_collection(collection);
             }
             Message::CollectionSelect(path) => {
                 // Collection file has changed, so we have to rebuild state
                 let collection_file = CollectionFile::new(Some(path))?;
                 self.state = CollectionState::load(
+                    self.config.clone(),
                     collection_file,
                     self.database.clone(),
                     self.messages_tx.clone(),

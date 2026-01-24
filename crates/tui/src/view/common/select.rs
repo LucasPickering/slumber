@@ -1,13 +1,10 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        Generate,
-        common::scrollbar::Scrollbar,
-        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        context::UpdateContext,
-        event::{Emitter, Event, EventMatch, ToEmitter},
-        persistent::{PersistentKey, PersistentStore},
-    },
+use crate::view::{
+    Generate,
+    common::scrollbar::Scrollbar,
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+    context::{UpdateContext, ViewContext},
+    event::{Emitter, Event, EventMatch, ToEmitter},
+    persistent::{PersistentKey, PersistentStore},
 };
 use itertools::Itertools;
 use ratatui::{
@@ -543,7 +540,7 @@ where
         props: SelectListProps,
         metadata: DrawMetadata,
     ) {
-        let styles = &TuiContext::get().styles.list;
+        let styles = ViewContext::styles().list;
 
         // Draw list
         let items: Vec<ListItem<'_>> = self
@@ -760,7 +757,7 @@ mod tests {
         harness: TestHarness,
         #[with(5, 3)] terminal: TestTerminal,
     ) {
-        let styles = &TuiContext::get().styles.list;
+        let styles = ViewContext::styles().list;
         let items = vec!["one", "two", "three"];
         let select: Select<&str, ListState> = Select::builder(items)
             .direction(ListDirection::BottomToTop)

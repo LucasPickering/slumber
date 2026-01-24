@@ -140,7 +140,7 @@ impl Draw for PromptForm {
                 .areas(metadata.area());
 
         let input_engine = &TuiContext::get().input_engine;
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         let help = format!(
             "Change Field {previous}/{next} | Submit {submit} | Cancel {cancel}",
             previous = input_engine.binding_display(Action::PreviousPane),
@@ -381,7 +381,7 @@ struct InputTitle<'a> {
 
 impl Widget for InputTitle<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
 
         let title_style = if self.has_focus {
             styles.form.title_highlight
@@ -638,7 +638,7 @@ mod tests {
             .empty();
 
         // Check terminal contents
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         terminal.assert_buffer_lines([
             Line::styled("Username", styles.form.title),
             Line::styled("user12", Style::default()),
@@ -704,7 +704,7 @@ mod tests {
             .empty();
 
         // Check terminal contents
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         terminal.assert_buffer_lines([
             Line::styled("Species", styles.form.title_highlight),
             Line::styled("holy sh", Style::default()),

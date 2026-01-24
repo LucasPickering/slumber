@@ -8,6 +8,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use ratatui::buffer::Buffer;
+use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, CollectionError, CollectionFile},
     database::{CollectionDatabase, Database},
@@ -46,12 +47,18 @@ pub struct CollectionState {
     pub request_store: RequestStore,
     /// UI presentation and state
     pub view: View,
+
+    // Private state - we hang onto this stuff so we can use it to rebuild the
+    // view. They should never change between reloads
+    config: Arc<Config>,
+    messages_tx: MessageSender,
 }
 
 impl CollectionState {
     /// Load the collection from the given file. If the load fails, we'll enter
     /// the error state.
     pub fn load(
+        config: Arc<Config>,
         collection_file: CollectionFile,
         database: Database,
         messages_tx: MessageSender,
@@ -72,7 +79,12 @@ impl CollectionState {
                 file: collection_file.clone(),
                 error,
             });
-        let view = View::new(view_collection, database.clone(), messages_tx);
+        let view = View::new(
+            config.clone(),
+            view_collection,
+            database.clone(),
+            messages_tx.clone(),
+        );
 
         Self {
             collection,
@@ -81,24 +93,23 @@ impl CollectionState {
             database,
             request_store,
             view,
+            config,
+            messages_tx,
         }
     }
 
     /// Switch to a new version of the current collection file
-    pub fn set_collection(
-        &mut self,
-        collection: Collection,
-        messages_tx: MessageSender,
-    ) {
+    pub fn set_collection(&mut self, collection: Collection) {
         let collection = Arc::new(collection);
 
         self.database.set_name(&collection);
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(
+            self.config.clone(),
             Ok(Arc::clone(&collection)),
             self.database.clone(),
-            messages_tx,
+            self.messages_tx.clone(),
         );
         self.view.notify("Reloaded collection");
 

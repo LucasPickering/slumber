@@ -8,7 +8,7 @@ use slumber_config::Theme;
 /// entire thing user-configurable, but that would be way too complex. The theme
 /// provides users some basic settings, then we figure out the minutae from
 /// there. Styles are grouped into sub-structs generally by component.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Styles {
     pub form: FormStyles,
     pub list: ListStyles,
@@ -25,7 +25,7 @@ pub struct Styles {
 }
 
 /// Styles for the recipe input form
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FormStyles {
     /// Style for a input field title when not selected/focused
     pub title: Style,
@@ -34,7 +34,7 @@ pub struct FormStyles {
 }
 
 /// Styles for List component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ListStyles {
     /// Highlighted item in a list
     pub highlight: Style,
@@ -45,20 +45,20 @@ pub struct ListStyles {
 }
 
 /// Styles for the action menu
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MenuStyles {
     pub border_type: BorderType,
 }
 
 /// Styles for the Modal component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ModalStyles {
     pub border: Style,
     pub border_type: BorderType,
 }
 
 /// Styles for Pane component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PaneStyles {
     /// Pane border when not selected/focused
     pub border: Style,
@@ -82,14 +82,14 @@ impl PaneStyles {
 }
 
 /// Styles for HTTP status code display
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StatusCodeStyles {
     pub success: Style,
     pub error: Style,
 }
 
 /// Styles for Tab component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TabStyles {
     /// Disabled tab text
     pub disabled: Style,
@@ -98,7 +98,7 @@ pub struct TabStyles {
 }
 
 /// Styles for Table component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TableStyles {
     /// Table column header text
     pub header: Style,
@@ -110,14 +110,14 @@ pub struct TableStyles {
 }
 
 /// Styles for TemplatePreview component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TemplatePreviewStyles {
     pub text: Style,
     pub error: Style,
 }
 
 /// General text styles
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TextStyle {
     /// Text that needs some visual emphasis/separation
     pub highlight: Style,
@@ -134,7 +134,7 @@ pub struct TextStyle {
 }
 
 /// Styles for TextBox component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TextBoxStyle {
     pub text: Style,
     pub cursor: Style,
@@ -143,7 +143,7 @@ pub struct TextBoxStyle {
 }
 
 /// Styles for TextWindow component
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TextWindowStyle {
     /// Line numbers on large text areas
     pub gutter: Style,

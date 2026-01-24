@@ -220,7 +220,7 @@ impl slumber_template::Context for SingleRenderContext<'_> {
         };
 
         // We're responsible for the computation. Grab the field's value
-        let template = self
+        let value_template = self
             // Check overrides first
             .context
             .overrides
@@ -237,21 +237,21 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             })?;
 
         // Render the nested template
-        let output = template.render(self).await;
+        let lazy_value = value_template.render(self).await?;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no
         // reason to include the same stream field twice in a single body, but
         // if that happens we'll have to compute it twice. This saves us a lot
         // of annoying machinery though.
-        if output.has_stream() {
+        if lazy_value.has_stream() {
             // If the nested template rendered to a single chunk, we can unpack
             // it out of its chunk list. If it had multiple chunks, we need to
             // keep all of them to provide both a correct preview and the final
             // stream
-            Ok(output.unpack())
+            Ok(lazy_value)
         } else {
-            let value = output.try_collect_value().await.map_err(
+            let value = lazy_value.resolve().await.map_err(
                 // We *could* just return the error, but wrap it to give
                 // additional context
                 |error| {

@@ -93,7 +93,8 @@ impl Draw for ExchangePane {
 
         // If a recipe is selected, history is available so show the hint
         if matches!(self.state, State::Content { .. }) {
-            let text = ViewContext::add_binding_hint("History", Action::History);
+            let text =
+                ViewContext::add_binding_hint("History", Action::History);
             block = block.title(Line::from(text).alignment(Alignment::Right));
         }
         canvas.render_widget(&block, metadata.area());

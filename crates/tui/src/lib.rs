@@ -16,7 +16,7 @@ mod view;
 use crate::{
     collection_state::CollectionState,
     http::{RequestConfig, RequestState, TuiHttpProvider},
-    input::{InputEngine, InputEvent},
+    input::{InputBindings, InputEvent},
     message::{
         Callback, HttpMessage, Message, MessageSender, RecipeCopyTarget,
     },
@@ -218,14 +218,13 @@ where
         self.listen_for_signals();
         self.watch_collection();
 
-        let input_engine =
-            InputEngine::new(self.config.tui.input_bindings.clone());
+        let input_bindings =
+            InputBindings::new(self.config.tui.input_bindings.clone());
         // Stream of terminal input events. Events that don't map to a message
         // (cursor move, focus, etc.) should be filtered out entirely so
         // they don't trigger any updates
         let input_stream = input_stream.filter_map(move |event| {
-            let input_engine = &input_engine;
-            future::ready(input_engine.convert_event(event))
+            future::ready(input_bindings.convert_event(event))
         });
         pin_mut!(input_stream);
 

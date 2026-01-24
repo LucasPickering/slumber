@@ -196,8 +196,7 @@ impl Component for ExchangePaneMetadata {
 
 impl Draw for ExchangePaneMetadata {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let tui_context = TuiContext::get();
-        let config = &tui_context.config;
+        let config = ViewContext::config();
         let styles = ViewContext::styles();
         let area = metadata.area();
 

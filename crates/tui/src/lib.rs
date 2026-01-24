@@ -341,7 +341,7 @@ where
             Message::Error { error } => self.state.view.error(error),
 
             Message::FileEdit { file, on_complete } => {
-                let editor = TuiContext::get().config.editor()?;
+                let editor = self.config.editor()?;
                 util::yield_terminal(
                     editor.open(file.path()),
                     &self.messages_tx,
@@ -349,8 +349,7 @@ where
                 on_complete(file);
             }
             Message::FileView { file, mime } => {
-                let pager =
-                    TuiContext::get().config.tui.pager(mime.as_ref())?;
+                let pager = self.config.tui.pager(mime.as_ref())?;
                 util::yield_terminal(
                     pager.open(file.path()),
                     &self.messages_tx,
@@ -565,7 +564,7 @@ where
         &self,
         location: Option<SourceLocation>,
     ) -> anyhow::Result<()> {
-        let editor = TuiContext::get().config.editor()?;
+        let editor = self.config.editor()?;
         let command = if let Some(location) = location {
             editor.open_at(location.source, location.line, location.column)
         } else {
@@ -676,7 +675,7 @@ where
                 let collection = self.collection().expect("Collection missing");
 
                 // Persist in the DB if not disabled by global config or recipe
-                let persist = TuiContext::get().config.tui.persist
+                let persist = self.config.tui.persist
                     && collection
                         .recipes
                         .try_get_recipe(&exchange.request.recipe_id)

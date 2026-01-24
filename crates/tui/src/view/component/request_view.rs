@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     message::Message,
     view::{
         Component, ViewContext,
@@ -145,7 +144,7 @@ fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
             let recipe =
                 collection.recipes.get(&request.recipe_id)?.recipe()?;
             if recipe.body.is_some() {
-                let config = &TuiContext::get().config;
+                let config = &ViewContext::config();
                 Some(Text::raw(format!(
                     "Body not available. Streamed bodies, or bodies over \
                         {}, are not persisted",

@@ -226,7 +226,7 @@ impl<K> QueryableBody<K> {
             // stored together. We can toss the error; it gets traced by the DB
             let _ =
                 ViewContext::with_database(|db| db.insert_command(&command));
-            let shell = &TuiContext::get().config.tui.commands.shell;
+            let shell = &ViewContext::config().tui.commands.shell;
             let result = util::run_command(shell, &command, Some(&body))
                 .await
                 .with_context(|| format!("Error running `{command}`"));
@@ -385,7 +385,7 @@ impl TextState {
         body: &ResponseBody<T>,
         prettify: bool,
     ) -> Self {
-        if TuiContext::get().config.http.is_large(body.size()) {
+        if ViewContext::config().http.is_large(body.size()) {
             // For bodies over the "large" size, skip prettification and
             // highlighting because it's slow. We could try to push this work
             // into a background thread instead, but there's no way to kill

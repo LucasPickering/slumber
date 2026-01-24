@@ -98,14 +98,14 @@ impl ViewContext {
         })
     }
 
-    /// Get a pointer to the request collection
+    /// Get the request collection
     pub fn collection() -> Arc<Collection> {
         Self::with(|context| Arc::clone(&context.collection))
     }
 
-    /// Execute a function with access to the database
-    pub fn with_database<T>(f: impl FnOnce(&CollectionDatabase) -> T) -> T {
-        Self::with(|context| f(&context.database))
+    /// Get the global configuration
+    pub fn config() -> Arc<Config> {
+        Self::with(|context| Arc::clone(&context.config))
     }
 
     /// Queue a view event to be handled by the component tree
@@ -140,6 +140,11 @@ impl ViewContext {
         // Not sure how expensive this clone is. My guess is it's negligible,
         // but at some point I might profile it
         Self::with(|context| context.styles.clone())
+    }
+
+    /// Execute a function with access to the database
+    pub fn with_database<T>(f: impl FnOnce(&CollectionDatabase) -> T) -> T {
+        Self::with(|context| f(&context.database))
     }
 }
 

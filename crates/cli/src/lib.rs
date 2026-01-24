@@ -103,6 +103,18 @@ impl GlobalArgs {
     }
 }
 
+impl Default for GlobalArgs {
+    fn default() -> Self {
+        Self {
+            file: None,
+            log_level: LevelFilter::OFF,
+            print_log_path: false,
+            #[cfg(debug_assertions)]
+            data_dir: None,
+        }
+    }
+}
+
 /// A CLI subcommand
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
@@ -122,6 +134,12 @@ impl CliCommand {
         if global.print_log_path {
             let path = paths::log_file();
             println!("Logging to {}", path.display());
+        }
+
+        // The --data-dir flag is used in integration tests to isolate files
+        #[cfg(debug_assertions)]
+        if let Some(path) = global.data_dir.as_deref() {
+            paths::set_data_directory(path.to_owned());
         }
 
         match self {

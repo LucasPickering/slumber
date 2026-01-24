@@ -70,7 +70,6 @@ mod tests {
     };
     use slumber_util::{Factory, TempDir, temp_dir, yaml::SourceLocation};
     use std::fs;
-    use tracing::level_filters::LevelFilter;
 
     /// Test creating a new collection file, specifying the path in various ways
     #[rstest]
@@ -94,8 +93,7 @@ mod tests {
         };
         let global_args = GlobalArgs {
             file: global_file_arg.map(PathBuf::from),
-            log_level: LevelFilter::OFF,
-            print_log_path: false,
+            ..Default::default()
         };
 
         command.execute(global_args).await.unwrap();

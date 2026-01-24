@@ -1,13 +1,7 @@
-use crate::paths::get_repo_root;
+use crate::paths::{self, get_repo_root};
+use derive_more::Deref;
 use rstest::fixture;
-use std::{
-    env,
-    error::Error,
-    fmt::Debug,
-    fs, io,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
+use std::{env, error::Error, fmt::Debug, fs, io, path::PathBuf};
 use tracing::{error, level_filters::LevelFilter};
 use tracing_subscriber::{
     Layer, filter::Targets, fmt::format::FmtSpan, layer::SubscriberExt,
@@ -43,7 +37,8 @@ pub fn temp_dir() -> TempDir {
 
 /// Guard for a temporary directory. Create the directory on creation, delete
 /// it on drop.
-#[derive(Debug)]
+#[derive(Debug, Deref)]
+#[deref(forward)]
 pub struct TempDir(PathBuf);
 
 impl TempDir {
@@ -51,14 +46,6 @@ impl TempDir {
         let path = env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&path).unwrap();
         Self(path)
-    }
-}
-
-impl Deref for TempDir {
-    type Target = Path;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -72,6 +59,40 @@ impl Drop for TempDir {
                 self.0.display()
             );
         }
+    }
+}
+
+/// Create a new temporary folder and set it as the data directory
+///
+/// This directory will be used for the config, database, and log files. When
+/// this is dropped, the override will be cleared. The override uses a thread
+/// local, so parallel threads are independent.
+#[fixture]
+pub fn data_dir() -> DataDir {
+    DataDir::new()
+}
+
+/// Guard for a temporary directory that's set as the data directory
+///
+/// This is created by the [data_dir] fixture and will automatically override
+/// the data directory, meaning the temp dir will be used for the config,
+/// database, and log files. The override will be reset when the fixture is
+/// dropped.
+#[derive(Debug, Deref)]
+#[deref(forward)]
+pub struct DataDir(TempDir);
+
+impl DataDir {
+    fn new() -> Self {
+        let temp_dir = TempDir::new();
+        paths::set_data_directory(temp_dir.to_owned());
+        Self(temp_dir)
+    }
+}
+
+impl Drop for DataDir {
+    fn drop(&mut self) {
+        paths::reset_data_directory();
     }
 }
 

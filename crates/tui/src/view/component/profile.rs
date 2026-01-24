@@ -1,7 +1,6 @@
 //! Profile selection and preview
 
 use crate::{
-    context::TuiContext,
     util::ResultReported,
     view::{
         Generate, ViewContext,
@@ -191,9 +190,8 @@ impl Component for ProfileDetail {
 
 impl Draw for ProfileDetail {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let title = TuiContext::get()
-            .input_engine
-            .add_hint("Profile", Action::SelectBottomPane);
+        let title =
+            ViewContext::add_binding_hint("Profile", Action::SelectBottomPane);
         let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),

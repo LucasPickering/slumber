@@ -1,15 +1,12 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        Generate,
-        common::select::{Select, SelectEventKind, SelectListProps},
-        component::{
-            Canvas, Child, Component, ComponentExt, ComponentId, Draw,
-            DrawMetadata, ToChild,
-        },
-        context::{UpdateContext, ViewContext},
-        event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
+use crate::view::{
+    Generate,
+    common::select::{Select, SelectEventKind, SelectListProps},
+    component::{
+        Canvas, Child, Component, ComponentExt, ComponentId, Draw,
+        DrawMetadata, ToChild,
     },
+    context::{UpdateContext, ViewContext},
+    event::{Emitter, Event, EventMatch, LocalEvent, ToEmitter},
 };
 use itertools::Itertools;
 use ratatui::{
@@ -518,8 +515,7 @@ impl Display for MenuItemDisplay {
                 shortcut: Some(shortcut),
                 ..
             } => {
-                let s =
-                    TuiContext::get().input_engine.add_hint(name, *shortcut);
+                let s = ViewContext::add_binding_hint(name, *shortcut);
                 write!(fmt, "{s}")
             }
             Self::Action { name, .. } => {
@@ -547,10 +543,7 @@ impl Generate for &MenuItemDisplay {
                 // If a shortcut is given, include the binding in the text
                 shortcut
                     .map(|shortcut| {
-                        TuiContext::get()
-                            .input_engine
-                            .add_hint(name, shortcut)
-                            .into()
+                        ViewContext::add_binding_hint(name, shortcut).into()
                     })
                     .unwrap_or_else(|| name.as_str().into())
             }

@@ -1,5 +1,6 @@
 use crate::{
     http::RequestStore,
+    input::InputEngine,
     message::{Message, MessageSender},
     view::{
         component::ComponentMap,
@@ -9,9 +10,9 @@ use crate::{
     },
 };
 use futures::FutureExt;
-use slumber_config::Config;
+use slumber_config::{Action, Config};
 use slumber_core::{collection::Collection, database::CollectionDatabase};
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, fmt::Display, sync::Arc};
 use tracing::debug;
 
 /// Thread-local context container, which stores mutable state needed in the
@@ -35,6 +36,8 @@ pub struct ViewContext {
     database: CollectionDatabase,
     /// Queue of unhandled view events, which will be used to update view state
     event_queue: EventQueue,
+    /// Input:action bindings. Used in the view to show hotkey help/suggestions
+    input_engine: InputEngine,
     /// Sender to the async message queue, which is used to transmit data and
     /// trigger callbacks that require additional threading/background work.
     messages_tx: MessageSender,
@@ -68,12 +71,14 @@ impl ViewContext {
     ) {
         debug!("Initializing view context");
         let styles = Styles::new(&config.tui.theme);
+        let input_engine = InputEngine::new(config.tui.input_bindings.clone());
         Self::INSTANCE.with_borrow_mut(|context| {
             *context = Some(Self {
                 config,
                 collection,
                 database,
                 event_queue: EventQueue::default(),
+                input_engine,
                 messages_tx,
                 styles,
             });
@@ -96,6 +101,16 @@ impl ViewContext {
                 context.as_mut().expect("View context not initialized");
             f(context)
         })
+    }
+
+    /// Shortcut for [InputEngine::add_hint]
+    pub fn add_binding_hint(label: impl Display, action: Action) -> String {
+        Self::with(|context| context.input_engine.add_hint(label, action))
+    }
+
+    /// Shortcut for [InputEngine::binding_display]
+    pub fn binding_display(action: Action) -> String {
+        Self::with(|context| context.input_engine.binding_display(action))
     }
 
     /// Get the request collection
@@ -145,6 +160,11 @@ impl ViewContext {
     /// Execute a function with access to the database
     pub fn with_database<T>(f: impl FnOnce(&CollectionDatabase) -> T) -> T {
         Self::with(|context| f(&context.database))
+    }
+
+    /// Execute a function with access to the input engine
+    pub fn with_input<T>(f: impl FnOnce(&InputEngine) -> T) -> T {
+        Self::with(|context| f(&context.input_engine))
     }
 }
 

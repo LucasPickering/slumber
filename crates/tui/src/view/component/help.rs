@@ -1,13 +1,10 @@
 use super::{Canvas, DrawMetadata};
-use crate::{
-    context::TuiContext,
-    view::{
-        Generate, UpdateContext,
-        common::Pane,
-        component::{Component, ComponentId, Draw},
-        context::ViewContext,
-        event::{Event, EventMatch},
-    },
+use crate::view::{
+    Generate, UpdateContext,
+    common::Pane,
+    component::{Component, ComponentId, Draw},
+    context::ViewContext,
+    event::{Event, EventMatch},
 };
 use itertools::Itertools;
 use ratatui::{
@@ -36,15 +33,18 @@ pub struct Help {
 impl Help {
     /// Get the list of bindings that will be shown in the modal
     fn bindings() -> Vec<[String; 2]> {
-        TuiContext::get()
-            .input_engine
-            .bindings()
-            .iter()
-            .filter(|(action, _)| action.visible())
-            .map(|(action, binding)| [action.to_string(), binding.to_string()])
-            // Sort alphabetically
-            .sorted_by_key(|[action, _]| action.to_string())
-            .collect()
+        ViewContext::with_input(|input| {
+            input
+                .bindings()
+                .iter()
+                .filter(|(action, _)| action.visible())
+                .map(|(action, binding)| {
+                    [action.to_string(), binding.to_string()]
+                })
+                // Sort alphabetically
+                .sorted_by_key(|[action, _]| action.to_string())
+                .collect()
+        })
     }
 }
 
@@ -140,12 +140,10 @@ impl Draw for Help {
             // Show minimal help in the footer
             let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
 
-            let input_engine = &TuiContext::get().input_engine;
-
             let text = actions
                 .into_iter()
                 .map(|action| {
-                    let binding = input_engine.binding_display(action);
+                    let binding = ViewContext::binding_display(action);
                     format!("{binding} {action}")
                 })
                 .join(" / ");

@@ -18,7 +18,7 @@ use crate::{
     collection_state::CollectionState,
     context::TuiContext,
     http::{RequestConfig, RequestState, TuiHttpProvider},
-    input::InputEvent,
+    input::{InputEngine, InputEvent},
     message::{
         Callback, HttpMessage, Message, MessageSender, RecipeCopyTarget,
     },
@@ -28,7 +28,7 @@ use crate::{
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
 use crossterm::event::{self, EventStream};
-use futures::{Stream, StreamExt, pin_mut};
+use futures::{Stream, StreamExt, future, pin_mut};
 use ratatui::{
     Terminal,
     buffer::Buffer,
@@ -222,12 +222,14 @@ where
         self.listen_for_signals();
         self.watch_collection();
 
-        let input_engine = &TuiContext::get().input_engine;
+        let input_engine =
+            InputEngine::new(self.config.tui.input_bindings.clone());
         // Stream of terminal input events. Events that don't map to a message
         // (cursor move, focus, etc.) should be filtered out entirely so
         // they don't trigger any updates
-        let input_stream = input_stream.filter_map(|event| async move {
-            input_engine.convert_event(event)
+        let input_stream = input_stream.filter_map(move |event| {
+            let input_engine = &input_engine;
+            future::ready(input_engine.convert_event(event))
         });
         pin_mut!(input_stream);
 

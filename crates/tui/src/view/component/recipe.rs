@@ -7,7 +7,6 @@ mod table;
 mod url;
 
 use crate::{
-    context::TuiContext,
     message::{Message, RecipeCopyTarget},
     view::{
         Component, Generate, ViewContext,
@@ -437,7 +436,7 @@ impl Component for RecipeDetail {
 impl Draw for RecipeDetail {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Render outermost block
-        let title = TuiContext::get().input_engine.add_hint(
+        let title = ViewContext::add_binding_hint(
             match &self.state {
                 RecipeNodeState::Folder { .. } => "Folder",
                 RecipeNodeState::Recipe { .. } | RecipeNodeState::None => {

@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     message::Message,
     util,
     view::{
@@ -69,9 +68,8 @@ impl<K> QueryableBody<K> {
     where
         K: PersistentKey<Value = String>,
     {
-        let input_engine = &TuiContext::get().input_engine;
-        let query_bind = input_engine.binding_display(Action::Search);
-        let export_bind = input_engine.binding_display(Action::Export);
+        let query_bind = ViewContext::binding_display(Action::Search);
+        let export_bind = ViewContext::binding_display(Action::Export);
 
         // Load query from the store. Fall back to the default if missing
         let query = PersistentStore::get(&persistent_key)

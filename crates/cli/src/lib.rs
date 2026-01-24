@@ -88,6 +88,11 @@ pub struct GlobalArgs {
     /// Print the path to the log file for this session
     #[clap(long)]
     pub print_log_path: bool,
+
+    /// Test only: set the directory for the config, database, and log files
+    #[cfg(debug_assertions)]
+    #[clap(long, hide = true)]
+    pub data_dir: Option<PathBuf>,
 }
 
 impl GlobalArgs {

@@ -16,7 +16,7 @@ pub fn slumber() -> (Command, TempDir) {
     let mut command = cargo_bin_cmd!("slumber_cli");
     command
         .current_dir(tests_dir())
-        .env(DATA_DIRECTORY_ENV_VARIABLE, data_dir.deref());
+        .args(["--data-dir", data_dir.deref().to_str().unwrap()]);
     (command, data_dir)
 }
 

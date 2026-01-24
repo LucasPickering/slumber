@@ -207,6 +207,16 @@ impl LazyValue {
             Self::Nested(output) => Box::pin(output.try_collect_value()).await,
         }
     }
+
+    /// TODO
+    pub fn has_stream(&self) -> bool {
+        match self {
+            LazyValue::Value(_) => false,
+            LazyValue::Stream { .. } => true,
+            // Recursion!
+            LazyValue::Nested(rendered_output) => rendered_output.has_stream(),
+        }
+    }
 }
 
 impl<T: Into<Value>> From<T> for LazyValue {

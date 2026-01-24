@@ -26,15 +26,15 @@ use std::time::Duration;
 use tokio::fs;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
-/// TODO
+/// Render profile fields. Fields can be assigned to arbitrary values
 #[rstest]
 #[case::null("{{ null }}", Value::Null, false)]
 #[case::bool("{{ bool }}", true.into(), false)]
 #[case::int("{{ int }}", 4.into(), false)]
 #[case::float("{{ float }}", 123.45.into(), false)]
 #[case::string("{{ string }}", "localhost".into(), false)]
-#[case::no_unpack("{{ int_deferred }}", "4".into(), false)]
-#[case::stream("content: {{ file }}", b"content: first".into(), true)]
+#[case::unpack("{{ int_deferred }}", 4.into(), false)]
+#[case::stream("content: {{ file }}", "content: first".into(), true)]
 #[case::array("{{ array }}", vec![1, 2, 3].into(), false)]
 #[case::object(
     "{{ object }}",
@@ -42,8 +42,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
     false,
 )]
 // Stream is resolved eagerly when it's a nested expression
-#[case::array_stream("{{ array_stream }}", vec!["first"].into(), false)]
-// TODO test with streaming disabled
+#[case::array_stream("{{ array_stream }}", vec![b"first"].into(), false)]
 #[tokio::test]
 async fn test_profile(
     #[case] template: Template,
@@ -59,7 +58,7 @@ async fn test_profile(
         ("string", "localhost".into()),
         ("array", vec![1, 2, 3].into()),
         ("object", vec![("{{ string }}", 1), ("raw", 2)].into()),
-        ("int_deferred", "{{ int }}".into()), // *Not* unpacked into an int
+        ("int_deferred", "{{ int }}".into()), // Unpacked into an int
         ("file", "{{ file('first.txt') }}".into()),
         ("array_stream", vec!["{{ file }}"].into()),
     ]
@@ -75,6 +74,30 @@ async fn test_profile(
     let output = template.render(&context.streaming(true)).await;
     assert_eq!(output.has_stream(), expected_has_stream);
     assert_eq!(output.try_collect_value().await.unwrap(), expected);
+}
+
+/// Rendering a profile field propagates the streaming setting
+#[rstest]
+#[tokio::test]
+async fn test_profile_stream_disabled() {
+    let template: Template = "content: {{ file }}".into();
+    // Put some profile data in the context
+    let profile_data = [("file", "{{ file('first.txt') }}".into())]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect::<IndexMap<String, ValueTemplate>>();
+    let profile = Profile {
+        data: profile_data,
+        ..Profile::factory(())
+    };
+    let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
+
+    let output = template.render(&context.streaming(false)).await;
+    assert!(!output.has_stream());
+    assert_eq!(
+        output.try_collect_value().await.unwrap(),
+        "content: first".into()
+    );
 }
 
 /// Override profiles fields

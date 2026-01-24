@@ -9,14 +9,13 @@ use terminput::{
 };
 use tracing::trace;
 
-/// Top-level input manager. This handles things like bindings and mapping
-/// events to actions, but then the actions are actually processed by the view.
+/// Map of input sequences to actions
 #[derive(Debug, Default)]
-pub struct InputEngine {
+pub struct InputBindings {
     bindings: InputMap,
 }
 
-impl InputEngine {
+impl InputBindings {
     pub fn new(bindings: InputMap) -> Self {
         Self { bindings }
     }
@@ -294,7 +293,7 @@ mod tests {
         #[case] event: Event,
         #[case] expected: Option<InputEvent>,
     ) {
-        let engine = InputEngine::default();
+        let engine = InputBindings::default();
         let actual = engine.convert_event(event.clone());
         assert_eq!(actual, expected);
     }

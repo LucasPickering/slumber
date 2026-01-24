@@ -1,12 +1,11 @@
 //! A single-line text box with callbacks
 
 use crate::{
-    context::TuiContext,
     input::InputEvent,
     view::{
         common::scrollbar::Scrollbar,
         component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        context::UpdateContext,
+        context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, ToEmitter},
     },
 };
@@ -241,7 +240,7 @@ impl Draw<TextBoxProps> for TextBox {
         props: TextBoxProps,
         metadata: DrawMetadata,
     ) {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
 
         let text: Text = if self.state.text.is_empty() {
             // Users can optionally set a different placeholder for when focused
@@ -500,12 +499,12 @@ mod tests {
 
     /// Create a span styled as the cursor
     fn cursor(text: &str) -> Span<'_> {
-        Span::styled(text, TuiContext::get().styles.text_box.cursor)
+        Span::styled(text, ViewContext::styles().text_box.cursor)
     }
 
     /// Create a span styled as text in the box
     fn text(text: &str) -> Span<'_> {
-        Span::styled(text, TuiContext::get().styles.text_box.text)
+        Span::styled(text, ViewContext::styles().text_box.text)
     }
 
     /// Assert that text state matches text/cursor location. Cursor location is
@@ -758,7 +757,7 @@ mod tests {
         );
 
         assert_state(&component.state, "", 0);
-        let styles = &TuiContext::get().styles.text_box;
+        let styles = ViewContext::styles().text_box;
         terminal.assert_buffer_lines([vec![
             cursor("h"),
             Span::styled("ello", styles.text.patch(styles.placeholder)),
@@ -778,7 +777,7 @@ mod tests {
                 .placeholder("unfocused")
                 .placeholder_focused("focused"),
         );
-        let styles = &TuiContext::get().styles.text_box;
+        let styles = ViewContext::styles().text_box;
 
         // Focused
         assert_state(&component.state, "", 0);
@@ -831,7 +830,7 @@ mod tests {
         // Invalid text, styling changes and no events are emitted
         component.int().send_text("llo").assert().emitted([]);
         terminal.assert_buffer_lines([vec![
-            Span::styled("hello", TuiContext::get().styles.text_box.invalid),
+            Span::styled("hello", ViewContext::styles().text_box.invalid),
             cursor(" "),
         ]]);
         component

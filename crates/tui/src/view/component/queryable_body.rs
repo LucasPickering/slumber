@@ -488,9 +488,11 @@ impl CommandState {
 mod tests {
     use super::*;
     use crate::{
-        context::TuiContext,
         test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
+        view::{
+            context::ViewContext,
+            test_util::{TestComponent, TestHarness, harness},
+        },
     };
     use ratatui::{layout::Margin, text::Span};
     use rstest::{fixture, rstest};
@@ -512,7 +514,7 @@ mod tests {
 
     /// Style text to match the text window gutter
     fn gutter(text: &str) -> Span<'_> {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         Span::styled(text, styles.text_window.gutter)
     }
 
@@ -546,7 +548,7 @@ mod tests {
         // Assert initial state/view
         assert_eq!(component.last_executed_query, None);
         assert_eq!(component.modified_text().as_deref(), None);
-        let styles = &TuiContext::get().styles.text_box;
+        let styles = ViewContext::styles().text_box;
         terminal.assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}".into()],
             vec![gutter(" "), "".into()],

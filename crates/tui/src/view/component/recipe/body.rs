@@ -1,9 +1,8 @@
 use crate::{
-    context::TuiContext,
     message::{Message, RecipeCopyTarget},
     util::{ResultReported, TempFile},
     view::{
-        Component, Generate, ViewContext,
+        Component, Generate,
         common::{
             actions::MenuItem,
             template_preview::{TemplatePreview, TemplatePreviewEvent},
@@ -14,7 +13,7 @@ use crate::{
             internal::{Child, ToChild},
             recipe::table::{RecipeTable, RecipeTableKind, RecipeTableProps},
         },
-        context::UpdateContext,
+        context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, SessionKey},
         util::{highlight, view_text},
@@ -355,7 +354,7 @@ impl Draw for TextBody {
                 );
 
                 // Draw the error down below
-                let styles = &TuiContext::get().styles;
+                let styles = ViewContext::styles();
                 let error_text = (error as &dyn StdError)
                     .generate()
                     .style(styles.text.error);
@@ -454,9 +453,9 @@ fn preview_json_template(json: &JsonTemplate) -> Template {
 mod tests {
     use super::*;
     use crate::{
-        context::TuiContext,
         test_util::{TestTerminal, terminal},
         view::{
+            context::ViewContext,
             persistent::PersistentStore,
             test_util::{TestComponent, TestHarness, harness},
         },
@@ -672,19 +671,19 @@ mod tests {
 
     /// Style text to match the text window gutter
     fn gutter(text: &str) -> Span<'_> {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         Span::styled(text, styles.text_window.gutter)
     }
 
     /// Style text to match the edited/overridden style
     fn edited(text: &str) -> Span<'_> {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         Span::from(text).set_style(styles.text.edited)
     }
 
     /// Style text as an error
     fn error(text: &str) -> Span<'_> {
-        let style = &TuiContext::get().styles;
+        let style = ViewContext::styles();
         Span::from(text).set_style(style.text.error)
     }
 

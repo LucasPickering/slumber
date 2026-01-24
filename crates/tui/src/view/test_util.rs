@@ -20,7 +20,7 @@ use crate::{
 use itertools::Itertools;
 use ratatui::layout::Rect;
 use rstest::fixture;
-use slumber_config::Action;
+use slumber_config::{Action, Config};
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use slumber_util::{Factory, assert_matches};
 use std::{
@@ -66,6 +66,7 @@ impl TestHarness {
             Rc::new(RefCell::new(RequestStore::new(database.clone())));
         let collection = Arc::new(collection);
         ViewContext::init(
+            Config::default().into(),
             Arc::clone(&collection),
             database.clone(),
             messages.tx(),

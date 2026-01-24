@@ -1,20 +1,17 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        common::{
-            component_select::{
-                ComponentSelect, ComponentSelectProps, SelectStyles,
-            },
-            select::{Select, SelectEventKind},
+use crate::view::{
+    common::{
+        component_select::{
+            ComponentSelect, ComponentSelectProps, SelectStyles,
         },
-        component::{
-            Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
-            editable_template::EditableTemplate, internal::Child,
-        },
-        context::UpdateContext,
-        event::{Event, EventMatch, ToEmitter},
-        persistent::SessionKey,
+        select::{Select, SelectEventKind},
     },
+    component::{
+        Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
+        editable_template::EditableTemplate, internal::Child,
+    },
+    context::{UpdateContext, ViewContext},
+    event::{Event, EventMatch, ToEmitter},
+    persistent::SessionKey,
 };
 use ratatui::{layout::Layout, prelude::Constraint, text::Span};
 use slumber_core::collection::{Authentication, RecipeId};
@@ -89,7 +86,7 @@ impl Component for AuthenticationDisplay {
 
 impl Draw for AuthenticationDisplay {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         let [label_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());

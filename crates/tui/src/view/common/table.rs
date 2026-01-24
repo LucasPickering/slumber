@@ -1,4 +1,4 @@
-use crate::context::TuiContext;
+use crate::view::context::ViewContext;
 use ratatui::{
     prelude::{Buffer, Constraint, Rect},
     style::Styled,
@@ -58,7 +58,7 @@ where
     type State = TableState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         let rows = self.rows.into_iter().enumerate().map(|(i, row)| {
             let row = Row::new(row);
             // Apply theme styles, but let the row's individual styles override

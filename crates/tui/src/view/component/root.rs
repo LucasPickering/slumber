@@ -350,7 +350,7 @@ impl Component for CollectionErrorView {
 
 impl Draw for CollectionErrorView {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let context = TuiContext::get();
+        let input_engine = &TuiContext::get().input_engine;
         let [message_area, _, error_area] = Layout::vertical([
             Constraint::Length(2),
             Constraint::Length(1), // A nice gap
@@ -366,10 +366,9 @@ impl Draw for CollectionErrorView {
                 format!(
                     "Watching {file} for changes...\n{key} to exit",
                     file = self.collection_file,
-                    key =
-                        context.input_engine.binding_display(Action::ForceQuit),
+                    key = input_engine.binding_display(Action::ForceQuit),
                 ),
-                context.styles.text.primary,
+                ViewContext::styles().text.primary,
             ),
             message_area,
         );

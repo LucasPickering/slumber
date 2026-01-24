@@ -1,11 +1,8 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        common::scrollbar::Scrollbar,
-        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-        context::UpdateContext,
-        event::{Event, EventMatch},
-    },
+use crate::view::{
+    common::scrollbar::Scrollbar,
+    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+    context::{UpdateContext, ViewContext},
+    event::{Event, EventMatch},
 };
 use ratatui::{
     buffer::Buffer,
@@ -290,7 +287,7 @@ impl Gutter {
 
 impl Widget for Gutter {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
         // Draw line numbers in the gutter
         let first_line = self.offset.y + 1;
         let last_line = cmp::min(
@@ -528,6 +525,6 @@ mod tests {
     /// Style some text as gutter line numbers
     fn line_num(n: u16) -> Span<'static> {
         let s = if n > 0 { n.to_string() } else { " ".into() };
-        Span::styled(s, TuiContext::get().styles.text_window.gutter)
+        Span::styled(s, ViewContext::styles().text_window.gutter)
     }
 }

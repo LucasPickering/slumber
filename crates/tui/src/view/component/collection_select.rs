@@ -159,7 +159,7 @@ impl Draw for CollectionSelect {
             );
         } else {
             // Closed - just show the selected collection
-            let styles = &TuiContext::get().styles;
+            let styles = ViewContext::styles();
             let text = Span::styled(self.text(), styles.text.highlight);
             canvas.render_widget(text, metadata.area());
         }

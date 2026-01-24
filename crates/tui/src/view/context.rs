@@ -5,9 +5,11 @@ use crate::{
         component::ComponentMap,
         event::{Event, EventQueue},
         persistent::PersistentStore,
+        styles::Styles,
     },
 };
 use futures::FutureExt;
+use slumber_config::Config;
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use std::{cell::RefCell, sync::Arc};
 use tracing::debug;
@@ -23,6 +25,8 @@ use tracing::debug;
 /// view code. We're leaning heavily on the fact that the view is
 /// single-threaded here.
 pub struct ViewContext {
+    /// App-level configuration
+    config: Arc<Config>,
     /// The request collection. This is immutable through the lifespan of the
     /// view; the entire view is rebuilt when the collection reloads.
     collection: Arc<Collection>,
@@ -34,6 +38,8 @@ pub struct ViewContext {
     /// Sender to the async message queue, which is used to transmit data and
     /// trigger callbacks that require additional threading/background work.
     messages_tx: MessageSender,
+    /// Visual styles, derived from the theme
+    styles: Styles,
 }
 
 impl ViewContext {
@@ -55,17 +61,21 @@ impl ViewContext {
 
     /// Initialize or overwrite the view context
     pub fn init(
+        config: Arc<Config>,
         collection: Arc<Collection>,
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) {
         debug!("Initializing view context");
+        let styles = Styles::new(&config.tui.theme);
         Self::INSTANCE.with_borrow_mut(|context| {
             *context = Some(Self {
+                config,
                 collection,
                 database,
                 event_queue: EventQueue::default(),
                 messages_tx,
+                styles,
             });
         });
     }
@@ -123,6 +133,13 @@ impl ViewContext {
     /// Spawn a future in a new task on the main thread. See [Message::Spawn]
     pub fn spawn(future: impl 'static + Future<Output = ()>) {
         Self::send_message(Message::Spawn(future.boxed_local()));
+    }
+
+    /// Get a clone of the stylesheet
+    pub fn styles() -> Styles {
+        // Not sure how expensive this clone is. My guess is it's negligible,
+        // but at some point I might profile it
+        Self::with(|context| context.styles.clone())
     }
 }
 

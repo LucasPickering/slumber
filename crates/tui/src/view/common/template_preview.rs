@@ -160,7 +160,7 @@ impl<PK> TemplatePreview<PK> {
 
     fn style(&self) -> Style {
         if self.override_template.is_some() {
-            TuiContext::get().styles.text.edited
+            ViewContext::styles().text.edited
         } else {
             Style::default()
         }
@@ -222,7 +222,7 @@ struct TextStitcher {
 impl TextStitcher {
     /// Convert chunks into a series of spans, which can be turned into a line
     fn stitch_chunks(chunks: RenderedOutput) -> Text<'static> {
-        let styles = &TuiContext::get().styles;
+        let styles = ViewContext::styles();
 
         // Each chunk will get its own styling, but we can't just make each
         // chunk a Span, because one chunk might have multiple lines. And we
@@ -412,11 +412,11 @@ mod tests {
 
     /// Style some text as rendered
     fn rendered(text: &str) -> Span<'_> {
-        Span::styled(text, TuiContext::get().styles.template_preview.text)
+        Span::styled(text, ViewContext::styles().template_preview.text)
     }
 
     /// Style some text as an error
     fn error(text: &str) -> Span<'_> {
-        Span::styled(text, TuiContext::get().styles.template_preview.error)
+        Span::styled(text, ViewContext::styles().template_preview.error)
     }
 }

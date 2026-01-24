@@ -179,12 +179,10 @@ fn get_candidates<T: Into<String>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use env_lock::{CurrentDirGuard, EnvGuard};
+    use env_lock::CurrentDirGuard;
     use rstest::{fixture, rstest};
     use slumber_core::http::{Exchange, RequestId};
-    use slumber_util::{
-        Factory, TempDir, paths::DATA_DIRECTORY_ENV_VARIABLE, temp_dir,
-    };
+    use slumber_util::{DataDir, Factory, data_dir};
     use std::path::{Path, PathBuf};
 
     /// Complete profile IDs from the collection
@@ -313,26 +311,19 @@ mod tests {
 
     struct TestDatabase {
         database: Database,
-        // Hang onto these so the env isn't reset/dir isn't deleted until the
-        // end of the test
-        _temp_dir: TempDir,
-        _env_guard: EnvGuard<'static>,
+        /// Hang onto this dir isn't deleted until the end of the test
+        _data_dir: DataDir,
     }
 
     /// Create a DB in the temp dir. We don't want an in-memory DB because we
     /// want to test real world behavior. Returns the env guard as well because
     /// the env variable needs to remain set until the end of the test
     #[fixture]
-    fn database(temp_dir: TempDir) -> TestDatabase {
-        let env_guard = env_lock::lock_env([(
-            DATA_DIRECTORY_ENV_VARIABLE,
-            Some(temp_dir.to_str().unwrap()),
-        )]);
+    fn database(data_dir: DataDir) -> TestDatabase {
         let database = Database::load().unwrap();
         TestDatabase {
             database,
-            _temp_dir: temp_dir,
-            _env_guard: env_guard,
+            _data_dir: data_dir,
         }
     }
 

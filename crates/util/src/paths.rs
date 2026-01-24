@@ -6,12 +6,37 @@ use std::{
     sync::OnceLock,
 };
 
-/// Set this environment variable to change the data directory. Useful for tests
 #[cfg(debug_assertions)]
-pub const DATA_DIRECTORY_ENV_VARIABLE: &str = "SLUMBER_DB";
-/// Lock for the log file. A random file name is generated once during startup,
-/// then used for that session
+thread_local! {
+    /// This is dev-only so it can be used in integration tests. In the past
+    /// this used an env var, but it's now a thread local so integration tests
+    /// can run in parallel on separate threads (env vars are process-wide).
+    /// This will *not* be automatically reset, so any test that cares about the
+    /// data dir needs to set this itself.
+    static DATA_DIRECTORY_OVERRIDE: std::cell::RefCell<Option<PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Lock for the log file path. A random file name is generated once during
+/// startup, then used for that session
 static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+
+/// Override the data directory **for the current thread**
+///
+/// This should be used via the [data_dir](super::test_util::data_dir)
+#[cfg(any(debug_assertions, test, feature = "test"))]
+pub fn set_data_directory(path: PathBuf) {
+    DATA_DIRECTORY_OVERRIDE.with_borrow_mut(|dir| *dir = Some(path));
+}
+
+/// Reset the data directory override **for the current thread**
+///
+/// This is called automatically by the [data_dir](super::test_util::data_dir)
+/// fixture at the end of the test
+#[cfg(any(debug_assertions, test, feature = "test"))]
+pub fn reset_data_directory() {
+    DATA_DIRECTORY_OVERRIDE.with_borrow_mut(|dir| *dir = None);
+}
 
 /// Get the path of the directory to contain the config file (e.g. the
 /// database). **Directory may not exist yet**, caller must create it.
@@ -61,10 +86,10 @@ fn debug_or(path: PathBuf) -> PathBuf {
     #[cfg(debug_assertions)]
     {
         let _ = path; // Remove unused warning
-        // Check the env var, for tests
-        std::env::var(DATA_DIRECTORY_ENV_VARIABLE)
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| get_repo_root().join("data/"))
+        // Check the thread-local override first for tests
+        DATA_DIRECTORY_OVERRIDE
+            .with_borrow(Clone::clone)
+            .unwrap_or_else(|| get_repo_root().join("data/"))
     }
     #[cfg(not(debug_assertions))]
     {

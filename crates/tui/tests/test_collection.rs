@@ -10,9 +10,7 @@ use slumber_core::{
     test_util::by_id,
 };
 use slumber_tui::Tui;
-use slumber_util::{
-    Factory, TempDir, paths::DATA_DIRECTORY_ENV_VARIABLE, temp_dir,
-};
+use slumber_util::{DataDir, Factory, data_dir};
 use std::path::{Path, PathBuf};
 use terminput::KeyCode;
 use tokio::fs;
@@ -20,15 +18,9 @@ use tokio::fs;
 /// Load a collection, then change the file to trigger a reload
 #[rstest]
 #[tokio::test]
-async fn test_collection_reload(backend: TestBackend, temp_dir: TempDir) {
-    // Every test needs its own data dir, for isolation. This effectively
-    // single-threads the tests. We could fix this by passing it as a param
-    let _env_guard = env_lock::lock_env([(
-        DATA_DIRECTORY_ENV_VARIABLE,
-        Some(temp_dir.to_str().unwrap()),
-    )]);
+async fn test_collection_reload(backend: TestBackend, data_dir: DataDir) {
     // Start with an empty collection
-    let collection_path = collection_file(&temp_dir, "name: Test").await;
+    let collection_path = collection_file(&data_dir, "name: Test").await;
     let tui = Tui::new(backend.clone(), Some(collection_path.clone())).unwrap();
 
     // Make sure the initial load is correct
@@ -71,7 +63,7 @@ requests:
 
     // Now test swapping out the file. Emulates how vim/helix save
     // https://github.com/LucasPickering/slumber/issues/706
-    let temp_file = temp_dir.join("tmp.yml");
+    let temp_file = data_dir.join("tmp.yml");
     fs::write(&temp_file, "name: Test Swapped").await.unwrap();
 
     let tui = Runner::new(tui)
@@ -93,15 +85,9 @@ requests:
 /// valid collection.
 #[rstest]
 #[tokio::test]
-async fn test_initial_load_error(backend: TestBackend, temp_dir: TempDir) {
-    // TODO dedupe this
-    let _env_guard = env_lock::lock_env([(
-        DATA_DIRECTORY_ENV_VARIABLE,
-        Some(temp_dir.to_str().unwrap()),
-    )]);
-
+async fn test_initial_load_error(backend: TestBackend, data_dir: DataDir) {
     // Start with an invalid collection
-    let collection_path = collection_file(&temp_dir, "requests: 3").await;
+    let collection_path = collection_file(&data_dir, "requests: 3").await;
 
     let tui = Tui::new(backend, Some(collection_path.clone())).unwrap();
 
@@ -131,15 +117,9 @@ async fn test_initial_load_error(backend: TestBackend, temp_dir: TempDir) {
 /// shown.
 #[rstest]
 #[tokio::test]
-async fn test_reload_error(backend: TestBackend, temp_dir: TempDir) {
-    // TODO dedupe this
-    let _env_guard = env_lock::lock_env([(
-        DATA_DIRECTORY_ENV_VARIABLE,
-        Some(temp_dir.to_str().unwrap()),
-    )]);
-
+async fn test_reload_error(backend: TestBackend, data_dir: DataDir) {
     // Start with an empty collection
-    let collection_path = collection_file(&temp_dir, "").await;
+    let collection_path = collection_file(&data_dir, "").await;
     let tui = Tui::new(backend, Some(collection_path.clone())).unwrap();
 
     // Make sure it loaded correctly
@@ -168,19 +148,13 @@ async fn test_reload_error(backend: TestBackend, temp_dir: TempDir) {
 /// Switch the selected request, which should rebuild the state entirely
 #[rstest]
 #[tokio::test]
-async fn test_collection_switch(backend: TestBackend, temp_dir: TempDir) {
-    // TODO dedupe this
-    let _env_guard = env_lock::lock_env([(
-        DATA_DIRECTORY_ENV_VARIABLE,
-        Some(temp_dir.to_str().unwrap()),
-    )]);
-
+async fn test_collection_switch(backend: TestBackend, data_dir: DataDir) {
     // Start with an empty collection
-    let collection_path = collection_file(&temp_dir, "name: Coll 1").await;
+    let collection_path = collection_file(&data_dir, "name: Coll 1").await;
     let tui = Tui::new(backend, Some(collection_path.clone())).unwrap();
 
     // Create a second collection
-    let other_collection_path = temp_dir.join("other_slumber.yml");
+    let other_collection_path = data_dir.join("other_slumber.yml");
     fs::write(
         &other_collection_path,
         r#"name: Coll 2

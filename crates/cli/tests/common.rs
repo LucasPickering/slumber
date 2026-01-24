@@ -2,7 +2,7 @@
 
 use assert_cmd::{Command, cargo::cargo_bin_cmd};
 use slumber_core::collection::CollectionFile;
-use slumber_util::{TempDir, paths::DATA_DIRECTORY_ENV_VARIABLE, temp_dir};
+use slumber_util::{TempDir, temp_dir};
 use std::{
     env,
     ops::Deref,

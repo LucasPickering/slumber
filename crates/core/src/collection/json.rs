@@ -1,11 +1,10 @@
 //! Utilities for working with templated JSON
 
-use crate::render::TemplateContext;
+use crate::render::{SingleRenderContext, TemplateContext};
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_template::{
-    RenderError, RenderedOutput, Template, TemplateParseError, TryFromValue,
-    Value,
+    LazyValue, RenderError, Template, TemplateParseError, TryFromValue, Value,
 };
 use std::str::FromStr;
 use thiserror::Error;
@@ -36,22 +35,49 @@ pub enum ValueTemplate {
 }
 
 impl ValueTemplate {
-    /// Render all templates to strings and return a static JSON value
-    pub async fn render(&self, context: &TemplateContext) -> RenderedOutput {
+    /// TODO
+    pub async fn render(
+        &self,
+        context: &SingleRenderContext<'_>,
+    ) -> Result<LazyValue, RenderError> {
         match self {
-            Self::Null => Value::Null.into(),
-            Self::Boolean(b) => Value::Boolean(*b).into(),
-            Self::Integer(i) => Value::Integer(*i).into(),
-            Self::Float(f) => Value::Float(*f).into(),
+            Self::Null => Ok(Value::Null.into()),
+            Self::Boolean(b) => Ok(Value::Boolean(*b).into()),
+            Self::Integer(i) => Ok(Value::Integer(*i).into()),
+            Self::Float(f) => Ok(Value::Float(*f).into()),
             Self::String(template) => {
-                // TODO take SingleRenderContext here
-                template.render(&context.streaming(true)).await
+                Ok(template.render(context).await.unpack())
             }
             Self::Array(array) => {
-                todo!()
+                // TODO explain
+                let values =
+                    future::try_join_all(array.iter().map(|value| async {
+                        value
+                            .render(&context.streaming(false))
+                            .await?
+                            .resolve()
+                            .await
+                    }))
+                    .await?;
+                Ok(values.into())
             }
             Self::Object(map) => {
-                todo!()
+                // TODO explain
+                let entries = future::try_join_all(map.iter().map(
+                    |(key, value)| async {
+                        let key = key
+                            .render_string(&context.streaming(false))
+                            .await?;
+                        let value = value
+                            .render(&context.streaming(false))
+                            .await?
+                            .resolve()
+                            .await?;
+                        Ok::<_, RenderError>((key, value))
+                    },
+                ))
+                .await?;
+                Ok(entries.into())
             }
         }
     }

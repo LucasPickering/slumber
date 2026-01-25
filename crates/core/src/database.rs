@@ -22,6 +22,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use strum::IntoDiscriminant;
 use thiserror::Error;
 use tracing::{debug, info, trace};
 use uuid::Uuid;
@@ -559,6 +560,7 @@ impl CollectionDatabase {
                     method,
                     url,
                     request_headers,
+                    request_body_kind,
                     request_body,
                     status_code,
                     response_headers,
@@ -575,6 +577,7 @@ impl CollectionDatabase {
                     :method,
                     :url,
                     :request_headers,
+                    :request_body_kind,
                     :request_body,
                     :status_code,
                     :response_headers,
@@ -592,7 +595,8 @@ impl CollectionDatabase {
                     ":method": exchange.request.method,
                     ":url": exchange.request.url.as_str(),
                     ":request_headers": SqlWrap(&exchange.request.headers),
-                    ":request_body": exchange.request.body(),
+                    ":request_body_kind": exchange.request.body.discriminant(),
+                    ":request_body": exchange.request.body.bytes(),
 
                     ":status_code": exchange.response.status.as_u16(),
                     ":response_headers": SqlWrap(&exchange.response.headers),

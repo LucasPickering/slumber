@@ -114,6 +114,16 @@ pub fn migrations() -> Migrations<'static> {
             )",
         )
         .down("DROP TABLE IF EXISTS commands"),
+        // Add a column that holds the variant of RequestBody. Each variant has
+        // a u8 code associated with it. It'd be nice to have a CHECK constraint
+        // here to ensure request_body is only populated if kind=1, but sqlite
+        // doesn't support adding CHECK constraints to existing tables
+        M::up(
+            "ALTER TABLE requests_v2 \
+                ADD COLUMN request_body_kind INTEGER NOT NULL DEFAULT 0;
+            UPDATE requests_v2 SET request_body_kind = request_body IS NOT NULL",
+        )
+        .down("ALTER TABLE requests_v2 DROP COLUMN request_body_kind"),
     ])
 }
 
@@ -170,7 +180,12 @@ fn migrate_requests_v2(transaction: &Transaction) -> HookResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::Connection;
+    use crate::{
+        collection::RecipeId, database::CollectionId, http::RequestId,
+    };
+    use chrono::Utc;
+    use rusqlite::{Connection, named_params};
+    use slumber_util::Factory;
 
     /// Test migrating a fresh DB works. The most basic and shitty of tests!
     #[test]
@@ -184,5 +199,124 @@ mod tests {
             })
             .unwrap();
         assert_eq!(request_count, 0);
+    }
+
+    /// Test the migration that added the `request_body_kind` column. Any
+    /// existing request with a body will be kind `Some`. Anything else will
+    /// be kind `None`. This means stream/large bodies will instead look like
+    /// missing bodies. No way to distinguish them though (which is why the new
+    /// column was added).
+    #[test]
+    fn test_migrate_request_body_kind() {
+        fn insert_exchange(
+            connection: &Connection,
+            request_body: Option<&[u8]>,
+        ) {
+            connection
+                .execute(
+                    "INSERT INTO
+                    requests_v2 (
+                        id,
+                        collection_id,
+                        profile_id,
+                        recipe_id,
+                        start_time,
+                        end_time,
+                        http_version,
+                        method,
+                        url,
+                        request_headers,
+                        request_body,
+                        status_code,
+                        response_headers,
+                        response_body
+                    )
+                    VALUES (
+                        :id,
+                        :collection_id,
+                        :profile_id,
+                        :recipe_id,
+                        :start_time,
+                        :end_time,
+                        :http_version,
+                        :method,
+                        :url,
+                        :request_headers,
+                        :request_body,
+                        :status_code,
+                        :response_headers,
+                        :response_body
+                    )",
+                    named_params! {
+                        ":id": RequestId::new(),
+                        ":collection_id": CollectionId::new(),
+                        ":profile_id": "",
+                        ":recipe_id": RecipeId::factory(()),
+                        ":start_time": Utc::now(),
+                        ":end_time": Utc::now(),
+
+                        ":http_version": "1.1",
+                        ":method": "POST",
+                        ":url": "http://localhost",
+                        ":request_headers": b"",
+                        ":request_body": request_body,
+
+                        ":status_code": 200,
+                        ":response_headers": b"",
+                        ":response_body": b"",
+                    },
+                )
+                .unwrap();
+        }
+
+        let mut connection = Connection::open_in_memory().unwrap();
+        let migrations = migrations();
+
+        // Migrate to the version before
+        migrations.to_version(&mut connection, 10).unwrap();
+        // Make sure we got the right version
+        let columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(requests_v2)")
+            .unwrap()
+            .query_map((), |row| row.get::<_, String>("name"))
+            .unwrap()
+            .collect::<Result<Vec<String>, _>>()
+            .unwrap();
+        assert!(!columns.contains(&"request_body_kind".to_owned()));
+
+        // Disable FK checks to make the insertions easier
+        connection
+            .pragma_update(None, "foreign_keys", "OFF")
+            .unwrap();
+        // Add a few different exchanges
+        insert_exchange(&connection, None); // No body
+        insert_exchange(&connection, Some(b"")); // Empty body
+        insert_exchange(&connection, Some(b"data")); // With body
+
+        // Do the migration
+        migrations.to_version(&mut connection, 11).unwrap();
+
+        let bodies = connection
+            .prepare(
+                "SELECT request_body_kind, request_body FROM requests_v2 \
+                ORDER BY start_time",
+            )
+            .unwrap()
+            .query_map((), |row| {
+                let kind: u8 = row.get("request_body_kind")?;
+                let body: Option<Vec<u8>> = row.get("request_body")?;
+                Ok((kind, body))
+            })
+            .unwrap()
+            .collect::<Result<Vec<(u8, Option<Vec<u8>>)>, _>>()
+            .unwrap();
+        assert_eq!(
+            bodies,
+            vec![
+                (0, None),
+                (1, Some(b"".to_vec())),
+                (1, Some(b"data".to_vec()))
+            ]
+        );
     }
 }

@@ -91,6 +91,7 @@ fn test_get_client(
     }
 }
 
+/// Build a request with a bunch of rendered templates
 #[rstest]
 #[tokio::test]
 async fn test_build_request(http_engine: HttpEngine) {
@@ -144,10 +145,44 @@ async fn test_build_request(http_engine: HttpEngine) {
             method: HttpMethod::Post,
             http_version: HttpVersion::Http11,
             url: expected_url,
-            body: Some(Vec::from(expected_body).into()),
+            body: expected_body.as_slice().into(),
             headers: expected_headers,
         }
     );
+}
+
+/// Test how various request bodies are persisted into [RequestRecord]
+#[rstest]
+#[case::none(None, RequestBody::None)]
+#[case::empty(Some("".into()), b"".as_slice().into())]
+#[case::present(Some("data!".into()), b"data!".as_slice().into())]
+// Stream bodies can't be saved because they're never in memory
+#[case::stream(
+    Some(RecipeBody::Stream("{{ stream }}".into())), RequestBody::Stream,
+)]
+// Big bodies aren't saved, for tax purposes
+#[case::too_large(
+    Some("this body length is way over 30 bytes!".into()),
+    RequestBody::TooLarge,
+)]
+#[tokio::test]
+async fn test_request_record_body(
+    mut http_engine: HttpEngine,
+    #[case] body: Option<RecipeBody>,
+    #[case] expected_body: RequestBody,
+) {
+    http_engine.large_body_size = 30; // Make sure the big body exceeds this
+    let recipe = Recipe {
+        method: HttpMethod::Post,
+        body,
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe, None);
+
+    let seed = seed(&context, BuildOptions::default());
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    assert_eq!(ticket.record.body, expected_body);
 }
 
 /// Test building just a URL. Should include query params, but headers/body
@@ -257,7 +292,7 @@ async fn test_authentication(
                 ("authorization", "bogus"),
                 ("authorization", expected_header)
             ]),
-            body: None,
+            body: RequestBody::None,
         }
     );
 }
@@ -370,7 +405,7 @@ async fn test_body(
         expected_content_type
     );
     // Convert body to text for comparison, because it gives better errors
-    let body = request.body.as_ref().expect("Expected request body");
+    let body = request.body.bytes().expect("Expected request body");
     let body_text = std::str::from_utf8(body).unwrap();
     assert_eq!(body_text, expected_body);
 }
@@ -495,6 +530,12 @@ async fn test_body_stream(
 
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
+    // Since the body is streamed, it's not available in the request or record
+    assert_eq!(
+        ticket.request.body().map(reqwest::Body::as_bytes),
+        Some(None)
+    );
+    assert_eq!(ticket.record.body, RequestBody::Stream);
 
     // The rendering code should set the correct boundary in TLS
     let (expected_content_type, expected_body) = MULTIPART_BOUNDARY
@@ -800,9 +841,7 @@ async fn test_override_body_form(http_engine: HttpEngine) {
                 "content-type",
                 "application/x-www-form-urlencoded"
             )]),
-            body: Some(
-                b"user_id=1&preference=small&extra=extra".as_slice().into()
-            ),
+            body: b"user_id=1&preference=small&extra=extra".as_slice().into(),
         }
     );
 }

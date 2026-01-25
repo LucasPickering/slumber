@@ -18,7 +18,7 @@ use crate::{
 use ratatui::{layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
-    http::{RequestRecord, content_type::ContentType},
+    http::{RequestBody, RequestRecord, content_type::ContentType},
     util::MaybeStr,
 };
 use std::sync::Arc;
@@ -127,31 +127,19 @@ impl Draw for RequestView {
 /// body to prevent a self-reference. Return `None` if the request has no body
 fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
     let content_type = ContentType::from_headers(&request.headers).ok();
-    request
-        .body()
-        .map(|body| {
-            highlight::highlight_if(
-                content_type,
-                format!("{:#}", MaybeStr(body)).into(),
-            )
-        })
-        .or_else(|| {
-            // No body available: check if it's because the recipe has no body,
-            // or if we threw it away. This will have some false
-            // positives/negatives if the recipe had a body added/removed, but
-            // it's good enough
-            let collection = ViewContext::collection();
-            let recipe =
-                collection.recipes.get(&request.recipe_id)?.recipe()?;
-            if recipe.body.is_some() {
-                let config = &ViewContext::config();
-                Some(Text::raw(format!(
-                    "Body not available. Streamed bodies, or bodies over \
-                        {}, are not persisted",
-                    format_byte_size(config.http.large_body_size)
-                )))
-            } else {
-                None
-            }
-        })
+    match &request.body {
+        RequestBody::None => None,
+        RequestBody::Stream => Some(Text::raw("<stream>")),
+        RequestBody::TooLarge => {
+            let config = &ViewContext::config();
+            Some(Text::raw(format!(
+                "Large body (bodies over {} are not saved)",
+                format_byte_size(config.http.large_body_size)
+            )))
+        }
+        RequestBody::Some(bytes) => Some(highlight::highlight_if(
+            content_type,
+            format!("{:#}", MaybeStr(bytes)).into(),
+        )),
+    }
 }

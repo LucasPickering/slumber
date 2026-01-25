@@ -399,7 +399,9 @@ impl Draw for ActionMenuContent {
             // Add border
             let block = Block::new()
                 .borders(Borders::ALL)
+                .border_style(styles.border)
                 .border_type(styles.border_type)
+                .style(styles.normal)
                 .merge_borders(MergeStrategy::Fuzzy);
             let inner_area = block.inner(area);
             canvas.render_widget(block, area);

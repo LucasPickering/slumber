@@ -49,13 +49,14 @@ impl Generate for Pane<'_> {
     where
         Self: 'this,
     {
-        let (border_type, border_style) =
-            ViewContext::styles().pane.border(self.has_focus);
+        let styles = ViewContext::styles().pane;
+        let (border_type, border_style) = styles.border(self.has_focus);
         Block::default()
             .borders(Borders::ALL)
             .border_type(border_type)
             .border_style(border_style)
             .merge_borders(MergeStrategy::Fuzzy)
+            .style(styles.generic)
             .title(self.title)
     }
 }
@@ -212,7 +213,7 @@ impl Generate for &dyn Error {
     where
         Self: 'this,
     {
-        let mut text = Text::default();
+        let mut text = Text::default().style(ViewContext::styles().text.error);
         // Walk down the error chain and build out a tree thing
         let mut next = Some(self);
         // How far in should the next error be indented? +1 per error
@@ -272,15 +273,17 @@ impl Generate for &anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::test_util::{TestHarness, harness};
     use anyhow::anyhow;
+    use rstest::rstest;
 
     /// Test error chain display
     ///
     /// - First error is displayed without indentation
     /// - Subsequent errors get a little tree guy with indentation
     /// - Continuation lines from a single error are indented as well
-    #[test]
-    fn test_error() {
+    #[rstest]
+    fn test_error(_harness: TestHarness) {
         // Build the error inside-out
         let error = anyhow!("Third\nPoint at ! ^^\nthird line")
             .context("Second\nanother line!!")

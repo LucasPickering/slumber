@@ -16,7 +16,6 @@ use crate::{
 use derive_more::Display;
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
     text::Span,
     widgets::{Block, Clear},
 };
@@ -120,6 +119,8 @@ impl Component for CollectionSelect {
 
 impl Draw for CollectionSelect {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let styles = ViewContext::styles();
+
         // Only draw something if open
         if let Some(select) = &self.select {
             // Open - show the full list
@@ -143,7 +144,7 @@ impl Draw for CollectionSelect {
 
             // Select with background to provide contrast
             canvas.render_widget(
-                Block::new().style(Style::new().bg(Color::DarkGray)),
+                Block::new().style(styles.list.highlight_inactive),
                 select_area,
             );
             canvas.draw(select, SelectListProps::modal(), select_area, true);
@@ -156,7 +157,6 @@ impl Draw for CollectionSelect {
             );
         } else {
             // Closed - just show the selected collection
-            let styles = ViewContext::styles();
             let text = Span::styled(self.text(), styles.text.highlight);
             canvas.render_widget(text, metadata.area());
         }

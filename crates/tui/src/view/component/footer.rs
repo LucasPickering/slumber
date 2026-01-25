@@ -7,7 +7,11 @@ use crate::view::{
     event::{Emitter, Event, EventMatch},
     state::Notification,
 };
-use ratatui::layout::{Constraint, Layout};
+use ratatui::{
+    layout::{Constraint, Layout},
+    style::Stylize,
+    widgets::Block,
+};
 use tokio::time;
 use uuid::Uuid;
 
@@ -88,6 +92,11 @@ impl Draw for Footer {
             Constraint::Min(0),
         ])
         .areas(metadata.area());
+
+        canvas.render_widget(
+            Block::new().bg(ViewContext::styles().table.background_color),
+            metadata.area(),
+        );
 
         canvas.draw(&self.collection_select, (), collection_area, true);
 

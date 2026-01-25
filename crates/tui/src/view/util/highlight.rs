@@ -5,7 +5,7 @@
 use anyhow::Context;
 use itertools::Itertools;
 use ratatui::{
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span, Text},
 };
 use slumber_core::http::content_type::ContentType;
@@ -19,6 +19,8 @@ use strum::{EnumIter, IntoEnumIterator};
 use tree_sitter_highlight::{
     Highlight, HighlightConfiguration, HighlightEvent, Highlighter,
 };
+
+use crate::view::context::ViewContext;
 
 thread_local! {
     /// Cache the highlighter and its configurations, because we only need one
@@ -152,16 +154,15 @@ impl HighlightName {
     }
 
     fn style(self) -> Style {
-        // We only style by foreground for syntax
-        let fg = match self {
-            Self::Comment => Color::Gray,
-            Self::ConstantBuiltin => Color::Blue,
-            Self::Escape => Color::Green,
-            Self::Number => Color::Cyan,
-            Self::String => Color::LightGreen,
-            Self::StringSpecial => Color::Green,
-        };
-        Style::default().fg(fg)
+        let styles = ViewContext::styles().syntax_highlighting;
+        match self {
+            Self::Comment => styles.comment,
+            Self::ConstantBuiltin => styles.builtin,
+            Self::Escape => styles.escape,
+            Self::Number => styles.number,
+            Self::String => styles.string,
+            Self::StringSpecial => styles.special,
+        }
     }
 }
 
@@ -380,11 +381,14 @@ fn split_cow(s: Cow<'_, str>, at: usize) -> (Cow<'_, str>, Cow<'_, str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::test_util::{TestHarness, harness};
     use pretty_assertions::assert_eq;
+    use ratatui::style::Color;
+    use rstest::rstest;
 
     /// Test that JSON is highlighted, by existing styling is retained
-    #[test]
-    fn test_highlight() {
+    #[rstest]
+    fn test_highlight(_harness: TestHarness) {
         fn fg(color: Color) -> Style {
             Style::default().fg(color)
         }

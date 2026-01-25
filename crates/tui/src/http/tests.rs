@@ -205,7 +205,7 @@ async fn test_life_cycle_building_cancel() {
         Some(cancel_token),
     );
     store.cancel(id);
-    assert_matches!(store.get(id), Some(RequestState::Cancelled { .. }));
+    assert_matches!(store.get(id), Some(RequestState::BuildCancelled { .. }));
     assert!(!future_finished.load(Ordering::Relaxed));
 }
 
@@ -237,7 +237,7 @@ async fn test_life_cycle_loading_cancel() {
     store.loading(exchange.request);
     assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
     store.cancel(id);
-    assert_matches!(store.get(id), Some(RequestState::Cancelled { .. }));
+    assert_matches!(store.get(id), Some(RequestState::LoadingCancelled { .. }));
     assert!(!future_finished.load(Ordering::Relaxed));
 }
 

@@ -275,6 +275,9 @@ impl ExchangePaneContent {
     fn new(request_state: &RequestState) -> Self {
         let state = match request_state {
             RequestState::Building { .. } => ExchangePaneContentState::Building,
+            RequestState::BuildCancelled { .. } => {
+                ExchangePaneContentState::BuildCancelled
+            }
             RequestState::BuildError { error } => {
                 ExchangePaneContentState::BuildError {
                     error: (error as &dyn Error).generate(),
@@ -285,8 +288,10 @@ impl ExchangePaneContent {
                     request: RequestView::new(Arc::clone(request)),
                 }
             }
-            RequestState::Cancelled { .. } => {
-                ExchangePaneContentState::Cancelled
+            RequestState::LoadingCancelled { request, .. } => {
+                ExchangePaneContentState::LoadingCancelled {
+                    request: RequestView::new(Arc::clone(request)),
+                }
             }
             RequestState::Response { exchange } => {
                 ExchangePaneContentState::Response {
@@ -383,9 +388,10 @@ impl Component for ExchangePaneContent {
         let has_request_body = request.is_some_and(RequestView::has_body);
         let has_response_body = match self.state {
             ExchangePaneContentState::Building
+            | ExchangePaneContentState::BuildCancelled
             | ExchangePaneContentState::BuildError { .. }
-            | ExchangePaneContentState::Cancelled
             | ExchangePaneContentState::Loading { .. }
+            | ExchangePaneContentState::LoadingCancelled { .. }
             | ExchangePaneContentState::RequestError { .. } => false,
             ExchangePaneContentState::Response { .. } => true,
         };
@@ -460,9 +466,10 @@ impl Component for ExchangePaneContent {
         // Add tab content
         let mut children = match &mut self.state {
             ExchangePaneContentState::Building
-            | ExchangePaneContentState::BuildError { .. }
-            | ExchangePaneContentState::Cancelled => vec![],
-            ExchangePaneContentState::Loading { request } => {
+            | ExchangePaneContentState::BuildCancelled
+            | ExchangePaneContentState::BuildError { .. } => vec![],
+            ExchangePaneContentState::Loading { request }
+            | ExchangePaneContentState::LoadingCancelled { request } => {
                 vec![request.to_child_mut()]
             }
             ExchangePaneContentState::Response {
@@ -496,6 +503,9 @@ impl Draw for ExchangePaneContent {
             ExchangePaneContentState::Building => {
                 canvas.render_widget("Initializing request...", content_area);
             }
+            ExchangePaneContentState::BuildCancelled => {
+                canvas.render_widget("Build cancelled", content_area);
+            }
             ExchangePaneContentState::BuildError { error } => {
                 canvas.render_widget(error, content_area);
             }
@@ -509,10 +519,15 @@ impl Draw for ExchangePaneContent {
                     }
                 }
             }
-            // Can't show cancelled request here because we might've cancelled
-            // during the build
-            ExchangePaneContentState::Cancelled => {
-                canvas.render_widget("Request cancelled", content_area);
+            ExchangePaneContentState::LoadingCancelled { request } => {
+                match self.tabs.selected() {
+                    Tab::Request => {
+                        canvas.draw(request, (), content_area, true);
+                    }
+                    Tab::Body | Tab::Headers => {
+                        canvas.render_widget("Request cancelled", content_area);
+                    }
+                }
             }
             ExchangePaneContentState::Response {
                 request,
@@ -544,13 +559,16 @@ impl Draw for ExchangePaneContent {
 
 enum ExchangePaneContentState {
     Building,
+    BuildCancelled,
     BuildError {
         error: Text<'static>,
     },
     Loading {
         request: RequestView,
     },
-    Cancelled,
+    LoadingCancelled {
+        request: RequestView,
+    },
     Response {
         request: RequestView,
         response_headers: ResponseHeadersView,
@@ -565,8 +583,11 @@ enum ExchangePaneContentState {
 impl ExchangePaneContentState {
     fn request(&self) -> Option<&RequestView> {
         match self {
-            Self::Building | Self::BuildError { .. } | Self::Cancelled => None,
+            Self::Building | Self::BuildCancelled | Self::BuildError { .. } => {
+                None
+            }
             Self::Loading { request }
+            | Self::LoadingCancelled { request }
             | Self::Response { request, .. }
             | Self::RequestError { request, .. } => Some(request),
         }
@@ -575,9 +596,10 @@ impl ExchangePaneContentState {
     fn response(&self) -> Option<&ResponseBodyView> {
         match self {
             Self::Building
+            | Self::BuildCancelled
             | Self::BuildError { .. }
-            | Self::Cancelled
             | Self::Loading { .. }
+            | Self::LoadingCancelled { .. }
             | Self::RequestError { .. } => None,
             Self::Response { response_body, .. } => Some(response_body),
         }

@@ -228,11 +228,14 @@ impl Generate for &RequestStateSummary {
         let styles = ViewContext::styles();
         let description: Span = match self {
             RequestStateSummary::Building { .. } => "Initializing...".into(),
+            RequestStateSummary::BuildCancelled { .. }
+            | RequestStateSummary::LoadingCancelled { .. } => {
+                "Cancelled".into()
+            }
             RequestStateSummary::BuildError { .. } => {
                 Span::styled("Build error", styles.text.error)
             }
             RequestStateSummary::Loading { .. } => "Loading...".into(),
-            RequestStateSummary::Cancelled { .. } => "Cancelled".into(),
             RequestStateSummary::Response(exchange) => {
                 exchange.status.generate()
             }

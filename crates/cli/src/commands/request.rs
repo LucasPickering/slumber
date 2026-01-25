@@ -15,8 +15,9 @@ use slumber_core::{
     },
     database::{CollectionDatabase, Database},
     http::{
-        BuildFieldOverride, BuildOptions, Exchange, HttpEngine, RequestRecord,
-        RequestSeed, ResponseRecord, StoredRequestError, TriggeredRequestError,
+        BuildFieldOverride, BuildOptions, Exchange, HttpEngine, RequestBody,
+        RequestRecord, RequestSeed, ResponseRecord, StoredRequestError,
+        TriggeredRequestError,
     },
     render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
@@ -382,9 +383,16 @@ impl DisplayExchangeCommand {
             for (header, value) in &request.headers {
                 eprintln!("> {}: {}", header, MaybeStr(value.as_bytes()));
             }
-            if let Some(body) = &request.body {
-                let text = std::str::from_utf8(body).unwrap_or("<binary>");
-                eprintln!("> {text}");
+            match &request.body {
+                RequestBody::None => {}
+                RequestBody::Stream => eprintln!("> <stream body>"),
+                RequestBody::TooLarge => {
+                    eprintln!("> body too large to display");
+                }
+                RequestBody::Some(bytes) => {
+                    let text = std::str::from_utf8(bytes).unwrap_or("<binary>");
+                    eprintln!("> {text}");
+                }
             }
         }
     }

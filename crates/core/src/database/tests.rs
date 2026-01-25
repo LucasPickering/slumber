@@ -1,4 +1,5 @@
 use super::*;
+use crate::http::{RequestBody, RequestRecord};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use rstest::{fixture, rstest};
@@ -257,6 +258,27 @@ fn test_get_latest_request(request_db: RequestDb) {
             }
         }
     }
+}
+
+/// Ensure all varaints [RequestBody] are persisted and restored correctly
+#[rstest]
+#[case::none(RequestBody::None)]
+#[case::stream(RequestBody::Stream)]
+#[case::too_large(RequestBody::TooLarge)]
+#[case::empty(RequestBody::Some(b"".as_slice().into()))]
+#[case::some(RequestBody::Some(b"data".as_slice().into()))]
+fn test_request_body(#[case] body: RequestBody) {
+    let database = CollectionDatabase::factory(());
+    let exchange = Exchange::factory(RequestRecord {
+        body: body.clone(),
+        ..RequestRecord::factory(())
+    });
+
+    database.insert_exchange(&exchange).unwrap();
+    let actual = database.get_request(exchange.id).unwrap().unwrap();
+
+    // What goes in is what comes out
+    assert_eq!(actual.request.body, body);
 }
 
 /// Test fetching all requests for a collection

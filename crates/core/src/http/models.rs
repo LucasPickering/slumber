@@ -29,7 +29,7 @@ use std::{
     str::{FromStr, Utf8Error},
     sync::Arc,
 };
-use strum::{EnumIter, IntoEnumIterator};
+use strum::{EnumDiscriminants, EnumIter, IntoEnumIterator};
 use thiserror::Error;
 use tracing::error;
 use uuid::Uuid;
@@ -390,179 +390,6 @@ impl Exchange {
     }
 }
 
-/// Metadata about an exchange. Useful in lists where request/response content
-/// isn't needed.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ExchangeSummary {
-    pub id: RequestId,
-    pub recipe_id: RecipeId,
-    pub profile_id: Option<ProfileId>,
-    pub start_time: DateTime<Utc>,
-    pub end_time: DateTime<Utc>,
-    pub status: StatusCode,
-}
-
-/// Data for an HTTP request. This is similar to [reqwest::Request], but differs
-/// in some key ways:
-/// - Each [reqwest::Request] can only exist once (from creation to sending),
-///   whereas a record can be hung onto after the launch to keep showing it on
-///   screen.
-/// - This stores additional Slumber-specific metadata
-///
-/// This intentionally does *not* implement `Clone`, because request data could
-/// potentially be large so we want to be intentional about duplicating it only
-/// when necessary.
-#[derive(Debug)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub struct RequestRecord {
-    /// Unique ID for this request
-    pub id: RequestId,
-    /// The profile used to render this request (for historical context)
-    pub profile_id: Option<ProfileId>,
-    /// The recipe used to generate this request (for historical context)
-    pub recipe_id: RecipeId,
-
-    /// HTTP protocol version. Unlike `method`, we can't use the reqwest type
-    /// here because there's way to externally construct the type.
-    pub http_version: HttpVersion,
-    /// HTTP method
-    pub method: HttpMethod,
-    /// URL, including query params/fragment
-    pub url: Url,
-    pub headers: HeaderMap,
-    /// Body content as bytes. This should be decoded as needed. This will
-    /// **not** be populated for bodies that are above the "large" threshold.
-    /// - `Some(empty bytes)`: There was no body (e.g. GET request)
-    /// - `None`: Body couldn't be stored (stream or too large)
-    pub body: Option<Bytes>,
-}
-
-impl RequestRecord {
-    /// Create a new request record from data and metadata. This is the
-    /// canonical way to create a record for a new request. This should
-    /// *not* be build directly, and instead the data should copy data out of
-    /// a [reqwest::Request]. This is to prevent duplicating request
-    /// construction logic.
-    ///
-    /// This will clone all data out of the request. This could potentially be
-    /// expensive but we don't have any choice if we want to send it to the
-    /// server and show it in the TUI at the same time
-    pub(super) fn new(
-        seed: RequestSeed,
-        profile_id: Option<ProfileId>,
-        request: &Request,
-        max_body_size: usize,
-    ) -> Self {
-        Self {
-            id: seed.id,
-            profile_id,
-            recipe_id: seed.recipe_id,
-
-            http_version: request.version().into(),
-            method: request.method().into(),
-            url: request.url().clone(),
-            headers: request.headers().clone(),
-            body: request
-                .body()
-                // Stream bodies and bodies over a certain size threshold are
-                // thrown away. Storing request bodies in general doesn't
-                // provide a ton of value, so we shouldn't do it at the expense
-                // of performance
-                .and_then(Body::as_bytes)
-                .filter(|body| body.len() <= max_body_size)
-                .map(|body| body.to_owned().into()),
-        }
-    }
-
-    /// Get the value of the request's `Content-Type` header, if any
-    pub fn mime(&self) -> Option<Mime> {
-        content_type_header(&self.headers)
-    }
-
-    pub fn body(&self) -> Option<&[u8]> {
-        self.body.as_deref()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for RequestRecord {
-    fn factory((): ()) -> Self {
-        Self::factory((RequestId::new(), None, RecipeId::factory(())))
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory<RequestId> for RequestRecord {
-    fn factory(id: RequestId) -> Self {
-        Self::factory((id, None, RecipeId::factory(())))
-    }
-}
-
-/// Customize profile and recipe ID
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory<(Option<ProfileId>, RecipeId)> for RequestRecord {
-    fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
-        Self::factory((RequestId::new(), profile_id, recipe_id))
-    }
-}
-
-/// Customize request, profile and recipe ID
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory<(RequestId, Option<ProfileId>, RecipeId)>
-    for RequestRecord
-{
-    fn factory(
-        (id, profile_id, recipe_id): (RequestId, Option<ProfileId>, RecipeId),
-    ) -> Self {
-        use crate::test_util::header_map;
-        Self {
-            id,
-            profile_id,
-            recipe_id,
-            method: HttpMethod::Get,
-            http_version: HttpVersion::Http11,
-            url: "http://localhost/url".parse().unwrap(),
-            headers: header_map([
-                ("Accept", "application/json"),
-                ("Content-Type", "application/json"),
-                ("User-Agent", "slumber"),
-            ]),
-            body: None,
-        }
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for ResponseRecord {
-    fn factory((): ()) -> Self {
-        Self::factory(RequestId::new())
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory<RequestId> for ResponseRecord {
-    fn factory(id: RequestId) -> Self {
-        Self {
-            id,
-            status: StatusCode::OK,
-            headers: HeaderMap::new(),
-            body: ResponseBody::default(),
-        }
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory<StatusCode> for ResponseRecord {
-    fn factory(status: StatusCode) -> Self {
-        Self {
-            id: RequestId::new(),
-            status,
-            headers: HeaderMap::new(),
-            body: ResponseBody::default(),
-        }
-    }
-}
-
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Exchange {
     fn factory((): ()) -> Self {
@@ -611,6 +438,15 @@ impl slumber_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     }
 }
 
+/// Custom request, generated response
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<RequestRecord> for Exchange {
+    fn factory(request: RequestRecord) -> Self {
+        let response = ResponseRecord::factory(request.id);
+        Self::factory((request, response))
+    }
+}
+
 /// Custom request and response
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
@@ -635,6 +471,186 @@ impl slumber_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
 impl slumber_util::Factory<RequestId> for Exchange {
     fn factory(id: RequestId) -> Self {
         Self::factory((RequestRecord::factory(id), ResponseRecord::factory(id)))
+    }
+}
+
+/// Metadata about an exchange. Useful in lists where request/response content
+/// isn't needed.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExchangeSummary {
+    pub id: RequestId,
+    pub recipe_id: RecipeId,
+    pub profile_id: Option<ProfileId>,
+    pub start_time: DateTime<Utc>,
+    pub end_time: DateTime<Utc>,
+    pub status: StatusCode,
+}
+
+/// Data for an HTTP request. This is similar to [reqwest::Request], but differs
+/// in some key ways:
+/// - Each [reqwest::Request] can only exist once (from creation to sending),
+///   whereas a record can be hung onto after the launch to keep showing it on
+///   screen.
+/// - This stores additional Slumber-specific metadata
+///
+/// This intentionally does *not* implement `Clone`, because request data could
+/// potentially be large so we want to be intentional about duplicating it only
+/// when necessary.
+#[derive(Debug)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub struct RequestRecord {
+    /// Unique ID for this request
+    pub id: RequestId,
+    /// The profile used to render this request (for historical context)
+    pub profile_id: Option<ProfileId>,
+    /// The recipe used to generate this request (for historical context)
+    pub recipe_id: RecipeId,
+
+    /// HTTP protocol version. Unlike `method`, we can't use the reqwest type
+    /// here because there's way to externally construct the type.
+    pub http_version: HttpVersion,
+    /// HTTP method
+    pub method: HttpMethod,
+    /// URL, including query params/fragment
+    pub url: Url,
+    pub headers: HeaderMap,
+    /// Body content as bytes
+    pub body: RequestBody,
+}
+
+impl RequestRecord {
+    /// Create a new request record from data and metadata. This is the
+    /// canonical way to create a record for a new request. This should
+    /// *not* be build directly, and instead the data should copy data out of
+    /// a [reqwest::Request]. This is to prevent duplicating request
+    /// construction logic.
+    ///
+    /// This will clone all data out of the request. This could potentially be
+    /// expensive but we don't have any choice if we want to send it to the
+    /// server and show it in the TUI at the same time
+    pub(super) fn new(
+        id: RequestId,
+        profile_id: Option<ProfileId>,
+        recipe_id: RecipeId,
+        request: &Request,
+        max_body_size: usize,
+    ) -> Self {
+        let body = match request.body().map(Body::as_bytes) {
+            Some(Some(bytes)) if bytes.len() <= max_body_size => {
+                // Body is present and under the size threshold - save it
+                RequestBody::Some(bytes.to_owned().into())
+            }
+            Some(Some(_)) => RequestBody::TooLarge,
+            Some(None) => RequestBody::Stream, // We have a body but no bytes
+            None => RequestBody::None,         // No body, no crime
+        };
+        Self {
+            id,
+            profile_id,
+            recipe_id,
+
+            http_version: request.version().into(),
+            method: request.method().into(),
+            url: request.url().clone(),
+            headers: request.headers().clone(),
+            body,
+        }
+    }
+
+    /// Get the value of the request's `Content-Type` header, if any
+    pub fn mime(&self) -> Option<Mime> {
+        content_type_header(&self.headers)
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory for RequestRecord {
+    fn factory((): ()) -> Self {
+        Self::factory((RequestId::new(), None, RecipeId::factory(())))
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<RequestId> for RequestRecord {
+    fn factory(id: RequestId) -> Self {
+        Self::factory((id, None, RecipeId::factory(())))
+    }
+}
+
+/// Customize profile and recipe ID
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<(Option<ProfileId>, RecipeId)> for RequestRecord {
+    fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
+        Self::factory((RequestId::new(), profile_id, recipe_id))
+    }
+}
+
+/// Customize request, profile and recipe ID
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<(RequestId, Option<ProfileId>, RecipeId)>
+    for RequestRecord
+{
+    fn factory(
+        (id, profile_id, recipe_id): (RequestId, Option<ProfileId>, RecipeId),
+    ) -> Self {
+        use crate::test_util::header_map;
+        Self {
+            id,
+            profile_id,
+            recipe_id,
+            method: HttpMethod::Get,
+            http_version: HttpVersion::Http11,
+            url: "http://localhost/url".parse().unwrap(),
+            headers: header_map([
+                ("Accept", "application/json"),
+                ("Content-Type", "application/json"),
+                ("User-Agent", "slumber"),
+            ]),
+            body: RequestBody::None,
+        }
+    }
+}
+
+/// Recorded body for a request
+#[derive(Clone, Debug, EnumDiscriminants)]
+#[strum_discriminants(name(RequestBodyKind))] // Used for DB encoding
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub enum RequestBody {
+    /// Request had no body (e.g. a GET request)
+    None,
+    /// Request had a body and here it is
+    Some(Bytes),
+    /// Body was streaming, so it never appeared in memory
+    Stream,
+    /// Body was bigger than `HttpConfig::large_body_size`, so we didn't store
+    /// it
+    TooLarge,
+}
+
+impl RequestBody {
+    /// Get the body as a byte slice, if available
+    ///
+    /// Return `None` for anything other than [RequestBody::Some]
+    pub fn bytes(&self) -> Option<&[u8]> {
+        match self {
+            Self::None | Self::Stream | Self::TooLarge => None,
+            Self::Some(bytes) => Some(bytes.as_ref()),
+        }
+    }
+
+    /// Was there a body on the request that wasn't saved?
+    pub fn is_lost(&self) -> bool {
+        match self {
+            Self::None | Self::Some(_) => false,
+            Self::Stream | Self::TooLarge => true,
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<&'static [u8]> for RequestBody {
+    fn from(bytes: &'static [u8]) -> Self {
+        Self::Some(bytes.into())
     }
 }
 
@@ -693,6 +709,37 @@ impl ResponseRecord {
                 let mime: Mime = content_type.to_str().ok()?.parse().ok()?;
                 Some(format!("data.{}", mime.subtype()))
             })
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory for ResponseRecord {
+    fn factory((): ()) -> Self {
+        Self::factory(RequestId::new())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<RequestId> for ResponseRecord {
+    fn factory(id: RequestId) -> Self {
+        Self {
+            id,
+            status: StatusCode::OK,
+            headers: HeaderMap::new(),
+            body: ResponseBody::default(),
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<StatusCode> for ResponseRecord {
+    fn factory(status: StatusCode) -> Self {
+        Self {
+            id: RequestId::new(),
+            status,
+            headers: HeaderMap::new(),
+            body: ResponseBody::default(),
+        }
     }
 }
 

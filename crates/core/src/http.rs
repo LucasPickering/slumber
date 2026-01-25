@@ -183,8 +183,9 @@ impl HttpEngine {
 
         Ok(RequestTicket {
             record: RequestRecord::new(
-                seed,
+                seed.id,
                 context.selected_profile.clone(),
+                seed.recipe_id.clone(),
                 &request,
                 self.large_body_size,
             )

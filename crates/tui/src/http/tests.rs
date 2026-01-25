@@ -76,7 +76,7 @@ fn test_get() {
     let id = exchange.id;
     store
         .requests
-        .insert(exchange.id, RequestState::response(exchange));
+        .insert(exchange.id, RequestState::new_response(exchange));
 
     // This is a bit jank, but since we can't clone exchanges, the only way
     // to get the value back for comparison is to access the map directly
@@ -140,9 +140,9 @@ async fn test_life_cycle_build_error() {
             id,
             start_time: Utc::now(),
             end_time: Utc::now(),
-            error: RequestBuildErrorKind::UrlRender(
+            error: Box::new(RequestBuildErrorKind::UrlRender(
                 RenderError::FunctionUnknown,
-            ),
+            )),
         }
         .into(),
     );
@@ -249,7 +249,7 @@ fn test_load(mut store: RequestStore) {
     let present_id = present_exchange.id;
     store
         .requests
-        .insert(present_id, RequestState::response(present_exchange));
+        .insert(present_id, RequestState::new_response(present_exchange));
 
     let missing_exchange = Exchange::factory(());
     let missing_id = missing_exchange.id;
@@ -323,7 +323,7 @@ async fn test_load_summaries(mut store: RequestStore) {
     let response_id = exchange.id;
     store
         .requests
-        .insert(exchange.id, RequestState::response(exchange));
+        .insert(exchange.id, RequestState::new_response(exchange));
 
     let building_id = RequestId::new();
     store.start(
@@ -343,9 +343,9 @@ async fn test_load_summaries(mut store: RequestStore) {
                 id: build_error_id,
                 start_time: Utc::now(),
                 end_time: Utc::now(),
-                error: RequestBuildErrorKind::UrlRender(
+                error: Box::new(RequestBuildErrorKind::UrlRender(
                     RenderError::FunctionUnknown,
-                ),
+                )),
             }
             .into(),
         },

@@ -135,7 +135,7 @@ impl RequestStore {
     /// Insert a new request. This will construct a [RequestState::Building]
     ///
     /// `cancel_token` is the handle that can be used to cancel the request.
-    /// `None` for triggered requests. Triggerd requests run in the same task
+    /// `None` for triggered requests. Triggered requests run in the same task
     /// as their parent, so they can't be aborted directly.
     pub fn start(
         &mut self,
@@ -259,7 +259,7 @@ impl RequestStore {
     /// updated state. Caller is responsible for persisting the exchange in the
     /// DB.
     pub fn response(&mut self, exchange: Exchange) -> &RequestState {
-        let response_state = RequestState::response(exchange);
+        let response_state = RequestState::new_response(exchange);
         // Use replace just to help catch bugs
         self.replace(response_state.id(), |state| {
             // This indicates a bug or race condition (e.g. request cancelled as
@@ -346,10 +346,11 @@ impl RequestStore {
     ) -> anyhow::Result<Option<&RequestState>> {
         let request = match self.requests.entry(id) {
             Entry::Occupied(entry) => Some(entry.into_mut()),
-            Entry::Vacant(entry) => self
-                .database
-                .get_request(id)?
-                .map(|exchange| entry.insert(RequestState::response(exchange))),
+            Entry::Vacant(entry) => {
+                self.database.get_request(id)?.map(|exchange| {
+                    entry.insert(RequestState::new_response(exchange))
+                })
+            }
         };
         Ok(request.map(|r| &*r))
     }
@@ -395,7 +396,7 @@ impl RequestStore {
             // Cache this record if it isn't already
             self.requests
                 .entry(exchange.id)
-                .or_insert(RequestState::response(exchange));
+                .or_insert(RequestState::new_response(exchange));
         }
         Ok(())
     }
@@ -714,6 +715,20 @@ impl RequestState {
         }
     }
 
+    /// Get the built request. Return `None` if the record doesn't have a
+    /// request because the build is in progress, failed, or cancelled
+    pub fn request(&self) -> Option<&Arc<RequestRecord>> {
+        match self {
+            RequestState::Building { .. }
+            | RequestState::BuildCancelled { .. }
+            | RequestState::BuildError { .. } => None,
+            RequestState::Loading { request, .. }
+            | RequestState::LoadingCancelled { request, .. } => Some(request),
+            RequestState::Response { exchange } => Some(&exchange.request),
+            RequestState::RequestError { error } => Some(&error.request),
+        }
+    }
+
     /// Get metadata about a request. Return `None` if the request hasn't been
     /// successfully built (yet)
     pub fn request_metadata(&self) -> RequestMetadata {
@@ -776,7 +791,7 @@ impl RequestState {
     }
 
     /// Create a request state from a completed response
-    fn response(exchange: Exchange) -> Self {
+    fn new_response(exchange: Exchange) -> Self {
         Self::Response { exchange }
     }
 }

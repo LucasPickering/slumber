@@ -1,5 +1,6 @@
 use crate::{
     http::{RequestMetadata, ResponseMetadata},
+    message::HttpMessage,
     view::{
         Generate, RequestState, ViewContext,
         common::{
@@ -319,6 +320,47 @@ impl ExchangePaneContent {
             state,
         }
     }
+
+    fn handle_menu_action(&mut self, menu_action: ExchangePaneMenuAction) {
+        match menu_action {
+            // Generally if we get an action the corresponding
+            // request/response will be present, but we double check in
+            // case the action got delayed in being
+            // handled somehow
+            ExchangePaneMenuAction::CopyUrl => {
+                self.state.request().map(RequestView::copy_url);
+            }
+            ExchangePaneMenuAction::ViewRequestBody => {
+                self.state.request().map(RequestView::view_body);
+            }
+            ExchangePaneMenuAction::CopyRequestBody => {
+                self.state.request().map(RequestView::copy_body);
+            }
+            ExchangePaneMenuAction::CopyResponseBody => {
+                self.state.response().map(ResponseBodyView::copy_body);
+            }
+            ExchangePaneMenuAction::ViewResponseBody => {
+                self.state.response().map(ResponseBodyView::view_body);
+            }
+            ExchangePaneMenuAction::SaveResponseBody => {
+                self.state
+                    .response()
+                    .map(ResponseBodyView::save_response_body);
+            }
+            ExchangePaneMenuAction::ResendRequest => {
+                self.state.request().inspect(|request| {
+                    ViewContext::send_message(HttpMessage::Resend(
+                        request.request_id(),
+                    ));
+                });
+            }
+            ExchangePaneMenuAction::DeleteRequest => {
+                ViewContext::push_event(Event::DeleteRequests(
+                    DeleteTarget::Request,
+                ));
+            }
+        }
+    }
 }
 
 impl Component for ExchangePaneContent {
@@ -338,46 +380,8 @@ impl Component for ExchangePaneContent {
                 }
                 _ => propagate.set(),
             })
-            .emitted(self.actions_emitter, |menu_action| match menu_action {
-                // Generally if we get an action the corresponding
-                // request/response will be present, but we double check in
-                // case the action got delayed in being
-                // handled somehow
-                ExchangePaneMenuAction::CopyUrl => {
-                    if let Some(request) = self.state.request() {
-                        request.copy_url();
-                    }
-                }
-                ExchangePaneMenuAction::ViewRequestBody => {
-                    if let Some(request) = self.state.request() {
-                        request.view_body();
-                    }
-                }
-                ExchangePaneMenuAction::CopyRequestBody => {
-                    if let Some(request) = self.state.request() {
-                        request.copy_body();
-                    }
-                }
-                ExchangePaneMenuAction::CopyResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.copy_body();
-                    }
-                }
-                ExchangePaneMenuAction::ViewResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.view_body();
-                    }
-                }
-                ExchangePaneMenuAction::SaveResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.save_response_body();
-                    }
-                }
-                ExchangePaneMenuAction::DeleteRequest => {
-                    ViewContext::push_event(Event::DeleteRequests(
-                        DeleteTarget::Request,
-                    ));
-                }
+            .emitted(self.actions_emitter, |menu_action| {
+                self.handle_menu_action(menu_action);
             })
     }
 
@@ -454,6 +458,13 @@ impl Component for ExchangePaneContent {
                         .into(),
                 ],
             },
+            emitter
+                .menu(ExchangePaneMenuAction::ResendRequest, "Resend Request")
+                // It's possible the resend fails because the request had no
+                // body. Until we have disabled reasons on these menus, that's
+                // better because we can show an explanation to the user
+                .enable(has_request)
+                .into(),
             emitter
                 .menu(ExchangePaneMenuAction::DeleteRequest, "Delete Request")
                 .enable(has_request)
@@ -615,5 +626,6 @@ enum ExchangePaneMenuAction {
     CopyResponseBody,
     ViewResponseBody,
     SaveResponseBody,
+    ResendRequest,
     DeleteRequest,
 }

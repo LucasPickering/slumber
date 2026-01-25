@@ -58,7 +58,7 @@ use futures::{
 };
 use indexmap::IndexMap;
 use reqwest::{
-    Body, Client, RequestBuilder, Response, Url,
+    Body, Client, Request, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
     redirect,
@@ -67,7 +67,7 @@ use slumber_config::HttpEngineConfig;
 use slumber_template::{RenderError, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, hash::Hash};
-use tracing::{error, info, info_span};
+use tracing::{Instrument, error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
 
@@ -185,11 +185,84 @@ impl HttpEngine {
             record: RequestRecord::new(
                 seed.id,
                 context.selected_profile.clone(),
-                seed.recipe_id.clone(),
+                seed.recipe_id,
                 &request,
                 self.large_body_size,
             )
             .into(),
+            client: client.clone(),
+            request,
+        })
+    }
+
+    /// Build a [RequestTicket] from a past [RequestRecord]
+    ///
+    /// This will fail only if the body was not saved from the previous request.
+    /// This happens if:
+    /// - Body was larger than [HttpEngineConfig::large_body_size]
+    /// - Body was streamed
+    pub fn rebuild(
+        &self,
+        previous_request: &RequestRecord,
+    ) -> Result<RequestTicket, RequestBuildError> {
+        fn build_request(
+            client: &Client,
+            previous_request: &RequestRecord,
+        ) -> Result<Request, RequestBuildErrorKind> {
+            let url = previous_request.url.clone();
+            let builder = client
+                .request(previous_request.method.into(), url)
+                .headers(previous_request.headers.clone());
+            let builder = match &previous_request.body {
+                RequestBody::None => builder,
+                RequestBody::Some(bytes) => builder.body(bytes.clone()),
+                RequestBody::Stream | RequestBody::TooLarge => {
+                    // Old body is gone so we can't copy it
+                    return Err(RequestBuildErrorKind::BodyMissing {
+                        previous_request_id: previous_request.id,
+                    });
+                }
+            };
+
+            // An error here *should* be impossible, because if we built it
+            // once, we can build it again
+            let request = builder.build()?;
+            Ok(request)
+        }
+
+        let id = RequestId::new();
+        let profile_id = previous_request.profile_id.clone();
+        let recipe_id = previous_request.recipe_id.clone();
+
+        info!(old = %previous_request.id, new = %id, "Rebuilding request");
+
+        // The build should be very fast, but we need to report a start time
+        let start_time = Utc::now();
+
+        // Build the new request
+        let client = self.get_client(&previous_request.url);
+        let request =
+            build_request(client, previous_request).map_err(|error| {
+                RequestBuildError {
+                    profile_id: profile_id.clone(),
+                    recipe_id: recipe_id.clone(),
+                    id,
+                    start_time,
+                    end_time: Utc::now(),
+                    error: Box::new(error),
+                }
+            })?;
+
+        let record = RequestRecord::new(
+            id,
+            previous_request.profile_id.clone(),
+            previous_request.recipe_id.clone(),
+            &request,
+            self.large_body_size,
+        );
+
+        Ok(RequestTicket {
+            record: record.into(),
             client: client.clone(),
             request,
         })
@@ -378,7 +451,7 @@ impl RequestSeed {
                 id: self.id,
                 start_time,
                 end_time: Utc::now(),
-                error,
+                error: Box::new(error),
             })
             .traced()
     }
@@ -397,23 +470,30 @@ impl RequestTicket {
     pub async fn send(self) -> Result<Exchange, RequestError> {
         let id = self.record.id;
 
-        // Capture the rest of this method in a span
-        let _ = info_span!("HTTP request", request_id = %id).entered();
+        // Capture the future in a span. Beware of async tracing!
+        // https://docs.rs/tracing/latest/tracing/struct.Span.html#in-asynchronous-code
+        let span = info_span!(
+            "HTTP request",
+            recipe = %self.record.recipe_id,
+            request_id = %id,
+        );
 
         // This start time will be accurate because the request doesn't launch
         // until this whole future is awaited
         let start_time = Utc::now();
         let result = async {
+            info!("Sending request");
             let response = self.client.execute(self.request).await?;
+            info!(status = response.status().as_u16(), "Response");
             // Load the full response and convert it to our format
             ResponseRecord::from_response(id, response).await
         }
+        .instrument(span)
         .await;
         let end_time = Utc::now();
 
         match result {
             Ok(response) => {
-                info!(status = response.status.as_u16(), "Response");
                 let exchange = Exchange {
                     id,
                     request: self.record,

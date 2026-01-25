@@ -37,7 +37,10 @@ use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::{CollectionDatabase, Database},
-    http::{Exchange, HttpEngine, RequestError, RequestId, RequestSeed},
+    http::{
+        Exchange, HttpEngine, RequestError, RequestId, RequestSeed,
+        RequestTicket,
+    },
     render::{Prompter, TemplateContext},
 };
 use slumber_template::{RenderedOutput, Template};
@@ -134,7 +137,7 @@ impl Tui<CrosstermBackend<Stdout>> {
 
 impl<B> Tui<B>
 where
-    B: Backend,
+    B: 'static + Backend,
     B::Error: 'static + Send + Sync,
 {
     /// Rough **maximum** time for each iteration of the main loop
@@ -444,6 +447,11 @@ where
                 // New requests should be shown immediately
                 RequestDisposition::Select(id)
             }
+            HttpMessage::Resend(request_id) => {
+                let id = self.resend_request(request_id)?;
+                // New requests should be shown immediately
+                RequestDisposition::Select(id)
+            }
             HttpMessage::Prompt { request_id, prompt } => {
                 let id =
                     self.state.request_store.prompt(request_id, prompt).id();
@@ -605,7 +613,7 @@ where
         Ok(())
     }
 
-    /// Launch an HTTP request in a separate task
+    /// Build and send a new request in a background task
     fn send_request(&mut self) -> anyhow::Result<RequestId> {
         let RequestConfig {
             profile_id,
@@ -637,18 +645,12 @@ where
                 }
             };
 
-            // Report liftoff
-            messages_tx.send(HttpMessage::Loading(Arc::clone(ticket.record())));
-
-            // Send the request and report the result to the main thread
-            let result = ticket.send().await.map_err(Arc::new);
-            messages_tx.send(HttpMessage::Complete(result));
+            Self::send_request_inner(ticket, messages_tx).await;
         };
-        self.messages_tx
-            .spawn(util::cancellable(&cancel_token, future));
+        self.spawn(util::cancellable(&cancel_token, future));
 
         // Add the new request to the store. This has to go after spawning the
-        // task so we can include the join handle (for cancellation)
+        // task so we can include the cancel token
         self.state.request_store.start(
             request_id,
             profile_id,
@@ -657,6 +659,61 @@ where
         );
 
         Ok(request_id)
+    }
+
+    /// Build a new HTTP request as a clone of an old one, then send it in a
+    /// background task
+    ///
+    /// Because we're just copying an old request instead of rendering
+    /// templates, this is synchronous.
+    fn resend_request(
+        &mut self,
+        previous_request_id: RequestId,
+    ) -> anyhow::Result<RequestId> {
+        // Build the request. This is synchronous because there's no template
+        // rendering involved, it's just copying bytes from the old request
+        let previous_request = self
+            .state
+            .request_store
+            .get(previous_request_id)
+            .ok_or_else(|| {
+                anyhow!("Request {previous_request_id} does not exist")
+            })?
+            .request()
+            .ok_or_else(|| {
+                anyhow!("Request {previous_request_id} has not been built yet")
+            })?;
+        let ticket = self.http_engine.rebuild(previous_request)?;
+        let record = ticket.record();
+        let id = record.id;
+
+        let cancel_token = CancellationToken::new();
+        self.state.request_store.start(
+            id,
+            record.profile_id.clone(),
+            record.recipe_id.clone(),
+            Some(cancel_token.clone()),
+        );
+
+        // Launch the request in a task
+        self.spawn(util::cancellable(
+            &cancel_token,
+            Self::send_request_inner(ticket, self.messages_tx.clone()),
+        ));
+        Ok(id)
+    }
+
+    /// Inner helper to send a request and report its status to the loop
+    async fn send_request_inner(
+        ticket: RequestTicket,
+        messages_tx: MessageSender,
+    ) {
+        // Report liftoff
+        messages_tx.send(HttpMessage::Loading(Arc::clone(ticket.record())));
+
+        // Send the request and report the result to the main loop
+        let result = ticket.send().await.map_err(Arc::new);
+        messages_tx.send(HttpMessage::Complete(result));
     }
 
     /// Process the result of an HTTP request

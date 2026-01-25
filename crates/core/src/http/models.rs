@@ -336,7 +336,7 @@ impl From<&'static str> for BuildFieldOverride {
 /// A request ready to be launched into through the stratosphere. This is
 /// basically a two-part ticket: the request is the part we'll hand to the HTTP
 /// engine to be launched, and the record is the ticket stub we'll keep for
-/// ourselves (to display to the user
+/// ourselves (to display to the user)
 #[derive(Debug)]
 pub struct RequestTicket {
     /// A record of the request that we can hang onto and persist
@@ -836,9 +836,9 @@ impl PartialEq for ResponseBody {
 #[derive(Debug, Error)]
 #[error("Error building request {id}")]
 pub struct RequestBuildError {
-    /// Underlying error
+    /// Underlying error. Boxed to keep the size down
     #[source]
-    pub error: RequestBuildErrorKind,
+    pub error: Box<RequestBuildErrorKind>,
 
     /// ID of the profile being rendered under
     pub profile_id: Option<ProfileId>,
@@ -910,6 +910,17 @@ pub enum RequestBuildErrorKind {
         #[source]
         error: RenderError,
     },
+    /// Attempted to build a new request from a previous request, but the old
+    /// request doesn't have a body saved
+    ///
+    /// This happens if:
+    /// - Body was larger than `HttpEngineConfig::large_body_size`
+    /// - Body was streamed
+    #[error(
+        "Cannot resend request {previous_request_id} because its body is not \
+        available; it was not saved because it was either streamed or too large"
+    )]
+    BodyMissing { previous_request_id: RequestId },
     /// Error rendering a body to bytes/stream
     #[error("Rendering body")]
     BodyRender(#[source] RenderError),

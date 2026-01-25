@@ -18,7 +18,7 @@ use crate::{
 use ratatui::{layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
-    http::{RequestBody, RequestRecord, content_type::ContentType},
+    http::{RequestBody, RequestId, RequestRecord, content_type::ContentType},
     util::MaybeStr,
 };
 use std::sync::Arc;
@@ -42,6 +42,10 @@ impl RequestView {
             request,
             body_text_window: text.map(TextWindow::new),
         }
+    }
+
+    pub fn request_id(&self) -> RequestId {
+        self.request.id
     }
 
     pub fn has_body(&self) -> bool {

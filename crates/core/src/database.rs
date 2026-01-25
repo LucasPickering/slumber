@@ -542,7 +542,8 @@ impl CollectionDatabase {
     ) -> Result<(), DatabaseError> {
         debug!(
             id = %exchange.id,
-            url = %exchange.request.url,
+            status = exchange.response.status.as_u16(),
+            recipe = %exchange.request.recipe_id,
             "Adding exchange to database",
         );
         self.database

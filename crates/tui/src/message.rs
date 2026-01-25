@@ -181,6 +181,8 @@ impl From<HttpMessage> for Message {
 pub enum HttpMessage {
     /// Build and send an HTTP request based on the current recipe/profile state
     Begin,
+    /// Build and send an HTTP request as a clone of a previous request
+    Resend(RequestId),
     /// An HTTP request was triggered by another request, and is now being built
     Triggered {
         request_id: RequestId,

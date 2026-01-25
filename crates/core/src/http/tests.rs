@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::{
-    collection::{Authentication, Profile},
+    collection::{Authentication, Profile, ProfileId, RecipeId},
     test_util::{TestPrompter, by_id, header_map, http_engine, invalid_utf8},
 };
 use indexmap::{IndexMap, indexmap};
@@ -183,6 +183,70 @@ async fn test_request_record_body(
     let ticket = http_engine.build(seed, &context).await.unwrap();
 
     assert_eq!(ticket.record.body, expected_body);
+}
+
+/// Build a new request based on an old one
+#[rstest]
+fn test_rebuild_request(http_engine: HttpEngine) {
+    let recipe_id: RecipeId = "recipe1".into();
+    let profile_id: Option<ProfileId> = Some("profile1".into());
+    let url: Url = "http://localhost/users/1?mode=sudo&fast=true"
+        .parse()
+        .unwrap();
+    let headers = header_map([
+        ("content-type", "application/json"),
+        ("accept", "application/json"),
+    ]);
+    let body = b"abc123".as_slice();
+    let mut old = RequestRecord {
+        id: RequestId::new(),
+        profile_id,
+        recipe_id,
+        method: HttpMethod::Post,
+        http_version: HttpVersion::Http11,
+        url: url.clone(),
+        body: body.into(),
+        headers: headers.clone(),
+    };
+
+    let ticket = http_engine.rebuild(&old).unwrap();
+
+    // Assert on the actual request
+    let request = &ticket.request;
+    assert_eq!(request.method(), reqwest::Method::POST);
+    assert_eq!(request.url(), &url);
+    assert_eq!(request.headers(), &headers);
+    assert_eq!(request.body().and_then(Body::as_bytes), Some(body));
+
+    // The records match **other than the IDs**
+    assert_ne!(old.id, ticket.record.id, "New ticket should have a new ID");
+    old.id = ticket.record.id;
+    assert_eq!(*ticket.record, old);
+}
+
+/// Rebuilding a request fails if we didn't save the old body
+#[rstest]
+fn test_rebuild_request_lost_body(http_engine: HttpEngine) {
+    let recipe_id: RecipeId = "recipe1".into();
+    let profile_id: Option<ProfileId> = Some("profile1".into());
+    let url: Url = "http://localhost/users/1?mode=sudo&fast=true"
+        .parse()
+        .unwrap();
+    let old = RequestRecord {
+        id: RequestId::new(),
+        profile_id,
+        recipe_id,
+        method: HttpMethod::Post,
+        http_version: HttpVersion::Http11,
+        url,
+        body: RequestBody::Stream, // whoopsies!
+        headers: header_map([
+            ("content-type", "application/json"),
+            ("accept", "application/json"),
+        ]),
+    };
+
+    assert_err(http_engine.rebuild(&old), "Cannot resend request");
 }
 
 /// Test building just a URL. Should include query params, but headers/body

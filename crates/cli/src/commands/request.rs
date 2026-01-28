@@ -24,7 +24,7 @@ use slumber_core::{
     util::MaybeStr,
 };
 use slumber_template::{Expression, Template};
-use slumber_util::{ResultTraced, ResultTracedAnyhow};
+use slumber_util::{OptionExt, ResultTraced, ResultTracedAnyhow};
 use std::{
     error::Error,
     fs::OpenOptions,
@@ -346,30 +346,27 @@ impl BuildRequestCommand {
         };
         let recipe = collection.recipes.try_get_recipe(&self.recipe_id)?;
         // Body override is treated differently based on body type
-        let body_override = self
-            .body
-            .map::<anyhow::Result<BodyOverride>, _>(|ovr| {
-                match &recipe.body {
-                    None | Some(RecipeBody::Stream(_) | RecipeBody::Raw(_)) => {
-                        // Parse the override as a regular template
-                        let template: Template = ovr.parse()?;
-                        Ok(BodyOverride::Raw(template))
-                    }
-                    Some(RecipeBody::Json(_)) => {
-                        // Parse the override as json
-                        let json: JsonTemplate = ovr.parse()?;
-                        Ok(BodyOverride::Json(json))
-                    }
-                    Some(
-                        RecipeBody::FormUrlencoded(_)
-                        | RecipeBody::FormMultipart(_),
-                    ) => bail!(
-                        "--body not supported for form bodies; \
-                        use --form instead"
-                    ),
+        let body_override = self.body.try_map::<_, anyhow::Error>(|ovr| {
+            match &recipe.body {
+                None | Some(RecipeBody::Stream(_) | RecipeBody::Raw(_)) => {
+                    // Parse the override as a regular template
+                    let template: Template = ovr.parse()?;
+                    Ok(BodyOverride::Raw(template))
                 }
-            })
-            .transpose()?;
+                Some(RecipeBody::Json(_)) => {
+                    // Parse the override as json
+                    let json: JsonTemplate = ovr.parse()?;
+                    Ok(BodyOverride::Json(json))
+                }
+                Some(
+                    RecipeBody::FormUrlencoded(_)
+                    | RecipeBody::FormMultipart(_),
+                ) => bail!(
+                    "--body not supported for form bodies; \
+                        use --form instead"
+                ),
+            }
+        })?;
         let build_options = BuildOptions {
             url: self.url,
             authentication,

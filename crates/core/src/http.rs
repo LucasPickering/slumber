@@ -44,7 +44,7 @@ mod tests;
 pub use models::*;
 
 use crate::{
-    collection::{Authentication, JsonTemplate, Recipe, RecipeBody},
+    collection::{Authentication, Recipe, RecipeBody},
     http::curl::CurlBuilder,
     render::TemplateContext,
 };
@@ -701,42 +701,37 @@ impl Recipe {
         options: &BuildOptions,
         context: &TemplateContext,
     ) -> Result<Option<RenderedBody>, RequestBuildErrorKind> {
-        // Make sure the override+body combo is valid. If there's no body but
-        // there is an override, we'll make it a raw body
-        let body = match (&self.body, &options.body) {
-            // No body to return - get outta here!
-            (None, None) => return Ok(None),
-            // No body but we have an override. Build an empty raw body, and it
-            // will grab the override template below
-            (None, Some(_)) => &RecipeBody::Raw(Template::default()),
-            // Full-body override with a form is disallowed
+        match (&self.body, &options.body) {
+            (None, None) => Ok(None), // No body, no crime
             (
+                // Crime!! Full-body override with a form is disallowed
                 Some(
                     RecipeBody::FormUrlencoded(_)
                     | RecipeBody::FormMultipart(_),
                 ),
                 Some(_),
-            ) => return Err(RequestBuildErrorKind::OverrideFormBody),
-            // Re-use the body. If there's an override, each branch below will
-            // grab it
-            (Some(body), _) => body,
-        };
+            ) => Err(RequestBuildErrorKind::OverrideFormBody),
 
-        let rendered = match body {
-            // Raw body is always eagerly rendered
-            RecipeBody::Raw(template) => {
-                // Use override if it's given
-                let template = options.body.as_ref().unwrap_or(template);
-                RenderedBody::Raw(
-                    template
-                        .render_bytes(&context.streaming(false))
-                        .await
-                        .map_err(RequestBuildErrorKind::BodyRender)?,
-                )
+            // Raw body - eagerly rendered
+            (Some(RecipeBody::Raw(template)), None)
+            | (
+                // Replace missing or JSON body with raw override
+                None | Some(RecipeBody::Raw(_) | RecipeBody::Json(_)),
+                Some(BodyOverride::Raw(template)),
+            ) => {
+                let rendered = template
+                    .render_bytes(&context.streaming(false))
+                    .await
+                    .map_err(RequestBuildErrorKind::BodyRender)?;
+                Ok(Some(RenderedBody::Raw(rendered)))
             }
-            RecipeBody::Stream(template) => {
-                // Use override if it's given
-                let template = options.body.as_ref().unwrap_or(template);
+
+            // Stream body - lazily rendered
+            (Some(RecipeBody::Stream(template)), None)
+            | (
+                Some(RecipeBody::Stream(_)),
+                Some(BodyOverride::Raw(template)),
+            ) => {
                 // Stream body is rendered as a stream (!!)
                 let output = template.render(&context.streaming(true)).await;
                 let source = output.stream_source().cloned();
@@ -744,24 +739,26 @@ impl Recipe {
                     .try_into_stream()
                     .map_err(RequestBuildErrorKind::BodyRender)?
                     .boxed();
-                RenderedBody::Stream(BodyStream { stream, source })
+                Ok(Some(RenderedBody::Stream(BodyStream { stream, source })))
             }
-            RecipeBody::Json(json) => {
-                // Use override if it's given
-                let override_json: Option<JsonTemplate> = options
-                    .body
-                    .as_ref()
-                    // Reparse the template as JSON
-                    .map(|template| template.display().parse())
-                    .transpose()?;
-                let json = override_json.as_ref().unwrap_or(json);
-                let value = json
-                    .render(context)
+
+            // JSON body - if JSON override is given, body will always be JSON
+            #[expect(clippy::unnested_or_patterns)] // I like flat more here
+            (Some(RecipeBody::Json(json)), None)
+            | (None, Some(BodyOverride::Json(json)))
+            | (Some(RecipeBody::Raw(_)), Some(BodyOverride::Json(json)))
+            | (Some(RecipeBody::Stream(_)), Some(BodyOverride::Json(json)))
+            | (Some(RecipeBody::Json(_)), Some(BodyOverride::Json(json))) => {
+                json.render(context)
                     .await
-                    .map_err(RequestBuildErrorKind::BodyRender)?;
-                RenderedBody::Json(value)
+                    .map(|value| Some(RenderedBody::Json(value)))
+                    .map_err(RequestBuildErrorKind::BodyRender)
             }
-            RecipeBody::FormUrlencoded(fields) => {
+
+            // Form bodies
+            (Some(RecipeBody::FormUrlencoded(fields)), None) => {
+                // Form overrides some from a different field, so they're not
+                // handled above
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
                     let value = template
@@ -776,9 +773,9 @@ impl Recipe {
                     Ok::<_, RequestBuildErrorKind>((field.clone(), value))
                 });
                 let rendered = try_join_all(iter).await?;
-                RenderedBody::FormUrlencoded(rendered)
+                Ok(Some(RenderedBody::FormUrlencoded(rendered)))
             }
-            RecipeBody::FormMultipart(fields) => {
+            (Some(RecipeBody::FormMultipart(fields)), None) => {
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
                     let output =
@@ -804,10 +801,9 @@ impl Recipe {
                     ))
                 });
                 let rendered = try_join_all(iter).await?;
-                RenderedBody::FormMultipart(rendered)
+                Ok(Some(RenderedBody::FormMultipart(rendered)))
             }
-        };
-        Ok(Some(rendered))
+        }
     }
 }
 

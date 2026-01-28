@@ -809,27 +809,26 @@ async fn test_override_query(http_engine: HttpEngine) {
 )]
 #[case::json(
     Some(RecipeBody::json(json!({"username": "{{ username }}"})).unwrap()),
-    r#"{"username":"my name is {{ username }}"}"#,
+    json!({"username": "my name is {{ username }}"}).into(),
     Ok(r#"{"username":"my name is user"}"#),
 )]
-// None -> raw
-#[case::add_body(None, "{{ password }}".into(), Ok("hunter2"))]
-#[case::error_json_invalid(
-    Some(RecipeBody::json("".into()).unwrap()),
-    "Valid json? nope! {",
-    Err("Invalid JSON override"),
+#[case::none_to_raw(None, "{{ password }}".into(), Ok("hunter2"))]
+#[case::raw_to_json(
+    Some("{{ username }}".into()),
+    json!({"username": "my name is {{ username }}"}).into(),
+    Ok(r#"{"username":"my name is user"}"#),
 )]
 // Template override doesn't work with forms
 #[case::error_form(
     Some(RecipeBody::FormUrlencoded(IndexMap::default())),
-    "",
+    "".into(),
     Err("Cannot override form body; override individual form fields instead")
 )]
 #[tokio::test]
 async fn test_override_body(
     http_engine: HttpEngine,
     #[case] recipe_body: Option<RecipeBody>,
-    #[case] override_body: Template,
+    #[case] body_override: BodyOverride,
     #[case] expected: Result<&str, &str>,
 ) {
     let recipe = Recipe {
@@ -841,7 +840,7 @@ async fn test_override_body(
     let seed = seed(
         &context,
         BuildOptions {
-            body: Some(override_body),
+            body: Some(body_override),
             ..Default::default()
         },
     );

@@ -1,6 +1,7 @@
 //! Miscellaneous utility constants/types/functions
 
 use dialoguer::Confirm;
+use slumber_template::Value;
 use std::fmt::{self, Display};
 
 /// Show the user a confirmation prompt
@@ -11,6 +12,22 @@ pub fn confirm(prompt: impl Into<String>) -> bool {
         .wait_for_newline(true)
         .interact()
         .unwrap_or(false)
+}
+
+/// TODO
+pub fn value_to_json(value: Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Boolean(b) => serde_json::Value::Bool(b),
+        Value::Integer(i) => serde_json::Value::Number(i.into()),
+        Value::Float(_) => todo!(),
+        Value::String(s) => serde_json::Value::String(s),
+        Value::Array(array) => serde_json::Value::Array(
+            array.into_iter().map(value_to_json).collect(),
+        ),
+        Value::Object(object) => todo!(),
+        Value::Bytes(_) => todo!(),
+    }
 }
 
 /// Helper to printing bytes. If the bytes aren't valid UTF-8, they'll be

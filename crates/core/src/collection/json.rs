@@ -35,6 +35,26 @@ pub enum ValueTemplate {
 }
 
 impl ValueTemplate {
+    /// Build a JSON value without parsing strings as templates
+    pub fn raw_json(json: serde_json::Value) -> Self {
+        match json {
+            serde_json::Value::Null => Self::Null,
+            serde_json::Value::Bool(b) => Self::Boolean(b),
+            serde_json::Value::Number(number) => todo!(),
+            serde_json::Value::String(s) => Self::String(Template::raw(s)),
+            serde_json::Value::Array(values) => {
+                Self::Array(values.into_iter().map(Self::raw_json).collect())
+            }
+            serde_json::Value::Object(map) => Self::Object(
+                map.into_iter()
+                    .map(|(key, value)| {
+                        (Template::raw(key), Self::raw_json(value))
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
     /// TODO
     pub async fn render(
         &self,
@@ -80,6 +100,36 @@ impl ValueTemplate {
                 Ok(entries.into())
             }
         }
+    }
+}
+
+impl TryFrom<serde_json::Value> for ValueTemplate {
+    type Error = TemplateParseError;
+
+    /// Convert static JSON to templated JSON, parsing each string as a template
+    fn try_from(json: serde_json::Value) -> Result<Self, Self::Error> {
+        let mapped = match json {
+            serde_json::Value::Null => Self::Null,
+            serde_json::Value::Bool(b) => Self::Boolean(b),
+            serde_json::Value::Number(number) => todo!(),
+            serde_json::Value::String(s) => Self::String(s.parse()?),
+            serde_json::Value::Array(values) => Self::Array(
+                values
+                    .into_iter()
+                    .map(Self::try_from)
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+            serde_json::Value::Object(map) => Self::Object(
+                map.into_iter()
+                    .map(|(key, value)| {
+                        let key = key.parse()?;
+                        let value = value.try_into()?;
+                        Ok::<_, TemplateParseError>((key, value))
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
+        };
+        Ok(mapped)
     }
 }
 

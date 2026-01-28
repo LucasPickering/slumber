@@ -1,7 +1,7 @@
 //! Miscellaneous utility constants/types/functions
 
 use dialoguer::Confirm;
-use std::{fmt, fmt::Display};
+use std::fmt::{self, Display};
 
 /// Show the user a confirmation prompt
 pub fn confirm(prompt: impl Into<String>) -> bool {

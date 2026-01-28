@@ -5,7 +5,7 @@
 
 use crate::{
     collection::{
-        Authentication, JsonTemplateError, ProfileId, RecipeId,
+        Authentication, JsonTemplate, JsonTemplateError, ProfileId, RecipeId,
         UnknownRecipeError,
     },
     http::content_type::ContentType,
@@ -309,9 +309,8 @@ pub struct BuildOptions {
     /// Override individual fields in a URL-encoded or multipart form
     pub form_fields: IndexMap<String, BuildFieldOverride>,
     /// Override body. This should *not* be used for form bodies, since those
-    /// can be overridden on a field-by-field basis. For JSON bodies, the
-    /// template will be reparsed as a JSON template *before* rendering.
-    pub body: Option<Template>,
+    /// can be overridden on a field-by-field basis.
+    pub body: Option<BodyOverride>,
 }
 
 /// Modifications made to a single field (query param, header, etc.) in a
@@ -330,6 +329,35 @@ pub enum BuildFieldOverride {
 impl From<&'static str> for BuildFieldOverride {
     fn from(template: &'static str) -> Self {
         Self::Override(template.into())
+    }
+}
+
+/// Override definition for a request body
+///
+/// This allows the HTTP engine to accept different override values based on the
+/// body type (raw vs structured). This is used for all bodies **except** forms,
+/// because those use a per-field override.
+#[derive(Debug)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub enum BodyOverride {
+    /// Override with plain old bytes, or a stream if the recipe body is a
+    /// stream
+    Raw(Template),
+    /// Override with a JSON value
+    Json(JsonTemplate),
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<&'static str> for BodyOverride {
+    fn from(template: &'static str) -> Self {
+        Self::Raw(template.into())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<serde_json::Value> for BodyOverride {
+    fn from(json: serde_json::Value) -> Self {
+        Self::Json(json.try_into().unwrap())
     }
 }
 

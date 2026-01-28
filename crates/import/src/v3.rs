@@ -20,7 +20,7 @@ use slumber_core::collection as v4;
 use slumber_template::{
     Expression, Template as TemplateV4, TemplateChunk as TemplateChunkV4,
 };
-use slumber_util::{TimeSpan, yaml::SourceLocation};
+use slumber_util::{OptionExt, TimeSpan, yaml::SourceLocation};
 use std::{hash::Hash, ops::Deref};
 
 /// Import from the Slumber v3 collection format. The major changes:
@@ -338,12 +338,9 @@ impl IntoV4 for template::TemplateKey {
                                 .collect::<anyhow::Result<_>>()?],
                             [(
                                 "stdin",
-                                stdin
-                                    .clone()
-                                    .map(|template| {
-                                        template.try_into_expression(chains)
-                                    })
-                                    .transpose()?,
+                                stdin.clone().try_map(|template| {
+                                    template.try_into_expression(chains)
+                                })?,
                             )],
                         )
                     }
@@ -366,21 +363,15 @@ impl IntoV4 for template::TemplateKey {
                             [
                                 (
                                     "message",
-                                    message
-                                        .clone()
-                                        .map(|template| {
-                                            template.try_into_expression(chains)
-                                        })
-                                        .transpose()?,
+                                    message.clone().try_map(|template| {
+                                        template.try_into_expression(chains)
+                                    })?,
                                 ),
                                 (
                                     "default",
-                                    default
-                                        .clone()
-                                        .map(|template| {
-                                            template.try_into_expression(chains)
-                                        })
-                                        .transpose()?,
+                                    default.clone().try_map(|template| {
+                                        template.try_into_expression(chains)
+                                    })?,
                                 ),
                                 (
                                     // Mask the input if marked as sensitive
@@ -423,12 +414,9 @@ impl IntoV4 for template::TemplateKey {
                             [options.clone().into_v4(chains)?],
                             [(
                                 "message",
-                                message
-                                    .clone()
-                                    .map(|template| {
-                                        template.try_into_expression(chains)
-                                    })
-                                    .transpose()?,
+                                message.clone().try_map(|template| {
+                                    template.try_into_expression(chains)
+                                })?,
                             )],
                         )
                     }

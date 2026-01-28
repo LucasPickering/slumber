@@ -75,6 +75,26 @@ impl<'a, T: Copy> Mapping<'a, T> {
     }
 }
 
+/// Extension trait for [Option]
+pub trait OptionExt<T> {
+    /// Map an option with a fallible function
+    ///
+    /// `option.try_map(f)` is equivalent to `option.map(f).transpose()`
+    fn try_map<U, E>(
+        self,
+        f: impl FnOnce(T) -> Result<U, E>,
+    ) -> Result<Option<U>, E>;
+}
+
+impl<T> OptionExt<T> for Option<T> {
+    fn try_map<U, E>(
+        self,
+        f: impl FnOnce(T) -> Result<U, E>,
+    ) -> Result<Option<U>, E> {
+        self.map(f).transpose()
+    }
+}
+
 /// Extension trait for [Result]
 pub trait ResultTraced<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.

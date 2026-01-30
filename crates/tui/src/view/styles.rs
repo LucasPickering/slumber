@@ -10,6 +10,8 @@ use slumber_config::Theme;
 /// there. Styles are grouped into sub-structs generally by component.
 #[derive(Clone, Debug)]
 pub struct Styles {
+    /// Default style for the background of every component
+    pub background: Style,
     pub form: FormStyles,
     pub list: ListStyles,
     pub menu: MenuStyles,
@@ -23,8 +25,6 @@ pub struct Styles {
     pub text_box: TextBoxStyle,
     pub text_window: TextWindowStyle,
     pub syntax: SyntaxStyle,
-    pub footer: FooterStyle,
-    pub root: RootStyle,
 }
 
 /// Styles for the recipe input form
@@ -172,21 +172,10 @@ pub struct SyntaxStyle {
     pub special: Style,
 }
 
-/// Styles for the Footer component
-#[derive(Clone, Debug)]
-pub struct FooterStyle {
-    pub default: Style,
-}
-
-/// Styles for the Root component
-#[derive(Clone, Debug)]
-pub struct RootStyle {
-    pub background: Style,
-}
-
 impl Styles {
     pub fn new(theme: &Theme) -> Self {
         Self {
+            background: Style::default().bg(theme.background_color),
             form: FormStyles {
                 title: Style::default()
                     .fg(theme.text_color)
@@ -306,14 +295,6 @@ impl Styles {
                 number: Style::default().fg(theme.syntax.number_color),
                 string: Style::default().fg(theme.syntax.string_color),
                 special: Style::default().fg(theme.syntax.special_color),
-            },
-            footer: FooterStyle {
-                default: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color),
-            },
-            root: RootStyle {
-                background: Style::default().bg(theme.background_color),
             },
         }
     }

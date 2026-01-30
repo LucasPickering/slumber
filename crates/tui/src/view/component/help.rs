@@ -130,7 +130,7 @@ impl Draw for Help {
                 Constraint::Min(0),
             ])
             .areas(block.inner(area));
-            canvas.render_widget(ClearFill::default(), area);
+            canvas.render_widget(ClearFill, area);
             canvas.render_widget(block, area);
             canvas.render_widget(general, collection_area);
             canvas.render_widget(keybindings, keybindings_area);

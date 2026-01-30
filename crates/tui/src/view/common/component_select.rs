@@ -1,9 +1,6 @@
 use crate::view::{
     UpdateContext,
-    common::{
-        clear_fill::ClearFill,
-        select::{Select, SelectItem, SelectState},
-    },
+    common::select::{Select, SelectItem, SelectState},
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
@@ -189,27 +186,19 @@ where
         // themselves are arbitrary Component implementations so it's not
         // possible to tell them to only draw themselves partially.
 
-        // Pre-fill the virtual buffer with the background color
-        let background_cell =
-            ClearFill::default().background_cell().unwrap_or_default();
-
         // Build a new buffer that's large enough to fit the entire window
-        let mut virtual_buffer = Buffer::filled(
-            Rect {
-                x: 0,
-                y: 0,
-                width,
-                // Height of the virtual buffer is either the height of all
-                // visible elements or, if the view is big
-                // enough to fit the entire list, the height of
-                // the view
-                height: cmp::max(
-                    window.iter().map(|friend| friend.height).sum(),
-                    target_area.height,
-                ),
-            },
-            background_cell,
-        );
+        let mut virtual_buffer = Buffer::empty(Rect {
+            x: 0,
+            y: 0,
+            width,
+            // Height of the virtual buffer is either the height of all visible
+            // elements or, if the view is big enough to fit the entire list,
+            // the height of the view
+            height: cmp::max(
+                window.iter().map(|friend| friend.height).sum(),
+                target_area.height,
+            ),
+        });
         let mut virtual_canvas = Canvas::new(&mut virtual_buffer);
 
         // Render each complete item into the virtual buffer. We know the buffer

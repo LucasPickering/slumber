@@ -1,7 +1,9 @@
-use super::clear_fill::ClearFill;
 use crate::view::{
     Generate,
-    common::select::{Select, SelectEventKind, SelectListProps},
+    common::{
+        clear_fill::ClearFill,
+        select::{Select, SelectEventKind, SelectListProps},
+    },
     component::{
         Canvas, Child, Component, ComponentExt, ComponentId, Draw,
         DrawMetadata, ToChild,
@@ -393,7 +395,7 @@ impl Draw for ActionMenuContent {
         // the entire parent area because there may be content within the
         // rectangle that isn't behind any single layer
         for area in &areas {
-            canvas.render_widget(ClearFill::default(), *area);
+            canvas.render_widget(ClearFill, *area);
         }
 
         for (i, (layer, area)) in self.stack.iter().zip(areas).enumerate() {

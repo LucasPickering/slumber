@@ -191,7 +191,7 @@ impl Draw<TextBoxProps> for CommandTextBox {
                 })
             }
             .intersection(canvas.area()); // Don't go outside terminal
-            canvas.render_widget(ClearFill::default(), search_area); // Clear styling
+            canvas.render_widget(ClearFill, search_area); // Clear styling
             canvas.draw(
                 search,
                 SelectListProps {

@@ -139,10 +139,7 @@ impl Draw for CollectionSelect {
             };
 
             // Clear previous styling
-            canvas.render_widget(
-                ClearFill::default(),
-                select_area.union(filter_area),
-            );
+            canvas.render_widget(ClearFill, select_area.union(filter_area));
 
             // Select with background to provide contrast
             canvas.render_widget(

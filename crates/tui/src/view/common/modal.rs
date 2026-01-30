@@ -1,6 +1,6 @@
-use super::clear_fill::ClearFill;
 use crate::view::{
     Component, ComponentExt, UpdateContext,
+    common::clear_fill::ClearFill,
     component::{Canvas, Child, ComponentId, Draw, DrawMetadata},
     context::ViewContext,
     event::{Event, EventMatch},
@@ -159,7 +159,7 @@ where
             // 1x1 margin for the border, plus 1x0 of padding
             .outer(Margin::new(2, 1));
         // Clear content/styling from underneath
-        canvas.render_widget(ClearFill::default(), area);
+        canvas.render_widget(ClearFill, area);
 
         let styles = ViewContext::styles().modal;
         let block = Block::default()

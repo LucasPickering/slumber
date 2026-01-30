@@ -1,12 +1,12 @@
 use crate::{
     http::{RequestConfig, RequestStore},
-    message::MessageSender,
+    message::{Message, MessageSender},
     view::{
         ComponentMap, InvalidCollection, UpdateContext, View,
         persistent::PersistentStore,
     },
 };
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use ratatui::buffer::Buffer;
 use slumber_config::Config;
 use slumber_core::{
@@ -14,6 +14,7 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
 };
 use std::sync::Arc;
+use tokio::task;
 
 /// Collection-specific top-level state
 ///
@@ -32,7 +33,7 @@ pub struct CollectionState {
     ///
     /// Both variants are wrapped in an `Arc` so we can share them cheaply with
     /// the view.
-    pub collection: Result<Arc<Collection>, Arc<CollectionError>>,
+    pub collection: CollectionResult,
     /// Handle for the file from which the collection will be loaded
     pub collection_file: CollectionFile,
     /// A map of all components drawn in the most recent draw phase
@@ -67,21 +68,11 @@ impl CollectionState {
         let database = database.into_collection(&collection_file).unwrap();
         let request_store = RequestStore::new(database.clone());
 
-        // Wrap the collection in Arc so it can be shared cheaply
-        let collection = collection_file.load().map(Arc::new).map_err(Arc::new);
-        if let Ok(collection) = &collection {
-            // Update the DB with the collection's name
-            database.set_name(collection);
-        }
+        let collection = map_result(collection_file.load(), &database);
 
-        let view_collection =
-            collection.clone().map_err(|error| InvalidCollection {
-                file: collection_file.clone(),
-                error,
-            });
         let view = View::new(
             config.clone(),
-            view_collection,
+            to_view_result(&collection_file, &collection),
             database.clone(),
             messages_tx.clone(),
         );
@@ -98,22 +89,58 @@ impl CollectionState {
         }
     }
 
-    /// Switch to a new version of the current collection file
-    pub fn set_collection(&mut self, collection: Collection) {
-        let collection = Arc::new(collection);
+    /// Spawn a background task to load+parse the current collection file
+    ///
+    /// When the load is done, [Message::CollectionEndReload] will be sent with
+    /// the result (`Ok` or `Err`) of the load. Pass that result back to
+    /// [Self::set_collection].
+    ///
+    /// YAML parsing is CPU-bound so do it in a blocking task. In all likelihood
+    /// this will be extremely fast, but it's possible there's some edge case
+    /// that causes it to be slow and we don't want to block the render loop.
+    pub fn reload_collection(&self) {
+        let messages_tx = self.messages_tx.clone();
+        let collection_file = self.collection_file.clone();
+        // We need two tasks here:
+        // - Inner blocking task runs on another thread and parses the YAML
+        // - Outer local task runs on the main thread and just waits on the
+        //   inner task. Once it's done, it sends the result back to the loop
+        // We can't do the parsing on the local task because it would block the
+        // loop, and we can't send the message from the blocking thread because
+        // messages are !Send
+        task::spawn_local(async move {
+            let result = task::spawn_blocking(move || collection_file.load())
+                .await
+                .context("Collection loading panicked");
+            let message = match result {
+                // Collection either loaded or failed. Either way, refresh the
+                // collection state with the result
+                Ok(result) => Message::CollectionEndReload(result),
+                // Join error - the parse thread panicked. Bad!!
+                Err(error) => Message::Error { error },
+            };
+            messages_tx.send(message);
+        });
+    }
 
-        self.database.set_name(&collection);
+    /// Switch to a new version of the current collection file
+    ///
+    /// This does *not* full rebuild state because the collection file hasn't
+    /// changed. We can keep the DB, request store, etc.
+    pub fn set_collection(
+        &mut self,
+        result: Result<Collection, CollectionError>,
+    ) {
+        self.collection = map_result(result, &self.database);
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(
             self.config.clone(),
-            Ok(Arc::clone(&collection)),
+            to_view_result(&self.collection_file, &self.collection),
             self.database.clone(),
             self.messages_tx.clone(),
         );
         self.view.notify("Reloaded collection");
-
-        self.collection = Ok(collection);
     }
 
     /// Handle all events in the queue. Return `true` if at least one event was
@@ -147,4 +174,33 @@ impl CollectionState {
             .request_config()
             .ok_or_else(|| anyhow!("No recipe selected"))
     }
+}
+
+/// The result of loading a collection. Both the collection and the error are in
+/// `Arc` so they can be shared cheaply with the view.
+type CollectionResult = Result<Arc<Collection>, Arc<CollectionError>>;
+
+/// Map the direct result of loading a collection into a [CollectionResult],
+/// and update the collection's name in the DB if `Ok`
+fn map_result(
+    result: Result<Collection, CollectionError>,
+    database: &CollectionDatabase,
+) -> CollectionResult {
+    if let Ok(collection) = &result {
+        // Update the DB with the collection's name
+        database.set_name(collection);
+    }
+
+    result.map(Arc::new).map_err(Arc::new)
+}
+
+/// Clone the collection `Result` and map its error to the format the view wants
+fn to_view_result(
+    collection_file: &CollectionFile,
+    collection: &CollectionResult,
+) -> Result<Arc<Collection>, InvalidCollection> {
+    collection.clone().map_err(|error| InvalidCollection {
+        file: collection_file.clone(),
+        error,
+    })
 }

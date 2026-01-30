@@ -11,7 +11,7 @@ use derive_more::From;
 use futures::{FutureExt, future::LocalBoxFuture};
 use mime::Mime;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{Collection, CollectionError, ProfileId, RecipeId},
     database::ProfileFilter,
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
@@ -72,7 +72,9 @@ pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    CollectionEndReload(Collection),
+    ///
+    /// If the result is `Err`, we'll switch to an error state
+    CollectionEndReload(Result<Collection, CollectionError>),
     /// Open the collection in the user's editor
     CollectionEdit {
         /// Optional file+line+column to open. If omitted, open the root

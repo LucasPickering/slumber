@@ -314,11 +314,11 @@ where
         match message {
             Message::ClearTerminal => self.terminal.clear()?,
 
-            Message::CollectionEndReload(collection) => {
+            Message::CollectionEndReload(result) => {
                 // Because we're just swapping out the collection value and
                 // using the same file, we can just update state instead of
                 // replacing it
-                self.state.set_collection(collection);
+                self.state.set_collection(result);
             }
             Message::CollectionSelect(path) => {
                 // Collection file has changed, so we have to rebuild state
@@ -330,7 +330,7 @@ where
                     self.messages_tx.clone(),
                 );
             }
-            Message::CollectionStartReload => self.reload_collection(),
+            Message::CollectionStartReload => self.state.reload_collection(),
             Message::CollectionEdit { location } => {
                 self.edit_collection(location)?;
             }
@@ -453,22 +453,9 @@ where
                 RequestDisposition::Select(id)
             }
             HttpMessage::Prompt { request_id, prompt } => {
-                let id =
-                    self.state.request_store.prompt(request_id, prompt).id();
                 // For any new prompt, jump to the form. This may potentially
                 // be annoying for delayed prompts. If so we can change it :)
-                RequestDisposition::OpenForm(id)
-            }
-            HttpMessage::FormSubmit {
-                request_id,
-                replies: responses,
-            } => {
-                let id = self
-                    .state
-                    .request_store
-                    .submit_form(request_id, responses)
-                    .id();
-                RequestDisposition::Change(id)
+                RequestDisposition::OpenPrompt { request_id, prompt }
             }
             HttpMessage::BuildError(error) => {
                 let id = self.state.request_store.build_error(error).id();
@@ -530,38 +517,6 @@ where
         self.spawn(util::watch_file(path, move || {
             messages_tx.send(Message::CollectionStartReload);
         }));
-    }
-
-    /// Spawn a background task to load+parse the collection file
-    ///
-    /// YAML parsing is CPU-bound so do it in a blocking task. In all likelihood
-    /// this will be extremely fast, but it's possible there's some edge case
-    /// that causes it to be slow and we don't want to block the render loop.
-    fn reload_collection(&self) {
-        let messages_tx = self.messages_tx.clone();
-        let collection_file = self.state.collection_file.clone();
-        // We need two tasks here:
-        // - Inner blocking task runs on another thread and parses the YAML
-        // - Outer local task runs on the main thread and just waits on the
-        //   inner task. Once it's done, it sends the result back to the loop
-        // We can't do the parsing on the local task because it would block the
-        // loop, and we can't send the message from the blocking thread because
-        // messages are !Send
-        task::spawn_local(async move {
-            let result = task::spawn_blocking(move || collection_file.load())
-                .await
-                .context("Collection loading panicked");
-            let message = match result {
-                Ok(Ok(collection)) => Message::CollectionEndReload(collection),
-                // Load error
-                Ok(Err(error)) => Message::Error {
-                    error: error.into(),
-                },
-                // Join error - panic in the thread
-                Err(error) => Message::Error { error },
-            };
-            messages_tx.send(message);
-        });
     }
 
     /// Open the collection file in the user's editor
@@ -920,6 +875,13 @@ where
             root_dir: self.state.collection_file.parent().to_owned(),
             state: Default::default(),
         }
+    }
+}
+
+impl<B: Backend> Drop for Tui<B> {
+    fn drop(&mut self) {
+        // Kill any tasks that may still be running. Useful for panics
+        self.cancel_token.cancel();
     }
 }
 

@@ -582,6 +582,20 @@ pub enum CollectionError {
     Yaml(YamlCollectionError),
 }
 
+impl CollectionError {
+    /// Get the source location of the error
+    ///
+    /// `None` if the error occurred while opening the file rather than parsing
+    /// or deserializing.
+    pub fn location(&self) -> Option<&SourceLocation> {
+        if let Self::Yaml(YamlCollectionError(error)) = self {
+            Some(&error.location)
+        } else {
+            None
+        }
+    }
+}
+
 impl From<YamlError> for CollectionError {
     fn from(error: YamlError) -> Self {
         Self::Yaml(YamlCollectionError(error))

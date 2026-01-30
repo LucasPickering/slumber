@@ -2,7 +2,6 @@
 //! state updates.
 
 use crate::{
-    http::{PromptId, PromptReply},
     input::InputEvent,
     util::{ResultReported, TempFile},
     view::Question,
@@ -11,7 +10,7 @@ use derive_more::From;
 use futures::{FutureExt, future::LocalBoxFuture};
 use mime::Mime;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{Collection, CollectionError, ProfileId, RecipeId},
     database::ProfileFilter,
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
@@ -72,7 +71,9 @@ pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    CollectionEndReload(Collection),
+    ///
+    /// If the result is `Err`, we'll switch to an error state
+    CollectionEndReload(Result<Collection, CollectionError>),
     /// Open the collection in the user's editor
     CollectionEdit {
         /// Optional file+line+column to open. If omitted, open the root
@@ -194,12 +195,6 @@ pub enum HttpMessage {
     Prompt {
         request_id: RequestId,
         prompt: Prompt,
-    },
-    /// User has submitted their prompt form in the UI. Replies should be sent
-    /// back to the render engine.
-    FormSubmit {
-        request_id: RequestId,
-        replies: Vec<(PromptId, PromptReply)>,
     },
     /// Request failed to build
     ///

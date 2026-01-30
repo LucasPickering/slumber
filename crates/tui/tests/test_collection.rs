@@ -113,8 +113,7 @@ async fn test_initial_load_error(backend: TestBackend, data_dir: DataDir) {
 }
 
 /// Collection is loaded successfully on startup, but then changed to have
-/// an error. The old collection should remain in use but the error is
-/// shown.
+/// an error. We drop into the error state until it's fixed.
 #[rstest]
 #[tokio::test]
 async fn test_reload_error(backend: TestBackend, data_dir: DataDir) {
@@ -128,21 +127,17 @@ async fn test_reload_error(backend: TestBackend, data_dir: DataDir) {
     tui.backend()
         .assert_buffer_contains("No recipes defined", (1, 3).into());
 
-    // Update the file with an invalid collection. The error is shown but we
-    // keep the old collection in use
+    // Update the file with an invalid collection. We go into the error state
     let tui = Runner::new(tui)
         .run_until(fs::write(&collection_path, "requests: 3"))
         .await
-        // Error is shown in a modal
-        .wait_for_content("Expected mapping", (14, 9).into())
+        .wait_for_content("Expected mapping, received `3`", (2, 4).into())
         .await
         .done()
         .await;
 
-    // We remain in valid mode with the original collection
-    assert_eq!(tui.collection(), Some(&Collection::default()));
-    tui.backend()
-        .assert_buffer_contains("No recipes defined", (1, 3).into());
+    // Collection is no longer available
+    assert_eq!(tui.collection(), None);
 }
 
 /// Switch the selected request, which should rebuild the state entirely
@@ -165,6 +160,7 @@ requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
     let db = tui.database().root();
     let other_collection_file =
         CollectionFile::new(Some(other_collection_path)).unwrap();
+    // Insert the second collection into the DB so it's available in the list
     db.clone().into_collection(&other_collection_file).unwrap();
     assert_eq!(db.get_collections().unwrap().len(), 2);
 

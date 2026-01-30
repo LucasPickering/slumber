@@ -31,6 +31,14 @@ pub struct Help {
 }
 
 impl Help {
+    pub fn open(&mut self) {
+        self.open = true;
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
     /// Get the list of bindings that will be shown in the modal
     fn bindings() -> Vec<[String; 2]> {
         ViewContext::with_input(|input| {
@@ -54,23 +62,10 @@ impl Component for Help {
     }
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event
-            .m()
-            .action(|action, propagate| match action {
-                Action::OpenHelp if !self.open => self.open = true,
-                _ => propagate.set(),
-            })
-            .any(|event| {
-                // Any input exits fullscreen
-                if let Event::Input(_) = event
-                    && self.open
-                {
-                    self.open = false;
-                    None
-                } else {
-                    Some(event)
-                }
-            })
+        event.m().action(|action, propagate| match action {
+            Action::Cancel if self.open => self.open = false,
+            _ => propagate.set(),
+        })
     }
 }
 
@@ -122,8 +117,11 @@ impl Draw for Help {
             }
             .generate()
             .title(
-                Line::from("Press any key to close")
-                    .alignment(Alignment::Right),
+                Line::from(format!(
+                    "{} to close",
+                    ViewContext::binding_display(Action::Cancel)
+                ))
+                .alignment(Alignment::Right),
             );
             let area = canvas.area(); // Use the whole dang screen
             let [collection_area, _, keybindings_area] = Layout::vertical([
@@ -185,20 +183,12 @@ mod tests {
             TestComponent::new(&harness, &terminal, Help::default());
         assert!(!component.open);
 
-        // Open help
-        component
-            .int()
-            .send_key(KeyCode::Char('?'))
-            .assert()
-            .empty();
+        // Open help - this event is handled in the root
+        component.open();
         assert!(component.open);
 
-        // Any key should close. Events are *not* handled by anyone else
-        component
-            .int()
-            .send_key(KeyCode::Char('x'))
-            .assert()
-            .empty();
+        // Esc to close
+        component.int().send_key(KeyCode::Esc).assert().empty();
         assert!(!component.open);
     }
 }

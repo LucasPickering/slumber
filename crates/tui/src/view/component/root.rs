@@ -44,6 +44,7 @@ pub struct Root {
     footer: Footer,
     // Modals!!
     actions: ActionMenu,
+    /// Modals for questions that are unrelated to request rendering
     questions: ModalQueue<QuestionModal>,
     errors: ModalQueue<ErrorModal>,
 }
@@ -240,6 +241,12 @@ impl Component for Root {
             .m()
             .action(|action, propagate| match action {
                 Action::Cancel => self.cancel_request(context),
+                // Handle open events here so that they can be eaten by other
+                // components *first*. E.g. text boxes want ? more than we do.
+                Action::OpenHelp => self.footer.open_help(),
+                Action::SelectCollection => {
+                    self.footer.open_collection_select();
+                }
                 Action::OpenActions => {
                     // Walk down the component tree and collect actions from
                     // all visible+focused components
@@ -293,7 +300,6 @@ impl Component for Root {
             self.actions.to_child_mut(),
             self.questions.to_child_mut(),
             // Non-modals
-            // Footer has some high-priority pop-ups
             self.footer.to_child_mut(),
             primary,
         ]
@@ -350,6 +356,24 @@ impl Component for CollectionErrorView {
     fn id(&self) -> ComponentId {
         self.id
     }
+
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
+        event.m().action(|action, propagate| match action {
+            Action::Edit => {
+                // Edit the collection at the error location. Location will
+                // always be present if it's an error IN the YAML (as opposed
+                // to an IO error)
+                ViewContext::send_message(Message::CollectionEdit {
+                    location: self.error.location().cloned(),
+                });
+            }
+            _ => propagate.set(),
+        })
+    }
 }
 
 impl Draw for CollectionErrorView {
@@ -367,9 +391,11 @@ impl Draw for CollectionErrorView {
         canvas.render_widget(
             Text::styled(
                 format!(
-                    "Watching {file} for changes...\n{key} to exit",
+                    "Watching {file} for changes...
+{edit} to edit collection, {exit} to exit",
                     file = self.collection_file,
-                    key = ViewContext::binding_display(Action::ForceQuit),
+                    edit = ViewContext::binding_display(Action::Edit),
+                    exit = ViewContext::binding_display(Action::ForceQuit),
                 ),
                 ViewContext::styles().text.primary,
             ),

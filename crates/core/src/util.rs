@@ -25,7 +25,7 @@ pub fn value_to_json(value: Value) -> serde_json::Value {
         Value::Array(array) => serde_json::Value::Array(
             array.into_iter().map(value_to_json).collect(),
         ),
-        Value::Object(object) => todo!(),
+        Value::Object(_) => todo!(),
         Value::Bytes(_) => todo!(),
     }
 }

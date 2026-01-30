@@ -429,15 +429,6 @@ impl IntoIterator for RenderedOutput {
     }
 }
 
-/// TODO
-impl From<Value> for RenderedOutput {
-    fn from(value: Value) -> Self {
-        // TODO should there be a first-class type for single-values so we don't
-        // have to do the unpack heuristic?
-        Self(vec![RenderedChunk::Rendered(LazyValue::Value(value))])
-    }
-}
-
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]

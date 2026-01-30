@@ -47,6 +47,7 @@ use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::curl::CurlBuilder,
     render::TemplateContext,
+    util,
 };
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
@@ -749,10 +750,17 @@ impl Recipe {
             | (Some(RecipeBody::Raw(_)), Some(BodyOverride::Json(json)))
             | (Some(RecipeBody::Stream(_)), Some(BodyOverride::Json(json)))
             | (Some(RecipeBody::Json(_)), Some(BodyOverride::Json(json))) => {
-                json.render(context)
-                    .await
-                    .map(|value| Some(RenderedBody::Json(value)))
-                    .map_err(RequestBuildErrorKind::BodyRender)
+                // Render the value
+                let rendered_value = async {
+                    json.render(&context.streaming(false))
+                        .await?
+                        .resolve()
+                        .await
+                }
+                .await
+                .map_err(RequestBuildErrorKind::BodyRender)?;
+                let json = util::value_to_json(rendered_value);
+                Ok(Some(RenderedBody::Json(json)))
             }
 
             // Form bodies

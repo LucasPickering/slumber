@@ -39,7 +39,7 @@ impl ValueTemplate {
         match json {
             serde_json::Value::Null => Self::Null,
             serde_json::Value::Bool(b) => Self::Boolean(b),
-            serde_json::Value::Number(number) => todo!(),
+            serde_json::Value::Number(_) => todo!(),
             serde_json::Value::String(s) => Self::String(Template::raw(s)),
             serde_json::Value::Array(values) => {
                 Self::Array(values.into_iter().map(Self::raw_json).collect())
@@ -52,6 +52,15 @@ impl ValueTemplate {
                     .collect(),
             ),
         }
+    }
+
+    /// TODO
+    pub fn parse_json(s: &str) -> Result<Self, JsonTemplateError> {
+        // First, parse it as regular JSON
+        let json: serde_json::Value = serde_json::from_str(s)?;
+        // Then map all the strings as templates
+        let mapped = json.try_into()?;
+        Ok(mapped)
     }
 
     /// TODO
@@ -110,7 +119,7 @@ impl TryFrom<serde_json::Value> for ValueTemplate {
         let mapped = match json {
             serde_json::Value::Null => Self::Null,
             serde_json::Value::Bool(b) => Self::Boolean(b),
-            serde_json::Value::Number(number) => todo!(),
+            serde_json::Value::Number(_) => todo!(),
             serde_json::Value::String(s) => Self::String(s.parse()?),
             serde_json::Value::Array(values) => Self::Array(
                 values
@@ -207,7 +216,7 @@ mod tests {
     #[rstest]
     #[case::template_key(
         json!({"{{ user_id }}": {"name": "{{ username }}"}}),
-        Ok(json!({"123": {"name": "testuser"}})),
+        Ok(json!({"123": {"name": "testuser"}}).into()),
     )]
     #[case::invalid_key(
         json!({"{{ user_id": {"name": "{{ username }}"}}),

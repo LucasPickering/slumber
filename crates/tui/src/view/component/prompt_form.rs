@@ -320,7 +320,13 @@ impl Draw<PromptInputProps> for PromptInput {
                         .into()
                 }
             };
-            canvas.render_widget(value.as_ref(), content_area);
+            canvas.render_widget(
+                Line::styled(
+                    value.as_ref(),
+                    ViewContext::styles().form.content,
+                ),
+                content_area,
+            );
         }
     }
 }
@@ -477,7 +483,7 @@ mod tests {
         let styles = ViewContext::styles();
         terminal.assert_buffer_lines([
             Line::styled("Username", styles.form.title),
-            Line::styled("user12", Style::default()),
+            Line::styled("user12  ", styles.form.content),
             Line::styled("Password", styles.form.title_highlight),
             // Sensitive fields get masked, even when not editing
             Line::from_iter([

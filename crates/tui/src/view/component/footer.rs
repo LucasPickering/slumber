@@ -1,5 +1,6 @@
 use crate::view::{
-    UpdateContext, ViewContext,
+    Generate, UpdateContext, ViewContext,
+    common::clear_fill::ClearFill,
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         collection_select::CollectionSelect, help::Help,
@@ -83,12 +84,20 @@ impl Component for Footer {
 
 impl Draw for Footer {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let styles = &ViewContext::styles().footer;
+
         // If a notification is present, it gets the entire footer.
         // Notifications are auto-cleared so it's ok to hide other stuff
         // temporarily
         if let Some(notification) = &self.notification {
-            canvas
-                .render_widget(notification.message.as_str(), metadata.area());
+            canvas.render_widget(
+                notification
+                    .message
+                    .as_str()
+                    .generate()
+                    .style(styles.default),
+                metadata.area(),
+            );
             return;
         }
 
@@ -98,6 +107,11 @@ impl Draw for Footer {
             Constraint::Min(0),
         ])
         .areas(metadata.area());
+
+        canvas.render_widget(
+            ClearFill::from_style(styles.default),
+            metadata.area(),
+        );
 
         canvas.draw(
             &self.collection_select,

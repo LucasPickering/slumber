@@ -1,3 +1,4 @@
+use super::clear_fill::ClearFill;
 use crate::view::{
     Component, ComponentExt, UpdateContext,
     component::{Canvas, Child, ComponentId, Draw, DrawMetadata},
@@ -7,10 +8,10 @@ use crate::view::{
 use ratatui::{
     layout::{Constraint, Margin},
     text::Line,
-    widgets::{Block, Borders, Clear},
+    widgets::{Block, Borders},
 };
 use slumber_config::Action;
-use std::{collections::VecDeque, fmt::Debug};
+use std::collections::VecDeque;
 
 /// A *homogenous* queue of modals.
 ///
@@ -158,14 +159,15 @@ where
             // 1x1 margin for the border, plus 1x0 of padding
             .outer(Margin::new(2, 1));
         // Clear content/styling from underneath
-        canvas.render_widget(Clear, area);
+        canvas.render_widget(ClearFill::default(), area);
 
         let styles = ViewContext::styles().modal;
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(styles.border)
             .border_type(styles.border_type)
-            .title(modal.title());
+            .title(modal.title())
+            .style(styles.default);
         // Add one cell of X padding so text doesn't butt up against the border;
         // that would interfere with word-based selection
         let margin = Margin::new(1, 0);

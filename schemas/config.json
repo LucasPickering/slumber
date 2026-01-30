@@ -172,10 +172,22 @@
       "$ref": "#/$defs/Theme",
       "default": {
         "primary_color": "Blue",
-        "primary_text_color": "White",
         "secondary_color": "Yellow",
         "success_color": "Green",
-        "error_color": "Red"
+        "error_color": "Red",
+        "text_color": "Reset",
+        "primary_text_color": "White",
+        "background_color": "Reset",
+        "border_color": "Reset",
+        "inactive_color": "DarkGray",
+        "syntax": {
+          "comment_color": "Gray",
+          "builtin_color": "Blue",
+          "escape_color": "Green",
+          "number_color": "Cyan",
+          "string_color": "LightGreen",
+          "special_color": "Green"
+        }
       }
     },
     "persist": {
@@ -311,10 +323,22 @@
       },
       "theme": {
         "primary_color": "Blue",
-        "primary_text_color": "White",
         "secondary_color": "Yellow",
         "success_color": "Green",
-        "error_color": "Red"
+        "error_color": "Red",
+        "text_color": "Reset",
+        "primary_text_color": "White",
+        "background_color": "Reset",
+        "border_color": "Reset",
+        "inactive_color": "DarkGray",
+        "syntax": {
+          "comment_color": "Gray",
+          "builtin_color": "Blue",
+          "escape_color": "Green",
+          "number_color": "Cyan",
+          "string_color": "LightGreen",
+          "special_color": "Green"
+        }
       },
       "persist": true
     }
@@ -381,11 +405,6 @@
           "$ref": "#/$defs/Color",
           "default": "Blue"
         },
-        "primary_text_color": {
-          "description": "Color for text on top of the primary color. This should contrast with\nthe primary color well",
-          "$ref": "#/$defs/Color",
-          "default": "White"
-        },
         "secondary_color": {
           "description": "Color for secondary accented content",
           "$ref": "#/$defs/Color",
@@ -400,6 +419,43 @@
           "description": "Color representing error (e.g. for 4xx status codes)",
           "$ref": "#/$defs/Color",
           "default": "Red"
+        },
+        "text_color": {
+          "description": "Color for regular text",
+          "$ref": "#/$defs/Color",
+          "default": "Reset"
+        },
+        "primary_text_color": {
+          "description": "Color for text on top of the primary color. This should contrast with\nthe primary color well",
+          "$ref": "#/$defs/Color",
+          "default": "White"
+        },
+        "background_color": {
+          "description": "Color for the background of the application",
+          "$ref": "#/$defs/Color",
+          "default": "Reset"
+        },
+        "border_color": {
+          "description": "Color of the borders when not selected/focused\n(otherwise primary color is used)",
+          "$ref": "#/$defs/Color",
+          "default": "Reset"
+        },
+        "inactive_color": {
+          "description": "Color for inactive text and components",
+          "$ref": "#/$defs/Color",
+          "default": "DarkGray"
+        },
+        "syntax": {
+          "description": "User-configurable visual settings for syntax highlighting",
+          "$ref": "#/$defs/Syntax",
+          "default": {
+            "comment_color": "Gray",
+            "builtin_color": "Blue",
+            "escape_color": "Green",
+            "number_color": "Cyan",
+            "string_color": "LightGreen",
+            "special_color": "Green"
+          }
         }
       },
       "additionalProperties": false
@@ -426,6 +482,43 @@
         "white",
         "reset"
       ]
+    },
+    "Syntax": {
+      "description": "User-configurable visual settings for syntax highlighting.",
+      "type": "object",
+      "properties": {
+        "comment_color": {
+          "description": "Color for comments",
+          "$ref": "#/$defs/Color",
+          "default": "Gray"
+        },
+        "builtin_color": {
+          "description": "Color for builtins",
+          "$ref": "#/$defs/Color",
+          "default": "Blue"
+        },
+        "escape_color": {
+          "description": "Color for escape characters",
+          "$ref": "#/$defs/Color",
+          "default": "Green"
+        },
+        "number_color": {
+          "description": "Color for numbers",
+          "$ref": "#/$defs/Color",
+          "default": "Cyan"
+        },
+        "string_color": {
+          "description": "Color for strings",
+          "$ref": "#/$defs/Color",
+          "default": "LightGreen"
+        },
+        "special_color": {
+          "description": "Color for special characters",
+          "$ref": "#/$defs/Color",
+          "default": "Green"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

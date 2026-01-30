@@ -350,6 +350,24 @@ impl Component for CollectionErrorView {
     fn id(&self) -> ComponentId {
         self.id
     }
+
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
+        event.m().action(|action, propagate| match action {
+            Action::Edit => {
+                // Edit the collection at the error location. Location will
+                // always be present if it's an error IN the YAML (as opposed
+                // to an IO error)
+                ViewContext::send_message(Message::CollectionEdit {
+                    location: self.error.location().cloned(),
+                });
+            }
+            _ => propagate.set(),
+        })
+    }
 }
 
 impl Draw for CollectionErrorView {
@@ -367,9 +385,11 @@ impl Draw for CollectionErrorView {
         canvas.render_widget(
             Text::styled(
                 format!(
-                    "Watching {file} for changes...\n{key} to exit",
+                    "Watching {file} for changes...
+{edit} to edit collection, {exit} to exit",
                     file = self.collection_file,
-                    key = ViewContext::binding_display(Action::ForceQuit),
+                    edit = ViewContext::binding_display(Action::Edit),
+                    exit = ViewContext::binding_display(Action::ForceQuit),
                 ),
                 ViewContext::styles().text.primary,
             ),

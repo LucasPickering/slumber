@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod button;
+pub mod clear_fill;
 pub mod component_select;
 pub mod fixed_select;
 pub mod header_table;

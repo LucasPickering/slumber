@@ -1,5 +1,6 @@
 use crate::view::{
-    UpdateContext, ViewContext,
+    Generate, UpdateContext, ViewContext,
+    common::clear_fill::ClearFill,
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
         collection_select::CollectionSelect, help::Help,
@@ -7,10 +8,7 @@ use crate::view::{
     event::{Emitter, Event, EventMatch},
     state::Notification,
 };
-use ratatui::{
-    layout::{Constraint, Layout},
-    widgets::Block,
-};
+use ratatui::layout::{Constraint, Layout};
 use tokio::time;
 use uuid::Uuid;
 
@@ -76,12 +74,20 @@ impl Component for Footer {
 
 impl Draw for Footer {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let styles = &ViewContext::styles().footer;
+
         // If a notification is present, it gets the entire footer.
         // Notifications are auto-cleared so it's ok to hide other stuff
         // temporarily
         if let Some(notification) = &self.notification {
-            canvas
-                .render_widget(notification.message.as_str(), metadata.area());
+            canvas.render_widget(
+                notification
+                    .message
+                    .as_str()
+                    .generate()
+                    .style(styles.default),
+                metadata.area(),
+            );
             return;
         }
 
@@ -93,10 +99,9 @@ impl Draw for Footer {
         .areas(metadata.area());
 
         canvas.render_widget(
-            Block::new().style(ViewContext::styles().footer.default),
+            ClearFill::from_style(styles.default),
             metadata.area(),
         );
-
         canvas.draw(&self.collection_select, (), collection_area, true);
 
         // Draw help last. If it's in fullscreen mode, it draws over everything

@@ -1,5 +1,5 @@
 use ratatui::{
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::BorderType,
 };
 use slumber_config::Theme;
@@ -24,6 +24,7 @@ pub struct Styles {
     pub text_window: TextWindowStyle,
     pub syntax: SyntaxStyle,
     pub footer: FooterStyle,
+    pub root: RootStyle,
 }
 
 /// Styles for the recipe input form
@@ -118,7 +119,6 @@ pub struct TableStyles {
     pub disabled: Style,
     pub highlight: Style,
     pub title: Style,
-    pub background_color: Color,
 }
 
 /// Styles for TemplatePreview component
@@ -178,6 +178,12 @@ pub struct FooterStyle {
     pub default: Style,
 }
 
+/// Styles for the Root component
+#[derive(Clone, Debug)]
+pub struct RootStyle {
+    pub background: Style,
+}
+
 impl Styles {
     pub fn new(theme: &Theme) -> Self {
         Self {
@@ -199,28 +205,18 @@ impl Styles {
                     .bg(theme.inactive_color)
                     .fg(theme.primary_text_color)
                     .add_modifier(Modifier::BOLD),
-                disabled: Style::default()
-                    .bg(theme.background_color)
-                    .fg(theme.inactive_color),
+                disabled: Style::default().fg(theme.inactive_color),
                 item: Style::default().fg(theme.text_color),
             },
             menu: MenuStyles {
-                border: Style::default()
-                    .fg(theme.primary_color)
-                    .bg(theme.background_color),
+                border: Style::default().fg(theme.primary_color),
                 border_type: BorderType::Rounded,
-                default: Style::default()
-                    .bg(theme.background_color)
-                    .fg(theme.text_color),
+                default: Style::default().fg(theme.text_color),
             },
             modal: ModalStyles {
-                border: Style::default()
-                    .fg(theme.primary_color)
-                    .bg(theme.background_color),
+                border: Style::default().fg(theme.primary_color),
                 border_type: BorderType::Double,
-                default: Style::default()
-                    .bg(theme.background_color)
-                    .fg(theme.text_color),
+                default: Style::default().fg(theme.text_color),
             },
             pane: PaneStyles {
                 border: Style::default().fg(theme.border_color),
@@ -229,9 +225,7 @@ impl Styles {
                     .add_modifier(Modifier::BOLD),
                 border_type: BorderType::Rounded,
                 border_type_selected: BorderType::Double,
-                default: Style::default()
-                    .bg(theme.background_color)
-                    .fg(theme.text_color),
+                default: Style::default().fg(theme.text_color),
             },
             status_code: StatusCodeStyles {
                 success: Style::default()
@@ -254,7 +248,6 @@ impl Styles {
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
                 text: Style::default().fg(theme.text_color),
-                background_color: theme.background_color,
                 alt: Style::default()
                     .bg(theme.inactive_color)
                     .fg(theme.primary_text_color),
@@ -278,8 +271,8 @@ impl Styles {
             },
             text: TextStyle {
                 highlight: Style::default()
-                    .fg(theme.primary_text_color)
-                    .bg(theme.primary_color),
+                    .bg(theme.primary_color)
+                    .fg(theme.primary_text_color),
                 hint: Style::default().fg(theme.inactive_color),
                 primary: Style::default().fg(theme.primary_color),
                 edited: Style::default()
@@ -292,8 +285,8 @@ impl Styles {
             },
             text_box: TextBoxStyle {
                 text: Style::default()
-                    .fg(theme.primary_text_color)
-                    .bg(theme.inactive_color),
+                    .bg(theme.inactive_color)
+                    .fg(theme.primary_text_color),
                 cursor: Style::default()
                     .bg(theme.primary_text_color)
                     .fg(theme.inactive_color),
@@ -316,8 +309,11 @@ impl Styles {
             },
             footer: FooterStyle {
                 default: Style::default()
-                    .fg(theme.text_color)
-                    .bg(theme.background_color),
+                    .bg(theme.primary_color)
+                    .fg(theme.primary_text_color),
+            },
+            root: RootStyle {
+                background: Style::default().bg(theme.background_color),
             },
         }
     }

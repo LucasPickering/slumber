@@ -4,7 +4,9 @@ use crate::{
     view::{
         Component, Generate, InvalidCollection, Question, RequestDisposition,
         ViewContext,
-        common::{actions::ActionMenu, modal::ModalQueue},
+        common::{
+            actions::ActionMenu, clear_fill::ClearFill, modal::ModalQueue,
+        },
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
@@ -300,6 +302,9 @@ impl Component for Root {
 
 impl Draw for Root {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        // Clear the screen and apply the background color
+        canvas.render_widget(ClearFill::default(), metadata.area());
+
         // Create layout
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])

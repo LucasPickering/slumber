@@ -1,6 +1,9 @@
 use crate::view::{
     UpdateContext,
-    common::select::{Select, SelectItem, SelectState},
+    common::{
+        clear_fill::ClearFill,
+        select::{Select, SelectItem, SelectState},
+    },
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
@@ -10,9 +13,9 @@ use crate::view::{
 use derive_more::derive::{Deref, DerefMut};
 use itertools::Itertools;
 use ratatui::{
-    buffer::{Buffer, Cell},
+    buffer::Buffer,
     layout::{Constraint, Layout, Rect, Spacing},
-    style::{Color, Style},
+    style::Style,
     widgets::Block,
 };
 use std::cmp;
@@ -186,8 +189,9 @@ where
         // themselves are arbitrary Component implementations so it's not
         // possible to tell them to only draw themselves partially.
 
-        let mut empty_cell = Cell::default();
-        empty_cell.set_bg(props.styles.background_color);
+        // Pre-fill the virtual buffer with the background color
+        let background_cell =
+            ClearFill::default().background_cell().unwrap_or_default();
 
         // Build a new buffer that's large enough to fit the entire window
         let mut virtual_buffer = Buffer::filled(
@@ -204,7 +208,7 @@ where
                     target_area.height,
                 ),
             },
-            empty_cell,
+            background_cell,
         );
         let mut virtual_canvas = Canvas::new(&mut virtual_buffer);
 
@@ -302,18 +306,15 @@ pub struct SelectStyles {
     pub normal: Style,
     pub disabled: Style,
     pub highlight: Style,
-    pub background_color: Color,
 }
 
 impl SelectStyles {
     /// Apply no extra styling to each item
     pub fn none() -> Self {
-        let styles = ViewContext::styles().table;
         Self {
             normal: Style::default(),
             disabled: Style::default(),
             highlight: Style::default(),
-            background_color: styles.background_color,
         }
     }
 
@@ -324,7 +325,6 @@ impl SelectStyles {
             normal: styles.text,
             disabled: styles.disabled,
             highlight: styles.highlight,
-            background_color: styles.background_color,
         }
     }
 }

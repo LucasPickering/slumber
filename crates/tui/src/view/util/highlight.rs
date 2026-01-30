@@ -2,6 +2,7 @@
 //!
 //! Warning: this thing is kinda fucked.
 
+use crate::view::{context::ViewContext, styles::SyntaxStyle};
 use anyhow::Context;
 use itertools::Itertools;
 use ratatui::{
@@ -19,8 +20,6 @@ use strum::{EnumIter, IntoEnumIterator};
 use tree_sitter_highlight::{
     Highlight, HighlightConfiguration, HighlightEvent, Highlighter,
 };
-
-use crate::view::{context::ViewContext, styles::SyntaxStyle};
 
 thread_local! {
     /// Cache the highlighter and its configurations, because we only need one

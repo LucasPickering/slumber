@@ -4,6 +4,7 @@ use crate::{
     view::{
         ToStringGenerate, UpdateContext, ViewContext,
         common::{
+            clear_fill::ClearFill,
             select::{Select, SelectEventKind, SelectListProps},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
@@ -14,11 +15,7 @@ use crate::{
     },
 };
 use derive_more::Display;
-use ratatui::{
-    layout::Rect,
-    text::Span,
-    widgets::{Block, Clear},
-};
+use ratatui::{layout::Rect, text::Span, widgets::Block};
 use slumber_config::Action;
 use slumber_core::database::{CollectionDatabase, CollectionId};
 use slumber_util::ResultTraced;
@@ -140,7 +137,10 @@ impl Draw for CollectionSelect {
             };
 
             // Clear previous styling
-            canvas.render_widget(Clear, select_area.union(filter_area));
+            canvas.render_widget(
+                ClearFill::default(),
+                select_area.union(filter_area),
+            );
 
             // Select with background to provide contrast
             canvas.render_widget(

@@ -518,7 +518,7 @@ impl SourceMap {
 /// Use a small type here to enable better bitpacking
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
 enum SourceId {
-    /// YAML was loaded from a file. Value is an index into [SourceMa[]]
+    /// YAML was loaded from a file. Value is an index into [SourceMap]
     File(u8),
     /// YAML was loaded from a string in memory. Used
     #[default]

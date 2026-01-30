@@ -18,7 +18,7 @@ use slumber_core::{
     http::HttpMethod,
 };
 use slumber_template::Template;
-use slumber_util::{NEW_ISSUE_LINK, yaml::SourceLocation};
+use slumber_util::{NEW_ISSUE_LINK, OptionExt, yaml::SourceLocation};
 use std::{cmp::Ordering, collections::HashMap, fmt::Display, str::FromStr};
 use tracing::{debug, error, warn};
 
@@ -317,8 +317,7 @@ impl From<Request> for RecipeNode {
 
         let body = request
             .body
-            .map(RecipeBody::try_from)
-            .transpose()
+            .try_map(RecipeBody::try_from)
             .inspect_err(|error| {
                 error!(
                     "Error importing body for request `{id}`: {error}",

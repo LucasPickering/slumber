@@ -6,8 +6,8 @@ use crate::{
         CollectionId, CollectionMetadata, DatabaseError, ProfileFilter,
     },
     http::{
-        Exchange, ExchangeSummary, HttpMethod, HttpVersion, RequestId,
-        RequestRecord, ResponseRecord,
+        Exchange, ExchangeSummary, HttpMethod, HttpVersion, RequestBody,
+        RequestBodyKind, RequestId, RequestRecord, ResponseRecord,
     },
 };
 use bytes::Bytes;
@@ -218,6 +218,43 @@ impl FromSql for CollectionPath {
     }
 }
 
+impl RequestBodyKind {
+    // Each variant is stored as a code in the request_body_kind column.
+    // None/Some are 0/1 so they can easily be populated from a boolean
+    // expression. Niche values are above 1 so we can add more of them more
+    // easily.
+    const KIND_NONE: u8 = 0;
+    const KIND_SOME: u8 = 1;
+    const KIND_STREAM: u8 = 2;
+    const KIND_TOO_LARGE: u8 = 3;
+}
+
+impl ToSql for RequestBodyKind {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        match self {
+            RequestBodyKind::None => Self::KIND_NONE.to_sql(),
+            RequestBodyKind::Some => Self::KIND_SOME.to_sql(),
+            RequestBodyKind::Stream => Self::KIND_STREAM.to_sql(),
+            RequestBodyKind::TooLarge => Self::KIND_TOO_LARGE.to_sql(),
+        }
+    }
+}
+
+impl FromSql for RequestBodyKind {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let code: u8 = u8::column_result(value)?;
+        match code {
+            Self::KIND_NONE => Ok(Self::None),
+            Self::KIND_SOME => Ok(Self::Some),
+            Self::KIND_STREAM => Ok(Self::Stream),
+            Self::KIND_TOO_LARGE => Ok(Self::TooLarge),
+            _ => Err(FromSqlError::Other(
+                format!("Invalid request_body_kind {code}").into(),
+            )),
+        }
+    }
+}
+
 /// Convert from `SELECT * FROM collections`
 impl<'a, 'b> TryFrom<&'a Row<'b>> for CollectionMetadata {
     type Error = rusqlite::Error;
@@ -237,6 +274,21 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for Exchange {
 
     fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
         let id: RequestId = row.get("id")?;
+
+        // Request body has a few different variants, so it's encoded across
+        // two columns
+        let request_body_kind: RequestBodyKind =
+            row.get("request_body_kind")?;
+        let request_body = match request_body_kind {
+            RequestBodyKind::None => RequestBody::None,
+            RequestBodyKind::Some => {
+                let bytes = row.get::<_, SqlWrap<Bytes>>("request_body")?.0;
+                RequestBody::Some(bytes)
+            }
+            RequestBodyKind::Stream => RequestBody::Stream,
+            RequestBodyKind::TooLarge => RequestBody::TooLarge,
+        };
+
         Ok(Self {
             id,
             start_time: row.get("start_time")?,
@@ -250,9 +302,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for Exchange {
                 // Use wrappers for all of these to specify the conversion
                 url: row.get::<_, SqlWrap<_>>("url")?.0,
                 headers: row.get::<_, SqlWrap<HeaderMap>>("request_headers")?.0,
-                body: row
-                    .get::<_, Option<SqlWrap<Bytes>>>("request_body")?
-                    .map(|wrap| wrap.0),
+                body: request_body,
             }),
             response: Arc::new(ResponseRecord {
                 id,

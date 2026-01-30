@@ -1,5 +1,6 @@
 use crate::{
     http::{RequestMetadata, ResponseMetadata},
+    message::HttpMessage,
     view::{
         Generate, RequestState, ViewContext,
         common::{
@@ -275,6 +276,9 @@ impl ExchangePaneContent {
     fn new(request_state: &RequestState) -> Self {
         let state = match request_state {
             RequestState::Building { .. } => ExchangePaneContentState::Building,
+            RequestState::BuildCancelled { .. } => {
+                ExchangePaneContentState::BuildCancelled
+            }
             RequestState::BuildError { error } => {
                 ExchangePaneContentState::BuildError {
                     error: (error as &dyn Error).generate(),
@@ -285,8 +289,10 @@ impl ExchangePaneContent {
                     request: RequestView::new(Arc::clone(request)),
                 }
             }
-            RequestState::Cancelled { .. } => {
-                ExchangePaneContentState::Cancelled
+            RequestState::LoadingCancelled { request, .. } => {
+                ExchangePaneContentState::LoadingCancelled {
+                    request: RequestView::new(Arc::clone(request)),
+                }
             }
             RequestState::Response { exchange } => {
                 ExchangePaneContentState::Response {
@@ -314,6 +320,47 @@ impl ExchangePaneContent {
             state,
         }
     }
+
+    fn handle_menu_action(&mut self, menu_action: ExchangePaneMenuAction) {
+        match menu_action {
+            // Generally if we get an action the corresponding
+            // request/response will be present, but we double check in
+            // case the action got delayed in being
+            // handled somehow
+            ExchangePaneMenuAction::CopyUrl => {
+                self.state.request().map(RequestView::copy_url);
+            }
+            ExchangePaneMenuAction::ViewRequestBody => {
+                self.state.request().map(RequestView::view_body);
+            }
+            ExchangePaneMenuAction::CopyRequestBody => {
+                self.state.request().map(RequestView::copy_body);
+            }
+            ExchangePaneMenuAction::CopyResponseBody => {
+                self.state.response().map(ResponseBodyView::copy_body);
+            }
+            ExchangePaneMenuAction::ViewResponseBody => {
+                self.state.response().map(ResponseBodyView::view_body);
+            }
+            ExchangePaneMenuAction::SaveResponseBody => {
+                self.state
+                    .response()
+                    .map(ResponseBodyView::save_response_body);
+            }
+            ExchangePaneMenuAction::ResendRequest => {
+                self.state.request().inspect(|request| {
+                    ViewContext::send_message(HttpMessage::Resend(
+                        request.request_id(),
+                    ));
+                });
+            }
+            ExchangePaneMenuAction::DeleteRequest => {
+                ViewContext::push_event(Event::DeleteRequests(
+                    DeleteTarget::Request,
+                ));
+            }
+        }
+    }
 }
 
 impl Component for ExchangePaneContent {
@@ -333,46 +380,8 @@ impl Component for ExchangePaneContent {
                 }
                 _ => propagate.set(),
             })
-            .emitted(self.actions_emitter, |menu_action| match menu_action {
-                // Generally if we get an action the corresponding
-                // request/response will be present, but we double check in
-                // case the action got delayed in being
-                // handled somehow
-                ExchangePaneMenuAction::CopyUrl => {
-                    if let Some(request) = self.state.request() {
-                        request.copy_url();
-                    }
-                }
-                ExchangePaneMenuAction::ViewRequestBody => {
-                    if let Some(request) = self.state.request() {
-                        request.view_body();
-                    }
-                }
-                ExchangePaneMenuAction::CopyRequestBody => {
-                    if let Some(request) = self.state.request() {
-                        request.copy_body();
-                    }
-                }
-                ExchangePaneMenuAction::CopyResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.copy_body();
-                    }
-                }
-                ExchangePaneMenuAction::ViewResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.view_body();
-                    }
-                }
-                ExchangePaneMenuAction::SaveResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.save_response_body();
-                    }
-                }
-                ExchangePaneMenuAction::DeleteRequest => {
-                    ViewContext::push_event(Event::DeleteRequests(
-                        DeleteTarget::Request,
-                    ));
-                }
+            .emitted(self.actions_emitter, |menu_action| {
+                self.handle_menu_action(menu_action);
             })
     }
 
@@ -383,9 +392,10 @@ impl Component for ExchangePaneContent {
         let has_request_body = request.is_some_and(RequestView::has_body);
         let has_response_body = match self.state {
             ExchangePaneContentState::Building
+            | ExchangePaneContentState::BuildCancelled
             | ExchangePaneContentState::BuildError { .. }
-            | ExchangePaneContentState::Cancelled
             | ExchangePaneContentState::Loading { .. }
+            | ExchangePaneContentState::LoadingCancelled { .. }
             | ExchangePaneContentState::RequestError { .. } => false,
             ExchangePaneContentState::Response { .. } => true,
         };
@@ -449,6 +459,13 @@ impl Component for ExchangePaneContent {
                 ],
             },
             emitter
+                .menu(ExchangePaneMenuAction::ResendRequest, "Resend Request")
+                // It's possible the resend fails because the request had no
+                // body. Until we have disabled reasons on these menus, that's
+                // better because we can show an explanation to the user
+                .enable(has_request)
+                .into(),
+            emitter
                 .menu(ExchangePaneMenuAction::DeleteRequest, "Delete Request")
                 .enable(has_request)
                 .shortcut(Some(Action::Delete))
@@ -460,9 +477,10 @@ impl Component for ExchangePaneContent {
         // Add tab content
         let mut children = match &mut self.state {
             ExchangePaneContentState::Building
-            | ExchangePaneContentState::BuildError { .. }
-            | ExchangePaneContentState::Cancelled => vec![],
-            ExchangePaneContentState::Loading { request } => {
+            | ExchangePaneContentState::BuildCancelled
+            | ExchangePaneContentState::BuildError { .. } => vec![],
+            ExchangePaneContentState::Loading { request }
+            | ExchangePaneContentState::LoadingCancelled { request } => {
                 vec![request.to_child_mut()]
             }
             ExchangePaneContentState::Response {
@@ -496,6 +514,9 @@ impl Draw for ExchangePaneContent {
             ExchangePaneContentState::Building => {
                 canvas.render_widget("Initializing request...", content_area);
             }
+            ExchangePaneContentState::BuildCancelled => {
+                canvas.render_widget("Build cancelled", content_area);
+            }
             ExchangePaneContentState::BuildError { error } => {
                 canvas.render_widget(error, content_area);
             }
@@ -509,10 +530,15 @@ impl Draw for ExchangePaneContent {
                     }
                 }
             }
-            // Can't show cancelled request here because we might've cancelled
-            // during the build
-            ExchangePaneContentState::Cancelled => {
-                canvas.render_widget("Request cancelled", content_area);
+            ExchangePaneContentState::LoadingCancelled { request } => {
+                match self.tabs.selected() {
+                    Tab::Request => {
+                        canvas.draw(request, (), content_area, true);
+                    }
+                    Tab::Body | Tab::Headers => {
+                        canvas.render_widget("Request cancelled", content_area);
+                    }
+                }
             }
             ExchangePaneContentState::Response {
                 request,
@@ -544,13 +570,16 @@ impl Draw for ExchangePaneContent {
 
 enum ExchangePaneContentState {
     Building,
+    BuildCancelled,
     BuildError {
         error: Text<'static>,
     },
     Loading {
         request: RequestView,
     },
-    Cancelled,
+    LoadingCancelled {
+        request: RequestView,
+    },
     Response {
         request: RequestView,
         response_headers: ResponseHeadersView,
@@ -565,8 +594,11 @@ enum ExchangePaneContentState {
 impl ExchangePaneContentState {
     fn request(&self) -> Option<&RequestView> {
         match self {
-            Self::Building | Self::BuildError { .. } | Self::Cancelled => None,
+            Self::Building | Self::BuildCancelled | Self::BuildError { .. } => {
+                None
+            }
             Self::Loading { request }
+            | Self::LoadingCancelled { request }
             | Self::Response { request, .. }
             | Self::RequestError { request, .. } => Some(request),
         }
@@ -575,9 +607,10 @@ impl ExchangePaneContentState {
     fn response(&self) -> Option<&ResponseBodyView> {
         match self {
             Self::Building
+            | Self::BuildCancelled
             | Self::BuildError { .. }
-            | Self::Cancelled
             | Self::Loading { .. }
+            | Self::LoadingCancelled { .. }
             | Self::RequestError { .. } => None,
             Self::Response { response_body, .. } => Some(response_body),
         }
@@ -593,5 +626,6 @@ enum ExchangePaneMenuAction {
     CopyResponseBody,
     ViewResponseBody,
     SaveResponseBody,
+    ResendRequest,
     DeleteRequest,
 }

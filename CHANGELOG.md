@@ -64,6 +64,8 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
   - Command history is specific to each collection and capped at 100 commands per collection
 - You can now further customize the theme colors [#699](https://github.com/LucasPickering/slumber/issues/699)
   - [See docs for more](https://slumber.lucaspickering.me/api/configuration/theme.html)
+- Add action to resend a previous request [#702](https://github.com/LucasPickering/slumber/issues/702)
+  - Request/Response pane > Actions menu (x) > Resend Request
 
 ### Changed
 
@@ -78,6 +80,8 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
 - Help modal has been moved to a fullscreen page
 - Make `slumber request` aliases `rq` and `req` visible
 - `slumber db collection delete` now accepts more than 1 collection at a time
+- Distinguish between different request body types in the history DB better
+  - Past requests that didn't have a body persisted because the body was streamed or too large will now look like there was no body at all. Future requests will not have this issue.
 
 ### Fixed
 

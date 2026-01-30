@@ -134,7 +134,7 @@ async fn test_reload_error(backend: TestBackend, data_dir: DataDir) {
         .run_until(fs::write(&collection_path, "requests: 3"))
         .await
         // Error is shown in a modal
-        .wait_for_content("Expected mapping", (12, 9).into())
+        .wait_for_content("Expected mapping", (14, 9).into())
         .await
         .done()
         .await;
@@ -204,7 +204,7 @@ requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
         .assert_buffer_contains("GET http://localhost", (1, 3).into());
 }
 
-/// Create an empty collection file and return its path
+/// Create a collection file and return its path
 async fn collection_file(directory: &Path, content: &str) -> PathBuf {
     let path = directory.join("slumber.yml");
     fs::write(&path, content).await.unwrap();

@@ -27,7 +27,6 @@ use std::{
     path::Path,
     sync::Arc,
 };
-use strum::EnumDiscriminants;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -136,7 +135,7 @@ impl RequestStore {
     /// Insert a new request. This will construct a [RequestState::Building]
     ///
     /// `cancel_token` is the handle that can be used to cancel the request.
-    /// `None` for triggered requests. Triggerd requests run in the same task
+    /// `None` for triggered requests. Triggered requests run in the same task
     /// as their parent, so they can't be aborted directly.
     pub fn start(
         &mut self,
@@ -260,7 +259,7 @@ impl RequestStore {
     /// updated state. Caller is responsible for persisting the exchange in the
     /// DB.
     pub fn response(&mut self, exchange: Exchange) -> &RequestState {
-        let response_state = RequestState::response(exchange);
+        let response_state = RequestState::new_response(exchange);
         // Use replace just to help catch bugs
         self.replace(response_state.id(), |state| {
             // This indicates a bug or race condition (e.g. request cancelled as
@@ -308,7 +307,7 @@ impl RequestStore {
                 cancel_token: Some(cancel_token),
             } => {
                 cancel_token.cancel();
-                RequestState::Cancelled {
+                RequestState::BuildCancelled {
                     id,
                     recipe_id,
                     profile_id,
@@ -322,10 +321,8 @@ impl RequestStore {
                 cancel_token: Some(cancel_token),
             } => {
                 cancel_token.cancel();
-                RequestState::Cancelled {
-                    id,
-                    recipe_id: request.recipe_id.clone(),
-                    profile_id: request.profile_id.clone(),
+                RequestState::LoadingCancelled {
+                    request,
                     start_time,
                     end_time,
                 }
@@ -349,10 +346,11 @@ impl RequestStore {
     ) -> anyhow::Result<Option<&RequestState>> {
         let request = match self.requests.entry(id) {
             Entry::Occupied(entry) => Some(entry.into_mut()),
-            Entry::Vacant(entry) => self
-                .database
-                .get_request(id)?
-                .map(|exchange| entry.insert(RequestState::response(exchange))),
+            Entry::Vacant(entry) => {
+                self.database.get_request(id)?.map(|exchange| {
+                    entry.insert(RequestState::new_response(exchange))
+                })
+            }
         };
         Ok(request.map(|r| &*r))
     }
@@ -398,7 +396,7 @@ impl RequestStore {
             // Cache this record if it isn't already
             self.requests
                 .entry(exchange.id)
-                .or_insert(RequestState::response(exchange));
+                .or_insert(RequestState::new_response(exchange));
         }
         Ok(())
     }
@@ -600,8 +598,8 @@ impl HttpProvider for TuiHttpProvider {
 /// State of an HTTP response, which can be in various states of
 /// completion/failure. Each request *recipe* should have one request state
 /// stored in the view at a time.
-#[derive(Debug, EnumDiscriminants)]
-#[strum_discriminants(name(RequestStateType))]
+#[derive(Debug)]
+#[cfg_attr(test, derive(derive_more::PartialEq))]
 pub enum RequestState {
     /// The request is being built. Typically this is very fast, but can be
     /// slow if a chain source takes a while.
@@ -613,13 +611,25 @@ pub enum RequestState {
         /// A token to cancel the task running the request.`None` for triggered
         /// requests, because they don't run at the root of a task and
         /// therefore can't be cancelled independently.
+        #[cfg_attr(test, partial_eq(skip))]
         cancel_token: Option<CancellationToken>,
         /// Any prompts sent by the HTTP engine to be shown to the user. This
         /// is empty when the request first starts building, and we'll insert
         /// as prompts are received by the main loop. The UI will show an input
         /// form with these visible, and upon form submission these will be
         /// drained out as the responses are forwarded.
+        #[cfg_attr(test, partial_eq(skip))]
         prompts: IndexMap<PromptId, Prompt>,
+    },
+
+    /// User cancelled the request mid-build. We don't have the request here
+    /// because the build never finished.
+    BuildCancelled {
+        id: RequestId,
+        recipe_id: RecipeId,
+        profile_id: Option<ProfileId>,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
     },
 
     /// Something went wrong during the build :(
@@ -636,17 +646,14 @@ pub enum RequestState {
         /// A handle to abort the task running the request. Used to cancel the
         /// request. `None` for triggered requests, because they don't run at
         /// the root of a task and therefore can't be aborted independently.
+        #[cfg_attr(test, partial_eq(skip))]
         cancel_token: Option<CancellationToken>,
     },
 
-    /// User cancelled the request mid-flight. We don't store the request here,
-    /// just the metadata, because we could've cancelled during build OR load.
-    /// We could split this into two different states to handle that, but not
-    /// worth.
-    Cancelled {
-        id: RequestId,
-        recipe_id: RecipeId,
-        profile_id: Option<ProfileId>,
+    /// User cancelled the request mid-flight. The request was successfully
+    /// built and sent, but cancelled before we got a response.
+    LoadingCancelled {
+        request: Arc<RequestRecord>,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     },
@@ -669,10 +676,10 @@ impl RequestState {
     /// cycle
     pub fn id(&self) -> RequestId {
         match self {
-            Self::Building { id, .. } => *id,
+            Self::Building { id, .. } | Self::BuildCancelled { id, .. } => *id,
             Self::BuildError { error, .. } => error.id,
-            Self::Loading { request, .. } => request.id,
-            Self::Cancelled { id, .. } => *id,
+            Self::Loading { request, .. }
+            | Self::LoadingCancelled { request, .. } => request.id,
             Self::RequestError { error } => error.request.id,
             Self::Response { exchange, .. } => exchange.id,
         }
@@ -681,10 +688,13 @@ impl RequestState {
     /// The profile that the request was rendered from
     pub fn profile_id(&self) -> Option<&ProfileId> {
         match self {
-            Self::Building { profile_id, .. } => profile_id.as_ref(),
+            Self::Building { profile_id, .. }
+            | Self::BuildCancelled { profile_id, .. } => profile_id.as_ref(),
             Self::BuildError { error } => error.profile_id.as_ref(),
-            Self::Loading { request, .. } => request.profile_id.as_ref(),
-            Self::Cancelled { profile_id, .. } => profile_id.as_ref(),
+            Self::Loading { request, .. }
+            | Self::LoadingCancelled { request, .. } => {
+                request.profile_id.as_ref()
+            }
             Self::RequestError { error } => error.request.profile_id.as_ref(),
             Self::Response { exchange, .. } => {
                 exchange.request.profile_id.as_ref()
@@ -695,12 +705,27 @@ impl RequestState {
     /// The recipe that the request was rendered from
     pub fn recipe_id(&self) -> &RecipeId {
         match self {
-            Self::Building { recipe_id, .. } => recipe_id,
+            Self::Building { recipe_id, .. }
+            | Self::BuildCancelled { recipe_id, .. } => recipe_id,
             Self::BuildError { error } => &error.recipe_id,
-            Self::Loading { request, .. } => &request.recipe_id,
-            Self::Cancelled { recipe_id, .. } => recipe_id,
+            Self::Loading { request, .. }
+            | Self::LoadingCancelled { request, .. } => &request.recipe_id,
             Self::RequestError { error } => &error.request.recipe_id,
             Self::Response { exchange, .. } => &exchange.request.recipe_id,
+        }
+    }
+
+    /// Get the built request. Return `None` if the record doesn't have a
+    /// request because the build is in progress, failed, or cancelled
+    pub fn request(&self) -> Option<&Arc<RequestRecord>> {
+        match self {
+            RequestState::Building { .. }
+            | RequestState::BuildCancelled { .. }
+            | RequestState::BuildError { .. } => None,
+            RequestState::Loading { request, .. }
+            | RequestState::LoadingCancelled { request, .. } => Some(request),
+            RequestState::Response { exchange } => Some(&exchange.request),
+            RequestState::RequestError { error } => Some(&error.request),
         }
     }
 
@@ -718,12 +743,12 @@ impl RequestState {
             },
 
             // Error states
-            Self::BuildError { error } => RequestMetadata {
-                id,
-                start_time: error.start_time,
-                end_time: Some(error.end_time),
-            },
-            Self::Cancelled {
+            Self::BuildCancelled {
+                start_time,
+                end_time,
+                ..
+            }
+            | Self::LoadingCancelled {
                 start_time,
                 end_time,
                 ..
@@ -731,6 +756,11 @@ impl RequestState {
                 id,
                 start_time: *start_time,
                 end_time: Some(*end_time),
+            },
+            Self::BuildError { error } => RequestMetadata {
+                id,
+                start_time: error.start_time,
+                end_time: Some(error.end_time),
             },
             Self::RequestError { error } => RequestMetadata {
                 id,
@@ -761,90 +791,8 @@ impl RequestState {
     }
 
     /// Create a request state from a completed response
-    fn response(exchange: Exchange) -> Self {
+    fn new_response(exchange: Exchange) -> Self {
         Self::Response { exchange }
-    }
-}
-
-#[cfg(test)]
-impl PartialEq for RequestState {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                Self::Building {
-                    id: l_id,
-                    start_time: l_start_time,
-                    profile_id: l_profile_id,
-                    recipe_id: l_recipe_id,
-                    cancel_token: _,
-                    prompts: _,
-                },
-                Self::Building {
-                    id: r_id,
-                    start_time: r_start_time,
-                    profile_id: r_profile_id,
-                    recipe_id: r_recipe_id,
-                    cancel_token: _,
-                    prompts: _,
-                },
-            ) => {
-                l_id == r_id
-                    && l_start_time == r_start_time
-                    && l_profile_id == r_profile_id
-                    && l_recipe_id == r_recipe_id
-            }
-            (
-                Self::BuildError { error: l_error },
-                Self::BuildError { error: r_error },
-            ) => l_error == r_error,
-            (
-                Self::Loading {
-                    request: l_request,
-                    start_time: l_start_time,
-                    cancel_token: _,
-                },
-                Self::Loading {
-                    request: r_request,
-                    start_time: r_start_time,
-                    cancel_token: _,
-                },
-            ) => l_request == r_request && l_start_time == r_start_time,
-            (
-                Self::Cancelled {
-                    id: l_id,
-                    recipe_id: l_recipe_id,
-                    profile_id: l_profile_id,
-                    start_time: l_start_time,
-                    end_time: l_end_time,
-                },
-                Self::Cancelled {
-                    id: r_id,
-                    recipe_id: r_recipe_id,
-                    profile_id: r_profile_id,
-                    start_time: r_start_time,
-                    end_time: r_end_time,
-                },
-            ) => {
-                l_id == r_id
-                    && l_recipe_id == r_recipe_id
-                    && l_profile_id == r_profile_id
-                    && l_start_time == r_start_time
-                    && l_end_time == r_end_time
-            }
-            (
-                Self::Response {
-                    exchange: l_exchange,
-                },
-                Self::Response {
-                    exchange: r_exchange,
-                },
-            ) => l_exchange == r_exchange,
-            (
-                Self::RequestError { error: l_error },
-                Self::RequestError { error: r_error },
-            ) => l_error == r_error,
-            _ => false,
-        }
     }
 }
 
@@ -888,6 +836,11 @@ pub enum RequestStateSummary {
         id: RequestId,
         start_time: DateTime<Utc>,
     },
+    BuildCancelled {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    },
     BuildError {
         id: RequestId,
         start_time: DateTime<Utc>,
@@ -897,7 +850,7 @@ pub enum RequestStateSummary {
         id: RequestId,
         start_time: DateTime<Utc>,
     },
-    Cancelled {
+    LoadingCancelled {
         id: RequestId,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
@@ -914,9 +867,10 @@ impl RequestStateSummary {
     pub fn id(&self) -> RequestId {
         match self {
             Self::Building { id, .. }
+            | Self::BuildCancelled { id, .. }
             | Self::BuildError { id, .. }
             | Self::Loading { id, .. }
-            | Self::Cancelled { id, .. }
+            | Self::LoadingCancelled { id, .. }
             | Self::RequestError { id, .. } => *id,
             Self::Response(exchange) => exchange.id,
         }
@@ -927,9 +881,10 @@ impl RequestStateSummary {
     pub fn start_time(&self) -> DateTime<Utc> {
         match self {
             Self::Building { start_time, .. }
+            | Self::BuildCancelled { start_time, .. }
             | Self::BuildError { start_time, .. }
             | Self::Loading { start_time, .. }
-            | Self::Cancelled { start_time, .. }
+            | Self::LoadingCancelled { start_time, .. }
             | Self::RequestError { start_time, .. } => *start_time,
             Self::Response(exchange) => exchange.start_time,
         }
@@ -946,12 +901,17 @@ impl RequestStateSummary {
             | Self::Loading { start_time, .. } => Utc::now() - start_time,
 
             // Error states
-            Self::BuildError {
+            Self::BuildCancelled {
                 start_time,
                 end_time,
                 ..
             }
-            | Self::Cancelled {
+            | Self::BuildError {
+                start_time,
+                end_time,
+                ..
+            }
+            | Self::LoadingCancelled {
                 start_time,
                 end_time,
                 ..
@@ -975,6 +935,16 @@ impl From<&RequestState> for RequestStateSummary {
                 id: *id,
                 start_time: *start_time,
             },
+            RequestState::BuildCancelled {
+                id,
+                start_time,
+                end_time,
+                ..
+            } => Self::BuildCancelled {
+                id: *id,
+                start_time: *start_time,
+                end_time: *end_time,
+            },
             RequestState::BuildError { error } => Self::BuildError {
                 id: error.id,
                 start_time: error.start_time,
@@ -988,13 +958,13 @@ impl From<&RequestState> for RequestStateSummary {
                 id: request.id,
                 start_time: *start_time,
             },
-            RequestState::Cancelled {
-                id,
+            RequestState::LoadingCancelled {
+                request,
                 start_time,
                 end_time,
                 ..
-            } => Self::Cancelled {
-                id: *id,
+            } => Self::LoadingCancelled {
+                id: request.id,
                 start_time: *start_time,
                 end_time: *end_time,
             },

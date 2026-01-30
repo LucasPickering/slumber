@@ -2,7 +2,7 @@ use crate::{
     GlobalArgs, Subcommand,
     completions::{complete_profile, complete_recipe},
 };
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, bail};
 use async_trait::async_trait;
 use clap::{Parser, ValueHint};
 use dialoguer::{Input, Password, Select as DialoguerSelect};
@@ -11,18 +11,20 @@ use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
     collection::{
-        Authentication, ProfileId, QueryParameterValue, Recipe, RecipeId,
+        Authentication, JsonTemplate, ProfileId, QueryParameterValue, Recipe,
+        RecipeBody, RecipeId,
     },
     database::{CollectionDatabase, Database},
     http::{
-        BuildFieldOverride, BuildOptions, Exchange, HttpEngine, RequestRecord,
-        RequestSeed, ResponseRecord, StoredRequestError, TriggeredRequestError,
+        BodyOverride, BuildFieldOverride, BuildOptions, Exchange, HttpEngine,
+        RequestBody, RequestRecord, RequestSeed, ResponseRecord,
+        StoredRequestError, TriggeredRequestError,
     },
     render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
 };
 use slumber_template::{Expression, Template};
-use slumber_util::{ResultTraced, ResultTracedAnyhow};
+use slumber_util::{OptionExt, ResultTraced, ResultTracedAnyhow};
 use std::{
     error::Error,
     fs::OpenOptions,
@@ -126,10 +128,10 @@ pub struct BuildRequestCommand {
     /// in the recipe:
     /// - If there is no body, the given override will become a raw body
     /// - Raw and stream bodies are replaced directly
-    /// - JSON bodies are parsed as JSON before being rendered as a string
+    /// - JSON bodies are parsed as JSON BEFORE being rendered as a string
     /// - Form bodies CANNOT be overridden by this flag
     #[clap(long, visible_alias = "data", value_hint = ValueHint::Other)]
-    body: Option<Template>,
+    body: Option<String>,
 
     /// Override a request form field (format: `field=value`)
     ///
@@ -343,11 +345,33 @@ impl BuildRequestCommand {
             }
         };
         let recipe = collection.recipes.try_get_recipe(&self.recipe_id)?;
+        // Body override is treated differently based on body type
+        let body_override = self.body.try_map::<_, anyhow::Error>(|ovr| {
+            match &recipe.body {
+                None | Some(RecipeBody::Stream(_) | RecipeBody::Raw(_)) => {
+                    // Parse the override as a regular template
+                    let template: Template = ovr.parse()?;
+                    Ok(BodyOverride::Raw(template))
+                }
+                Some(RecipeBody::Json(_)) => {
+                    // Parse the override as json
+                    let json: JsonTemplate = ovr.parse()?;
+                    Ok(BodyOverride::Json(json))
+                }
+                Some(
+                    RecipeBody::FormUrlencoded(_)
+                    | RecipeBody::FormMultipart(_),
+                ) => bail!(
+                    "--body not supported for form bodies; \
+                        use --form instead"
+                ),
+            }
+        })?;
         let build_options = BuildOptions {
             url: self.url,
             authentication,
             headers: IndexMap::from_iter(self.header),
-            body: self.body,
+            body: body_override,
             query_parameters: get_query_parameters(recipe, self.query),
             form_fields: IndexMap::from_iter(self.form),
         };
@@ -382,9 +406,16 @@ impl DisplayExchangeCommand {
             for (header, value) in &request.headers {
                 eprintln!("> {}: {}", header, MaybeStr(value.as_bytes()));
             }
-            if let Some(body) = &request.body {
-                let text = std::str::from_utf8(body).unwrap_or("<binary>");
-                eprintln!("> {text}");
+            match &request.body {
+                RequestBody::None => {}
+                RequestBody::Stream => eprintln!("> <stream body>"),
+                RequestBody::TooLarge => {
+                    eprintln!("> body too large to display");
+                }
+                RequestBody::Some(bytes) => {
+                    let text = std::str::from_utf8(bytes).unwrap_or("<binary>");
+                    eprintln!("> {text}");
+                }
             }
         }
     }

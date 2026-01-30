@@ -44,7 +44,7 @@ mod tests;
 pub use models::*;
 
 use crate::{
-    collection::{Authentication, JsonTemplate, Recipe, RecipeBody},
+    collection::{Authentication, Recipe, RecipeBody},
     http::curl::CurlBuilder,
     render::TemplateContext,
 };
@@ -58,7 +58,7 @@ use futures::{
 };
 use indexmap::IndexMap;
 use reqwest::{
-    Body, Client, RequestBuilder, Response, Url,
+    Body, Client, Request, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
     redirect,
@@ -67,7 +67,7 @@ use slumber_config::HttpEngineConfig;
 use slumber_template::{RenderError, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, hash::Hash};
-use tracing::{error, info, info_span};
+use tracing::{Instrument, error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
 
@@ -183,12 +183,86 @@ impl HttpEngine {
 
         Ok(RequestTicket {
             record: RequestRecord::new(
-                seed,
+                seed.id,
                 context.selected_profile.clone(),
+                seed.recipe_id,
                 &request,
                 self.large_body_size,
             )
             .into(),
+            client: client.clone(),
+            request,
+        })
+    }
+
+    /// Build a [RequestTicket] from a past [RequestRecord]
+    ///
+    /// This will fail only if the body was not saved from the previous request.
+    /// This happens if:
+    /// - Body was larger than [HttpEngineConfig::large_body_size]
+    /// - Body was streamed
+    pub fn rebuild(
+        &self,
+        previous_request: &RequestRecord,
+    ) -> Result<RequestTicket, RequestBuildError> {
+        fn build_request(
+            client: &Client,
+            previous_request: &RequestRecord,
+        ) -> Result<Request, RequestBuildErrorKind> {
+            let url = previous_request.url.clone();
+            let builder = client
+                .request(previous_request.method.into(), url)
+                .headers(previous_request.headers.clone());
+            let builder = match &previous_request.body {
+                RequestBody::None => builder,
+                RequestBody::Some(bytes) => builder.body(bytes.clone()),
+                RequestBody::Stream | RequestBody::TooLarge => {
+                    // Old body is gone so we can't copy it
+                    return Err(RequestBuildErrorKind::BodyMissing {
+                        previous_request_id: previous_request.id,
+                    });
+                }
+            };
+
+            // An error here *should* be impossible, because if we built it
+            // once, we can build it again
+            let request = builder.build()?;
+            Ok(request)
+        }
+
+        let id = RequestId::new();
+        let profile_id = previous_request.profile_id.clone();
+        let recipe_id = previous_request.recipe_id.clone();
+
+        info!(old = %previous_request.id, new = %id, "Rebuilding request");
+
+        // The build should be very fast, but we need to report a start time
+        let start_time = Utc::now();
+
+        // Build the new request
+        let client = self.get_client(&previous_request.url);
+        let request =
+            build_request(client, previous_request).map_err(|error| {
+                RequestBuildError {
+                    profile_id: profile_id.clone(),
+                    recipe_id: recipe_id.clone(),
+                    id,
+                    start_time,
+                    end_time: Utc::now(),
+                    error: Box::new(error),
+                }
+            })?;
+
+        let record = RequestRecord::new(
+            id,
+            previous_request.profile_id.clone(),
+            previous_request.recipe_id.clone(),
+            &request,
+            self.large_body_size,
+        );
+
+        Ok(RequestTicket {
+            record: record.into(),
             client: client.clone(),
             request,
         })
@@ -377,7 +451,7 @@ impl RequestSeed {
                 id: self.id,
                 start_time,
                 end_time: Utc::now(),
-                error,
+                error: Box::new(error),
             })
             .traced()
     }
@@ -396,23 +470,30 @@ impl RequestTicket {
     pub async fn send(self) -> Result<Exchange, RequestError> {
         let id = self.record.id;
 
-        // Capture the rest of this method in a span
-        let _ = info_span!("HTTP request", request_id = %id).entered();
+        // Capture the future in a span. Beware of async tracing!
+        // https://docs.rs/tracing/latest/tracing/struct.Span.html#in-asynchronous-code
+        let span = info_span!(
+            "HTTP request",
+            recipe = %self.record.recipe_id,
+            request_id = %id,
+        );
 
         // This start time will be accurate because the request doesn't launch
         // until this whole future is awaited
         let start_time = Utc::now();
         let result = async {
+            info!("Sending request");
             let response = self.client.execute(self.request).await?;
+            info!(status = response.status().as_u16(), "Response");
             // Load the full response and convert it to our format
             ResponseRecord::from_response(id, response).await
         }
+        .instrument(span)
         .await;
         let end_time = Utc::now();
 
         match result {
             Ok(response) => {
-                info!(status = response.status.as_u16(), "Response");
                 let exchange = Exchange {
                     id,
                     request: self.record,
@@ -620,42 +701,37 @@ impl Recipe {
         options: &BuildOptions,
         context: &TemplateContext,
     ) -> Result<Option<RenderedBody>, RequestBuildErrorKind> {
-        // Make sure the override+body combo is valid. If there's no body but
-        // there is an override, we'll make it a raw body
-        let body = match (&self.body, &options.body) {
-            // No body to return - get outta here!
-            (None, None) => return Ok(None),
-            // No body but we have an override. Build an empty raw body, and it
-            // will grab the override template below
-            (None, Some(_)) => &RecipeBody::Raw(Template::default()),
-            // Full-body override with a form is disallowed
+        match (&self.body, &options.body) {
+            (None, None) => Ok(None), // No body, no crime
             (
+                // Crime!! Full-body override with a form is disallowed
                 Some(
                     RecipeBody::FormUrlencoded(_)
                     | RecipeBody::FormMultipart(_),
                 ),
                 Some(_),
-            ) => return Err(RequestBuildErrorKind::OverrideFormBody),
-            // Re-use the body. If there's an override, each branch below will
-            // grab it
-            (Some(body), _) => body,
-        };
+            ) => Err(RequestBuildErrorKind::OverrideFormBody),
 
-        let rendered = match body {
-            // Raw body is always eagerly rendered
-            RecipeBody::Raw(template) => {
-                // Use override if it's given
-                let template = options.body.as_ref().unwrap_or(template);
-                RenderedBody::Raw(
-                    template
-                        .render_bytes(&context.streaming(false))
-                        .await
-                        .map_err(RequestBuildErrorKind::BodyRender)?,
-                )
+            // Raw body - eagerly rendered
+            (Some(RecipeBody::Raw(template)), None)
+            | (
+                // Replace missing or JSON body with raw override
+                None | Some(RecipeBody::Raw(_) | RecipeBody::Json(_)),
+                Some(BodyOverride::Raw(template)),
+            ) => {
+                let rendered = template
+                    .render_bytes(&context.streaming(false))
+                    .await
+                    .map_err(RequestBuildErrorKind::BodyRender)?;
+                Ok(Some(RenderedBody::Raw(rendered)))
             }
-            RecipeBody::Stream(template) => {
-                // Use override if it's given
-                let template = options.body.as_ref().unwrap_or(template);
+
+            // Stream body - lazily rendered
+            (Some(RecipeBody::Stream(template)), None)
+            | (
+                Some(RecipeBody::Stream(_)),
+                Some(BodyOverride::Raw(template)),
+            ) => {
                 // Stream body is rendered as a stream (!!)
                 let output = template.render(&context.streaming(true)).await;
                 let source = output.stream_source().cloned();
@@ -663,24 +739,26 @@ impl Recipe {
                     .try_into_stream()
                     .map_err(RequestBuildErrorKind::BodyRender)?
                     .boxed();
-                RenderedBody::Stream(BodyStream { stream, source })
+                Ok(Some(RenderedBody::Stream(BodyStream { stream, source })))
             }
-            RecipeBody::Json(json) => {
-                // Use override if it's given
-                let override_json: Option<JsonTemplate> = options
-                    .body
-                    .as_ref()
-                    // Reparse the template as JSON
-                    .map(|template| template.display().parse())
-                    .transpose()?;
-                let json = override_json.as_ref().unwrap_or(json);
-                let value = json
-                    .render(context)
+
+            // JSON body - if JSON override is given, body will always be JSON
+            #[expect(clippy::unnested_or_patterns)] // I like flat more here
+            (Some(RecipeBody::Json(json)), None)
+            | (None, Some(BodyOverride::Json(json)))
+            | (Some(RecipeBody::Raw(_)), Some(BodyOverride::Json(json)))
+            | (Some(RecipeBody::Stream(_)), Some(BodyOverride::Json(json)))
+            | (Some(RecipeBody::Json(_)), Some(BodyOverride::Json(json))) => {
+                json.render(context)
                     .await
-                    .map_err(RequestBuildErrorKind::BodyRender)?;
-                RenderedBody::Json(value)
+                    .map(|value| Some(RenderedBody::Json(value)))
+                    .map_err(RequestBuildErrorKind::BodyRender)
             }
-            RecipeBody::FormUrlencoded(fields) => {
+
+            // Form bodies
+            (Some(RecipeBody::FormUrlencoded(fields)), None) => {
+                // Form overrides some from a different field, so they're not
+                // handled above
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
                     let value = template
@@ -695,9 +773,9 @@ impl Recipe {
                     Ok::<_, RequestBuildErrorKind>((field.clone(), value))
                 });
                 let rendered = try_join_all(iter).await?;
-                RenderedBody::FormUrlencoded(rendered)
+                Ok(Some(RenderedBody::FormUrlencoded(rendered)))
             }
-            RecipeBody::FormMultipart(fields) => {
+            (Some(RecipeBody::FormMultipart(fields)), None) => {
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
                     let output =
@@ -723,10 +801,9 @@ impl Recipe {
                     ))
                 });
                 let rendered = try_join_all(iter).await?;
-                RenderedBody::FormMultipart(rendered)
+                Ok(Some(RenderedBody::FormMultipart(rendered)))
             }
-        };
-        Ok(Some(rendered))
+        }
     }
 }
 

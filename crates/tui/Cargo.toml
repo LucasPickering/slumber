@@ -46,7 +46,9 @@ env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 proptest = {workspace = true}
 rstest = {workspace = true}
+serde_yaml = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
+wiremock = {workspace = true}
 
 [lints]
 workspace = true

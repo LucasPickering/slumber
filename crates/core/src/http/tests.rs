@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::{
-    collection::{Authentication, Profile},
+    collection::{Authentication, Profile, ProfileId, RecipeId},
     test_util::{TestPrompter, by_id, header_map, http_engine, invalid_utf8},
 };
 use indexmap::{IndexMap, indexmap};
@@ -91,6 +91,7 @@ fn test_get_client(
     }
 }
 
+/// Build a request with a bunch of rendered templates
 #[rstest]
 #[tokio::test]
 async fn test_build_request(http_engine: HttpEngine) {
@@ -144,10 +145,108 @@ async fn test_build_request(http_engine: HttpEngine) {
             method: HttpMethod::Post,
             http_version: HttpVersion::Http11,
             url: expected_url,
-            body: Some(Vec::from(expected_body).into()),
+            body: expected_body.as_slice().into(),
             headers: expected_headers,
         }
     );
+}
+
+/// Test how various request bodies are persisted into [RequestRecord]
+#[rstest]
+#[case::none(None, RequestBody::None)]
+#[case::empty(Some("".into()), b"".as_slice().into())]
+#[case::present(Some("data!".into()), b"data!".as_slice().into())]
+// Stream bodies can't be saved because they're never in memory
+#[case::stream(
+    Some(RecipeBody::Stream("{{ stream }}".into())), RequestBody::Stream,
+)]
+// Big bodies aren't saved, for tax purposes
+#[case::too_large(
+    Some("this body length is way over 30 bytes!".into()),
+    RequestBody::TooLarge,
+)]
+#[tokio::test]
+async fn test_request_record_body(
+    mut http_engine: HttpEngine,
+    #[case] body: Option<RecipeBody>,
+    #[case] expected_body: RequestBody,
+) {
+    http_engine.large_body_size = 30; // Make sure the big body exceeds this
+    let recipe = Recipe {
+        method: HttpMethod::Post,
+        body,
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe, None);
+
+    let seed = seed(&context, BuildOptions::default());
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    assert_eq!(ticket.record.body, expected_body);
+}
+
+/// Build a new request based on an old one
+#[rstest]
+fn test_rebuild_request(http_engine: HttpEngine) {
+    let recipe_id: RecipeId = "recipe1".into();
+    let profile_id: Option<ProfileId> = Some("profile1".into());
+    let url: Url = "http://localhost/users/1?mode=sudo&fast=true"
+        .parse()
+        .unwrap();
+    let headers = header_map([
+        ("content-type", "application/json"),
+        ("accept", "application/json"),
+    ]);
+    let body = b"abc123".as_slice();
+    let mut old = RequestRecord {
+        id: RequestId::new(),
+        profile_id,
+        recipe_id,
+        method: HttpMethod::Post,
+        http_version: HttpVersion::Http11,
+        url: url.clone(),
+        body: body.into(),
+        headers: headers.clone(),
+    };
+
+    let ticket = http_engine.rebuild(&old).unwrap();
+
+    // Assert on the actual request
+    let request = &ticket.request;
+    assert_eq!(request.method(), reqwest::Method::POST);
+    assert_eq!(request.url(), &url);
+    assert_eq!(request.headers(), &headers);
+    assert_eq!(request.body().and_then(Body::as_bytes), Some(body));
+
+    // The records match **other than the IDs**
+    assert_ne!(old.id, ticket.record.id, "New ticket should have a new ID");
+    old.id = ticket.record.id;
+    assert_eq!(*ticket.record, old);
+}
+
+/// Rebuilding a request fails if we didn't save the old body
+#[rstest]
+fn test_rebuild_request_lost_body(http_engine: HttpEngine) {
+    let recipe_id: RecipeId = "recipe1".into();
+    let profile_id: Option<ProfileId> = Some("profile1".into());
+    let url: Url = "http://localhost/users/1?mode=sudo&fast=true"
+        .parse()
+        .unwrap();
+    let old = RequestRecord {
+        id: RequestId::new(),
+        profile_id,
+        recipe_id,
+        method: HttpMethod::Post,
+        http_version: HttpVersion::Http11,
+        url,
+        body: RequestBody::Stream, // whoopsies!
+        headers: header_map([
+            ("content-type", "application/json"),
+            ("accept", "application/json"),
+        ]),
+    };
+
+    assert_err(http_engine.rebuild(&old), "Cannot resend request");
 }
 
 /// Test building just a URL. Should include query params, but headers/body
@@ -257,7 +356,7 @@ async fn test_authentication(
                 ("authorization", "bogus"),
                 ("authorization", expected_header)
             ]),
-            body: None,
+            body: RequestBody::None,
         }
     );
 }
@@ -370,7 +469,7 @@ async fn test_body(
         expected_content_type
     );
     // Convert body to text for comparison, because it gives better errors
-    let body = request.body.as_ref().expect("Expected request body");
+    let body = request.body.bytes().expect("Expected request body");
     let body_text = std::str::from_utf8(body).unwrap();
     assert_eq!(body_text, expected_body);
 }
@@ -495,6 +594,12 @@ async fn test_body_stream(
 
     let seed = seed(&context, BuildOptions::default());
     let ticket = http_engine.build(seed, &context).await.unwrap();
+    // Since the body is streamed, it's not available in the request or record
+    assert_eq!(
+        ticket.request.body().map(reqwest::Body::as_bytes),
+        Some(None)
+    );
+    assert_eq!(ticket.record.body, RequestBody::Stream);
 
     // The rendering code should set the correct boundary in TLS
     let (expected_content_type, expected_body) = MULTIPART_BOUNDARY
@@ -704,27 +809,26 @@ async fn test_override_query(http_engine: HttpEngine) {
 )]
 #[case::json(
     Some(RecipeBody::json(json!({"username": "{{ username }}"})).unwrap()),
-    r#"{"username":"my name is {{ username }}"}"#,
+    json!({"username": "my name is {{ username }}"}).into(),
     Ok(r#"{"username":"my name is user"}"#),
 )]
-// None -> raw
-#[case::add_body(None, "{{ password }}".into(), Ok("hunter2"))]
-#[case::error_json_invalid(
-    Some(RecipeBody::json("".into()).unwrap()),
-    "Valid json? nope! {",
-    Err("Invalid JSON override"),
+#[case::none_to_raw(None, "{{ password }}".into(), Ok("hunter2"))]
+#[case::raw_to_json(
+    Some("{{ username }}".into()),
+    json!({"username": "my name is {{ username }}"}).into(),
+    Ok(r#"{"username":"my name is user"}"#),
 )]
 // Template override doesn't work with forms
 #[case::error_form(
     Some(RecipeBody::FormUrlencoded(IndexMap::default())),
-    "",
+    "".into(),
     Err("Cannot override form body; override individual form fields instead")
 )]
 #[tokio::test]
 async fn test_override_body(
     http_engine: HttpEngine,
     #[case] recipe_body: Option<RecipeBody>,
-    #[case] override_body: Template,
+    #[case] body_override: BodyOverride,
     #[case] expected: Result<&str, &str>,
 ) {
     let recipe = Recipe {
@@ -736,7 +840,7 @@ async fn test_override_body(
     let seed = seed(
         &context,
         BuildOptions {
-            body: Some(override_body),
+            body: Some(body_override),
             ..Default::default()
         },
     );
@@ -800,9 +904,7 @@ async fn test_override_body_form(http_engine: HttpEngine) {
                 "content-type",
                 "application/x-www-form-urlencoded"
             )]),
-            body: Some(
-                b"user_id=1&preference=small&extra=extra".as_slice().into()
-            ),
+            body: b"user_id=1&preference=small&extra=extra".as_slice().into(),
         }
     );
 }

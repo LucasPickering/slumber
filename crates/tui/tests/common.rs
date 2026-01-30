@@ -1,5 +1,7 @@
 //! TUI testing utilities
 
+#![allow(unused)] // Not all tests use everything
+
 use futures::Stream;
 use ratatui::{
     buffer::{Buffer, Cell},
@@ -7,11 +9,17 @@ use ratatui::{
     prelude::Backend,
 };
 use rstest::fixture;
+use slumber_core::{
+    collection::Collection, database::CollectionDatabase, http::RequestId,
+};
 use slumber_tui::Tui;
 use std::{
     cell::{Ref, RefCell},
     convert::Infallible,
     fmt::Debug,
+    fs::File,
+    iter,
+    path::{Path, PathBuf},
     pin::Pin,
     rc::Rc,
     task::{Context, Poll},
@@ -23,14 +31,18 @@ use terminput::{
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::{JoinHandle, LocalSet},
-    time::{self, MissedTickBehavior},
+    time::{self, Instant, MissedTickBehavior},
 };
+use tracing::{debug, trace};
 use unicode_width::UnicodeWidthStr;
+use wiremock::MockGuard;
 
 /// Maximum duration to run any async test operations for. Any async operation
 /// should resolve in this amount of time. Anything that takes longer will
 /// panic.
-pub const TIMEOUT: Duration = Duration::from_millis(1000);
+const TIMEOUT: Duration = Duration::from_millis(100);
+/// Sleep time between loops for repeated check actions
+const INTERVAL: Duration = Duration::from_millis(10);
 
 pub type TestTui = Tui<TestBackend>;
 
@@ -109,6 +121,18 @@ impl Runner {
         self
     }
 
+    /// Open the action menu, select an action by index, and execute it
+    ///
+    /// The index is the number from the top (starting at 0), *excluding*
+    /// disabled items.
+    pub fn action(self, index: usize) -> Self {
+        // Theoretically this could take an action by name and examine the
+        // screen to find its index, but that's way more work
+        self.send_key(KeyCode::Char('x'))
+            .send_keys(iter::repeat_n(KeyCode::Down, index))
+            .send_key(KeyCode::Enter)
+    }
+
     /// Run a fallible future the local task set
     ///
     /// Use this for futures that have to run concurrently with the TUI.
@@ -131,19 +155,34 @@ impl Runner {
         self
     }
 
+    /// Wait for the response to a mocked request
+    pub async fn wait_for_request(self, mock_guard: MockGuard) -> Self {
+        self.run_until(async move {
+            mock_guard.wait_until_satisfied().await;
+            // Eww stinky sleep bad. We need to wait for the TUI loop task to
+            // receive the response message. Otherwise, it's possible to exit
+            // this call and immediatelly call done(), which will terminate the
+            // loop before it has a chance to process the thread.
+            //
+            // Using a sleep sucks, but I couldn't find any other async
+            // conditions to wait on. We could repeatedly check the DB, but that
+            // ends up taking longer and hogs the main thread. This sleep went
+            // 1000/1000 in a test so I think we're good :)
+            time::sleep(Duration::from_millis(10)).await;
+            Ok::<_, Infallible>(())
+        })
+        .await
+    }
+
     /// Wait for the terminal to contain specific text at a location
     pub async fn wait_for_content(self, expected: &str, at: Position) -> Self {
-        const INTERVAL: Duration = Duration::from_millis(100);
-
         // Each time the check fails, store the error message. We'll panic with
         // the final error message to show the user the failure state
         let mut error: String = String::new();
         let future = async {
-            let mut interval = time::interval(INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             while let Err(e) = self.backend.try_buffer_contains(expected, at) {
                 error = e;
-                interval.tick().await;
+                time::sleep(INTERVAL).await;
             }
         };
 
@@ -182,6 +221,14 @@ impl Runner {
             Err(_) => panic!("Test timed out after {TIMEOUT:?}"),
         }
     }
+}
+
+/// Create a collection file with the given data, and return its path
+pub fn collection_file(directory: &Path, collection: &Collection) -> PathBuf {
+    let path = directory.join("slumber.yml");
+    let mut file = File::create_new(&path).unwrap();
+    serde_yaml::to_writer(&file, collection).unwrap();
+    path
 }
 
 /// Wrapper for an mpsc receiver to impl `Stream`
@@ -335,7 +382,7 @@ pub fn backend(width: u16, height: u16) -> TestBackend {
 /// Terminal width in chars, for injection to [backend] fixture
 #[fixture]
 fn width() -> u16 {
-    50
+    60
 }
 
 /// Terminal height in chars, for injection to [backend] fixture

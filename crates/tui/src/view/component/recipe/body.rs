@@ -30,7 +30,7 @@ use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
-    http::content_type::ContentType,
+    http::{BodyOverride, content_type::ContentType},
 };
 use slumber_template::{Template, TemplateParseError};
 use std::{error::Error as StdError, fs};
@@ -88,14 +88,23 @@ impl RecipeBodyDisplay {
 
     /// If the user has applied a temporary edit to the body, get the override
     /// value. Return `None` to use the recipe's stock body.
-    pub fn override_value(&self) -> Option<Template> {
+    pub fn override_value(&self) -> Option<BodyOverride> {
         match self {
-            RecipeBodyDisplay::Raw(inner) | RecipeBodyDisplay::Json(inner)
-                if inner.preview.is_overridden() =>
-            {
-                // For JSON bodies, the template will be parsed as JSON by the
-                // HTTP engine
-                Some(inner.preview.template().clone())
+            RecipeBodyDisplay::Raw(inner) if inner.preview.is_overridden() => {
+                Some(BodyOverride::Raw(inner.preview.template().clone()))
+            }
+            RecipeBodyDisplay::Json(inner) if inner.preview.is_overridden() => {
+                // For JSON bodies, we have to restringify the template. This
+                // needs to be fixed so it's stored as JSON instead
+                // https://github.com/LucasPickering/slumber/issues/627
+                let template = inner.preview.template();
+                let s = template.display();
+                // If the parse fails for some reason, fall back to a raw body
+                // https://github.com/LucasPickering/slumber/issues/646
+                match s.parse::<JsonTemplate>() {
+                    Ok(json) => Some(BodyOverride::Json(json)),
+                    Err(_) => Some(BodyOverride::Raw(template.clone())),
+                }
             }
             // Form bodies override per-field so return None for them
             _ => None,
@@ -561,11 +570,13 @@ mod tests {
         mut harness: TestHarness,
         #[with(12, 1)] terminal: TestTerminal,
     ) {
-        let initial_text = r#""hello!""#;
-        let override_text = r#""goodbye!""#;
+        let initial_json = json!("hello!");
+        let initial_text = initial_json.to_string();
+        let override_json = json!("goodbye!");
+        let override_text = override_json.to_string();
 
         let recipe = Recipe {
-            body: Some(RecipeBody::json(json!("hello!")).unwrap()),
+            body: Some(RecipeBody::json(initial_json.clone()).unwrap()),
             ..Recipe::factory(())
         };
         let mut component = TestComponent::new(
@@ -580,25 +591,25 @@ mod tests {
             gutter("1"),
             " ".into(),
             // Apply syntax highlighting
-            Span::from(initial_text).patch_style(Color::LightGreen),
+            Span::from(&initial_text).patch_style(Color::LightGreen),
             "  ".into(),
         ]]);
 
         // Open the editor
-        edit(&mut component, &mut harness, initial_text, override_text);
+        edit(&mut component, &mut harness, &initial_text, &override_text);
 
-        assert_eq!(component.override_value(), Some(override_text.into()));
+        assert_eq!(component.override_value(), Some(override_json.into()));
         terminal.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             // Apply syntax highlighting
-            edited(override_text).patch_style(Color::LightGreen),
+            edited(&override_text).patch_style(Color::LightGreen),
         ]]);
 
         // Persistence store should be updated
         let persisted =
             PersistentStore::get_session(&BodyKey(recipe.id.clone()));
-        assert_eq!(persisted, Some(override_text.into()));
+        assert_eq!(persisted, Some(override_text.parse().unwrap()));
 
         // Reset edited state
         component

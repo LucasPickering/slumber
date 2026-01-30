@@ -172,17 +172,14 @@
       "$ref": "#/$defs/Theme",
       "default": {
         "primary_color": "Blue",
-        "primary_text_color": "White",
         "secondary_color": "Yellow",
         "success_color": "Green",
         "error_color": "Red",
-        "inactive_color": "DarkGray",
+        "text_color": "Reset",
+        "primary_text_color": "White",
         "background_color": "Reset",
         "border_color": "Reset",
         "inactive_color": "DarkGray",
-        "background_color": "Reset",
-        "border_color": "Reset",
-        "text_color": "White",
         "syntax": {
           "comment_color": "Gray",
           "builtin_color": "Blue",
@@ -326,10 +323,22 @@
       },
       "theme": {
         "primary_color": "Blue",
-        "primary_text_color": "White",
         "secondary_color": "Yellow",
         "success_color": "Green",
-        "error_color": "Red"
+        "error_color": "Red",
+        "text_color": "Reset",
+        "primary_text_color": "White",
+        "background_color": "Reset",
+        "border_color": "Reset",
+        "inactive_color": "DarkGray",
+        "syntax": {
+          "comment_color": "Gray",
+          "builtin_color": "Blue",
+          "escape_color": "Green",
+          "number_color": "Cyan",
+          "string_color": "LightGreen",
+          "special_color": "Green"
+        }
       },
       "persist": true
     }
@@ -396,11 +405,6 @@
           "$ref": "#/$defs/Color",
           "default": "Blue"
         },
-        "primary_text_color": {
-          "description": "Color for text on top of the primary color. This should contrast with\nthe primary color well",
-          "$ref": "#/$defs/Color",
-          "default": "White"
-        },
         "secondary_color": {
           "description": "Color for secondary accented content",
           "$ref": "#/$defs/Color",
@@ -416,10 +420,15 @@
           "$ref": "#/$defs/Color",
           "default": "Red"
         },
-        "inactive_color": {
-          "description": "Color for inactive text and components",
+        "text_color": {
+          "description": "Color for regular text",
           "$ref": "#/$defs/Color",
-          "default": "DarkGray"
+          "default": "Reset"
+        },
+        "primary_text_color": {
+          "description": "Color for text on top of the primary color. This should contrast with\nthe primary color well",
+          "$ref": "#/$defs/Color",
+          "default": "White"
         },
         "background_color": {
           "description": "Color for the background of the application",
@@ -431,18 +440,48 @@
           "$ref": "#/$defs/Color",
           "default": "Reset"
         },
-        "text_color": {
-          "description": "Color for regular text",
+        "inactive_color": {
+          "description": "Color for inactive text and components",
           "$ref": "#/$defs/Color",
-          "default": "White"
+          "default": "DarkGray"
         },
         "syntax": {
           "description": "User-configurable visual settings for syntax highlighting",
           "$ref": "#/$defs/Syntax",
-          "default": {}
+          "default": {
+            "comment_color": "Gray",
+            "builtin_color": "Blue",
+            "escape_color": "Green",
+            "number_color": "Cyan",
+            "string_color": "LightGreen",
+            "special_color": "Green"
+          }
         }
       },
       "additionalProperties": false
+    },
+    "Color": {
+      "description": "ANSI color code\n\nThis type accepts input beyond the enumerated values, but for simplicity\nthis type only declares the named colors. The other available options\nare very rarely used and make the schema harder to read.\n\nFor a full list of allowed types, see\n[the ratatui docs](https://docs.rs/ratatui/0.29.0/ratatui/style/enum.Color.html#impl-FromStr-for-Color).",
+      "type": "string",
+      "enum": [
+        "black",
+        "red",
+        "green",
+        "yellow",
+        "blue",
+        "magenta",
+        "cyan",
+        "gray",
+        "darkgray",
+        "lightred",
+        "lightgreen",
+        "lightyellow",
+        "lightblue",
+        "lightmagenta",
+        "lightcyan",
+        "white",
+        "reset"
+      ]
     },
     "Syntax": {
       "description": "User-configurable visual settings for syntax highlighting.",
@@ -480,29 +519,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "Color": {
-      "description": "ANSI color code\n\nThis type accepts input beyond the enumerated values, but for simplicity\nthis type only declares the named colors. The other available options\nare very rarely used and make the schema harder to read.\n\nFor a full list of allowed types, see\n[the ratatui docs](https://docs.rs/ratatui/0.29.0/ratatui/style/enum.Color.html#impl-FromStr-for-Color).",
-      "type": "string",
-      "enum": [
-        "black",
-        "red",
-        "green",
-        "yellow",
-        "blue",
-        "magenta",
-        "cyan",
-        "gray",
-        "darkgray",
-        "lightred",
-        "lightgreen",
-        "lightyellow",
-        "lightblue",
-        "lightmagenta",
-        "lightcyan",
-        "white",
-        "reset"
-      ]
     }
   }
 }

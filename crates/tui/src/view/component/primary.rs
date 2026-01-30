@@ -216,29 +216,23 @@ impl PrimaryView {
                     self.history.select_request(state.id());
                 }
             }
-            RequestDisposition::OpenPrompt { request_id, prompt } => {
-                // State *should* be Some here because the form just updated
-                let state = store.get(request_id);
-                if let Some(state) = state {
-                    // Find the open form for this request, or open a new one
-                    let form = if let Some(form) = self
-                        .prompt_forms
-                        .iter_mut()
-                        .find(|form| form.request_id() == request_id)
-                    {
-                        form
-                    } else {
-                        self.prompt_forms.open(PromptForm::new(
-                            state.recipe_id(),
-                            request_id,
-                        ))
-                    };
-                    form.add_prompt(prompt);
-                }
-                // If this request is selected, update the Exchange pane too
-                if Some(request_id) == self.selected_request_id() {
-                    self.set_request(state);
-                }
+            RequestDisposition::OpenPrompt {
+                recipe_id,
+                request_id,
+                prompt,
+            } => {
+                // Find the open form for this request, or open a new one
+                let form = if let Some(form) = self
+                    .prompt_forms
+                    .iter_mut()
+                    .find(|form| form.request_id() == request_id)
+                {
+                    form
+                } else {
+                    self.prompt_forms
+                        .open(PromptForm::new(&recipe_id, request_id))
+                };
+                form.add_prompt(prompt);
             }
         }
     }

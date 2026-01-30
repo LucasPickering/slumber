@@ -15,7 +15,7 @@ use itertools::Itertools;
 use mime::Mime;
 use ratatui::text::{Line, Text};
 use slumber_core::{
-    collection::{CollectionError, CollectionFile},
+    collection::{CollectionError, CollectionFile, RecipeId},
     http::RequestId,
     render::{Prompt, Prompter, ReplyChannel},
 };
@@ -52,19 +52,29 @@ pub enum Question {
 /// and the given returner will be used to send the submitted value back.
 #[derive(Debug)]
 pub struct TuiPrompter {
+    /// Recipe of the request being built. This has the same flaws as
+    /// `request_id` related to triggered requests.
+    recipe_id: RecipeId,
     /// Request being built with this prompter. Each request gets its own
     /// TemplateContext, which gets a new prompter. This allows us to group the
-    /// prompts by request in the UI. **However**, triggered requests will use
-    /// the same context as the triggerer, so all triggered requests will be
-    /// tagged with their parent. This is a flaw but may be better UX because
-    /// it keeps all the prompts require for the parent in a single form.
+    /// prompts by request in the UI.
+    ///
+    /// **However**, triggered requests will use the same context as the
+    /// triggerer, so all triggered requests will be tagged with their parent.
+    /// This is a flaw but may be better UX because it keeps all the prompts
+    /// require for the parent in a single form.
     request_id: RequestId,
     messages_tx: MessageSender,
 }
 
 impl TuiPrompter {
-    pub fn new(request_id: RequestId, messages_tx: MessageSender) -> Self {
+    pub fn new(
+        recipe_id: RecipeId,
+        request_id: RequestId,
+        messages_tx: MessageSender,
+    ) -> Self {
         Self {
+            recipe_id,
             request_id,
             messages_tx,
         }
@@ -74,6 +84,7 @@ impl TuiPrompter {
 impl Prompter for TuiPrompter {
     fn prompt(&self, prompt: Prompt) {
         self.messages_tx.send(HttpMessage::Prompt {
+            recipe_id: self.recipe_id.clone(),
             request_id: self.request_id,
             prompt,
         });

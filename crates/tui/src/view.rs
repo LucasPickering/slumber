@@ -30,7 +30,7 @@ use indexmap::IndexMap;
 use ratatui::{buffer::Buffer, crossterm::execute, text::Span};
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, ProfileId},
+    collection::{Collection, ProfileId, RecipeId},
     database::CollectionDatabase,
     http::RequestId,
     render::Prompt,
@@ -267,6 +267,10 @@ pub enum RequestDisposition {
     /// Display a prompt to the user (e.g. from `prompt()` or `select()`). This
     /// will either open a new prompt form or append to an existing one.
     OpenPrompt {
+        /// Recipe being built. We **cannot** just grab this from the request
+        /// store based on the request ID, because the request may not be in
+        /// the store (e.g. when rendering for a copy action).
+        recipe_id: RecipeId,
         request_id: RequestId,
         prompt: Prompt,
     },

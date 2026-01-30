@@ -179,7 +179,7 @@ pub fn initialize_tracing(level: LevelFilter) {
 
 /// Enable tracing output in tests. Call this in a test to enable logging
 ///
-/// An easier-to-use version of [slumber_util::initialize_tracing].
+/// An easier-to-use version of `initialize_tracing`.
 #[macro_export]
 macro_rules! tracing {
     () => {

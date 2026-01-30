@@ -42,6 +42,7 @@ pub struct Root {
     footer: Footer,
     // Modals!!
     actions: ActionMenu,
+    /// Modals for questions that are unrelated to request rendering
     questions: ModalQueue<QuestionModal>,
     errors: ModalQueue<ErrorModal>,
 }

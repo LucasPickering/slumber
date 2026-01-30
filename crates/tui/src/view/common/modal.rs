@@ -47,8 +47,20 @@ impl<T: Modal> ModalQueue<T> {
 
     /// Add a new modal to the back of the queue. If the queue is empty, it will
     /// be displayed immediately.
-    pub fn open(&mut self, modal: T) {
+    pub fn open(&mut self, modal: T) -> &mut T {
         self.queue.push_back(modal);
+        self.queue.back_mut().unwrap() // safety: we just put it in
+    }
+
+    /// Get an iterator of mutable references to the queued modals
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.queue.iter_mut()
+    }
+
+    /// Get the current open modal
+    #[cfg(test)]
+    pub fn first(&self) -> Option<&T> {
+        self.queue.front()
     }
 
     /// Close the visible modal at the front of the queue without submission

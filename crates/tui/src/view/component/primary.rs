@@ -8,7 +8,7 @@ use crate::{
     util::ResultReported,
     view::{
         Component, RequestDisposition, ViewContext,
-        common::actions::MenuItem,
+        common::{actions::MenuItem, modal::ModalQueue},
         component::{
             Canvas, Child, ComponentExt, ComponentId, Draw, DrawMetadata,
             ToChild,
@@ -18,6 +18,7 @@ use crate::{
                 DefaultPane, PrimaryLayout, Sidebar, SidebarPane, ViewState,
             },
             profile::{ProfileDetail, ProfileListState},
+            prompt_form::PromptForm,
             recipe::{RecipeDetail, RecipeList},
             sidebar_list::{SidebarList, SidebarListEvent, SidebarListProps},
         },
@@ -65,6 +66,8 @@ pub struct PrimaryView {
     exchange_pane: ExchangePane,
     /// List of all past requests for the current recipe/profile
     history: History,
+    /// Modals for answering prompts that build requests
+    prompt_forms: ModalQueue<PromptForm>,
 
     global_actions_emitter: Emitter<PrimaryMenuAction>,
 }
@@ -104,6 +107,7 @@ impl PrimaryView {
             profile_detail,
             exchange_pane,
             history,
+            prompt_forms: ModalQueue::default(),
 
             global_actions_emitter: Default::default(),
         }
@@ -212,16 +216,28 @@ impl PrimaryView {
                     self.history.select_request(state.id());
                 }
             }
-            RequestDisposition::OpenForm(request_id) => {
-                // If a new prompt appears for a request that isn't selected, we
-                // *don't* want to switch to it
+            RequestDisposition::OpenPrompt { request_id, prompt } => {
+                // State *should* be Some here because the form just updated
+                let state = store.get(request_id);
+                if let Some(state) = state {
+                    // Find the open form for this request, or open a new one
+                    let form = if let Some(form) = self
+                        .prompt_forms
+                        .iter_mut()
+                        .find(|form| form.request_id() == request_id)
+                    {
+                        form
+                    } else {
+                        self.prompt_forms.open(PromptForm::new(
+                            state.recipe_id(),
+                            request_id,
+                        ))
+                    };
+                    form.add_prompt(prompt);
+                }
+                // If this request is selected, update the Exchange pane too
                 if Some(request_id) == self.selected_request_id() {
-                    // State *should* be Some here because the form just updated
-                    let state = store.get(request_id);
-                    // Update the view with the new prompt
                     self.set_request(state);
-                    // Select the form pane
-                    self.view.select_exchange_pane();
                 }
             }
         }
@@ -593,6 +609,7 @@ impl Component for PrimaryView {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
+            self.prompt_forms.to_child_mut(), // Modal first - high priority
             self.recipe_list.to_child_mut(),
             self.recipe_detail.to_child_mut(),
             self.profile_list.to_child_mut(),
@@ -624,6 +641,9 @@ impl Draw for PrimaryView {
                 }
             }
         }
+
+        // Modal last so it goes on top. It gets the full screen
+        canvas.draw(&self.prompt_forms, (), canvas.area(), true);
     }
 }
 

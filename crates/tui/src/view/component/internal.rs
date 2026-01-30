@@ -825,7 +825,6 @@ mod tests {
 
                 let mut update_context = UpdateContext {
                     component_map: &component_map,
-                    persistent_store: &mut harness.persistent_store(),
                     request_store: &mut harness.request_store_mut(),
                 };
 
@@ -907,7 +906,6 @@ mod tests {
 
         let mut update_context = UpdateContext {
             component_map: &component_map,
-            persistent_store: &mut harness.persistent_store(),
             request_store: &mut harness.request_store_mut(),
         };
 

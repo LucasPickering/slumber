@@ -453,22 +453,9 @@ where
                 RequestDisposition::Select(id)
             }
             HttpMessage::Prompt { request_id, prompt } => {
-                let id =
-                    self.state.request_store.prompt(request_id, prompt).id();
                 // For any new prompt, jump to the form. This may potentially
                 // be annoying for delayed prompts. If so we can change it :)
-                RequestDisposition::OpenForm(id)
-            }
-            HttpMessage::FormSubmit {
-                request_id,
-                replies: responses,
-            } => {
-                let id = self
-                    .state
-                    .request_store
-                    .submit_form(request_id, responses)
-                    .id();
-                RequestDisposition::Change(id)
+                RequestDisposition::OpenPrompt { request_id, prompt }
             }
             HttpMessage::BuildError(error) => {
                 let id = self.state.request_store.build_error(error).id();

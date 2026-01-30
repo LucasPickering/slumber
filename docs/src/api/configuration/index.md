@@ -106,6 +106,16 @@ Size over which request/response bodies are not formatted/highlighted, for perfo
 
 Enable/disable the storage of requests and responses in Slumber's local database. This is only used in the TUI. CLI requests are _not_ persisted unless the `--persist` flag is passed, in which case they will always be persisted. [See here for more](../../user_guide/database.md).
 
+### `pager`
+
+**Alias:** `viewer` (for historical compatibility)
+
+**Type:** `string` or `mapping[Mime, string]` (see [MIME Maps](./mime.md))
+
+**Default:** `less` (Unix), `more` (Windows)
+
+Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md#paging)
+
 ### `preview_templates`
 
 **Type:** `boolean`
@@ -121,13 +131,3 @@ Render template values in the TUI? If false, the raw template will be shown.
 **Default:** `{}`
 
 Visual customizations for the TUI. [More info](./theme.md)
-
-### `pager`
-
-**Alias:** `viewer` (for historical compatibility)
-
-**Type:** `string` or `mapping[Mime, string]` (see [MIME Maps](./mime.md))
-
-**Default:** `less` (Unix), `more` (Windows)
-
-Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md#paging)

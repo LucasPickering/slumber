@@ -26,6 +26,16 @@ pub struct Footer {
 }
 
 impl Footer {
+    /// Open the collection select menu
+    pub fn open_collection_select(&mut self) {
+        self.collection_select.open();
+    }
+
+    /// Open the fullscreen help page
+    pub fn open_help(&mut self) {
+        self.help.open();
+    }
+
     /// Display an informational message to the user
     pub fn notify(&mut self, message: String) {
         let notification = Notification::new(message.to_string());
@@ -89,11 +99,16 @@ impl Draw for Footer {
         ])
         .areas(metadata.area());
 
-        canvas.draw(&self.collection_select, (), collection_area, true);
+        canvas.draw(
+            &self.collection_select,
+            (),
+            collection_area,
+            self.collection_select.is_open(),
+        );
 
         // Draw help last. If it's in fullscreen mode, it draws over everything
         // else
-        canvas.draw(&self.help, (), help_area, true);
+        canvas.draw(&self.help, (), help_area, self.help.is_open());
     }
 }
 

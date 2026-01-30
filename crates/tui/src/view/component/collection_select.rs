@@ -60,7 +60,11 @@ impl CollectionSelect {
         ViewContext::add_binding_hint(collection_name, Action::SelectCollection)
     }
 
-    fn is_open(&self) -> bool {
+    pub fn open(&mut self) {
+        self.select = Some(build_select(""));
+    }
+
+    pub fn is_open(&self) -> bool {
         self.select.is_some()
     }
 }
@@ -80,9 +84,7 @@ impl Component for CollectionSelect {
         event
             .m()
             .action(|action, propagate| match action {
-                Action::SelectCollection if !self.is_open() => {
-                    self.select = Some(build_select(""));
-                }
+                // Open is handled in the root to make the event priority work
                 Action::Cancel if self.is_open() => {
                     self.select = None;
                     self.filter.set_text(String::new()); // Reset filter text box

@@ -238,6 +238,12 @@ impl Component for Root {
             .m()
             .action(|action, propagate| match action {
                 Action::Cancel => self.cancel_request(context),
+                // Handle open events here so that they can be eaten by other
+                // components *first*. E.g. text boxes want ? more than we do.
+                Action::OpenHelp => self.footer.open_help(),
+                Action::SelectCollection => {
+                    self.footer.open_collection_select();
+                }
                 Action::OpenActions => {
                     // Walk down the component tree and collect actions from
                     // all visible+focused components
@@ -291,7 +297,6 @@ impl Component for Root {
             self.actions.to_child_mut(),
             self.questions.to_child_mut(),
             // Non-modals
-            // Footer has some high-priority pop-ups
             self.footer.to_child_mut(),
             primary,
         ]

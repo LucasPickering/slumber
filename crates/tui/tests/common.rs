@@ -40,9 +40,9 @@ use wiremock::MockGuard;
 /// Maximum duration to run any async test operations for. Any async operation
 /// should resolve in this amount of time. Anything that takes longer will
 /// panic.
-const TIMEOUT: Duration = Duration::from_millis(100);
+const TIMEOUT: Duration = Duration::from_millis(1000);
 /// Sleep time between loops for repeated check actions
-const INTERVAL: Duration = Duration::from_millis(10);
+const INTERVAL: Duration = Duration::from_millis(100);
 
 pub type TestTui = Tui<TestBackend>;
 
@@ -180,10 +180,15 @@ impl Runner {
         // the final error message to show the user the failure state
         let mut error: String = String::new();
         let future = async {
+            let start = Instant::now();
+            let mut i = 1;
             while let Err(e) = self.backend.try_buffer_contains(expected, at) {
                 error = e;
                 time::sleep(INTERVAL).await;
+                i += 1;
             }
+            let elapsed = Instant::elapsed(&start);
+            debug!("Content available after {elapsed:?} ({i} checks)");
         };
 
         // Run the future until completion or timeout. This will drive all

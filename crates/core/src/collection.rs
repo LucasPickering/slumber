@@ -9,7 +9,7 @@ mod recipe_tree;
 mod schema;
 
 pub use cereal::HasId;
-pub use json::{JsonTemplate, JsonTemplateError, ValueTemplate};
+pub use json::ValueTemplate;
 pub use models::*;
 pub use recipe_tree::*;
 

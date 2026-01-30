@@ -3,7 +3,7 @@
 use crate::{
     collection::{
         cereal,
-        json::{JsonTemplate, ValueTemplate},
+        json::ValueTemplate,
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::HttpMethod,
@@ -119,10 +119,12 @@ impl Collection {
 impl slumber_util::Factory for Collection {
     fn factory((): ()) -> Self {
         use crate::test_util::by_id;
+        use serde_json::json;
+
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
             body: Some(RecipeBody::Json(
-                r#"{"message": "hello"}"#.parse().unwrap(),
+                json!({"message": "hello"}).try_into().unwrap(),
             )),
             ..Recipe::factory(())
         };
@@ -505,7 +507,7 @@ impl<const N: usize> From<[&'static str; N]> for QueryParameterValue {
 pub enum RecipeBody {
     /// `application/json` body. Value can be any JSON value, with strings being
     /// interpreted as templates
-    Json(JsonTemplate),
+    Json(ValueTemplate),
     /// `application/x-www-form-urlencoded` body. Value is a mapping of form
     /// field name to value. Values are templates while field names are not.
     /// Values must render to strings.
@@ -533,7 +535,7 @@ impl RecipeBody {
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
     pub fn untemplated_json(value: serde_json::Value) -> Self {
-        Self::Json(JsonTemplate::raw(value))
+        Self::Json(ValueTemplate::raw_json(value))
     }
 
     /// Get the anticipated MIME type that will appear in the `Content-Type`

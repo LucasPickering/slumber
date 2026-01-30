@@ -29,7 +29,7 @@ use ratatui::{
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
+    collection::{Recipe, RecipeBody, RecipeId, ValueTemplate},
     http::{BodyOverride, content_type::ContentType},
 };
 use slumber_template::{Template, TemplateParseError};
@@ -101,7 +101,7 @@ impl RecipeBodyDisplay {
                 let s = template.display();
                 // If the parse fails for some reason, fall back to a raw body
                 // https://github.com/LucasPickering/slumber/issues/646
-                match s.parse::<JsonTemplate>() {
+                match ValueTemplate::parse_json(&s) {
                     Ok(json) => Some(BodyOverride::Json(json)),
                     Err(_) => Some(BodyOverride::Raw(template.clone())),
                 }
@@ -439,7 +439,7 @@ fn highlight(mime: Option<&Mime>, text: Text<'static>) -> Text<'static> {
 }
 
 /// Convert a JSON object into a single template for preview in a TextBody
-fn preview_json_template(json: &JsonTemplate) -> Template {
+fn preview_json_template(json: &ValueTemplate) -> Template {
     // Kill this in https://github.com/LucasPickering/slumber/issues/627
 
     // Stringify all the individual templates in the JSON, pretty

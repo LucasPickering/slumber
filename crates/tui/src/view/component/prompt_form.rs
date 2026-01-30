@@ -1,23 +1,19 @@
-use crate::{
-    http::{PromptId, PromptReply},
-    message::HttpMessage,
-    view::{
-        Generate, UpdateContext, ViewContext,
-        common::{
-            component_select::{
-                ComponentSelect, ComponentSelectProps, SelectStyles,
-            },
-            select::{Select, SelectListProps},
-            text_box::{TextBox, TextBoxProps},
+use crate::view::{
+    Generate, UpdateContext, ViewContext,
+    common::{
+        component_select::{
+            ComponentSelect, ComponentSelectProps, SelectStyles,
         },
-        component::{
-            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        },
-        event::{Event, EventMatch},
-        persistent::{PersistentStore, SessionKey},
+        modal::Modal,
+        select::{Select, SelectListProps},
+        text_box::{TextBox, TextBoxProps},
     },
+    component::{
+        Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+    },
+    event::{Event, EventMatch},
 };
-use indexmap::IndexMap;
+use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
     prelude::{Buffer, Rect},
@@ -26,11 +22,12 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
+    collection::{Recipe, RecipeId},
     http::RequestId,
-    render::{Prompt, SelectOption},
+    render::{Prompt, ReplyChannel, SelectOption},
 };
+use slumber_template::Value;
 use std::{borrow::Cow, cmp, mem};
-use tracing::error;
 
 /// A form displaying prompts for the recipe builder
 ///
@@ -41,6 +38,8 @@ use tracing::error;
 #[derive(Debug)]
 pub struct PromptForm {
     id: ComponentId,
+    /// Recipe being built; used for the title
+    recipe_name: String,
     /// Request being built
     request_id: RequestId,
     /// All inputs in the form. We use a select for this to manage the focus
@@ -55,48 +54,58 @@ pub struct PromptForm {
 impl PromptForm {
     /// Create a new prompt form with one input for each prompt. A form should
     /// correspond to a single request.
-    pub fn new(
-        request_id: RequestId,
-        prompts: &IndexMap<PromptId, Prompt>,
-    ) -> Self {
-        let inputs = prompts
-            .iter()
-            .map(|(id, prompt)| PromptInput::new(*id, prompt))
-            .collect();
+    pub fn new(recipe_id: &RecipeId, request_id: RequestId) -> Self {
+        let recipe_name = ViewContext::collection()
+            .recipes
+            .get_recipe(recipe_id)
+            .map(Recipe::name)
+            .unwrap_or("unknown")
+            .to_owned();
         Self {
             id: ComponentId::new(),
+            recipe_name,
             request_id,
-            select: Select::builder(inputs).build().into(),
+            select: ComponentSelect::default(),
             editing: true,
         }
+    }
+
+    /// Add a new prompt to the bottom of the form
+    pub fn add_prompt(&mut self, prompt: Prompt) {
+        let input = PromptInput::new(prompt);
+        // Select is immutable so we need to rebuild it. We can't clone the
+        // prompts, so we have to replace it with an empty Select while
+        // rebuilding.
+        let select = mem::take(&mut self.select);
+        let mut items = select.into_select().into_items().collect_vec();
+        items.push(input);
+        self.select = Select::builder(items).build().into();
     }
 
     pub fn request_id(&self) -> RequestId {
         self.request_id
     }
 
-    /// Send a message with a reply for every prompt in the form
-    fn submit(&mut self, store: &mut PersistentStore) {
-        // We can take the select list without cloning, because this component
-        // will be trashed on the update triggered by the message we send. This
-        // is much simpler than using an emitted message to do this submission
-        // in the parent, where the entire component is actually trashed.
-        let select = mem::take(&mut self.select);
-        let replies: Vec<(PromptId, PromptReply)> = select
-            .into_select()
-            .into_items()
-            .map(|input| (input.prompt_id(), input.into_reply()))
-            .collect();
-
-        // Clear these values from the session store
-        for (prompt_id, _) in &replies {
-            store.remove_session(prompt_id);
+    /// Submit all prompts
+    fn submit(self) {
+        // Submit each prompt on its own channel
+        for input in self.select.into_select().into_items() {
+            input.submit();
         }
+    }
+}
 
-        ViewContext::send_message(HttpMessage::FormSubmit {
-            request_id: self.request_id,
-            replies,
-        });
+impl Modal for PromptForm {
+    fn title(&self) -> Line<'_> {
+        self.recipe_name.as_str().into()
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (Constraint::Percentage(60), Constraint::Percentage(60))
+    }
+
+    fn on_submit(self, _context: &mut UpdateContext) {
+        self.submit();
     }
 }
 
@@ -107,16 +116,15 @@ impl Component for PromptForm {
 
     fn update(
         &mut self,
-        context: &mut UpdateContext,
+        _context: &mut UpdateContext,
         event: Event,
     ) -> EventMatch {
         event.m().action(|action, propagate| match action {
             Action::PreviousPane => self.select.up(),
             Action::NextPane => self.select.down(),
             Action::Edit if !self.editing => self.editing = true,
-            // If not editing, we'll propagate this to cancel the request
+            // If not editing, we'll propagate this to close the modal
             Action::Cancel if self.editing => self.editing = false,
-            Action::Submit => self.submit(context.persistent_store),
             _ => propagate.set(),
         })
     }
@@ -128,12 +136,6 @@ impl Component for PromptForm {
 
 impl Draw for PromptForm {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        if self.select.is_empty() {
-            // No prompts visible
-            canvas.render_widget("Building...", metadata.area());
-            return;
-        }
-
         let [form_area, help_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
@@ -174,62 +176,45 @@ enum PromptInput {
     /// Prompt the user for text input
     Text {
         id: ComponentId,
-        /// Use this to correlate the submission to the original prompt
-        prompt_id: PromptId,
         message: String,
         text_box: TextBox,
+        channel: ReplyChannel<String>,
     },
     /// Prompt the user to select an item from a list
     Select {
         id: ComponentId,
-        /// Use this to correlate the submission to the original prompt
-        prompt_id: PromptId,
         message: String,
         /// List of options to present to the user
         select: Select<SelectOption>,
+        channel: ReplyChannel<Value>,
     },
 }
 
 impl PromptInput {
-    fn new(prompt_id: PromptId, prompt: &Prompt) -> Self {
-        let persisted = PersistentStore::get_session(&prompt_id);
-
+    fn new(prompt: Prompt) -> Self {
         match prompt {
             Prompt::Text {
                 message,
                 default,
                 sensitive,
-                ..
-            } => {
-                // If we have a persisted value from a previous life, use it
-                let default = persisted
-                    .and_then(PromptValue::into_text)
-                    // Otherwise use the default
-                    .or_else(|| default.clone())
-                    .unwrap_or_default();
-                Self::Text {
-                    id: ComponentId::default(),
-                    prompt_id,
-                    message: message.clone(),
-                    text_box: TextBox::default()
-                        .sensitive(*sensitive)
-                        .default_value(default),
-                }
-            }
+                channel,
+            } => Self::Text {
+                id: ComponentId::default(),
+                message: message.clone(),
+                text_box: TextBox::default()
+                    .sensitive(sensitive)
+                    .default_value(default.unwrap_or_default()),
+                channel,
+            },
             Prompt::Select {
-                message, options, ..
+                message,
+                options,
+                channel,
             } => Self::Select {
                 id: ComponentId::default(),
-                prompt_id,
                 message: message.clone(),
-                select: Select::builder(options.clone())
-                    .preselect_index(
-                        // Preselect index from a previous life
-                        persisted
-                            .and_then(PromptValue::into_select)
-                            .unwrap_or(0),
-                    )
-                    .build(),
+                select: Select::builder(options).build(),
+                channel,
             },
         }
     }
@@ -250,26 +235,19 @@ impl PromptInput {
         content_height + 1
     }
 
-    /// Unique ID for this prompt, which will tie it back to the request store
-    fn prompt_id(&self) -> PromptId {
+    /// Submit the current selection/value over the reply channel
+    fn submit(self) {
         match self {
-            PromptInput::Text { prompt_id, .. }
-            | PromptInput::Select { prompt_id, .. } => *prompt_id,
-        }
-    }
-
-    /// Extract the current value as a reply to be sent back to the request
-    /// store.
-    fn into_reply(self) -> PromptReply {
-        match self {
-            Self::Text { text_box, .. } => {
-                PromptReply::Text(text_box.into_text())
-            }
-            Self::Select { select, .. } => {
+            PromptInput::Text {
+                text_box, channel, ..
+            } => channel.reply(text_box.into_text()),
+            PromptInput::Select {
+                select, channel, ..
+            } => {
                 // Non-empty select is enforced by the select() function
                 let option =
                     select.into_selected().expect("Select cannot be empty");
-                PromptReply::Select(option.value)
+                channel.reply(option.value);
             }
         }
     }
@@ -281,23 +259,6 @@ impl Component for PromptInput {
             PromptInput::Text { id, .. } | PromptInput::Select { id, .. } => {
                 *id
             }
-        }
-    }
-
-    fn persist(&self, store: &mut PersistentStore) {
-        // Prompt values are persisted **within a single session**. There's no
-        // reason to persist across sessions because any unbuilt requests will
-        // be deleted when the program exits
-        let value = match self {
-            Self::Text { text_box, .. } => {
-                Some(PromptValue::Text(text_box.text().to_owned()))
-            }
-            Self::Select { select, .. } => {
-                select.selected_index().map(PromptValue::Select)
-            }
-        };
-        if let Some(value) = value {
-            store.set_session(self.prompt_id(), value);
         }
     }
 
@@ -425,89 +386,54 @@ impl Generate for &SelectOption {
     }
 }
 
-/// Persist incomplete prompt responses in the session store
-impl SessionKey for PromptId {
-    type Value = PromptValue;
-}
-
-/// Persisted value for a prompt
-#[derive(Clone, Debug, PartialEq)]
-pub enum PromptValue {
-    Text(String),
-    Select(usize),
-}
-
-impl PromptValue {
-    /// Extract a text prompt value
-    fn into_text(self) -> Option<String> {
-        match self {
-            PromptValue::Text(text) => Some(text),
-            PromptValue::Select(_) => {
-                // Prompts can't change type, so this indicates a bug
-                error!(?self, "Incorrect prompt type; expected text");
-                None
-            }
-        }
-    }
-
-    /// Extract a selected index prompt value
-    fn into_select(self) -> Option<usize> {
-        match self {
-            PromptValue::Select(index) => Some(index),
-            PromptValue::Text(_) => {
-                // Prompts can't change type, so this indicates a bug
-                error!(?self, "Incorrect prompt type; expected select");
-                None
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        message::Message,
         test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
+        view::{
+            common::modal::ModalQueue,
+            test_util::{TestComponent, TestHarness, harness},
+        },
     };
-    use itertools::Itertools;
     use ratatui::style::{Style, Styled};
     use rstest::rstest;
     use slumber_template::Value;
-    use slumber_util::assert_matches;
+    use slumber_util::Factory;
     use terminput::{KeyCode, KeyModifiers};
-    use tokio::sync::oneshot;
+    use tokio::sync::oneshot::{self, Receiver};
 
-    /// Navigate between multiple fields and submit
+    /// Navigate between multiple fields and submission. Submission is handled
+    /// by the parent ModalQueue, so we have to use that here too.
     #[rstest]
-    fn test_navigation(mut harness: TestHarness, terminal: TestTerminal) {
-        let request_id = RequestId::new();
-        let prompts = IndexMap::from_iter([
-            text("Username", Some("user"), false),
-            select(
-                "Species",
-                vec![
-                    ("holy shit what is that thing", 1.into()),
-                    ("it's a baby fuckin wheel!", 2.into()),
-                    ("look at that thing jay!", 3.into()),
-                ],
-            ),
-            text("Password", Some("hunter2"), true),
-        ]);
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            PromptForm::new(request_id, &prompts),
+    fn test_navigation(harness: TestHarness, terminal: TestTerminal) {
+        let mut component =
+            TestComponent::new(&harness, &terminal, ModalQueue::default());
+        // Build the form, then open its modal
+        let mut form =
+            PromptForm::new(&RecipeId::factory(()), RequestId::new());
+        let mut username_rx = text(&mut form, "Username", Some("user"), false);
+        let mut species_rx = select(
+            &mut form,
+            "Species",
+            vec![
+                ("holy shit what is that thing", 1.into()),
+                ("it's a baby fuckin wheel!", 2.into()),
+                ("look at that thing jay!", 3.into()),
+            ],
         );
+        let mut password_rx =
+            text(&mut form, "Password", Some("hunter2"), true);
+        component.open(form);
 
         component
             .int()
             .drain_draw() // Draw so children are visible
             .send_text("123") // Modify username
-            .inspect(|component| {
-                assert!(component.editing);
-                assert_eq!(component.select.selected_index(), Some(0));
+            .inspect(|modal_queue| {
+                let form = modal_queue.first().unwrap();
+                assert!(form.editing);
+                assert_eq!(form.select.selected_index(), Some(0));
             })
             .send_key(KeyCode::Tab) // Switch to species - still editing
             .send_key(KeyCode::Down) // Select 2nd option
@@ -520,110 +446,23 @@ mod tests {
             .assert()
             .empty();
 
-        let (actual_request_id, replies) = assert_matches!(
-            harness.messages().pop_now(),
-            Message::Http(HttpMessage::FormSubmit {
-                request_id,
-                replies,
-            }) => (request_id, replies)
-        );
-        assert_eq!(actual_request_id, request_id);
-        let prompt_ids = prompts.keys().copied().collect_vec();
-        assert_eq!(
-            replies,
-            vec![
-                (prompt_ids[0], PromptReply::Text("user1234".into())),
-                (prompt_ids[1], PromptReply::Select(2.into())),
-                (prompt_ids[2], PromptReply::Text("hunter2456".into())),
-            ]
-        );
-    }
-
-    /// If you open a prompt, edit the value, then navigate away from the form
-    /// without submitting, the values should be persisted. This is possible
-    /// if you change requests, change view, etc. and the prompt form is
-    /// hidden temporarily. We should retain the form state when the user
-    /// navigates back
-    #[rstest]
-    fn test_persistence(
-        mut harness: TestHarness,
-        #[with(8, 2)] terminal: TestTerminal,
-    ) {
-        let request_id = RequestId::new();
-        let prompts = IndexMap::from_iter([
-            text("Text", None, false),
-            select("Select", vec![("a", 0.into()), ("b", 1.into())]),
-        ]);
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            PromptForm::new(request_id, &prompts),
-        );
-
-        // Test every kind of prompt
-        component
-            .int()
-            .send_text("user") // Enter username
-            .send_key(KeyCode::Tab) // Switch to Select
-            .send_key(KeyCode::Down) // Select second item
-            .assert()
-            .empty();
-
-        // Values should be in the session store
-        assert_eq!(
-            PersistentStore::get_session(&prompts.keys()[0]),
-            Some(PromptValue::Text("user".into()))
-        );
-        assert_eq!(
-            PersistentStore::get_session(&prompts.keys()[1]),
-            Some(PromptValue::Select(1))
-        );
-
-        // Rebuild the component and the values are restored
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            PromptForm::new(request_id, &prompts),
-        );
-        component.int().send_key(KeyCode::Enter).assert().empty();
-
-        // Our previous values were submitted
-        let replies = assert_matches!(
-            harness.messages().pop_now(),
-            Message::Http(HttpMessage::FormSubmit {
-                replies,
-                ..
-            }) => replies
-        );
-        let prompt_ids = prompts.keys().copied().collect_vec();
-        assert_eq!(
-            replies,
-            vec![
-                (prompt_ids[0], PromptReply::Text("user".into())),
-                (prompt_ids[1], PromptReply::Select(1.into())),
-            ]
-        );
-
-        // Values were cleared out of the session store
-        assert_eq!(PersistentStore::get_session(&prompts.keys()[0]), None);
-        assert_eq!(PersistentStore::get_session(&prompts.keys()[1]), None);
+        assert_eq!(username_rx.try_recv().unwrap(), "user1234".to_owned());
+        assert_eq!(species_rx.try_recv().unwrap(), 2.into());
+        assert_eq!(password_rx.try_recv().unwrap(), "hunter2456".to_owned());
     }
 
     /// Text input field
     #[rstest]
-    fn test_text(
-        mut harness: TestHarness,
-        #[with(8, 5)] terminal: TestTerminal,
-    ) {
-        let prompts = IndexMap::from_iter([
-            text("Username", Some("user"), false),
-            text("Password", Some("hunter"), true),
-        ]);
+    fn test_text(harness: TestHarness, #[with(8, 5)] terminal: TestTerminal) {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            PromptForm::new(RequestId::new(), &prompts),
+            PromptForm::new(&RecipeId::factory(()), RequestId::new()),
         );
+        let mut username_rx =
+            text(&mut component, "Username", Some("user"), false);
+        let mut password_rx =
+            text(&mut component, "Password", Some("hunter"), true);
 
         component
             .int()
@@ -649,48 +488,29 @@ mod tests {
             Line::styled("Change F", styles.text.hint),
         ]);
 
-        // Submit
-        component
-            .int()
-            // Done editing, then submit
-            .send_keys([KeyCode::Enter, KeyCode::Enter])
-            .assert()
-            .empty();
-        let replies = assert_matches!(
-            harness.messages().pop_now(),
-            Message::Http(HttpMessage::FormSubmit {
-                request_id,
-                replies,
-            }) => replies
-        );
-        let prompt_ids = prompts.keys().copied().collect_vec();
-        assert_eq!(
-            replies,
-            vec![
-                (prompt_ids[0], PromptReply::Text("user12".into())),
-                (prompt_ids[1], PromptReply::Text("hunter2".into())),
-            ]
-        );
+        // Submit; submission event is handled by the ModalQueue. It's easier
+        // just to call it manually since we test proper submission elsewhere
+        component.into_inner().submit();
+        assert_eq!(username_rx.try_recv().unwrap(), "user12".to_owned());
+        assert_eq!(password_rx.try_recv().unwrap(), "hunter2".to_owned());
     }
 
     /// Select input field
     #[rstest]
-    fn test_select(
-        mut harness: TestHarness,
-        #[with(7, 5)] terminal: TestTerminal,
-    ) {
-        let prompts = IndexMap::from_iter([select(
+    fn test_select(harness: TestHarness, #[with(7, 5)] terminal: TestTerminal) {
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PromptForm::new(&RecipeId::factory(()), RequestId::new()),
+        );
+        let mut species_rx = select(
+            &mut component,
             "Species",
             vec![
                 ("holy shit what is that thing", 1.into()),
                 ("it's a baby fuckin wheel!", 2.into()),
                 ("look at that thing jay!", 3.into()),
             ],
-        )]);
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            PromptForm::new(RequestId::new(), &prompts),
         );
 
         component
@@ -711,45 +531,37 @@ mod tests {
             Line::styled("Change ", styles.text.hint),
         ]);
 
-        // Submit
-        component.int().send_key(KeyCode::Enter).assert().empty();
-        let replies = assert_matches!(
-            harness.messages().pop_now(),
-            Message::Http(HttpMessage::FormSubmit {
-                request_id,
-                replies,
-            }) => replies
-        );
-        let prompt_ids = prompts.keys().copied().collect_vec();
-        assert_eq!(
-            replies,
-            vec![(prompt_ids[0], PromptReply::Select(2.into()))]
-        );
+        // Submit; submission event is handled by the ModalQueue. It's easier
+        // just to call it manually since we test proper submission elsewhere
+        component.into_inner().submit();
+        assert_eq!(species_rx.try_recv().unwrap(), 2.into());
     }
 
-    /// Create a text prompt
+    /// Add a text prompt to the form
     fn text(
+        form: &mut PromptForm,
         message: &str,
         default: Option<&str>,
         sensitive: bool,
-    ) -> (PromptId, Prompt) {
-        let (tx, _) = oneshot::channel();
-        let prompt = Prompt::Text {
+    ) -> Receiver<String> {
+        let (tx, rx) = oneshot::channel();
+        form.add_prompt(Prompt::Text {
             message: message.into(),
             default: default.map(String::from),
             sensitive,
             channel: tx.into(),
-        };
-        (PromptId::new(), prompt)
+        });
+        rx
     }
 
-    /// Create a select prompt
+    /// Add a select prompt to the form
     fn select(
+        form: &mut PromptForm,
         message: &str,
         options: Vec<(&str, Value)>,
-    ) -> (PromptId, Prompt) {
-        let (tx, _) = oneshot::channel();
-        let prompt = Prompt::Select {
+    ) -> Receiver<Value> {
+        let (tx, rx) = oneshot::channel();
+        form.add_prompt(Prompt::Select {
             message: message.into(),
             options: options
                 .into_iter()
@@ -759,7 +571,7 @@ mod tests {
                 })
                 .collect(),
             channel: tx.into(),
-        };
-        (PromptId::new(), prompt)
+        });
+        rx
     }
 }

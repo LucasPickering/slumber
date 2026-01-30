@@ -53,8 +53,11 @@ pub enum Question {
 #[derive(Debug)]
 pub struct TuiPrompter {
     /// Request being built with this prompter. Each request gets its own
-    /// TemplateContext, which gets new prompter. This allows us to group the
-    /// prompts by request in the UI
+    /// TemplateContext, which gets a new prompter. This allows us to group the
+    /// prompts by request in the UI. **However**, triggered requests will use
+    /// the same context as the triggerer, so all triggered requests will be
+    /// tagged with their parent. This is a flaw but may be better UX because
+    /// it keeps all the prompts require for the parent in a single form.
     request_id: RequestId,
     messages_tx: MessageSender,
 }

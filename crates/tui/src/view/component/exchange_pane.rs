@@ -9,7 +9,6 @@ use crate::{
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            prompt_form::PromptForm,
             request_view::RequestView,
             response_view::{ResponseBodyView, ResponseHeadersView},
         },
@@ -56,7 +55,6 @@ impl ExchangePane {
     pub fn request_id(&self) -> Option<RequestId> {
         match &self.state {
             State::None | State::Folder | State::NoHistory => None,
-            State::Building { form } => Some(form.request_id()),
             State::Content { metadata, .. } => Some(metadata.request.id),
         }
     }
@@ -72,7 +70,6 @@ impl Component for ExchangePane {
             State::None | State::Folder | State::NoHistory => {
                 vec![]
             }
-            State::Building { form } => vec![form.to_child_mut()],
             State::Content { content, .. } => {
                 vec![content.to_child_mut()]
             }
@@ -113,7 +110,6 @@ impl Draw for ExchangePane {
                 "No request history for this recipe & profile",
                 area,
             ),
-            State::Building { form } => canvas.draw(form, (), area, true),
             State::Content { metadata, content } => {
                 let [metadata_area, content_area] = Layout::vertical([
                     Constraint::Length(1),
@@ -140,10 +136,6 @@ enum State {
     Folder,
     /// Recipe selected, but it has no request history
     NoHistory,
-    /// Request is being built. We'll show a form for any potential prompts that
-    /// are sent. For requests without prompts, there isn't anything useful to
-    /// show so this will just be an empty state.
-    Building { form: PromptForm },
     /// We have a real bonafide request state available
     Content {
         metadata: ExchangePaneMetadata,
@@ -158,18 +150,13 @@ impl State {
     ) -> Self {
         if let Some(request_state) = selected_request {
             // If we have a request, then there must be a recipe selected
-            match request_state {
-                RequestState::Building { id, prompts, .. } => Self::Building {
-                    form: PromptForm::new(*id, prompts),
+            Self::Content {
+                metadata: ExchangePaneMetadata {
+                    id: ComponentId::default(),
+                    request: request_state.request_metadata(),
+                    response: request_state.response_metadata(),
                 },
-                _ => Self::Content {
-                    metadata: ExchangePaneMetadata {
-                        id: ComponentId::default(),
-                        request: request_state.request_metadata(),
-                        response: request_state.response_metadata(),
-                    },
-                    content: ExchangePaneContent::new(request_state),
-                },
+                content: ExchangePaneContent::new(request_state),
             }
         } else {
             // Without a request, show some sort of empty state

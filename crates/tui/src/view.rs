@@ -33,6 +33,7 @@ use slumber_core::{
     collection::{Collection, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
+    render::Prompt,
 };
 use slumber_template::Template;
 use std::{
@@ -251,7 +252,7 @@ where
 }
 
 /// Hint to the view about how an HTTP request state update should be handled
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum RequestDisposition {
     /// A request was changed in some way. If the request is visible, the UI
     /// will need to be updated.
@@ -263,10 +264,12 @@ pub enum RequestDisposition {
     /// will only be made if the request matches the current recipe/profile. Use
     /// this when a new request is created or a new recipe/profile was selected.
     Select(RequestId),
-    /// Select the prompt form pane. Use this when a new prompt is visible and
-    /// needs a response from the user. If the prompting request is not
-    /// currently selected, do *not* make any changes.
-    OpenForm(RequestId),
+    /// Display a prompt to the user (e.g. from `prompt()` or `select()`). This
+    /// will either open a new prompt form or append to an existing one.
+    OpenPrompt {
+        request_id: RequestId,
+        prompt: Prompt,
+    },
 }
 
 #[cfg(test)]
@@ -299,11 +302,9 @@ mod tests {
 
         // Events should *still* be in the queue, because we haven't drawn yet
         let mut component_map = ComponentMap::default();
-        let mut persisent_store = harness.persistent_store();
         let mut request_store = harness.request_store_mut();
         view.handle_events(UpdateContext {
             component_map: &component_map,
-            persistent_store: &mut persisent_store,
             request_store: &mut request_store,
         });
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
@@ -315,7 +316,6 @@ mod tests {
         // *Now* the queue is drained
         view.handle_events(UpdateContext {
             component_map: &component_map,
-            persistent_store: &mut persisent_store,
             request_store: &mut request_store,
         });
         assert_events!();

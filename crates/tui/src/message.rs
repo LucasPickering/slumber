@@ -2,7 +2,6 @@
 //! state updates.
 
 use crate::{
-    http::{PromptId, PromptReply},
     input::InputEvent,
     util::{ResultReported, TempFile},
     view::Question,
@@ -196,12 +195,6 @@ pub enum HttpMessage {
     Prompt {
         request_id: RequestId,
         prompt: Prompt,
-    },
-    /// User has submitted their prompt form in the UI. Replies should be sent
-    /// back to the render engine.
-    FormSubmit {
-        request_id: RequestId,
-        replies: Vec<(PromptId, PromptReply)>,
     },
     /// Request failed to build
     ///

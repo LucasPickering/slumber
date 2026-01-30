@@ -1,10 +1,7 @@
 use crate::{
     http::{RequestConfig, RequestStore},
     message::{Message, MessageSender},
-    view::{
-        ComponentMap, InvalidCollection, UpdateContext, View,
-        persistent::PersistentStore,
-    },
+    view::{ComponentMap, InvalidCollection, UpdateContext, View},
 };
 use anyhow::{Context, anyhow};
 use ratatui::buffer::Buffer;
@@ -148,7 +145,6 @@ impl CollectionState {
     pub fn drain_events(&mut self) -> bool {
         let context = UpdateContext {
             component_map: &self.component_map,
-            persistent_store: &mut PersistentStore::new(self.database.clone()),
             request_store: &mut self.request_store,
         };
         let handled = self.view.handle_events(context);

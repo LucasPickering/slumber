@@ -219,6 +219,11 @@ where
         }
     }
 
+    /// Get the owned inner component
+    pub fn into_inner(self) -> T {
+        self.component.inner
+    }
+
     /// Draw this component onto the terminal, using the entire terminal frame
     /// as the draw area. If props are given, use them for the draw. If not,
     /// use the same props from the last draw.
@@ -246,7 +251,6 @@ where
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
             component_map: &self.component_map,
-            persistent_store: &mut persistent_store,
             request_store: &mut self.request_store.borrow_mut(),
         };
         while let Some(event) = ViewContext::pop_event() {
@@ -555,9 +559,6 @@ where
         let items = {
             let context = UpdateContext {
                 component_map: &self.component.component_map,
-                persistent_store: &mut PersistentStore::new(
-                    self.component.database.clone(),
-                ),
                 request_store: &mut self.component.request_store.borrow_mut(),
             };
             self.component.component.collect_actions(&context)

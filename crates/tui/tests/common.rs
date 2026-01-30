@@ -31,15 +31,18 @@ use terminput::{
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::{JoinHandle, LocalSet},
-    time::{self, MissedTickBehavior},
+    time::{self, Instant, MissedTickBehavior},
 };
+use tracing::{debug, trace};
 use unicode_width::UnicodeWidthStr;
 use wiremock::MockGuard;
 
 /// Maximum duration to run any async test operations for. Any async operation
 /// should resolve in this amount of time. Anything that takes longer will
 /// panic.
-pub const TIMEOUT: Duration = Duration::from_millis(1000);
+const TIMEOUT: Duration = Duration::from_millis(100);
+/// Sleep time between loops for repeated check actions
+const INTERVAL: Duration = Duration::from_millis(10);
 
 pub type TestTui = Tui<TestBackend>;
 
@@ -156,9 +159,16 @@ impl Runner {
     pub async fn wait_for_request(self, mock_guard: MockGuard) -> Self {
         self.run_until(async move {
             mock_guard.wait_until_satisfied().await;
-            // Yield the thread to the TUI loop so it can process the message
-            // from the HTTP response before we exit
-            time::sleep(Duration::from_millis(0)).await;
+            // Eww stinky sleep bad. We need to wait for the TUI loop task to
+            // receive the response message. Otherwise, it's possible to exit
+            // this call and immediatelly call done(), which will terminate the
+            // loop before it has a chance to process the thread.
+            //
+            // Using a sleep sucks, but I couldn't find any other async
+            // conditions to wait on. We could repeatedly check the DB, but that
+            // ends up taking longer and hogs the main thread. This sleep went
+            // 1000/1000 in a test so I think we're good :)
+            time::sleep(Duration::from_millis(10)).await;
             Ok::<_, Infallible>(())
         })
         .await
@@ -166,17 +176,13 @@ impl Runner {
 
     /// Wait for the terminal to contain specific text at a location
     pub async fn wait_for_content(self, expected: &str, at: Position) -> Self {
-        const INTERVAL: Duration = Duration::from_millis(10);
-
         // Each time the check fails, store the error message. We'll panic with
         // the final error message to show the user the failure state
         let mut error: String = String::new();
         let future = async {
-            let mut interval = time::interval(INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             while let Err(e) = self.backend.try_buffer_contains(expected, at) {
                 error = e;
-                interval.tick().await;
+                time::sleep(INTERVAL).await;
             }
         };
 

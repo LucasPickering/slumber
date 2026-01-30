@@ -165,11 +165,12 @@ pub fn assert_result<TA, TE, E>(
 pub fn initialize_tracing(level: LevelFilter) {
     let subscriber = tracing_subscriber::fmt::layer()
         .with_writer(io::stderr)
-        .with_target(false)
+        .with_target(true)
         .with_span_events(FmtSpan::NONE)
         .without_time()
         .with_filter(
             Targets::new()
+                .with_target("test_", level) // Integration tests
                 .with_target("slumber", level)
                 .with_default(LevelFilter::WARN),
         );

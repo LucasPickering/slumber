@@ -177,6 +177,19 @@ pub fn initialize_tracing(level: LevelFilter) {
     tracing_subscriber::registry().with(subscriber).init();
 }
 
+/// Enable tracing output in tests. Call this in a test to enable logging
+///
+/// An easier-to-use version of [slumber_util::initialize_tracing].
+#[macro_export]
+macro_rules! tracing {
+    () => {
+        $crate::tracing!(TRACE)
+    };
+    ($level:ident) => {
+        $crate::initialize_tracing(tracing::level_filters::LevelFilter::$level);
+    };
+}
+
 /// Stringify an error with all its causes
 fn format_error_chain(error: impl Error) -> String {
     let mut s = error.to_string();

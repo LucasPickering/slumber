@@ -160,6 +160,7 @@ requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
     let db = tui.database().root();
     let other_collection_file =
         CollectionFile::new(Some(other_collection_path)).unwrap();
+    // Insert the second collection into the DB so it's available in the list
     db.clone().into_collection(&other_collection_file).unwrap();
     assert_eq!(db.get_collections().unwrap().len(), 2);
 

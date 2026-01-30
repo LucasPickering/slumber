@@ -193,6 +193,7 @@ pub enum HttpMessage {
     /// A prompt is being rendered in a template, and we need a reply from the
     /// user
     Prompt {
+        recipe_id: RecipeId,
         request_id: RequestId,
         prompt: Prompt,
     },
@@ -221,7 +222,7 @@ pub enum HttpMessage {
     },
 }
 
-/// Component/form of a recipe to copy to the clipboard
+/// Component/format of a recipe to copy to the clipboard
 #[derive(Debug, PartialEq)]
 pub enum RecipeCopyTarget {
     /// Render request URL from the selected recipe, then copy rendered URL

@@ -452,11 +452,15 @@ where
                 // New requests should be shown immediately
                 RequestDisposition::Select(id)
             }
-            HttpMessage::Prompt { request_id, prompt } => {
-                // For any new prompt, jump to the form. This may potentially
-                // be annoying for delayed prompts. If so we can change it :)
-                RequestDisposition::OpenPrompt { request_id, prompt }
-            }
+            HttpMessage::Prompt {
+                recipe_id,
+                request_id,
+                prompt,
+            } => RequestDisposition::OpenPrompt {
+                recipe_id,
+                request_id,
+                prompt,
+            },
             HttpMessage::BuildError(error) => {
                 let id = self.state.request_store.build_error(error).id();
                 RequestDisposition::Change(id)
@@ -581,7 +585,7 @@ where
         let seed = RequestSeed::new(recipe_id.clone(), options);
         let request_id = seed.id;
         let template_context =
-            self.template_context(profile_id.clone(), Some(request_id));
+            self.template_context(profile_id.clone(), Some(&seed));
         let http_engine = self.http_engine.clone();
         let messages_tx = self.messages_tx.clone();
 
@@ -774,7 +778,7 @@ where
         let seed = RequestSeed::new(recipe_id, options);
         // Even though this isn't a real request, we use a real request ID
         // because we may need to show prompts to the user under that ID
-        let context = self.template_context(profile_id, Some(seed.id));
+        let context = self.template_context(profile_id, Some(&seed));
 
         let future = render(context, seed);
         self.messages_tx.spawn_result(async move {
@@ -843,9 +847,9 @@ where
     fn template_context(
         &self,
         profile_id: Option<ProfileId>,
-        // ID of the request being built is needed to group prompts that are
-        // generated
-        request_id: Option<RequestId>,
+        // Request being built is needed to group prompts that are generated.
+        // `None` for previews, which aren't tied to a request
+        seed: Option<&RequestSeed>,
     ) -> TemplateContext {
         // Shouldn't be reachable if the collection isn't loaded
         let collection =
@@ -853,14 +857,18 @@ where
 
         // If request_id is given, it's a request build. Otherwise it's a
         // preview
-        let is_preview = request_id.is_none();
+        let is_preview = seed.is_none();
         let http_provider = TuiHttpProvider::new(
             self.http_engine.clone(),
             self.messages_tx.clone(),
             is_preview,
         );
-        let prompter: Box<dyn Prompter> = if let Some(request_id) = request_id {
-            Box::new(TuiPrompter::new(request_id, self.messages_tx.clone()))
+        let prompter: Box<dyn Prompter> = if let Some(seed) = seed {
+            Box::new(TuiPrompter::new(
+                seed.recipe_id.clone(),
+                seed.id,
+                self.messages_tx.clone(),
+            ))
         } else {
             Box::new(PreviewPrompter)
         };

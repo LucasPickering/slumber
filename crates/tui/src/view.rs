@@ -25,9 +25,8 @@ use crate::{
         event::Event,
     },
 };
-use crossterm::clipboard::CopyToClipboard;
 use indexmap::IndexMap;
-use ratatui::{buffer::Buffer, crossterm::execute, text::Span};
+use ratatui::{buffer::Buffer, text::Span};
 use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
@@ -38,7 +37,6 @@ use slumber_core::{
 use slumber_template::Template;
 use std::{
     fmt::{Debug, Display},
-    io,
     sync::Arc,
 };
 use tracing::{trace, trace_span, warn};
@@ -203,15 +201,6 @@ impl View {
             });
         }
         handled
-    }
-
-    /// Copy text to the user's clipboard, and notify them
-    pub fn copy_text(&mut self, text: String) -> anyhow::Result<()> {
-        execute!(io::stdout(), CopyToClipboard::to_clipboard_from(text))
-            .inspect(|()| self.notify("Copied text to clipboard"))
-            .map_err(|error| {
-                anyhow::Error::from(error).context("Error copying text")
-            })
     }
 }
 

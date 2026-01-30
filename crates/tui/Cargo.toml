@@ -21,7 +21,7 @@ futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
 mime = {workspace = true}
-ratatui = {version = "0.30.0-alpha.5", default-features = false, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
+ratatui = {version = "0.30.0-alpha.5", default-features = false, features = ["crossterm", "underline-color"]}
 reqwest = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}

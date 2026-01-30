@@ -25,7 +25,11 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
-use crossterm::event::{self, EventStream};
+use crossterm::{
+    clipboard::CopyToClipboard,
+    event::{self, EventStream},
+    execute,
+};
 use futures::{Stream, StreamExt, future, pin_mut};
 use ratatui::{
     Terminal,
@@ -65,7 +69,7 @@ use tracing::{error, info, trace};
 ///
 /// `B` is the terminal backend type; see [Backend]
 #[derive(Debug)]
-pub struct Tui<B: Backend> {
+pub struct Tui<B: TerminalBackend> {
     /// Token to manage cancellation of the main loop and all background tasks
     ///
     /// If run() is called multiple times (e.g. in a test), a new token will be
@@ -137,7 +141,7 @@ impl Tui<CrosstermBackend<Stdout>> {
 
 impl<B> Tui<B>
 where
-    B: 'static + Backend,
+    B: 'static + TerminalBackend,
     B::Error: 'static + Send + Sync,
 {
     /// Rough **maximum** time for each iteration of the main loop
@@ -336,7 +340,7 @@ where
             }
 
             Message::CopyRecipe(target) => self.copy_recipe(target)?,
-            Message::CopyText(text) => self.state.view.copy_text(text)?,
+            Message::CopyText(text) => self.copy_text(text)?,
 
             Message::Error { error } => self.state.view.error(error),
 
@@ -704,6 +708,13 @@ where
         }
     }
 
+    /// Copy text to the user's clipboard and notify them
+    fn copy_text(&mut self, text: String) -> anyhow::Result<()> {
+        self.terminal.backend_mut().copy_to_clipboard(text)?;
+        self.state.view.notify("Copied text to clipboard");
+        Ok(())
+    }
+
     /// Copy some component of the current recipe. Depending on the target, this
     /// may require rendering some or all of the recipe
     fn copy_recipe(&mut self, target: RecipeCopyTarget) -> anyhow::Result<()> {
@@ -738,7 +749,7 @@ where
                     .state
                     .request_config()?
                     .to_cli(self.state.collection_file.path());
-                self.state.view.copy_text(command)
+                self.copy_text(command)
             }
 
             // Render request, then copy the equivalent curl command
@@ -757,7 +768,7 @@ where
                     .state
                     .request_config()?
                     .to_python(self.state.collection_file.path());
-                self.state.view.copy_text(code)
+                self.copy_text(code)
             }
         }
     }
@@ -886,10 +897,25 @@ where
     }
 }
 
-impl<B: Backend> Drop for Tui<B> {
+impl<B: TerminalBackend> Drop for Tui<B> {
     fn drop(&mut self) {
         // Kill any tasks that may still be running. Useful for panics
         self.cancel_token.cancel();
+    }
+}
+
+/// Extension of [Backend] that defines additional backend-specific behavior
+pub trait TerminalBackend: Backend {
+    /// Copy some text to the system clipboard
+    fn copy_to_clipboard(&mut self, text: String) -> anyhow::Result<()>;
+}
+
+impl TerminalBackend for CrosstermBackend<Stdout> {
+    fn copy_to_clipboard(&mut self, text: String) -> anyhow::Result<()> {
+        // Use self.writer_mut() after stabilized
+        // https://docs.rs/ratatui-crossterm/0.1.0/ratatui_crossterm/struct.CrosstermBackend.html#method.writer_mut
+        execute!(io::stdout(), CopyToClipboard::to_clipboard_from(text))
+            .context("Error copying text")
     }
 }
 

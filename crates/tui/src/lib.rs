@@ -923,6 +923,13 @@ where
     }
 }
 
+impl<B: Backend> Drop for Tui<B> {
+    fn drop(&mut self) {
+        // Kill any tasks that may still be running. Useful for panics
+        self.cancel_token.cancel();
+    }
+}
+
 /// Restore terminal state during a panic
 fn initialize_panic_handler() {
     let original_hook = std::panic::take_hook();

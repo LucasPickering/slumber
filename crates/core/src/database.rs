@@ -724,7 +724,7 @@ impl CollectionDatabase {
         key: &str,
         value: &str,
     ) -> Result<(), DatabaseError> {
-        trace!(?key, ?value, "Setting UI state");
+        trace!(key_type, ?key, ?value, "Setting UI state");
         self.database
             .connection()
             .execute(

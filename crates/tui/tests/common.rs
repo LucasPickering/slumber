@@ -12,7 +12,7 @@ use rstest::fixture;
 use slumber_core::{
     collection::Collection, database::CollectionDatabase, http::RequestId,
 };
-use slumber_tui::Tui;
+use slumber_tui::{TerminalBackend, Tui};
 use std::{
     cell::{Ref, RefCell},
     convert::Infallible,
@@ -111,6 +111,12 @@ impl Runner {
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         }))
+    }
+
+    /// Send some text as a series of key events, handling each event and
+    /// re-drawing after each character
+    pub fn send_text(self, text: &str) -> Self {
+        self.send_keys(text.chars().map(KeyCode::Char))
     }
 
     /// Simulate user input
@@ -269,18 +275,30 @@ impl Stream for InputStream {
 /// during test combinator functions. Because the TUI is run on a local thread,
 /// the futures can be `!Send`, allowing `Rc<RefCell<>>`.
 #[derive(Clone)]
-pub struct TestBackend(Rc<RefCell<ratatui::backend::TestBackend>>);
+pub struct TestBackend {
+    backend: Rc<RefCell<ratatui::backend::TestBackend>>,
+    /// Text that has been copied to the clipboard
+    clipboard: Vec<String>,
+}
 
 impl TestBackend {
     pub fn new(width: u16, height: u16) -> Self {
         let backend = ratatui::backend::TestBackend::new(width, height);
-        Self(Rc::new(RefCell::new(backend)))
+        Self {
+            backend: Rc::new(RefCell::new(backend)),
+            clipboard: vec![],
+        }
     }
 
     /// Assert that the screen buffer contains specific text at a location
     #[track_caller]
     pub fn assert_buffer_contains(&self, expected: &str, at: Position) {
         self.try_buffer_contains(expected, at).unwrap();
+    }
+
+    /// Get the sequence of texts copied to the clipboard
+    pub fn clipboard(&self) -> &[String] {
+        &self.clipboard
     }
 
     /// Check if the screen buffer contains specific text at a location
@@ -316,7 +334,7 @@ impl TestBackend {
     /// Get a reference to the screen buffer. This borrows the `RefCell`, so
     /// don't hold it longer than you need it.
     pub fn buffer(&self) -> Ref<Buffer> {
-        Ref::map(self.0.borrow(), |backend| backend.buffer())
+        Ref::map(self.backend.borrow(), |backend| backend.buffer())
     }
 }
 
@@ -327,53 +345,60 @@ impl Backend for TestBackend {
     where
         I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
     {
-        self.0.borrow_mut().draw(content)
+        self.backend.borrow_mut().draw(content)
     }
 
     fn hide_cursor(&mut self) -> Result<(), Self::Error> {
-        self.0.borrow_mut().hide_cursor()
+        self.backend.borrow_mut().hide_cursor()
     }
 
     fn show_cursor(&mut self) -> Result<(), Self::Error> {
-        self.0.borrow_mut().show_cursor()
+        self.backend.borrow_mut().show_cursor()
     }
 
     fn get_cursor_position(
         &mut self,
     ) -> Result<ratatui::prelude::Position, Self::Error> {
-        self.0.borrow_mut().get_cursor_position()
+        self.backend.borrow_mut().get_cursor_position()
     }
 
     fn set_cursor_position<P: Into<ratatui::prelude::Position>>(
         &mut self,
         position: P,
     ) -> Result<(), Self::Error> {
-        self.0.borrow_mut().set_cursor_position(position)
+        self.backend.borrow_mut().set_cursor_position(position)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
-        self.0.borrow_mut().clear()
+        self.backend.borrow_mut().clear()
     }
 
     fn clear_region(
         &mut self,
         clear_type: ratatui::prelude::backend::ClearType,
     ) -> Result<(), Self::Error> {
-        self.0.borrow_mut().clear_region(clear_type)
+        self.backend.borrow_mut().clear_region(clear_type)
     }
 
     fn size(&self) -> Result<ratatui::prelude::Size, Self::Error> {
-        self.0.borrow().size()
+        self.backend.borrow().size()
     }
 
     fn window_size(
         &mut self,
     ) -> Result<ratatui::prelude::backend::WindowSize, Self::Error> {
-        self.0.borrow_mut().window_size()
+        self.backend.borrow_mut().window_size()
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.0.borrow_mut().flush()
+        self.backend.borrow_mut().flush()
+    }
+}
+
+impl TerminalBackend for TestBackend {
+    fn copy_to_clipboard(&mut self, text: String) -> anyhow::Result<()> {
+        self.clipboard.push(text);
+        Ok(())
     }
 }
 

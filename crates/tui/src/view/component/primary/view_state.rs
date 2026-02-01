@@ -36,7 +36,14 @@ impl ViewState {
 
     /// Close the sidebar and return to the default view
     pub fn close_sidebar(&mut self) {
-        self.layout = PrimaryLayout::Default(DefaultPane::Top);
+        if let PrimaryLayout::Sidebar { selected_pane, .. } = self.layout {
+            // Retain selected pane where possible
+            let pane = match selected_pane {
+                SidebarPane::Sidebar | SidebarPane::Top => DefaultPane::Top,
+                SidebarPane::Bottom => DefaultPane::Bottom,
+            };
+            self.layout = PrimaryLayout::Default(pane);
+        }
     }
 
     /// Select the previous pane in the cycle

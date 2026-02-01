@@ -24,7 +24,7 @@ use std::{
 };
 use strum::IntoDiscriminant;
 use thiserror::Error;
-use tracing::{debug, info, trace};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 /// Maximum number of commands to store in history **per collection**. When we
@@ -291,7 +291,6 @@ impl Database {
         &self,
         request_id: RequestId,
     ) -> Result<usize, DatabaseError> {
-        trace!(%request_id, "Deleting request");
         self.connection()
             .execute(
                 "DELETE FROM requests_v2 WHERE id = :request_id",
@@ -398,7 +397,6 @@ impl CollectionDatabase {
         &self,
         request_id: RequestId,
     ) -> Result<Option<Exchange>, DatabaseError> {
-        trace!(request_id = %request_id, "Fetching request from database");
         self.database
             .connection()
             .query_row(
@@ -428,11 +426,6 @@ impl CollectionDatabase {
         profile_id: ProfileFilter,
         recipe_id: &RecipeId,
     ) -> Result<Option<Exchange>, DatabaseError> {
-        trace!(
-            profile_id = ?profile_id,
-            recipe_id = %recipe_id,
-            "Fetching last request from database"
-        );
         self.database
             .connection()
             .query_row(
@@ -468,11 +461,6 @@ impl CollectionDatabase {
         profile_filter: ProfileFilter,
         recipe_id: &RecipeId,
     ) -> Result<Vec<ExchangeSummary>, DatabaseError> {
-        trace!(
-            profile_id = ?profile_filter,
-            recipe_id = %recipe_id,
-            "Fetching requests from database"
-        );
         self.database
             .connection()
             .prepare(
@@ -509,7 +497,6 @@ impl CollectionDatabase {
     pub fn get_all_requests(
         &self,
     ) -> Result<Vec<ExchangeSummary>, DatabaseError> {
-        trace!("Fetching requests for collection");
         self.database
             .connection()
             .prepare(
@@ -713,7 +700,6 @@ impl CollectionDatabase {
                 "Querying UI state key `{key:?}`"
             )))
             .traced()?;
-        trace!(?key, ?value, "Fetched UI state");
         Ok(value)
     }
 
@@ -724,7 +710,6 @@ impl CollectionDatabase {
         key: &str,
         value: &str,
     ) -> Result<(), DatabaseError> {
-        trace!(key_type, ?key, ?value, "Setting UI state");
         self.database
             .connection()
             .execute(
@@ -752,8 +737,6 @@ impl CollectionDatabase {
     /// are deduped in history, so if it's already in the table, just update
     /// the timestamp on it
     pub fn insert_command(&self, command: &str) -> Result<(), DatabaseError> {
-        debug!(?command, "Storing query/export command");
-
         // Shitty try block
         let deleted = (|| {
             let connection = self.database.connection();
@@ -809,7 +792,6 @@ impl CollectionDatabase {
         &self,
         prefix: &str,
     ) -> Result<Vec<String>, DatabaseError> {
-        trace!(prefix, "Getting commands from history matching prefix");
         self.database
             .connection()
             .prepare(
@@ -849,7 +831,6 @@ impl CollectionDatabase {
         offset: u32,
         exclude: &str,
     ) -> Result<Option<String>, DatabaseError> {
-        trace!(offset, "Getting command from history with offset");
         self.database
             .connection()
             .query_row(

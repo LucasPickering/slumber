@@ -135,9 +135,6 @@ impl HttpEngine {
             recipe_id,
             options,
         } = &seed;
-        let _ =
-            info_span!("Build request", request_id = %id, ?recipe_id, ?options)
-                .entered();
 
         let future = async {
             let recipe =
@@ -178,7 +175,10 @@ impl HttpEngine {
 
             let request = builder.build()?;
             Ok((client, request))
-        };
+        }
+        .instrument(
+            info_span!("Build request", request_id = %id, ?recipe_id, ?options),
+        );
         let (client, request) = seed.run_future(future, context).await?;
 
         Ok(RequestTicket {
@@ -279,9 +279,6 @@ impl HttpEngine {
             recipe_id,
             options,
         } = &seed;
-        let _ =
-            info_span!("Build request URL", request_id = %id, ?recipe_id, ?options)
-                .entered();
 
         let future = async {
             let recipe =
@@ -300,7 +297,8 @@ impl HttpEngine {
                 .query(&query)
                 .build()?;
             Ok(request)
-        };
+        }
+        .instrument(info_span!("Build request URL", request_id = %id, ?recipe_id, ?options));
         let request = seed.run_future(future, context).await?;
 
         Ok(request.url().clone())
@@ -317,9 +315,6 @@ impl HttpEngine {
             recipe_id,
             options,
         } = &seed;
-        let _ =
-            info_span!("Build request body", request_id = %id, ?recipe_id, ?options)
-                .entered();
 
         let future = async {
             let recipe =
@@ -365,7 +360,11 @@ impl HttpEngine {
                     Ok(Some(bytes))
                 }
             }
-        };
+        }
+        .instrument(info_span!(
+            "Build request body",
+            request_id = %id, ?recipe_id, ?options
+        ));
         seed.run_future(future, context).await
     }
 
@@ -385,9 +384,6 @@ impl HttpEngine {
             recipe_id,
             options,
         } = &seed;
-        let _ =
-            info_span!("Build request cURL", request_id = %id, ?recipe_id, ?options)
-                .entered();
 
         let future = async {
             let recipe =
@@ -413,7 +409,11 @@ impl HttpEngine {
                 builder = builder.body(body).await?;
             }
             Ok(builder.build())
-        };
+        }
+        .instrument(info_span!(
+            "Build request cURL",
+            request_id = %id, ?recipe_id, ?options
+        ));
         seed.run_future(future, context).await
     }
 

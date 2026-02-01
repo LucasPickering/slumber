@@ -157,10 +157,11 @@ pub fn command(
     // - Spawn command
     // - Stream from stdout
     // - Check command status
-    let future = async {
-        let span = debug_span!("Running command", ?program, ?arguments);
-
+    let span = debug_span!("command()", ?program, ?arguments);
+    let span_ = span.clone(); // Clone so we can attach to the inner stream too
+    let future = async move {
         // Spawn the command process
+        debug!("Spawning");
         let mut child = Command::new(&program)
             .args(&arguments)
             .stdin(Stdio::piped())
@@ -189,21 +190,15 @@ pub fn command(
         // practice this means we'll poll in a background task, then stream
         // stdout until it's done.
         let stdout = child.stdout.take().expect("stdout not set for child");
-        let handle = tokio::spawn(
-            async move {
-                let result = child.wait().await;
-                debug!(?result, "Command finished");
-                result
-            }
-            .instrument(span),
-        );
+        let handle = tokio::spawn(async move { child.wait().await });
 
         // After stdout is done, we'll check the status code of the process to
         // make sure it succeeded. This gets chained on to the end of
         // the stream
         let status_future = async move {
-            let status = handle
-                .await
+            let status_result = handle.await;
+            debug!(?status_result, "Finished");
+            let status = status_result
                 .map_err(RenderError::other)? // Join error - task panicked
                 // Command error
                 .map_err(|error| io_error(&program, &arguments, error))?;
@@ -219,9 +214,11 @@ pub fn command(
                 }
                 .into())
             }
-        };
+        }
+        .instrument(span_);
         Ok(reader_stream(stdout).chain(status_future.into_stream()))
-    };
+    }
+    .instrument(span);
 
     let stream = future.try_flatten_stream().boxed();
 

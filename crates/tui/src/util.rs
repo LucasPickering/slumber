@@ -28,7 +28,7 @@ use tokio::{
     time::{self, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, info_span, warn};
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 /// Extension trait for [Result]
@@ -131,11 +131,11 @@ impl Drop for TempFile {
 /// that block, but we'll just hope the command is fire-and-forget. If this
 /// becomes an issue we can try to detect if the subprocess took over the
 /// terminal and cut it loose if not, or add a config field for it.
+#[instrument(level = "info", skip(messages_tx))]
 pub fn yield_terminal(
     mut command: Command,
     messages_tx: &MessageSender,
 ) -> anyhow::Result<()> {
-    let span = info_span!("Running command", ?command).entered();
     let error_context = format!("Error spawning command `{command:?}`");
 
     // Clear the terminal so the buffer is empty. This forces a total redraw
@@ -153,13 +153,13 @@ pub fn yield_terminal(
         .map_err(anyhow::Error::from)
         .and_then(|status| {
             if status.success() {
-                info!(status = status.code(), "Command succeeded");
+                info!(status = status.code(), "Succeeded");
                 Ok(())
             } else {
                 // It would be nice to log stdout/stderr here, but we can't
                 // capture them because some commands (e.g. `less`) will behave
                 // differently when redirected
-                error!(status = status.code(), "Command failed");
+                error!(status = status.code(), "Failed");
                 // Show the error to the user
                 Err(anyhow::anyhow!("Command failed with status {status}"))
             }
@@ -173,7 +173,6 @@ pub fn yield_terminal(
     // other events were queued behind the event to open the editor).
     clear_event_buffer();
     initialize_terminal()?; // Take it back over
-    drop(span);
 
     command_result
 }
@@ -398,13 +397,12 @@ pub async fn save_file(
 /// (e.g. `["sh", "-c"]`) to execute the command, or parse+run it natively if no
 /// shell is set. The shell should generally come from the config, but is
 /// taken as param for testing.
+#[instrument(level = "debug", skip(stdin))]
 pub async fn run_command(
     shell: &[String],
     command_str: &str,
     stdin: Option<&[u8]>,
 ) -> anyhow::Result<Vec<u8>> {
-    let _ = debug_span!("Command", command = command_str).entered();
-
     let mut command = if let [program, args @ ..] = shell {
         // Invoke the shell with our command as the final arg
         let mut command = tokio::process::Command::new(program);
@@ -443,12 +441,7 @@ pub async fn run_command(
             .await;
     }
     let output = process.wait_with_output().await?;
-    debug!(
-        status = ?output.status,
-        stdout = %String::from_utf8_lossy(&output.stdout),
-        stderr = %String::from_utf8_lossy(&output.stderr),
-        "Command complete"
-    );
+    debug!(status = ?output.status, "Command complete");
     if !output.status.success() {
         let stderr = std::str::from_utf8(&output.stderr).unwrap_or_default();
         bail!("{stderr}");

@@ -5,7 +5,6 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{Mutex, OwnedMutexGuard};
-use tracing::error;
 
 /// A cache of template values that either have been computed, or are
 /// asynchronously being computed. This allows multiple references to the same
@@ -92,16 +91,6 @@ pub(crate) struct FieldCacheGuard(OwnedMutexGuard<Option<Value>>);
 impl FieldCacheGuard {
     pub fn set(mut self, value: Value) {
         *self.0.deref_mut() = Some(value);
-    }
-}
-
-impl Drop for FieldCacheGuard {
-    fn drop(&mut self) {
-        if self.0.is_none() {
-            // Friendly little error logging. We don't have a good way of
-            // identifying *which* lock this happened to :(
-            error!("Future cache guard dropped without setting a value");
-        }
     }
 }
 

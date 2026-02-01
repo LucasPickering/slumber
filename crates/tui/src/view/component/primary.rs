@@ -267,7 +267,7 @@ impl PrimaryView {
             && self
                 .exchange_pane
                 .request_id()
-                .is_some_and(|request_id| !request_store.can_cancel(request_id))
+                .is_none_or(|request_id| !request_store.can_cancel(request_id))
     }
 
     /// Draw the selected pane in fullscreen mode

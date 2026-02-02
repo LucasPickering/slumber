@@ -62,6 +62,8 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
   - Up/down to cycle through past commands
   - Ctrl-r to search
   - Command history is specific to each collection and capped at 100 commands per collection
+- You can now further customize the theme colors [#699](https://github.com/LucasPickering/slumber/issues/699)
+  - [See docs for more](https://slumber.lucaspickering.me/api/configuration/theme.html)
 - Add action to resend a previous request [#702](https://github.com/LucasPickering/slumber/issues/702)
   - Request/Response pane > Actions menu (x) > Resend Request
 

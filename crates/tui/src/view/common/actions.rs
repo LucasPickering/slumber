@@ -1,6 +1,9 @@
 use crate::view::{
     Generate,
-    common::select::{Select, SelectEventKind, SelectListProps},
+    common::{
+        clear_fill::ClearFill,
+        select::{Select, SelectEventKind, SelectListProps},
+    },
     component::{
         Canvas, Child, Component, ComponentExt, ComponentId, Draw,
         DrawMetadata, ToChild,
@@ -14,7 +17,7 @@ use ratatui::{
     prelude::Rect,
     symbols::merge::MergeStrategy,
     text::Span,
-    widgets::{Block, Borders, Clear},
+    widgets::{Block, Borders},
 };
 use slumber_config::Action;
 use std::fmt::{self, Display};
@@ -392,13 +395,14 @@ impl Draw for ActionMenuContent {
         // the entire parent area because there may be content within the
         // rectangle that isn't behind any single layer
         for area in &areas {
-            canvas.render_widget(Clear, *area);
+            canvas.render_widget(ClearFill, *area);
         }
 
         for (i, (layer, area)) in self.stack.iter().zip(areas).enumerate() {
             // Add border
             let block = Block::new()
                 .borders(Borders::ALL)
+                .border_style(styles.border)
                 .border_type(styles.border_type)
                 .merge_borders(MergeStrategy::Fuzzy);
             let inner_area = block.inner(area);

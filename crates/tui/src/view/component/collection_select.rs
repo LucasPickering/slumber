@@ -4,6 +4,7 @@ use crate::{
     view::{
         ToStringGenerate, UpdateContext, ViewContext,
         common::{
+            clear_fill::ClearFill,
             select::{Select, SelectEventKind, SelectListProps},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
@@ -14,12 +15,7 @@ use crate::{
     },
 };
 use derive_more::Display;
-use ratatui::{
-    layout::Rect,
-    style::{Color, Style},
-    text::Span,
-    widgets::{Block, Clear},
-};
+use ratatui::{layout::Rect, text::Span, widgets::Block};
 use slumber_config::Action;
 use slumber_core::database::{CollectionDatabase, CollectionId};
 use slumber_util::ResultTraced;
@@ -122,6 +118,8 @@ impl Component for CollectionSelect {
 
 impl Draw for CollectionSelect {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let styles = ViewContext::styles();
+
         // Only draw something if open
         if let Some(select) = &self.select {
             // Open - show the full list
@@ -141,11 +139,11 @@ impl Draw for CollectionSelect {
             };
 
             // Clear previous styling
-            canvas.render_widget(Clear, select_area.union(filter_area));
+            canvas.render_widget(ClearFill, select_area.union(filter_area));
 
             // Select with background to provide contrast
             canvas.render_widget(
-                Block::new().style(Style::new().bg(Color::DarkGray)),
+                Block::new().style(styles.list.highlight_inactive),
                 select_area,
             );
             canvas.draw(select, SelectListProps::modal(), select_area, true);
@@ -158,7 +156,6 @@ impl Draw for CollectionSelect {
             );
         } else {
             // Closed - just show the selected collection
-            let styles = ViewContext::styles();
             let text = Span::styled(self.text(), styles.text.highlight);
             canvas.render_widget(text, metadata.area());
         }

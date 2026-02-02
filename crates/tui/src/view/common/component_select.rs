@@ -1,6 +1,9 @@
 use crate::view::{
     UpdateContext,
-    common::select::{Select, SelectItem, SelectState},
+    common::{
+        clear_fill::ClearFill,
+        select::{Select, SelectItem, SelectState},
+    },
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
@@ -200,6 +203,7 @@ where
             ),
         });
         let mut virtual_canvas = Canvas::new(&mut virtual_buffer);
+        virtual_canvas.render_widget(ClearFill, virtual_canvas.area());
 
         // Render each complete item into the virtual buffer. We know the buffer
         // is large enough to fit all items in the window.
@@ -212,7 +216,7 @@ where
         .split(virtual_canvas.area());
         for (friend, area) in window.into_iter().zip(&*item_areas) {
             // Apply styling before the render
-            let mut style = Style::default();
+            let mut style = props.styles.normal;
             if !friend.item.enabled() {
                 style = style.patch(props.styles.disabled);
             }
@@ -292,6 +296,7 @@ where
 
 /// Styling to apply to each [ComponentSelect] item
 pub struct SelectStyles {
+    pub normal: Style,
     pub disabled: Style,
     pub highlight: Style,
 }
@@ -300,6 +305,7 @@ impl SelectStyles {
     /// Apply no extra styling to each item
     pub fn none() -> Self {
         Self {
+            normal: Style::default(),
             disabled: Style::default(),
             highlight: Style::default(),
         }
@@ -309,6 +315,7 @@ impl SelectStyles {
     pub fn table() -> Self {
         let styles = ViewContext::styles().table;
         Self {
+            normal: styles.text,
             disabled: styles.disabled,
             highlight: styles.highlight,
         }

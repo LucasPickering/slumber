@@ -22,7 +22,7 @@ While is is a major release with breaking changes, the breakages are fairly limi
 
 The breaking changes in this release are mostly limited to CLI commands. The only change to the collection format is that JSON keys are now treated as templates. This will only impact you if you have any JSON **keys** containing `{{`. If you want these to be treated literally, you'll need to [escape them](https://slumber.lucaspickering.me/user_guide/templates/index.html#escape-sequences): `{_{`
 
-- JSON body object keys are now parsed as templates and can be dynamically modified (@SignalWhisperer [#698](https://github.com/LucasPickering/slumber/issues/698))
+- JSON body object keys are now parsed as templates and can be dynamically modified [#698](https://github.com/LucasPickering/slumber/issues/698) (@SignalWhisperer)
 - `slumber show` command has been removed; its functionality has be split up across a set of more discoverable subcommands:
   - `slumber show config` -> `slumber config`
   - `slumber show collection` -> `slumber collection`
@@ -62,7 +62,7 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
   - Up/down to cycle through past commands
   - Ctrl-r to search
   - Command history is specific to each collection and capped at 100 commands per collection
-- You can now further customize the theme colors [#699](https://github.com/LucasPickering/slumber/issues/699)
+- You can now further customize the theme colors [#699](https://github.com/LucasPickering/slumber/issues/699) (@SignalWhisperer)
   - [See docs for more](https://slumber.lucaspickering.me/api/configuration/theme.html)
 - Add action to resend a previous request [#702](https://github.com/LucasPickering/slumber/issues/702)
   - Request/Response pane > Actions menu (x) > Resend Request

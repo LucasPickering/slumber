@@ -5,7 +5,7 @@ mod mime;
 mod theme;
 
 pub use input::{Action, InputBinding, InputMap, KeyCombination};
-pub use theme::Theme;
+pub use theme::{Syntax, Theme};
 
 use crate::{EditorError, tui::mime::MimeMap};
 use ::mime::Mime;

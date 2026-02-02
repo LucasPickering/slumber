@@ -1,5 +1,5 @@
 use ratatui::{
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::BorderType,
 };
 use slumber_config::Theme;
@@ -10,6 +10,8 @@ use slumber_config::Theme;
 /// there. Styles are grouped into sub-structs generally by component.
 #[derive(Clone, Debug)]
 pub struct Styles {
+    /// Default style for the background of every component
+    pub background: Style,
     pub form: FormStyles,
     pub list: ListStyles,
     pub menu: MenuStyles,
@@ -22,6 +24,7 @@ pub struct Styles {
     pub text: TextStyle,
     pub text_box: TextBoxStyle,
     pub text_window: TextWindowStyle,
+    pub syntax: SyntaxStyles,
 }
 
 /// Styles for the recipe input form
@@ -31,6 +34,8 @@ pub struct FormStyles {
     pub title: Style,
     /// Style for a input field title when selected/focused
     pub title_highlight: Style,
+    /// Style for an input field value when not selected/focused
+    pub content: Style,
 }
 
 /// Styles for List component
@@ -42,11 +47,14 @@ pub struct ListStyles {
     pub highlight_inactive: Style,
     /// Disabled item in a list
     pub disabled: Style,
+    /// Regular item in a list
+    pub item: Style,
 }
 
 /// Styles for the action menu
 #[derive(Clone, Debug)]
 pub struct MenuStyles {
+    pub border: Style,
     pub border_type: BorderType,
 }
 
@@ -55,6 +63,7 @@ pub struct MenuStyles {
 pub struct ModalStyles {
     pub border: Style,
     pub border_type: BorderType,
+    pub default: Style,
 }
 
 /// Styles for Pane component
@@ -68,6 +77,8 @@ pub struct PaneStyles {
     pub border_type: BorderType,
     /// Pane border characters used when selected/focused
     pub border_type_selected: BorderType,
+    /// Pane generic style
+    pub default: Style,
 }
 
 impl PaneStyles {
@@ -149,14 +160,29 @@ pub struct TextWindowStyle {
     pub gutter: Style,
 }
 
+/// Styles for syntax highlighting
+#[derive(Clone, Debug)]
+pub struct SyntaxStyles {
+    pub builtin: Style,
+    pub comment: Style,
+    pub escape: Style,
+    pub number: Style,
+    pub special: Style,
+    pub string: Style,
+}
+
 impl Styles {
     pub fn new(theme: &Theme) -> Self {
         Self {
+            background: Style::default().bg(theme.background_color),
             form: FormStyles {
-                title: Style::default().add_modifier(Modifier::UNDERLINED),
+                title: Style::default()
+                    .fg(theme.text_color)
+                    .add_modifier(Modifier::UNDERLINED),
                 title_highlight: Style::default()
                     .fg(theme.primary_color)
                     .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                content: Style::default().fg(theme.text_color),
             },
             list: ListStyles {
                 highlight: Style::default()
@@ -164,33 +190,51 @@ impl Styles {
                     .fg(theme.primary_text_color)
                     .add_modifier(Modifier::BOLD),
                 highlight_inactive: Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(theme.inactive_color)
+                    .fg(theme.primary_text_color)
                     .add_modifier(Modifier::BOLD),
-                disabled: Style::default().add_modifier(Modifier::DIM),
+                disabled: Style::default().fg(theme.inactive_color),
+                item: Style::default().fg(theme.text_color),
             },
             menu: MenuStyles {
+                border: Style::default().fg(theme.primary_color),
                 border_type: BorderType::Rounded,
             },
             modal: ModalStyles {
-                border: Style::default(),
+                border: Style::default().fg(theme.primary_color),
                 border_type: BorderType::Double,
+                default: Style::default().fg(theme.text_color),
             },
             pane: PaneStyles {
-                border: Style::default(),
+                border: Style::default()
+                    .fg(theme.inactive_color)
+                    .remove_modifier(Modifier::BOLD),
                 border_selected: Style::default()
                     .fg(theme.primary_color)
                     .add_modifier(Modifier::BOLD),
                 border_type: BorderType::Rounded,
                 border_type_selected: BorderType::Double,
+                default: Style::default().fg(theme.text_color),
             },
             status_code: StatusCodeStyles {
                 success: Style::default()
-                    .fg(Color::Black)
-                    .bg(theme.success_color),
-                error: Style::default().bg(theme.error_color),
+                    .bg(theme.success_color)
+                    .fg(theme.primary_text_color),
+                error: Style::default()
+                    .bg(theme.error_color)
+                    .fg(theme.primary_text_color),
+            },
+            syntax: SyntaxStyles {
+                // We only style by foreground for syntax
+                builtin: Style::default().fg(theme.syntax.builtin_color),
+                comment: Style::default().fg(theme.syntax.comment_color),
+                escape: Style::default().fg(theme.syntax.escape_color),
+                number: Style::default().fg(theme.syntax.number_color),
+                special: Style::default().fg(theme.syntax.special_color),
+                string: Style::default().fg(theme.syntax.string_color),
             },
             tab: TabStyles {
-                disabled: Style::default().add_modifier(Modifier::DIM),
+                disabled: Style::default().fg(theme.inactive_color),
                 highlight: Style::default()
                     .fg(theme.primary_color)
                     .add_modifier(Modifier::BOLD)
@@ -198,44 +242,61 @@ impl Styles {
             },
             table: TableStyles {
                 header: Style::default()
+                    .fg(theme.text_color)
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
-                text: Style::default(),
-                alt: Style::default().bg(Color::DarkGray),
-                disabled: Style::default().add_modifier(Modifier::DIM),
+                text: Style::default().fg(theme.text_color),
+                alt: Style::default()
+                    .bg(theme.alternate_row_background_color)
+                    .fg(theme.alternate_row_text_color),
+                disabled: Style::default().fg(theme.inactive_color),
                 highlight: Style::default()
                     .bg(theme.primary_color)
                     .fg(theme.primary_text_color)
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
-                title: Style::default().add_modifier(Modifier::BOLD),
+                title: Style::default()
+                    .fg(theme.text_color)
+                    .add_modifier(Modifier::BOLD),
             },
             template_preview: TemplatePreviewStyles {
                 text: Style::default()
                     .fg(theme.secondary_color)
                     .add_modifier(Modifier::UNDERLINED),
                 error: Style::default()
-                    .fg(Color::default()) // Override syntax highlighting
-                    .bg(theme.error_color),
+                    .bg(theme.error_color)
+                    .fg(theme.primary_text_color),
             },
             text: TextStyle {
                 highlight: Style::default()
-                    .fg(theme.primary_text_color)
-                    .bg(theme.primary_color),
-                hint: Style::default().fg(Color::DarkGray),
+                    .bg(theme.primary_color)
+                    .fg(theme.primary_text_color),
+                hint: Style::default().fg(theme.hint_text_color),
                 primary: Style::default().fg(theme.primary_color),
-                edited: Style::default().add_modifier(Modifier::ITALIC),
+                edited: Style::default()
+                    .fg(theme.text_color)
+                    .add_modifier(Modifier::ITALIC),
                 error: Style::default().fg(theme.error_color),
-                title: Style::default().add_modifier(Modifier::BOLD),
+                title: Style::default()
+                    .fg(theme.text_color)
+                    .add_modifier(Modifier::BOLD),
             },
             text_box: TextBoxStyle {
-                text: Style::default().bg(Color::DarkGray),
-                cursor: Style::default().bg(Color::White).fg(Color::Black),
-                placeholder: Style::default().fg(Color::Black),
-                invalid: Style::default().bg(Color::LightRed),
+                text: Style::default()
+                    .bg(theme.textbox_background_color)
+                    .fg(theme.primary_text_color),
+                cursor: Style::default()
+                    .bg(theme.cursor_background_color)
+                    .fg(theme.cursor_text_color),
+                placeholder: Style::default().fg(theme.text_color),
+                invalid: Style::default()
+                    .bg(theme.error_color)
+                    .fg(theme.primary_text_color),
             },
             text_window: TextWindowStyle {
-                gutter: Style::default().fg(Color::DarkGray),
+                gutter: Style::default()
+                    .bg(theme.gutter_background_color)
+                    .fg(theme.gutter_text_color),
             },
         }
     }

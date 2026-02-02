@@ -74,7 +74,7 @@ fn deserialize_http_config(
 /// TUI-specific config deserialization
 #[cfg(feature = "tui")]
 mod tui {
-    use crate::tui::{CommandsConfig, Theme, TuiConfig};
+    use crate::tui::{CommandsConfig, Syntax, Theme, TuiConfig};
     use ratatui_core::style::Color;
     use serde::de::{self, value::StringDeserializer};
     use slumber_util::yaml::{
@@ -178,6 +178,144 @@ mod tui {
                     .get::<Adopt<_>>(
                         Field::new("error_color")
                             .or(Adopt(default.error_color)),
+                        source_map,
+                    )?
+                    .0,
+                text_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("text_color").or(Adopt(default.text_color)),
+                        source_map,
+                    )?
+                    .0,
+                inactive_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("inactive_color")
+                            .or(Adopt(default.inactive_color)),
+                        source_map,
+                    )?
+                    .0,
+                background_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("background_color")
+                            .or(Adopt(default.background_color)),
+                        source_map,
+                    )?
+                    .0,
+                hint_text_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("hint_text_color")
+                            .or(Adopt(default.hint_text_color)),
+                        source_map,
+                    )?
+                    .0,
+                textbox_background_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("textbox_background_color")
+                            .or(Adopt(default.textbox_background_color)),
+                        source_map,
+                    )?
+                    .0,
+                cursor_background_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("cursor_background_color")
+                            .or(Adopt(default.cursor_background_color)),
+                        source_map,
+                    )?
+                    .0,
+                cursor_text_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("cursor_text_color")
+                            .or(Adopt(default.cursor_text_color)),
+                        source_map,
+                    )?
+                    .0,
+                gutter_background_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("gutter_background_color")
+                            .or(Adopt(default.gutter_background_color)),
+                        source_map,
+                    )?
+                    .0,
+                gutter_text_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("gutter_text_color")
+                            .or(Adopt(default.gutter_text_color)),
+                        source_map,
+                    )?
+                    .0,
+                alternate_row_background_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("alternate_row_background_color")
+                            .or(Adopt(default.alternate_row_background_color)),
+                        source_map,
+                    )?
+                    .0,
+                alternate_row_text_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("alternate_row_text_color")
+                            .or(Adopt(default.alternate_row_text_color)),
+                        source_map,
+                    )?
+                    .0,
+                syntax: deserializer
+                    .get(Field::new("syntax").or(default.syntax), source_map)?,
+            };
+            deserializer.done()?;
+            Ok(config)
+        }
+    }
+
+    impl DeserializeYaml for Syntax {
+        fn expected() -> Expected {
+            Expected::Mapping
+        }
+
+        fn deserialize(
+            yaml: SourcedYaml,
+            source_map: &SourceMap,
+        ) -> yaml::Result<Self> {
+            let default = Self::default();
+            let mut deserializer = StructDeserializer::new(yaml)?;
+            let config = Self {
+                comment_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("comment_color")
+                            .or(Adopt(default.comment_color)),
+                        source_map,
+                    )?
+                    .0,
+                builtin_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("builtin_color")
+                            .or(Adopt(default.builtin_color)),
+                        source_map,
+                    )?
+                    .0,
+                escape_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("escape_color")
+                            .or(Adopt(default.escape_color)),
+                        source_map,
+                    )?
+                    .0,
+                number_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("number_color")
+                            .or(Adopt(default.number_color)),
+                        source_map,
+                    )?
+                    .0,
+                string_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("string_color")
+                            .or(Adopt(default.string_color)),
+                        source_map,
+                    )?
+                    .0,
+                special_color: deserializer
+                    .get::<Adopt<_>>(
+                        Field::new("special_color")
+                            .or(Adopt(default.special_color)),
                         source_map,
                     )?
                     .0,

@@ -1,7 +1,7 @@
 use super::{Canvas, DrawMetadata};
 use crate::view::{
     Generate, UpdateContext,
-    common::Pane,
+    common::{Pane, clear_fill::ClearFill},
     component::{Component, ComponentId, Draw},
     context::ViewContext,
     event::{Event, EventMatch},
@@ -10,7 +10,7 @@ use itertools::Itertools;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     text::{Line, Span},
-    widgets::{Clear, Row, Table},
+    widgets::{Row, Table},
 };
 use slumber_config::{Action, Config};
 use slumber_core::database::CollectionDatabase;
@@ -130,7 +130,7 @@ impl Draw for Help {
                 Constraint::Min(0),
             ])
             .areas(block.inner(area));
-            canvas.render_widget(Clear, area);
+            canvas.render_widget(ClearFill, area);
             canvas.render_widget(block, area);
             canvas.render_widget(general, collection_area);
             canvas.render_widget(keybindings, keybindings_area);

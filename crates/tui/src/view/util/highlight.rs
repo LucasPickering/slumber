@@ -2,10 +2,11 @@
 //!
 //! Warning: this thing is kinda fucked.
 
+use crate::view::{context::ViewContext, styles::SyntaxStyles};
 use anyhow::Context;
 use itertools::Itertools;
 use ratatui::{
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span, Text},
 };
 use slumber_core::http::content_type::ContentType;
@@ -37,6 +38,8 @@ pub fn highlight(content_type: ContentType, mut text: Text<'_>) -> Text<'_> {
             .entry(content_type)
             .or_insert_with(|| get_config(content_type));
 
+        let styles = ViewContext::styles().syntax;
+
         // Each line in the input corresponds to one line in the output, so we
         // can mutate each line inline
         for line in &mut text.lines {
@@ -60,7 +63,7 @@ pub fn highlight(content_type: ContentType, mut text: Text<'_>) -> Text<'_> {
                     }
                     Ok(HighlightEvent::HighlightStart(index)) => {
                         let name = HighlightName::from_index(index);
-                        builder.set_style(name.style());
+                        builder.set_style(name.style(&styles));
                     }
                     Ok(HighlightEvent::HighlightEnd) => {
                         builder.reset_style();
@@ -151,17 +154,15 @@ impl HighlightName {
             .unwrap_or_else(|| panic!("Highlight index out of bounds: {index}"))
     }
 
-    fn style(self) -> Style {
-        // We only style by foreground for syntax
-        let fg = match self {
-            Self::Comment => Color::Gray,
-            Self::ConstantBuiltin => Color::Blue,
-            Self::Escape => Color::Green,
-            Self::Number => Color::Cyan,
-            Self::String => Color::LightGreen,
-            Self::StringSpecial => Color::Green,
-        };
-        Style::default().fg(fg)
+    fn style(self, styles: &SyntaxStyles) -> Style {
+        match self {
+            Self::Comment => styles.comment,
+            Self::ConstantBuiltin => styles.builtin,
+            Self::Escape => styles.escape,
+            Self::Number => styles.number,
+            Self::String => styles.string,
+            Self::StringSpecial => styles.special,
+        }
     }
 }
 
@@ -380,11 +381,14 @@ fn split_cow(s: Cow<'_, str>, at: usize) -> (Cow<'_, str>, Cow<'_, str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::test_util::{TestHarness, harness};
     use pretty_assertions::assert_eq;
+    use ratatui::style::Color;
+    use rstest::rstest;
 
     /// Test that JSON is highlighted, by existing styling is retained
-    #[test]
-    fn test_highlight() {
+    #[rstest]
+    fn test_highlight(_harness: TestHarness) {
         fn fg(color: Color) -> Style {
             Style::default().fg(color)
         }

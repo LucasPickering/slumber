@@ -1,6 +1,7 @@
 use crate::view::{
     Component, ViewContext,
     common::{
+        clear_fill::ClearFill,
         select::{Select, SelectEventKind, SelectListProps},
         text_box::{TextBox, TextBoxEvent, TextBoxProps},
     },
@@ -10,7 +11,7 @@ use crate::view::{
 };
 use ratatui::{
     layout::{Offset, Rect},
-    widgets::{Clear, ListDirection},
+    widgets::ListDirection,
 };
 use slumber_config::Action;
 use std::mem;
@@ -190,7 +191,7 @@ impl Draw<TextBoxProps> for CommandTextBox {
                 })
             }
             .intersection(canvas.area()); // Don't go outside terminal
-            canvas.render_widget(Clear, search_area); // Clear styling
+            canvas.render_widget(ClearFill, search_area); // Clear styling
             canvas.draw(
                 search,
                 SelectListProps {

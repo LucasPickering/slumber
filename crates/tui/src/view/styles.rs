@@ -190,10 +190,10 @@ impl Styles {
                     .fg(theme.primary_text_color.into())
                     .add_modifier(Modifier::BOLD),
                 highlight_inactive: Style::default()
-                    .bg(theme.inactive_color.into())
+                    .bg(theme.disabled_color.into())
                     .fg(theme.primary_text_color.into())
                     .add_modifier(Modifier::BOLD),
-                disabled: Style::default().fg(theme.inactive_color.into()),
+                disabled: Style::default().fg(theme.disabled_color.into()),
                 item: Style::default().fg(theme.text_color.into()),
             },
             menu: MenuStyles {
@@ -207,7 +207,7 @@ impl Styles {
             },
             pane: PaneStyles {
                 border: Style::default()
-                    .fg(theme.inactive_color.into())
+                    .fg(theme.border_color.into())
                     .remove_modifier(Modifier::BOLD),
                 border_selected: Style::default()
                     .fg(theme.primary_color.into())
@@ -234,7 +234,7 @@ impl Styles {
                 string: Style::default().fg(theme.syntax.string_color.into()),
             },
             tab: TabStyles {
-                disabled: Style::default().fg(theme.inactive_color.into()),
+                disabled: Style::default().fg(theme.disabled_color.into()),
                 highlight: Style::default()
                     .fg(theme.primary_color.into())
                     .add_modifier(Modifier::BOLD)
@@ -249,7 +249,7 @@ impl Styles {
                 alt: Style::default()
                     .bg(theme.alternate_row_background_color.into())
                     .fg(theme.alternate_row_text_color.into()),
-                disabled: Style::default().fg(theme.inactive_color.into()),
+                disabled: Style::default().fg(theme.disabled_color.into()),
                 highlight: Style::default()
                     .bg(theme.primary_color.into())
                     .fg(theme.primary_text_color.into())
@@ -283,20 +283,18 @@ impl Styles {
             },
             text_box: TextBoxStyle {
                 text: Style::default()
-                    .bg(theme.textbox_background_color.into())
-                    .fg(theme.primary_text_color.into()),
+                    .bg(theme.text_box_background_color.into())
+                    .fg(theme.text_color.into()),
                 cursor: Style::default()
-                    .bg(theme.cursor_background_color.into())
-                    .fg(theme.cursor_text_color.into()),
+                    .bg(theme.primary_color.into())
+                    .fg(theme.primary_text_color.into()),
                 placeholder: Style::default().fg(theme.text_color.into()),
                 invalid: Style::default()
                     .bg(theme.error_color.into())
                     .fg(theme.primary_text_color.into()),
             },
             text_window: TextWindowStyle {
-                gutter: Style::default()
-                    .bg(theme.gutter_background_color.into())
-                    .fg(theme.gutter_text_color.into()),
+                gutter: Style::default().fg(theme.hint_text_color.into()),
             },
         }
     }

@@ -18,16 +18,13 @@ theme:
 | `success_color`                  | `Color`  | Color representing successful events                                 |
 | `error_color`                    | `Color`  | Color representing error messages                                    |
 | `background_color`               | `Color`  | Color of the background of the application                           |
-| `inactive_color`                 | `Color`  | Color of inactive text and components                                |
+| `border_color`                   | `Color`  | Color for pane and popup borders                                     |
+| `disabled_color`                 | `Color`  | Color for text and components that are unavailable                   |
 | `text_color`                     | `Color`  | Color of regular text                                                |
-| `hint_text_color`                | `Color`  | Color of hint text                                                   |
-| `textbox_background_color`       | `Color`  | Background color of text boxes                                       |
-| `cursor_background_color`        | `Color`  | Background color of the cursor                                       |
-| `cursor_text_color`              | `Color`  | Text color of the cursor                                             |
-| `gutter_background_color`        | `Color`  | Background color of the gutter                                       |
-| `gutter_text_color`              | `Color`  | Text color of the gutter                                             |
-| `alternate_row_background_color` | `Color`  | Background color of alternate table rows                             |
-| `alternate_row_text_color`       | `Color`  | Text color of alternate table rows                                   |
+| `hint_text_color`                | `Color`  | Color for deemphasized text like hints and notes                     |
+| `text_box_background_color`      | `Color`  | Background color of text boxes                                       |
+| `alternate_row_background_color` | `Color`  | Background color of alternating table rows                           |
+| `alternate_row_text_color`       | `Color`  | Text color of alternating table rows                                 |
 | `syntax`                         | `Object` | Visual configuration for the syntax highlighting (see below)         |
 
 ### Syntax Highlighting Fields

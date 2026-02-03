@@ -13,14 +13,16 @@ use crate::{
             Canvas, Child, ComponentExt, ComponentId, Draw, DrawMetadata,
             ToChild,
             exchange_pane::ExchangePane,
-            history::{History, HistoryEvent},
+            history::History,
+            misc::{SidebarEvent, SidebarProps},
             primary::view_state::{
                 DefaultPane, PrimaryLayout, Sidebar, SidebarPane, ViewState,
             },
-            profile::{ProfileDetail, ProfileListState},
+            profile_detail::ProfileDetail,
+            profile_list::ProfileList,
             prompt_form::PromptForm,
-            recipe::{RecipeDetail, RecipeList},
-            sidebar_list::{SidebarList, SidebarListEvent, SidebarListProps},
+            recipe_detail::RecipeDetail,
+            recipe_list::RecipeList,
         },
         context::UpdateContext,
         event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
@@ -56,7 +58,7 @@ pub struct PrimaryView {
     /// Recipe preview/detail pane
     recipe_detail: RecipeDetail,
     /// Header/sidebar to select a profile
-    profile_list: SidebarList<ProfileListState>,
+    profile_list: ProfileList,
     /// Profile preview/detail pane
     profile_detail: ProfileDetail,
     /// The exchange pane shows a particular request/response. The entire
@@ -76,16 +78,15 @@ impl PrimaryView {
     pub fn new() -> Self {
         let view = PersistentStore::get(&ViewStateKey).unwrap_or_default();
 
-        let recipe_list = RecipeList::default();
+        let recipe_list = RecipeList::new();
         let (recipe_id, recipe_node_type) = recipe_list
             .selected()
             .map(|(id, node_type)| (Some(id), Some(node_type)))
             .unwrap_or((None, None));
         let recipe_detail = Self::build_recipe_detail(recipe_id);
 
-        let profile_list = SidebarList::default();
-        let profile_id = profile_list.selected_id();
-        let profile_detail = ProfileDetail::new(profile_id);
+        let profile_list = ProfileList::new();
+        let profile_detail = ProfileDetail::new(profile_list.selected_id());
 
         // We don't have the request store here and there aren't any requests
         // loaded into it yet anyway, so we can't fill out the request yet.
@@ -272,7 +273,7 @@ impl PrimaryView {
 
     /// Draw the selected pane in fullscreen mode
     fn draw_fullscreen(&self, canvas: &mut Canvas, area: Rect) {
-        let sidebar_props = SidebarListProps::list();
+        let sidebar_props = SidebarProps::list();
         match self.view.layout() {
             // Sidebar
             PrimaryLayout::Sidebar {
@@ -341,7 +342,7 @@ impl PrimaryView {
 
         // Header
         for (header, area) in headers.iter().zip(&*headers_areas) {
-            let header_props = SidebarListProps::header();
+            let header_props = SidebarProps::header();
             canvas.draw(*header, header_props, *area, false);
         }
 
@@ -405,7 +406,7 @@ impl PrimaryView {
 
         // Header
         for (header, area) in headers.iter().zip(&*headers_areas) {
-            let header_props = SidebarListProps::header();
+            let header_props = SidebarProps::header();
             canvas.draw(*header, header_props, *area, false);
         }
 
@@ -414,13 +415,13 @@ impl PrimaryView {
         match sidebar {
             Sidebar::Profile => canvas.draw(
                 &self.profile_list,
-                SidebarListProps::list(),
+                SidebarProps::list(),
                 sidebar_area,
                 sidebar_selected,
             ),
             Sidebar::Recipe => canvas.draw(
                 &self.recipe_list,
-                SidebarListProps::list(),
+                SidebarProps::list(),
                 sidebar_area,
                 sidebar_selected,
             ),
@@ -525,29 +526,22 @@ impl Component for PrimaryView {
                 BroadcastEvent::RefreshPreviews => {}
             })
             .emitted(self.recipe_list.to_emitter(), |event| match event {
-                SidebarListEvent::Open => {
+                SidebarEvent::Open => {
                     self.view.open_sidebar(Sidebar::Recipe);
                 }
-                SidebarListEvent::Select => {
-                    ViewContext::push_event(BroadcastEvent::SelectedRecipe(
-                        self.selected_recipe_id().cloned(),
-                    ));
-                }
-                SidebarListEvent::Close => self.view.close_sidebar(),
+                SidebarEvent::Close => self.view.close_sidebar(),
             })
             .emitted(self.profile_list.to_emitter(), |event| match event {
-                SidebarListEvent::Open => {
+                SidebarEvent::Open => {
                     self.view.open_sidebar(Sidebar::Profile);
                 }
-                SidebarListEvent::Select => {
-                    ViewContext::push_event(BroadcastEvent::SelectedProfile(
-                        self.selected_profile_id().cloned(),
-                    ));
-                }
-                SidebarListEvent::Close => self.view.close_sidebar(),
+                SidebarEvent::Close => self.view.close_sidebar(),
             })
             .emitted(self.history.to_emitter(), |event| match event {
-                HistoryEvent::Close => self.view.close_sidebar(),
+                SidebarEvent::Open => {
+                    self.view.open_sidebar(Sidebar::History);
+                }
+                SidebarEvent::Close => self.view.close_sidebar(),
             })
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {

@@ -17,6 +17,7 @@ use ratatui::{
 };
 use slumber_config::Action;
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::HashSet,
     fmt::Debug,
@@ -183,13 +184,16 @@ impl<Item: 'static, State> SelectBuilder<Item, State> {
     /// ensure you don't select a value that will then be filtered out.
     pub fn filter(mut self, filter: &str) -> Self
     where
-        Item: ToString,
+        Item: FilterItem,
     {
-        let filter = filter.trim();
+        let filter = filter.trim().to_lowercase();
         if !filter.is_empty() {
-            let filter = filter.to_lowercase();
+            // If any search term matches caselessly, it's a match
             self.items.retain(|item| {
-                item.value.to_string().to_lowercase().contains(&filter)
+                item.value
+                    .search_terms()
+                    .into_iter()
+                    .any(|term| term.to_lowercase().contains(&filter))
             });
         }
         self
@@ -683,6 +687,19 @@ pub enum SelectEventKind {
     Toggle,
 }
 
+/// An item in [Select] that supports text-based filtering
+///
+/// Use this with [SelectBuilder::filter] to filter items based on a query.
+pub trait FilterItem {
+    /// Search term(s) that should match this item
+    ///
+    /// If *any* of these terms contain the [SelectBuilder::filter] query
+    /// (caselessly), it will be considered a match. Most implementations just
+    /// return the visible text for each item, but some include hidden search
+    /// terms as well.
+    fn search_terms(&self) -> impl IntoIterator<Item = Cow<'_, str>>;
+}
+
 /// Find the index of a value in the list
 fn find_index<Item, T>(items: &[SelectItem<Item>], value: &T) -> Option<usize>
 where
@@ -719,6 +736,12 @@ mod tests {
             Self {
                 scrollbar_margin: 0,
             }
+        }
+    }
+
+    impl FilterItem for &str {
+        fn search_terms(&self) -> impl IntoIterator<Item = Cow<'_, str>> {
+            [(*self).into()]
         }
     }
 

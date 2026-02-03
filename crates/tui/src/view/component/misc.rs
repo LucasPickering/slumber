@@ -220,3 +220,47 @@ impl Draw for QuestionModal {
         }
     }
 }
+
+/// Draw props for any collapsible sidebar
+#[derive(Default)]
+pub struct SidebarProps {
+    pub format: SidebarFormat,
+}
+
+impl SidebarProps {
+    /// Draw the sidebar in collapsed/header mode, where just the selected
+    /// value is visit
+    pub fn header() -> Self {
+        Self {
+            format: SidebarFormat::Header,
+        }
+    }
+
+    /// Draw the sidebar in list mode, where the entire list is visible and
+    /// interactive
+    pub fn list() -> Self {
+        Self {
+            format: SidebarFormat::List,
+        }
+    }
+}
+
+/// Visual format of a sidebar list
+#[derive(Debug, Default)]
+pub enum SidebarFormat {
+    /// List is collapsed and just visible as a header. Only the selected value
+    /// is visible
+    Header,
+    /// List is open in the sidebar and the entire list is visible
+    #[default]
+    List,
+}
+
+/// Emitted event from any sidebar
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum SidebarEvent {
+    /// Sidebar should be expanded
+    Open,
+    /// Sidebar should be collapsed
+    Close,
+}

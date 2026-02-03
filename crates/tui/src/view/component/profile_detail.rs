@@ -1,5 +1,3 @@
-//! Profile selection and preview
-
 use crate::{
     util::ResultReported,
     view::{
@@ -14,7 +12,6 @@ use crate::{
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
             editable_template::EditableTemplate,
-            sidebar_list::{SidebarListItem, SidebarListState},
         },
         persistent::{PersistentKey, PersistentStore, SessionKey},
     },
@@ -28,74 +25,10 @@ use ratatui::{
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::collection::{Profile, ProfileId};
+use slumber_core::collection::ProfileId;
 use slumber_template::Template;
-use std::{borrow::Cow, iter};
+use std::iter;
 use unicode_width::UnicodeWidthStr;
-
-/// State for a list of profiles. Use with
-/// [SidebarList](super::sidebar_list::SidebarList) for display.
-#[derive(Debug, Default)]
-pub struct ProfileListState;
-
-impl SidebarListState for ProfileListState {
-    const TITLE: &str = "Profile";
-    const ACTION: Action = Action::SelectProfileList;
-    type Item = ProfileListItem;
-    type PersistentKey = SelectedProfileKey;
-
-    fn persistent_key(&self) -> Self::PersistentKey {
-        SelectedProfileKey
-    }
-
-    fn items(&self) -> Vec<Self::Item> {
-        ViewContext::collection()
-            .profiles
-            .values()
-            .map(ProfileListItem::new)
-            .collect()
-    }
-}
-
-/// Simplified version of [Profile], to be used in the display list. This
-/// only stores whatever data is necessary to render the list
-#[derive(Clone, Debug)]
-pub struct ProfileListItem {
-    id: ProfileId,
-    name: String,
-}
-
-impl ProfileListItem {
-    fn new(profile: &Profile) -> Self {
-        Self {
-            id: profile.id.clone(),
-            name: profile.name().to_owned(),
-        }
-    }
-}
-
-impl SidebarListItem for ProfileListItem {
-    type Id = ProfileId;
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn display_header(&self) -> Cow<'_, str> {
-        self.name.as_str().into()
-    }
-}
-
-/// Persistent key for the ID of the selected profile
-#[derive(Debug, Serialize)]
-pub struct SelectedProfileKey;
-
-impl PersistentKey for SelectedProfileKey {
-    // Intentionally don't persist None. That's only possible if the profile map
-    // is empty. If it is, we're forced into None. If not, we want to default to
-    // the first profile.
-    type Value = ProfileId;
-}
 
 /// Preview the fields of a profile
 #[derive(Debug)]
@@ -343,7 +276,10 @@ mod tests {
     };
     use indexmap::indexmap;
     use rstest::rstest;
-    use slumber_core::{collection::Collection, test_util::by_id};
+    use slumber_core::{
+        collection::{Collection, Profile},
+        test_util::by_id,
+    };
     use slumber_util::Factory;
     use terminput::KeyCode;
 

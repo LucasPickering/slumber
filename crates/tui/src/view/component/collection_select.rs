@@ -5,7 +5,7 @@ use crate::{
         ToStringGenerate, UpdateContext, ViewContext,
         common::{
             clear_fill::ClearFill,
-            select::{Select, SelectEventKind, SelectListProps},
+            select::{FilterItem, Select, SelectEventKind, SelectListProps},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
         component::{
@@ -19,7 +19,7 @@ use ratatui::{layout::Rect, text::Span, widgets::Block};
 use slumber_config::Action;
 use slumber_core::database::{CollectionDatabase, CollectionId};
 use slumber_util::ResultTraced;
-use std::path::PathBuf;
+use std::{borrow::Cow, path::PathBuf};
 
 /// Display the current collection and select a different collection from a list
 ///
@@ -178,6 +178,14 @@ impl PartialEq<CollectionId> for CollectionSelectItem {
 }
 
 impl ToStringGenerate for CollectionSelectItem {}
+
+impl FilterItem for CollectionSelectItem {
+    fn search_terms(&self) -> impl IntoIterator<Item = Cow<'_, str>> {
+        // Match name *or* path
+        let path = self.path.to_str().unwrap_or("");
+        [self.display_name.as_str().into(), path.into()]
+    }
+}
 
 /// Build/rebuild the list selection
 fn build_select(filter: &str) -> Select<CollectionSelectItem> {

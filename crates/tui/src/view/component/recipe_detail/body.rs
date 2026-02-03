@@ -11,7 +11,9 @@ use crate::{
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            recipe::table::{RecipeTable, RecipeTableKind, RecipeTableProps},
+            recipe_detail::table::{
+                RecipeTable, RecipeTableKind, RecipeTableProps,
+            },
         },
         context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, ToEmitter},

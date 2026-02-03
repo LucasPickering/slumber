@@ -11,6 +11,7 @@ use crate::{
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
+            misc::SidebarEvent,
         },
         event::{
             BroadcastEvent, DeleteTarget, Emitter, Event, EventMatch, ToEmitter,
@@ -30,7 +31,7 @@ use slumber_core::{
 #[derive(Debug)]
 pub struct History {
     id: ComponentId,
-    emitter: Emitter<HistoryEvent>,
+    emitter: Emitter<SidebarEvent>,
     actions_emitter: Emitter<HistoryAction>,
     select: Select<RequestStateSummary>,
     // We need to retain the selected profile/recipe IDs so we can access both
@@ -146,7 +147,7 @@ impl Component for History {
                 }
                 SelectEventKind::Submit => {
                     // Close sidebar on Enter
-                    self.emitter.emit(HistoryEvent::Close);
+                    self.emitter.emit(SidebarEvent::Close);
                 }
                 SelectEventKind::Toggle => {}
             })
@@ -221,8 +222,8 @@ impl Draw for History {
     }
 }
 
-impl ToEmitter<HistoryEvent> for History {
-    fn to_emitter(&self) -> Emitter<HistoryEvent> {
+impl ToEmitter<SidebarEvent> for History {
+    fn to_emitter(&self) -> Emitter<SidebarEvent> {
         self.emitter
     }
 }
@@ -293,13 +294,6 @@ enum HistoryAction {
     DeleteRecipeProfile,
     /// Delete all requests for this recipe across all profiles
     DeleteRecipeAll,
-}
-
-/// Emitted event from [History]
-#[derive(Copy, Clone, Debug)]
-pub enum HistoryEvent {
-    /// History sidebar should be closed
-    Close,
 }
 
 #[cfg(test)]

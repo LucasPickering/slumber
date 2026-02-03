@@ -4,7 +4,7 @@ use crate::view::{
     component::{
         Canvas, ComponentId, Draw, DrawMetadata,
         internal::{Child, ToChild},
-        recipe::{
+        recipe_detail::{
             authentication::AuthenticationDisplay,
             body::RecipeBodyDisplay,
             table::{RecipeTable, RecipeTableKind, RecipeTableProps},

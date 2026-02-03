@@ -35,6 +35,7 @@ serde_test = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}
 
 [features]
+default = ["tui"]
 schema = ["dep:schemars"]
 # TUI-specific config fields and dependencies are gated behind this flag
 tui = ["dep:glob", "dep:mime", "dep:ratatui-core", "dep:terminput"]

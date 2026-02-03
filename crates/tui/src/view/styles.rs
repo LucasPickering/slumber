@@ -174,129 +174,129 @@ pub struct SyntaxStyles {
 impl Styles {
     pub fn new(theme: &Theme) -> Self {
         Self {
-            background: Style::default().bg(theme.background_color),
+            background: Style::default().bg(theme.background_color.into()),
             form: FormStyles {
                 title: Style::default()
-                    .fg(theme.text_color)
+                    .fg(theme.text_color.into())
                     .add_modifier(Modifier::UNDERLINED),
                 title_highlight: Style::default()
-                    .fg(theme.primary_color)
+                    .fg(theme.primary_color.into())
                     .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-                content: Style::default().fg(theme.text_color),
+                content: Style::default().fg(theme.text_color.into()),
             },
             list: ListStyles {
                 highlight: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color)
+                    .bg(theme.primary_color.into())
+                    .fg(theme.primary_text_color.into())
                     .add_modifier(Modifier::BOLD),
                 highlight_inactive: Style::default()
-                    .bg(theme.inactive_color)
-                    .fg(theme.primary_text_color)
+                    .bg(theme.inactive_color.into())
+                    .fg(theme.primary_text_color.into())
                     .add_modifier(Modifier::BOLD),
-                disabled: Style::default().fg(theme.inactive_color),
-                item: Style::default().fg(theme.text_color),
+                disabled: Style::default().fg(theme.inactive_color.into()),
+                item: Style::default().fg(theme.text_color.into()),
             },
             menu: MenuStyles {
-                border: Style::default().fg(theme.primary_color),
+                border: Style::default().fg(theme.primary_color.into()),
                 border_type: BorderType::Rounded,
             },
             modal: ModalStyles {
-                border: Style::default().fg(theme.primary_color),
+                border: Style::default().fg(theme.primary_color.into()),
                 border_type: BorderType::Double,
-                default: Style::default().fg(theme.text_color),
+                default: Style::default().fg(theme.text_color.into()),
             },
             pane: PaneStyles {
                 border: Style::default()
-                    .fg(theme.inactive_color)
+                    .fg(theme.inactive_color.into())
                     .remove_modifier(Modifier::BOLD),
                 border_selected: Style::default()
-                    .fg(theme.primary_color)
+                    .fg(theme.primary_color.into())
                     .add_modifier(Modifier::BOLD),
                 border_type: BorderType::Rounded,
                 border_type_selected: BorderType::Double,
-                default: Style::default().fg(theme.text_color),
+                default: Style::default().fg(theme.text_color.into()),
             },
             status_code: StatusCodeStyles {
                 success: Style::default()
-                    .bg(theme.success_color)
-                    .fg(theme.primary_text_color),
+                    .bg(theme.success_color.into())
+                    .fg(theme.primary_text_color.into()),
                 error: Style::default()
-                    .bg(theme.error_color)
-                    .fg(theme.primary_text_color),
+                    .bg(theme.error_color.into())
+                    .fg(theme.primary_text_color.into()),
             },
             syntax: SyntaxStyles {
                 // We only style by foreground for syntax
-                builtin: Style::default().fg(theme.syntax.builtin_color),
-                comment: Style::default().fg(theme.syntax.comment_color),
-                escape: Style::default().fg(theme.syntax.escape_color),
-                number: Style::default().fg(theme.syntax.number_color),
-                special: Style::default().fg(theme.syntax.special_color),
-                string: Style::default().fg(theme.syntax.string_color),
+                builtin: Style::default().fg(theme.syntax.builtin_color.into()),
+                comment: Style::default().fg(theme.syntax.comment_color.into()),
+                escape: Style::default().fg(theme.syntax.escape_color.into()),
+                number: Style::default().fg(theme.syntax.number_color.into()),
+                special: Style::default().fg(theme.syntax.special_color.into()),
+                string: Style::default().fg(theme.syntax.string_color.into()),
             },
             tab: TabStyles {
-                disabled: Style::default().fg(theme.inactive_color),
+                disabled: Style::default().fg(theme.inactive_color.into()),
                 highlight: Style::default()
-                    .fg(theme.primary_color)
+                    .fg(theme.primary_color.into())
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
             },
             table: TableStyles {
                 header: Style::default()
-                    .fg(theme.text_color)
+                    .fg(theme.text_color.into())
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
-                text: Style::default().fg(theme.text_color),
+                text: Style::default().fg(theme.text_color.into()),
                 alt: Style::default()
-                    .bg(theme.alternate_row_background_color)
-                    .fg(theme.alternate_row_text_color),
-                disabled: Style::default().fg(theme.inactive_color),
+                    .bg(theme.alternate_row_background_color.into())
+                    .fg(theme.alternate_row_text_color.into()),
+                disabled: Style::default().fg(theme.inactive_color.into()),
                 highlight: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color)
+                    .bg(theme.primary_color.into())
+                    .fg(theme.primary_text_color.into())
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
                 title: Style::default()
-                    .fg(theme.text_color)
+                    .fg(theme.text_color.into())
                     .add_modifier(Modifier::BOLD),
             },
             template_preview: TemplatePreviewStyles {
                 text: Style::default()
-                    .fg(theme.secondary_color)
+                    .fg(theme.secondary_color.into())
                     .add_modifier(Modifier::UNDERLINED),
                 error: Style::default()
-                    .bg(theme.error_color)
-                    .fg(theme.primary_text_color),
+                    .bg(theme.error_color.into())
+                    .fg(theme.primary_text_color.into()),
             },
             text: TextStyle {
                 highlight: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color),
-                hint: Style::default().fg(theme.hint_text_color),
-                primary: Style::default().fg(theme.primary_color),
+                    .bg(theme.primary_color.into())
+                    .fg(theme.primary_text_color.into()),
+                hint: Style::default().fg(theme.hint_text_color.into()),
+                primary: Style::default().fg(theme.primary_color.into()),
                 edited: Style::default()
-                    .fg(theme.text_color)
+                    .fg(theme.text_color.into())
                     .add_modifier(Modifier::ITALIC),
-                error: Style::default().fg(theme.error_color),
+                error: Style::default().fg(theme.error_color.into()),
                 title: Style::default()
-                    .fg(theme.text_color)
+                    .fg(theme.text_color.into())
                     .add_modifier(Modifier::BOLD),
             },
             text_box: TextBoxStyle {
                 text: Style::default()
-                    .bg(theme.textbox_background_color)
-                    .fg(theme.primary_text_color),
+                    .bg(theme.textbox_background_color.into())
+                    .fg(theme.primary_text_color.into()),
                 cursor: Style::default()
-                    .bg(theme.cursor_background_color)
-                    .fg(theme.cursor_text_color),
-                placeholder: Style::default().fg(theme.text_color),
+                    .bg(theme.cursor_background_color.into())
+                    .fg(theme.cursor_text_color.into()),
+                placeholder: Style::default().fg(theme.text_color.into()),
                 invalid: Style::default()
-                    .bg(theme.error_color)
-                    .fg(theme.primary_text_color),
+                    .bg(theme.error_color.into())
+                    .fg(theme.primary_text_color.into()),
             },
             text_window: TextWindowStyle {
                 gutter: Style::default()
-                    .bg(theme.gutter_background_color)
-                    .fg(theme.gutter_text_color),
+                    .bg(theme.gutter_background_color.into())
+                    .fg(theme.gutter_text_color.into()),
             },
         }
     }

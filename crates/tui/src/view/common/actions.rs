@@ -399,16 +399,22 @@ impl Draw for ActionMenuContent {
         }
 
         for (i, (layer, area)) in self.stack.iter().zip(areas).enumerate() {
+            let is_active = i == self.active_layer;
+
             // Add border
+            let border_style = if is_active {
+                styles.border
+            } else {
+                styles.border_inactive
+            };
             let block = Block::new()
                 .borders(Borders::ALL)
-                .border_style(styles.border)
+                .border_style(border_style)
                 .border_type(styles.border_type)
                 .merge_borders(MergeStrategy::Fuzzy);
             let inner_area = block.inner(area);
             canvas.render_widget(block, area);
 
-            let is_active = i == self.active_layer;
             let props = SelectListProps {
                 scrollbar_margin: 0,
             };

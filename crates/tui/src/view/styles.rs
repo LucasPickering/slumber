@@ -18,13 +18,13 @@ pub struct Styles {
     pub modal: ModalStyles,
     pub pane: PaneStyles,
     pub status_code: StatusCodeStyles,
+    pub syntax: SyntaxStyles,
     pub tab: TabStyles,
     pub table: TableStyles,
     pub template_preview: TemplatePreviewStyles,
     pub text: TextStyle,
     pub text_box: TextBoxStyle,
     pub text_window: TextWindowStyle,
-    pub syntax: SyntaxStyles,
 }
 
 /// Styles for the recipe input form
@@ -54,7 +54,11 @@ pub struct ListStyles {
 /// Styles for the action menu
 #[derive(Clone, Debug)]
 pub struct MenuStyles {
+    /// Border style when the menu is selected
     pub border: Style,
+    /// Border style when the menu is inactive
+    pub border_inactive: Style,
+    /// Border variant
     pub border_type: BorderType,
 }
 
@@ -97,6 +101,17 @@ impl PaneStyles {
 pub struct StatusCodeStyles {
     pub success: Style,
     pub error: Style,
+}
+
+/// Styles for syntax highlighting
+#[derive(Clone, Debug)]
+pub struct SyntaxStyles {
+    pub builtin: Style,
+    pub comment: Style,
+    pub escape: Style,
+    pub number: Style,
+    pub special: Style,
+    pub string: Style,
 }
 
 /// Styles for Tab component
@@ -160,17 +175,6 @@ pub struct TextWindowStyle {
     pub gutter: Style,
 }
 
-/// Styles for syntax highlighting
-#[derive(Clone, Debug)]
-pub struct SyntaxStyles {
-    pub builtin: Style,
-    pub comment: Style,
-    pub escape: Style,
-    pub number: Style,
-    pub special: Style,
-    pub string: Style,
-}
-
 impl Styles {
     pub fn new(theme: &Theme) -> Self {
         Self {
@@ -190,14 +194,14 @@ impl Styles {
                     .fg(theme.primary_text_color.into())
                     .add_modifier(Modifier::BOLD),
                 highlight_inactive: Style::default()
-                    .bg(theme.disabled_color.into())
-                    .fg(theme.primary_text_color.into())
+                    .fg(theme.primary_color.into())
                     .add_modifier(Modifier::BOLD),
                 disabled: Style::default().fg(theme.disabled_color.into()),
                 item: Style::default().fg(theme.text_color.into()),
             },
             menu: MenuStyles {
                 border: Style::default().fg(theme.primary_color.into()),
+                border_inactive: Style::default().fg(theme.border_color.into()),
                 border_type: BorderType::Rounded,
             },
             modal: ModalStyles {

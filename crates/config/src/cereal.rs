@@ -74,8 +74,7 @@ fn deserialize_http_config(
 /// TUI-specific config deserialization
 #[cfg(feature = "tui")]
 mod tui {
-    use crate::tui::{CommandsConfig, Syntax, Theme, TuiConfig};
-    use ratatui_core::style::Color;
+    use crate::tui::{Color, CommandsConfig, Syntax, Theme, TuiConfig};
     use serde::de::{self, value::StringDeserializer};
     use slumber_util::yaml::{
         self, DeserializeYaml, Expected, Field, LocatedError, SourceMap,
@@ -146,117 +145,78 @@ mod tui {
             let default = Self::default();
             let mut deserializer = StructDeserializer::new(yaml)?;
             let config = Self {
-                primary_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("primary_color")
-                            .or(Adopt(default.primary_color)),
-                        source_map,
-                    )?
-                    .0,
-                primary_text_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("primary_text_color")
-                            .or(Adopt(default.primary_text_color)),
-                        source_map,
-                    )?
-                    .0,
-                secondary_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("secondary_color")
-                            .or(Adopt(default.secondary_color)),
-                        source_map,
-                    )?
-                    .0,
-                success_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("success_color")
-                            .or(Adopt(default.success_color)),
-                        source_map,
-                    )?
-                    .0,
-                error_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("error_color")
-                            .or(Adopt(default.error_color)),
-                        source_map,
-                    )?
-                    .0,
-                text_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("text_color").or(Adopt(default.text_color)),
-                        source_map,
-                    )?
-                    .0,
-                inactive_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("inactive_color")
-                            .or(Adopt(default.inactive_color)),
-                        source_map,
-                    )?
-                    .0,
-                background_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("background_color")
-                            .or(Adopt(default.background_color)),
-                        source_map,
-                    )?
-                    .0,
-                hint_text_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("hint_text_color")
-                            .or(Adopt(default.hint_text_color)),
-                        source_map,
-                    )?
-                    .0,
-                textbox_background_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("textbox_background_color")
-                            .or(Adopt(default.textbox_background_color)),
-                        source_map,
-                    )?
-                    .0,
-                cursor_background_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("cursor_background_color")
-                            .or(Adopt(default.cursor_background_color)),
-                        source_map,
-                    )?
-                    .0,
-                cursor_text_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("cursor_text_color")
-                            .or(Adopt(default.cursor_text_color)),
-                        source_map,
-                    )?
-                    .0,
-                gutter_background_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("gutter_background_color")
-                            .or(Adopt(default.gutter_background_color)),
-                        source_map,
-                    )?
-                    .0,
-                gutter_text_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("gutter_text_color")
-                            .or(Adopt(default.gutter_text_color)),
-                        source_map,
-                    )?
-                    .0,
-                alternate_row_background_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("alternate_row_background_color")
-                            .or(Adopt(default.alternate_row_background_color)),
-                        source_map,
-                    )?
-                    .0,
-                alternate_row_text_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("alternate_row_text_color")
-                            .or(Adopt(default.alternate_row_text_color)),
-                        source_map,
-                    )?
-                    .0,
+                primary_color: deserializer.get(
+                    Field::new("primary_color").or(default.primary_color),
+                    source_map,
+                )?,
+                primary_text_color: deserializer.get(
+                    Field::new("primary_text_color")
+                        .or(default.primary_text_color),
+                    source_map,
+                )?,
+                secondary_color: deserializer.get(
+                    Field::new("secondary_color").or(default.secondary_color),
+                    source_map,
+                )?,
+                success_color: deserializer.get(
+                    Field::new("success_color").or(default.success_color),
+                    source_map,
+                )?,
+                error_color: deserializer.get(
+                    Field::new("error_color").or(default.error_color),
+                    source_map,
+                )?,
+                text_color: deserializer.get(
+                    Field::new("text_color").or(default.text_color),
+                    source_map,
+                )?,
+                inactive_color: deserializer.get(
+                    Field::new("inactive_color").or(default.inactive_color),
+                    source_map,
+                )?,
+                background_color: deserializer.get(
+                    Field::new("background_color").or(default.background_color),
+                    source_map,
+                )?,
+                hint_text_color: deserializer.get(
+                    Field::new("hint_text_color").or(default.hint_text_color),
+                    source_map,
+                )?,
+                textbox_background_color: deserializer.get(
+                    Field::new("textbox_background_color")
+                        .or(default.textbox_background_color),
+                    source_map,
+                )?,
+                cursor_background_color: deserializer.get(
+                    Field::new("cursor_background_color")
+                        .or(default.cursor_background_color),
+                    source_map,
+                )?,
+                cursor_text_color: deserializer.get(
+                    Field::new("cursor_text_color")
+                        .or(default.cursor_text_color),
+                    source_map,
+                )?,
+                gutter_background_color: deserializer.get(
+                    Field::new("gutter_background_color")
+                        .or(default.gutter_background_color),
+                    source_map,
+                )?,
+                gutter_text_color: deserializer.get(
+                    Field::new("gutter_text_color")
+                        .or(default.gutter_text_color),
+                    source_map,
+                )?,
+                alternate_row_background_color: deserializer.get(
+                    Field::new("alternate_row_background_color")
+                        .or(default.alternate_row_background_color),
+                    source_map,
+                )?,
+                alternate_row_text_color: deserializer.get(
+                    Field::new("alternate_row_text_color")
+                        .or(default.alternate_row_text_color),
+                    source_map,
+                )?,
                 syntax: deserializer
                     .get(Field::new("syntax").or(default.syntax), source_map)?,
             };
@@ -277,59 +237,37 @@ mod tui {
             let default = Self::default();
             let mut deserializer = StructDeserializer::new(yaml)?;
             let config = Self {
-                comment_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("comment_color")
-                            .or(Adopt(default.comment_color)),
-                        source_map,
-                    )?
-                    .0,
-                builtin_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("builtin_color")
-                            .or(Adopt(default.builtin_color)),
-                        source_map,
-                    )?
-                    .0,
-                escape_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("escape_color")
-                            .or(Adopt(default.escape_color)),
-                        source_map,
-                    )?
-                    .0,
-                number_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("number_color")
-                            .or(Adopt(default.number_color)),
-                        source_map,
-                    )?
-                    .0,
-                string_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("string_color")
-                            .or(Adopt(default.string_color)),
-                        source_map,
-                    )?
-                    .0,
-                special_color: deserializer
-                    .get::<Adopt<_>>(
-                        Field::new("special_color")
-                            .or(Adopt(default.special_color)),
-                        source_map,
-                    )?
-                    .0,
+                comment_color: deserializer.get(
+                    Field::new("comment_color").or(default.comment_color),
+                    source_map,
+                )?,
+                builtin_color: deserializer.get(
+                    Field::new("builtin_color").or(default.builtin_color),
+                    source_map,
+                )?,
+                escape_color: deserializer.get(
+                    Field::new("escape_color").or(default.escape_color),
+                    source_map,
+                )?,
+                number_color: deserializer.get(
+                    Field::new("number_color").or(default.number_color),
+                    source_map,
+                )?,
+                string_color: deserializer.get(
+                    Field::new("string_color").or(default.string_color),
+                    source_map,
+                )?,
+                special_color: deserializer.get(
+                    Field::new("special_color").or(default.special_color),
+                    source_map,
+                )?,
             };
             deserializer.done()?;
             Ok(config)
         }
     }
 
-    /// Workaround for the orphan rule
-    #[derive(Debug, Default)]
-    struct Adopt<T>(T);
-
-    impl DeserializeYaml for Adopt<Color> {
+    impl DeserializeYaml for Color {
         fn expected() -> Expected {
             Expected::String
         }
@@ -340,12 +278,14 @@ mod tui {
         ) -> yaml::Result<Self> {
             let location = yaml.location;
             let s = yaml.try_into_string()?;
-            // Use the serde implementation for backward compatibility
-            <Color as de::Deserialize>::deserialize(StringDeserializer::new(s))
-                .map(Adopt)
-                .map_err(|error: de::value::Error| {
-                    LocatedError::other(error, location)
-                })
+            // Use ratatui's serde implementation
+            <ratatui_core::style::Color as de::Deserialize>::deserialize(
+                StringDeserializer::new(s),
+            )
+            .map(Color::from)
+            .map_err(|error: de::value::Error| {
+                LocatedError::other(error, location)
+            })
         }
     }
 }

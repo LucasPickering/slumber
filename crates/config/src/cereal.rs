@@ -170,41 +170,25 @@ mod tui {
                     Field::new("text_color").or(default.text_color),
                     source_map,
                 )?,
-                inactive_color: deserializer.get(
-                    Field::new("inactive_color").or(default.inactive_color),
-                    source_map,
-                )?,
                 background_color: deserializer.get(
                     Field::new("background_color").or(default.background_color),
+                    source_map,
+                )?,
+                border_color: deserializer.get(
+                    Field::new("border_color").or(default.border_color),
+                    source_map,
+                )?,
+                disabled_color: deserializer.get(
+                    Field::new("disabled_color").or(default.disabled_color),
                     source_map,
                 )?,
                 hint_text_color: deserializer.get(
                     Field::new("hint_text_color").or(default.hint_text_color),
                     source_map,
                 )?,
-                textbox_background_color: deserializer.get(
-                    Field::new("textbox_background_color")
-                        .or(default.textbox_background_color),
-                    source_map,
-                )?,
-                cursor_background_color: deserializer.get(
-                    Field::new("cursor_background_color")
-                        .or(default.cursor_background_color),
-                    source_map,
-                )?,
-                cursor_text_color: deserializer.get(
-                    Field::new("cursor_text_color")
-                        .or(default.cursor_text_color),
-                    source_map,
-                )?,
-                gutter_background_color: deserializer.get(
-                    Field::new("gutter_background_color")
-                        .or(default.gutter_background_color),
-                    source_map,
-                )?,
-                gutter_text_color: deserializer.get(
-                    Field::new("gutter_text_color")
-                        .or(default.gutter_text_color),
+                text_box_background_color: deserializer.get(
+                    Field::new("text_box_background_color")
+                        .or(default.text_box_background_color),
                     source_map,
                 )?,
                 alternate_row_background_color: deserializer.get(

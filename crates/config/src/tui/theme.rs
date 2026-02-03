@@ -27,25 +27,19 @@ pub struct Theme {
     pub text_color: Color,
     /// Color for the background of the application
     pub background_color: Color,
-    /// Color for inactive text and components
-    pub inactive_color: Color,
-    /// Color for hint text
+    /// Color for pane and popup borders
+    pub border_color: Color,
+    /// Color for text and components that are unavailable
+    pub disabled_color: Color,
+    /// Color for deemphasized text like hints and notes
     pub hint_text_color: Color,
     /// Color for the background of text boxes
-    pub textbox_background_color: Color,
-    /// Color of the background underneath the cursor
-    pub cursor_background_color: Color,
-    /// Color of the text underneath the cursor
-    pub cursor_text_color: Color,
-    /// Color of the background of the gutter text
-    pub gutter_background_color: Color,
-    /// Color of the gutter text
-    pub gutter_text_color: Color,
-    /// Color of the background of alternating table rows
+    pub text_box_background_color: Color,
+    /// Background color of alternating table rows
     pub alternate_row_background_color: Color,
-    /// Color of the text of alternating table rows
+    /// Text color of alternating table rows
     pub alternate_row_text_color: Color,
-    /// User-configurable visual settings for syntax highlighting
+    /// Syntax highlighting colors
     pub syntax: Syntax,
 }
 
@@ -56,19 +50,16 @@ impl Default for Theme {
             secondary_color: RatColor::Yellow.into(),
             success_color: RatColor::Green.into(),
             error_color: RatColor::Red.into(),
-            text_color: RatColor::Reset.into(),
-            background_color: RatColor::Reset.into(),
+            text_color: RatColor::Reset.into(), // Use terminal default
+            background_color: RatColor::Reset.into(), // Use terminal default
+            border_color: RatColor::White.into(),
             primary_text_color: RatColor::White.into(),
             syntax: Default::default(),
-            inactive_color: RatColor::DarkGray.into(),
+            disabled_color: RatColor::DarkGray.into(),
             hint_text_color: RatColor::DarkGray.into(),
-            textbox_background_color: RatColor::DarkGray.into(),
-            cursor_background_color: RatColor::Blue.into(),
-            cursor_text_color: RatColor::DarkGray.into(),
-            gutter_background_color: RatColor::Reset.into(),
-            gutter_text_color: RatColor::DarkGray.into(),
-            alternate_row_background_color: RatColor::White.into(),
-            alternate_row_text_color: RatColor::DarkGray.into(),
+            text_box_background_color: RatColor::DarkGray.into(),
+            alternate_row_background_color: RatColor::DarkGray.into(),
+            alternate_row_text_color: RatColor::Reset.into(),
         }
     }
 }

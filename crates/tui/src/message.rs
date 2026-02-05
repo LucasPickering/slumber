@@ -6,7 +6,6 @@ use crate::{
     util::{ResultReported, TempFile},
     view::Question,
 };
-use derive_more::From;
 use futures::{FutureExt, future::LocalBoxFuture};
 use mime::Mime;
 use slumber_core::{
@@ -18,46 +17,17 @@ use slumber_core::{
     render::{Prompt, ReplyChannel},
 };
 use slumber_template::{RenderedOutput, Template};
-use slumber_util::{ResultTraced, yaml::SourceLocation};
-use std::{fmt::Debug, path::PathBuf, sync::Arc};
-use tokio::sync::mpsc::UnboundedSender;
+use slumber_util::yaml::SourceLocation;
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    fmt::Debug,
+    path::PathBuf,
+    rc::Rc,
+    sync::Arc,
+    task::{Poll, Waker},
+};
 use tracing::trace;
-
-/// Wrapper around a sender for async messages. Cheap to clone and pass around
-#[derive(Clone, Debug, From)]
-pub struct MessageSender(UnboundedSender<Message>);
-
-impl MessageSender {
-    pub fn new(sender: UnboundedSender<Message>) -> Self {
-        Self(sender)
-    }
-
-    /// Send an async message, to be handled by the main loop
-    pub fn send(&self, message: impl Into<Message>) {
-        let message: Message = message.into();
-        trace!(?message, "Queueing message");
-        let _ = self.0.send(message).traced();
-    }
-
-    /// Spawn a future in a new task on the main thread. See [Message::Spawn]
-    pub fn spawn(&self, future: impl 'static + Future<Output = ()>) {
-        self.send(Message::Spawn(future.boxed_local()));
-    }
-
-    /// Spawn a fallible future in a new task on the main thread
-    ///
-    /// If the task fails, show the error to the user.
-    pub fn spawn_result(
-        &self,
-        future: impl 'static + Future<Output = anyhow::Result<()>>,
-    ) {
-        let tx = self.clone();
-        let future = async move {
-            future.await.reported(&tx);
-        };
-        self.send(Message::Spawn(future.boxed_local()));
-    }
-}
 
 /// A message triggers some *asynchronous* action. Most state modifications can
 /// be made synchronously by the input handler, but some require async handling
@@ -243,3 +213,159 @@ pub enum RecipeCopyTarget {
 
 /// A static callback included in a message
 pub type Callback<T> = Box<dyn 'static + FnOnce(T)>;
+
+/// Create a new [Message] queue, returning the `(sender, receiver)` pair
+///
+/// This is *not* a generic message queue. It is specifically used for sending
+/// and receiving [Message]s, which drive the main TUI loop.
+///
+/// This is an mpsc (multi-producer, single-consumer) queue, so the sender can
+/// be cloned freely while the receiver cannot. This is very similar to tokio's
+/// `mpsc` channel, with some differences:
+/// - This uses `Rc<RefCell<_>>` instead of atomic primitives because our
+///   futures are all `!Send`. Probably gives a tiny performance benefit
+/// - Because this is just a `VecDeque` underneath, it's fully inspectable for
+///   tests.
+pub fn queue() -> (MessageSender, MessageReceiver) {
+    let queue = MessageQueue::default();
+    (MessageSender(queue.clone()), MessageReceiver(queue))
+}
+
+/// Cloneable transmitter for the mpsc message queue; see [queue]
+#[derive(Clone, Debug)]
+pub struct MessageSender(MessageQueue);
+
+impl MessageSender {
+    /// Send an async message, to be handled by the main loop
+    pub fn send(&self, message: impl Into<Message>) {
+        let message: Message = message.into();
+        trace!(?message, "Queueing message");
+        self.0.push(message);
+    }
+
+    /// Spawn a future in a new task on the main thread. See [Message::Spawn]
+    pub fn spawn(&self, future: impl 'static + Future<Output = ()>) {
+        self.send(Message::Spawn(future.boxed_local()));
+    }
+
+    /// Spawn a fallible future in a new task on the main thread
+    ///
+    /// If the task fails, show the error to the user.
+    pub fn spawn_result(
+        &self,
+        future: impl 'static + Future<Output = anyhow::Result<()>>,
+    ) {
+        let tx = self.clone();
+        let future = async move {
+            future.await.reported(&tx);
+        };
+        self.send(Message::Spawn(future.boxed_local()));
+    }
+}
+
+/// Receiver for the mpsc message queue; see [queue]
+#[derive(Debug)]
+pub struct MessageReceiver(MessageQueue);
+
+impl MessageReceiver {
+    /// Does the queue have no messages?
+    pub fn is_empty(&self) -> bool {
+        self.0.inner.borrow().queue.is_empty()
+    }
+
+    /// Pop a message off the queue
+    ///
+    /// This will wait indefinitely until the next message is available.
+    pub async fn pop(&mut self) -> Message {
+        let queue = self.0.clone();
+        std::future::poll_fn(move |cx: &mut std::task::Context<'_>| {
+            if let Some(message) = queue.pop() {
+                Poll::Ready(message)
+            } else {
+                // Store the waker so we'll get notified for a new message
+                queue.set_waker(cx.waker().clone());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+}
+
+/// Test-only helpers
+#[cfg(test)]
+impl MessageReceiver {
+    /// Assert that the message queue is empty
+    pub fn assert_empty(&mut self) {
+        if let Some(message) = self.0.pop() {
+            panic!("Expected message queue to be empty, but got {message:?}");
+        }
+    }
+
+    /// Pop the next message off the queue. Panic if the queue is empty
+    pub fn pop_now(&mut self) -> Message {
+        self.0.pop().expect("Message queue empty")
+    }
+
+    /// Pop the next message off the queue, waiting if empty. This will wait
+    /// with a timeout to prevent missing messages from blocking a test forever.
+    /// If the timeout expires, return `None`.
+    pub async fn pop_wait(&mut self) -> Option<Message> {
+        use std::time::Duration;
+        tokio::time::timeout(Duration::from_millis(1000), self.pop())
+            .await
+            .ok()
+    }
+
+    /// Clear all messages in the queue
+    pub fn clear(&mut self) {
+        self.0.inner.borrow_mut().queue.clear();
+    }
+}
+
+/// A `!Send` message queue implemented with refcounting and interior mutability
+#[derive(Clone, Debug)]
+struct MessageQueue {
+    inner: Rc<RefCell<MessageQueueInner>>,
+}
+
+impl MessageQueue {
+    fn push(&self, message: Message) {
+        let mut inner = self.inner.borrow_mut();
+        inner.queue.push_back(message);
+        // Notify receiver that a message is available
+        if let Some(waker) = inner.waker.take() {
+            waker.wake();
+        }
+    }
+
+    fn pop(&self) -> Option<Message> {
+        self.inner.borrow_mut().queue.pop_front()
+    }
+
+    fn set_waker(&self, waker: Waker) {
+        self.inner.borrow_mut().waker = Some(waker);
+    }
+}
+
+impl Default for MessageQueue {
+    fn default() -> Self {
+        let inner = MessageQueueInner {
+            queue: VecDeque::with_capacity(10),
+            waker: None,
+        };
+        Self {
+            inner: Rc::new(RefCell::new(inner)),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MessageQueueInner {
+    queue: VecDeque<Message>,
+    /// Store the waker for the most recent call to [MessageReceiver::pop].
+    /// There can only ever be one listener on the queue, so there can't be
+    /// concurrent `pop()`s. Whenever a message is pushed onto the queue,
+    /// notify this waker so the main loop task can wake up and handle the
+    /// message.
+    waker: Option<Waker>,
+}

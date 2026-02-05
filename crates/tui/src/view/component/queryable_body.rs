@@ -702,7 +702,7 @@ mod tests {
         harness.run_task().await;
 
         // Success should push a notification
-        assert_matches!(harness.messages().pop_now(), Message::Notify(_));
+        assert_matches!(harness.messages_rx().pop_now(), Message::Notify(_));
         let file_content = fs::read_to_string(&path).await.unwrap();
         assert_eq!(file_content, TEXT);
 
@@ -717,6 +717,6 @@ mod tests {
         component.int().send_key(KeyCode::Enter).assert().empty();
         harness.run_task().await;
         component.int().drain_draw().assert().empty();
-        assert_matches!(harness.messages().pop_now(), Message::Error { .. });
+        assert_matches!(harness.messages_rx().pop_now(), Message::Error { .. });
     }
 }

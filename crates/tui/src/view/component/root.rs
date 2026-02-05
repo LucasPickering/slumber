@@ -671,7 +671,7 @@ mod tests {
         // It'd be nice to test that the request is actually deleted, but I
         // haven't figured out a way to test messages in the event loop.
         assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::Http(HttpMessage::DeleteRecipe {
                 recipe_id: ref rid,
                 profile_filter: ref pf
@@ -738,7 +738,7 @@ mod tests {
         // It'd be nice to test that the request is actually deleted, but I
         // haven't figured out a way to test messages in the event loop.
         assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::Http(HttpMessage::DeleteRequest(request_id))
                 if request_id == new_exchange.id
         );

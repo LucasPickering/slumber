@@ -1,6 +1,5 @@
 //! Test utilities specific to the TUI
 
-use crate::message::{Message, MessageSender};
 use ratatui::{
     Frame, Terminal,
     backend::TestBackend,
@@ -8,63 +7,7 @@ use ratatui::{
     text::Line,
 };
 use rstest::fixture;
-use std::{cell::RefCell, time::Duration};
-use tokio::{
-    sync::mpsc::{self, UnboundedReceiver},
-    time,
-};
-
-/// Test-only wrapper for the message channel receiver/sender
-///
-/// This is mostly used via [TestHarness], but you can also construct it
-/// directly for message queue uses that don't require a terminal/component.
-pub struct MessageQueue {
-    rx: UnboundedReceiver<Message>,
-    tx: MessageSender,
-}
-
-impl MessageQueue {
-    /// Open a new MPSC channel
-    pub fn new() -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
-        Self { rx, tx: tx.into() }
-    }
-
-    /// Get a new message sender
-    pub fn tx(&self) -> MessageSender {
-        self.tx.clone()
-    }
-
-    /// Assert that the message queue is empty
-    pub fn assert_empty(&mut self) {
-        if let Ok(message) = self.rx.try_recv() {
-            panic!("Expected message queue to be empty, but got {message:?}");
-        }
-    }
-
-    /// Pop the next message off the queue. Panic if the queue is empty
-    pub fn pop_now(&mut self) -> Message {
-        self.rx.try_recv().expect("Message queue empty")
-    }
-
-    /// Pop the next message off the queue, waiting if empty. This will wait
-    /// with a timeout to prevent missing messages from blocking a test forever.
-    /// If the timeout expires, return `None`.
-    pub async fn pop_wait(&mut self) -> Option<Message> {
-        let message =
-            time::timeout(Duration::from_millis(1000), self.rx.recv()).await;
-        match message {
-            Ok(Some(message)) => Some(message),
-            Ok(None) => panic!("Message queue closed"),
-            Err(_) => None,
-        }
-    }
-
-    /// Clear all messages in the queue
-    pub fn clear(&mut self) {
-        while self.rx.try_recv().is_ok() {}
-    }
-}
+use std::cell::RefCell;
 
 /// Create a mock terminal, which can be written to for tests
 #[fixture]

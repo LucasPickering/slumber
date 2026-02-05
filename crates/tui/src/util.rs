@@ -125,6 +125,45 @@ impl Drop for TempFile {
     }
 }
 
+/// A handle for a task that is running in the background, periodically sending
+/// [Message::Tick] to the main loop
+///
+/// Use this for periodic UI updates that are not triggered by any user input
+/// or other external events. Used to tick the timer on building/loading
+/// requests.
+#[must_use = "Tick loop is cancelled on drop"]
+#[derive(Debug)]
+pub struct TickLoop {
+    cancel_token: CancellationToken,
+}
+
+impl TickLoop {
+    /// 100ms gives nice smooth ticking on timers with 0.1s precision
+    const INTERVAL: Duration = Duration::from_millis(100);
+
+    /// Spawn a new tick loop task
+    ///
+    /// The task will be cancelled when the returned [TickLoop] is dropped
+    pub fn new(messages_tx: &MessageSender) -> Self {
+        let cancel_token = CancellationToken::new();
+        let mtx = messages_tx.clone();
+        messages_tx.spawn(cancellable(&cancel_token, async move {
+            let mut interval = time::interval(Self::INTERVAL);
+            loop {
+                interval.tick().await;
+                mtx.send(Message::Tick);
+            }
+        }));
+        Self { cancel_token }
+    }
+}
+
+impl Drop for TickLoop {
+    fn drop(&mut self) {
+        self.cancel_token.cancel();
+    }
+}
+
 /// Run a **blocking** subprocess that will take over the terminal. Used
 /// for opening an external editor or pager. Useful for terminal editors since
 /// they'll take over the whole screen. Potentially annoying for GUI editors

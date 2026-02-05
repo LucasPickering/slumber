@@ -18,7 +18,8 @@ use crate::{
     http::{RequestConfig, RequestState, TuiHttpProvider},
     input::{InputBindings, InputEvent},
     message::{
-        Callback, HttpMessage, Message, MessageSender, RecipeCopyTarget,
+        Callback, HttpMessage, Message, MessageReceiver, MessageSender,
+        RecipeCopyTarget,
     },
     util::ResultReported,
     view::{PreviewPrompter, RequestDisposition, TuiPrompter},
@@ -51,9 +52,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    select,
-    sync::mpsc::{self, UnboundedReceiver},
-    task,
+    select, task,
     time::{self, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
@@ -83,7 +82,7 @@ pub struct Tui<B: TerminalBackend> {
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
     /// touch this
-    messages_rx: UnboundedReceiver<Message>,
+    messages_rx: MessageReceiver,
     /// Transmitter for the async message queue, which can be freely cloned and
     /// passed around
     messages_tx: MessageSender,
@@ -152,8 +151,7 @@ where
         collection_path: Option<PathBuf>,
     ) -> anyhow::Result<Self> {
         // Create a message queue for handling async tasks
-        let (messages_tx, messages_rx) = mpsc::unbounded_channel();
-        let messages_tx = MessageSender::new(messages_tx);
+        let (messages_tx, messages_rx) = message::queue();
 
         // Load config file. Failure shouldn't be fatal since we can fall back
         // to default, just show an error to the user
@@ -257,11 +255,7 @@ where
                 // See https://github.com/LucasPickering/slumber/issues/506 and
                 // associated PR
                 biased;
-                message = self.messages_rx.recv() => {
-                    // Error would indicate a very weird and fatal bug so we
-                    // wanna know about it
-                    message.expect("Message channel dropped while running")
-                },
+                message = self.messages_rx.pop() => message,
                 event_option = input_stream.next() => {
                     if let Some(event) = event_option {
                         Message::Input(event)

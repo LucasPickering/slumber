@@ -341,11 +341,11 @@ mod tests {
         TemplatePreview::new(TestKey, template, false);
         if should_send {
             assert_matches!(
-                harness.messages().pop_now(),
+                harness.messages_rx().pop_now(),
                 Message::TemplatePreview { .. }
             );
         } else {
-            harness.messages().assert_empty();
+            harness.messages_rx().assert_empty();
         }
     }
 

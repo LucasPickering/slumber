@@ -217,7 +217,7 @@ mod tests {
 
         component.copy_body();
         let body = assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::CopyText(body) => body,
         );
         assert_eq!(body, expected_body);
@@ -296,7 +296,7 @@ mod tests {
 
         component.save_response_body();
         let (request_id, data) = assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::SaveResponseBody { request_id, data } => (request_id, data),
         );
         assert_eq!(request_id, exchange.id);

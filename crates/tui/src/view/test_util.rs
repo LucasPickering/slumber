@@ -2,8 +2,8 @@
 
 use crate::{
     http::RequestStore,
-    message::{Message, MessageSender},
-    test_util::{MessageQueue, TestTerminal},
+    message::{self, Message, MessageReceiver, MessageSender},
+    test_util::TestTerminal,
     view::{
         ComponentMap, UpdateContext,
         common::actions::{ActionMenu, MenuItem},
@@ -52,13 +52,14 @@ pub struct TestHarness {
     /// `RefCell` needed so multiple components can hang onto this at once.
     /// Otherwise we would have to pass it to every single draw and update fn.
     request_store: Rc<RefCell<RequestStore>>,
-    messages: MessageQueue,
+    messages_rx: MessageReceiver,
+    messages_tx: MessageSender,
 }
 
 impl TestHarness {
     /// Create a new test harness and initialize state
     pub fn new(collection: Collection) -> Self {
-        let messages = MessageQueue::new();
+        let (messages_tx, messages_rx) = message::queue();
         let database = CollectionDatabase::factory(());
         let request_store =
             Rc::new(RefCell::new(RequestStore::new(database.clone())));
@@ -67,13 +68,14 @@ impl TestHarness {
             Config::default().into(),
             Arc::clone(&collection),
             database.clone(),
-            messages.tx(),
+            messages_tx.clone(),
         );
         TestHarness {
             collection,
             database,
             request_store,
-            messages,
+            messages_rx,
+            messages_tx,
         }
     }
 
@@ -92,14 +94,15 @@ impl TestHarness {
         PersistentStore::new(self.database.clone())
     }
 
-    /// Get a mutable reference to the message queue
-    pub fn messages(&mut self) -> &mut MessageQueue {
-        &mut self.messages
+    /// Get a mutable reference to the message queue receiver, which can be to
+    /// modify and assert on the message queue
+    pub fn messages_rx(&mut self) -> &mut MessageReceiver {
+        &mut self.messages_rx
     }
 
     /// Get a clone of the message sender
     pub fn messages_tx(&self) -> MessageSender {
-        self.messages.tx()
+        self.messages_tx.clone()
     }
 
     /// Pop a [Message::Spawn] off the queue and run the task
@@ -107,7 +110,7 @@ impl TestHarness {
     /// Panic if the queue is empty or the next message isn't `Spawn`.
     pub async fn run_task(&mut self) {
         let future = assert_matches!(
-            self.messages().pop_now(), Message::Spawn(future) => future
+            self.messages_rx().pop_now(), Message::Spawn(future) => future
         );
         future.await;
     }

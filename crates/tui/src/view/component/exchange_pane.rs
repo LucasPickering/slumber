@@ -1,6 +1,7 @@
 use crate::{
     http::{RequestMetadata, ResponseMetadata},
     message::HttpMessage,
+    util::TickLoop,
     view::{
         Generate, RequestState, ViewContext,
         common::{
@@ -257,6 +258,12 @@ struct ExchangePaneContent {
     actions_emitter: Emitter<ExchangePaneMenuAction>,
     tabs: Tabs<ExchangeTabKey, Tab>,
     state: ExchangePaneContentState,
+    /// In-progress requests spawn a task that periodically updates the UI.
+    /// This ensures the timer is ticked correctly. There should never be more
+    /// than one of these tick loops running at a time.
+    ///
+    /// We have to hang onto this because it cancels the task on drop.
+    _tick_loop: Option<TickLoop>,
 }
 
 impl ExchangePaneContent {
@@ -300,11 +307,26 @@ impl ExchangePaneContent {
                 }
             }
         };
+
+        // If request is building or loading, spawn a task that will send empty
+        // messages to the main loop periodically. This ensures the loading
+        // timer will update.
+        let tick_loop = if matches!(
+            state,
+            ExchangePaneContentState::Building
+                | ExchangePaneContentState::Loading { .. }
+        ) {
+            Some(TickLoop::new(&ViewContext::messages_tx()))
+        } else {
+            None
+        };
+
         Self {
             id: Default::default(),
             actions_emitter: Default::default(),
             tabs: Tabs::new(ExchangeTabKey, FixedSelect::builder()),
             state,
+            _tick_loop: tick_loop,
         }
     }
 
@@ -554,7 +576,6 @@ impl Draw for ExchangePaneContent {
 
 /// Various request states that can appear under the tab bar
 #[derive(Debug)]
-
 enum ExchangePaneContentState {
     Building,
     BuildCancelled,

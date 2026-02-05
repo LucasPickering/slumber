@@ -183,6 +183,10 @@ impl Component for RecipeList {
     }
 
     fn persist(&self, store: &mut PersistentStore) {
+        store.set_opt(
+            &SelectedRecipeKey,
+            self.select.selected().map(|item| &item.id),
+        );
         store.set(&CollapsedKey, &self.collapsed.0);
     }
 

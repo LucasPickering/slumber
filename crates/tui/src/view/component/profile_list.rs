@@ -10,7 +10,7 @@ use crate::view::{
         misc::{SidebarEvent, SidebarFormat, SidebarProps},
     },
     event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
-    persistent::PersistentKey,
+    persistent::{PersistentKey, PersistentStore},
 };
 use derive_more::Display;
 use ratatui::{
@@ -117,6 +117,10 @@ impl Component for ProfileList {
                     self.filter_focused = false;
                 }
             })
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        store.set_opt(&SelectedProfileKey, self.selected_id());
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {

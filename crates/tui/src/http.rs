@@ -116,13 +116,6 @@ impl RequestStore {
         }
     }
 
-    /// Are any requests in flight?
-    pub fn has_active_requests(&self) -> bool {
-        self.requests
-            .values()
-            .any(|state| matches!(state, RequestState::Loading { .. }))
-    }
-
     /// Get request state by ID
     pub fn get(&self, id: RequestId) -> Option<&RequestState> {
         self.requests.get(&id)

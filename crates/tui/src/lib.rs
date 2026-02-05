@@ -239,11 +239,9 @@ where
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             // ===== Message Phase =====
-            // Wait for one of 3 things to happen:
+            // Wait for one of 2 things to happen:
             // - Message appears in the queue
             // - Input event from the terminal
-            // - Timeout (to ensure we show state updates while a request is
-            //   ticking)
             //
             // The goal is to only do work when there's something to do, to
             // minimize the idle CPU usage
@@ -262,36 +260,27 @@ where
                 message = self.messages_rx.recv() => {
                     // Error would indicate a very weird and fatal bug so we
                     // wanna know about it
-                    Some(message.expect("Message channel dropped while running"))
+                    message.expect("Message channel dropped while running")
                 },
                 event_option = input_stream.next() => {
                     if let Some(event) = event_option {
-                        Some(Message::Input(event))
+                        Message::Input(event)
                     } else {
                         // We ran out of input, just end the program
                         break;
                     }
                 },
-                _ = interval.tick() => None,
                 () = self.cancel_token.cancelled() => break,
             };
 
-            // We'll try to skip draws if nothing on the screen has changed, to
-            // limit idle CPU usage. If a request is running we always need to
-            // update though, because the timer will be ticking.
-            let mut needs_draw = self.state.request_store.has_active_requests();
-
-            if let Some(message) = message {
-                trace!(?message, "Handling message");
-                // If an error occurs, store it so we can show the user
-                self.handle_message(message).reported(&self.messages_tx);
-                needs_draw = true;
-            }
+            trace!(?message, "Handling message");
+            // If an error occurs, store it so we can show the user
+            self.handle_message(message).reported(&self.messages_tx);
 
             // ===== Event Phase =====
             // Let the view handle all queued events. Trigger a draw if there
             // was anything in the queue.
-            needs_draw |= self.state.drain_events();
+            self.state.drain_events();
 
             // ===== Draw Phase =====
             // Skip the draw if there are more messages in the queue. When
@@ -302,7 +291,7 @@ where
             // There is a risk to this: draw changes the behavior of the app,
             // because only drawn components receive key events. By batching
             // these events, key events may go to the wrong place.
-            if needs_draw && self.messages_rx.is_empty() {
+            if self.messages_rx.is_empty() {
                 self.draw()?;
             }
         }
@@ -428,6 +417,7 @@ where
                     on_complete,
                 );
             }
+            Message::Tick => {} // This just triggers a draw, no update needed
         }
         Ok(())
     }

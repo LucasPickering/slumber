@@ -167,6 +167,9 @@ pub enum Message {
         #[debug(skip)]
         on_complete: Callback<RenderedOutput>,
     },
+
+    /// Redraw the screen with no updates
+    Tick,
 }
 
 impl From<HttpMessage> for Message {

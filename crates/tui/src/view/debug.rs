@@ -1,3 +1,4 @@
+use crate::view::ComponentMap;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout},
@@ -18,11 +19,11 @@ pub struct DebugMonitor {
 impl DebugMonitor {
     /// Draw the view using the given closure, then render computed metrics on
     /// top at the end.
-    pub fn draw<T>(
+    pub fn draw(
         &self,
         buffer: &mut Buffer,
-        draw_fn: impl FnOnce(&mut Buffer) -> T,
-    ) -> T {
+        draw_fn: impl FnOnce(&mut Buffer) -> ComponentMap,
+    ) -> ComponentMap {
         // Track elapsed time for the draw function
         let start = Instant::now();
         let output = draw_fn(buffer);
@@ -35,8 +36,8 @@ impl DebugMonitor {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(*buffer.area());
         let text = Text::from(format!(
-            "FPS: {fps:.1} / Render: {duration}ms",
-            duration = duration.as_millis()
+            "FPS: {fps:.1} / Render: {duration}μs",
+            duration = duration.as_micros()
         ))
         .style(Style::default().fg(Color::Black).bg(Color::Green));
         Widget::render(

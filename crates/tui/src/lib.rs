@@ -25,16 +25,10 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
-use crossterm::{
-    clipboard::CopyToClipboard,
-    event::{self, EventStream},
-    execute,
-};
+use crossterm::{clipboard::CopyToClipboard, event::EventStream, execute};
 use futures::{Stream, StreamExt, future, pin_mut};
 use ratatui::{
     Terminal,
-    buffer::Buffer,
-    layout::Position,
     prelude::{Backend, CrosstermBackend},
 };
 use slumber_config::{Action, Config};
@@ -236,7 +230,7 @@ where
         });
         pin_mut!(input_stream);
 
-        self.draw(false)?; // Initial draw
+        self.draw()?; // Initial draw
 
         // This loop is limited by the rate that messages come in, with a
         // minimum rate enforced by an interval. The loop terminates when the
@@ -301,11 +295,7 @@ where
 
             // ===== Draw Phase =====
             if needs_draw {
-                // Skip the terminal render if we have more messages/events in
-                // the queue
-                let has_message = !self.messages_rx.is_empty();
-                let has_input = event::poll(Duration::ZERO).unwrap_or(false);
-                self.draw(has_message || has_input)?;
+                self.draw()?;
             }
         }
 
@@ -394,7 +384,7 @@ where
                 // the terminal gets cleared but ratatui's (e.g. waking from
                 // sleep) buffer doesn't, so the two get out of sync
                 self.terminal.clear()?;
-                self.draw(false)?;
+                self.draw()?;
             }
             Message::Input(event) => self.state.view.handle_input(event),
 
@@ -560,22 +550,10 @@ where
         self.cancel_token.cancel();
     }
 
-    /// Draw the view onto the screen.
-    ///
-    /// If `null` is true, the draw will be done with a null buffer. This will
-    /// update all state in the component tree, but won't actually write to the
-    /// terminal buffer. This should be enabled when we know there will be
-    /// subsequent draws (i.e. if there are more events in the queue) to improve
-    /// performance.
-    fn draw(&mut self, null: bool) -> anyhow::Result<()> {
-        if null {
-            let size = self.terminal.size()?;
-            let mut buffer = Buffer::empty((Position::default(), size).into());
-            self.state.draw(&mut buffer);
-        } else {
-            self.terminal
-                .draw(|frame| self.state.draw(frame.buffer_mut()))?;
-        }
+    /// Draw the view onto the screen
+    fn draw(&mut self) -> anyhow::Result<()> {
+        self.terminal
+            .draw(|frame| self.state.draw(frame.buffer_mut()))?;
         Ok(())
     }
 

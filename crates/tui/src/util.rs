@@ -522,7 +522,7 @@ pub async fn confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::MessageQueue;
+    use crate::message;
     use rstest::rstest;
     use slumber_config::CommandsConfig;
     use slumber_util::{TempDir, assert_matches, temp_dir};
@@ -547,9 +547,9 @@ mod tests {
         // We need to run two futures concurrently:
         // - save_file() procedure
         // - Respondent that will pop the prompt messages and handle them
-        let mut messages = MessageQueue::new();
+        let (tx, mut rx) = message::queue();
         let save_file_fut = save_file(
-            messages.tx(),
+            tx,
             Some("default.txt".into()),
             b"hello!".as_slice().into(),
         );
@@ -557,7 +557,7 @@ mod tests {
         let assertions_fut = async {
             // First we expect a prompt for the file path
             let (message, default, channel) = assert_matches!(
-                messages.pop_wait().await,
+                rx.pop_wait().await,
                 Some(Message::Question(Question::Text {
                     message, default, channel, ..
                 })) => {
@@ -571,7 +571,7 @@ mod tests {
             if exists {
                 // Now we expect a confirmation prompt
                 let (message, channel) = assert_matches!(
-                    messages.pop_wait().await,
+                    rx.pop_wait().await,
                     Some(Message::Question(Question::Confirm { message, channel })) => {
                         (message, channel)
                     },

@@ -710,14 +710,14 @@ mod tests {
         initial_content: &str,
         content: &str,
     ) {
-        harness.messages().clear();
+        harness.messages_rx().clear();
         component
             .int()
             .send_key(KeyCode::Char('e'))
             .assert()
             .empty();
         let (file, on_complete) = assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::FileEdit {
                 file,
                 on_complete,

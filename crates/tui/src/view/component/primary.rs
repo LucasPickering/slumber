@@ -690,7 +690,7 @@ mod tests {
                 })
                 .build();
         // Clear template preview messages so we can test what we want
-        harness.messages().clear();
+        harness.messages_rx().clear();
         component
     }
 
@@ -723,14 +723,14 @@ mod tests {
     fn test_edit_recipe(mut harness: TestHarness, terminal: TestTerminal) {
         let mut component = create_component(&mut harness, &terminal);
         component.int().drain_draw().assert().empty();
-        harness.messages().clear(); // Clear init junk
+        harness.messages_rx().clear(); // Clear init junk
         let expected_location =
             harness.collection.first_recipe().location.clone();
 
         component.int().action(&["Edit Recipe"]).assert().empty();
         // Event should be converted into a message appropriately
         let location = assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::CollectionEdit { location: Some(location) } => location
         );
         assert_eq!(location, expected_location);
@@ -741,14 +741,14 @@ mod tests {
     fn test_edit_profile(mut harness: TestHarness, terminal: TestTerminal) {
         let mut component = create_component(&mut harness, &terminal);
         component.int().drain_draw().assert().empty();
-        harness.messages().clear(); // Clear init junk
+        harness.messages_rx().clear(); // Clear init junk
         let expected_location =
             harness.collection.first_profile().location.clone();
 
         component.int().action(&["Edit Profile"]).assert().empty();
         // Event should be converted into a message appropriately
         let location = assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::CollectionEdit { location: Some(location) } => location
         );
         assert_eq!(location, expected_location);
@@ -777,7 +777,7 @@ mod tests {
             .empty();
 
         let actual_target = assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::CopyRecipe(target) => target
         );
         assert_eq!(actual_target, expected_target);
@@ -790,7 +790,7 @@ mod tests {
             .empty();
 
         let actual_target = assert_matches!(
-            harness.messages().pop_now(),
+            harness.messages_rx().pop_now(),
             Message::CopyRecipe(target) => target
         );
         assert_eq!(actual_target, expected_target);

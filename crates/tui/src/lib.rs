@@ -294,7 +294,15 @@ where
             needs_draw |= self.state.drain_events();
 
             // ===== Draw Phase =====
-            if needs_draw {
+            // Skip the draw if there are more messages in the queue. When
+            // there's a lot of messages (e.g. holding down a key or a lot of
+            // previews rendering at once), repeated draws slow down the app.
+            // By batching draws together, we can save time.
+            //
+            // There is a risk to this: draw changes the behavior of the app,
+            // because only drawn components receive key events. By batching
+            // these events, key events may go to the wrong place.
+            if needs_draw && self.messages_rx.is_empty() {
                 self.draw()?;
             }
         }

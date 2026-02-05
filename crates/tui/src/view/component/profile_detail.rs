@@ -1,7 +1,7 @@
 use crate::{
     util::ResultReported,
     view::{
-        Generate, ViewContext,
+        Generate, UpdateContext, ViewContext,
         common::{
             Pane,
             component_select::{
@@ -13,6 +13,7 @@ use crate::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
             editable_template::EditableTemplate,
         },
+        event::{BroadcastEvent, Event, EventMatch},
         persistent::{PersistentKey, PersistentStore, SessionKey},
     },
 };
@@ -27,30 +28,74 @@ use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::collection::ProfileId;
 use slumber_template::Template;
-use std::iter;
+use std::{collections::HashMap, iter};
 use unicode_width::UnicodeWidthStr;
 
 /// Preview the fields of a profile
 #[derive(Debug)]
 pub struct ProfileDetail {
     id: ComponentId,
-    /// Navigable list of profile fields
-    select: ComponentSelect<ProfileField>,
+    /// ID of the displayed profile. Set by [BroadcastEvent::SelectedProfile]
+    selected_profile_id: Option<ProfileId>,
+    /// Cache the rendered fields for profiles as they're selected. Profiles
+    /// are never evicted because they're immutable (except for overrides,
+    /// which are modified inline within the cache). This prevents the need to
+    /// rerender the same templates over-and-over.
+    profiles: HashMap<ProfileId, ComponentSelect<ProfileField>>,
 }
 
 impl ProfileDetail {
-    /// Build the profile detail pane. This should be called whenever the
-    /// selected profile changes, because the entire contents of the pane
-    /// changes too.
-    pub fn new(profile_id: Option<&ProfileId>) -> Self {
-        let Some(profile_id) = profile_id else {
-            // No profile selected - empty state
-            return Self {
-                id: ComponentId::new(),
-                select: ComponentSelect::default(),
-            };
+    pub fn new() -> Self {
+        Self {
+            id: ComponentId::new(),
+            selected_profile_id: None,
+            profiles: HashMap::new(),
+        }
+    }
+
+    /// Get a map of overridden profile fields
+    pub fn overrides(&self) -> IndexMap<String, Template> {
+        let Some(select) = self.selected_profile() else {
+            return IndexMap::new();
         };
 
+        select
+            .items()
+            .filter_map(|field| {
+                // Only include modified templates
+                if field.template.is_overridden() {
+                    Some((
+                        field.field.clone(),
+                        field.template.template().clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Change the selected profile. If the new profile isn't already in the
+    /// cache, render its fields now.
+    fn select_profile(&mut self, profile_id: Option<ProfileId>) {
+        self.selected_profile_id = profile_id;
+        if let Some(profile_id) = &self.selected_profile_id
+            && !self.profiles.contains_key(profile_id)
+        {
+            let select = Self::build_select(profile_id);
+            self.profiles.insert(profile_id.clone(), select);
+        }
+    }
+
+    /// Get a reference to the selected profile's field table
+    fn selected_profile(&self) -> Option<&ComponentSelect<ProfileField>> {
+        self.selected_profile_id
+            .as_ref()
+            .and_then(|id| self.profiles.get(id))
+    }
+
+    /// Build the field table for a profile
+    fn build_select(profile_id: &ProfileId) -> ComponentSelect<ProfileField> {
         let collection = ViewContext::collection();
         let default = IndexMap::new();
         let profile_data = collection
@@ -73,33 +118,10 @@ impl ProfileDetail {
                 )
             })
             .collect_vec();
-        let select = Select::builder(items)
+        Select::builder(items)
             .persisted(&SelectedProfileFieldKey)
             .build()
-            .into();
-
-        Self {
-            id: ComponentId::new(),
-            select,
-        }
-    }
-
-    /// Get a map of overridden profile fields
-    pub fn overrides(&self) -> IndexMap<String, Template> {
-        self.select
-            .items()
-            .filter_map(|field| {
-                // Only include modified templates
-                if field.template.is_overridden() {
-                    Some((
-                        field.field.clone(),
-                        field.template.template().clone(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect()
+            .into()
     }
 }
 
@@ -108,16 +130,38 @@ impl Component for ProfileDetail {
         self.id
     }
 
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        event: Event,
+    ) -> EventMatch {
+        event.m().broadcast(|event| match event {
+            // Whenever the profile selection changes, update our state
+            BroadcastEvent::SelectedProfile(profile_id) => {
+                self.select_profile(profile_id);
+            }
+            _ => {}
+        })
+    }
+
     fn persist(&self, store: &mut PersistentStore) {
         // Persist selected row
         store.set_opt(
             &SelectedProfileFieldKey,
-            self.select.selected().map(|row| &row.field),
+            self.selected_profile().and_then(|select| {
+                let row = select.selected()?;
+                Some(&row.field)
+            }),
         );
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut()]
+        // All cached profiles are accessible, so they can received their
+        // preview callbacks even when not visible
+        self.profiles
+            .values_mut()
+            .map(ToChild::to_child_mut)
+            .collect()
     }
 }
 
@@ -132,10 +176,14 @@ impl Draw for ProfileDetail {
         .generate();
         let area = block.inner(metadata.area());
         canvas.render_widget(block, metadata.area());
+        let Some(select) = self.selected_profile() else {
+            // No empty state - maybe to be changed later?
+            return;
+        };
 
         // Find the widest field so we know how to size the field column
         let field_column_width = iter::once("Field")
-            .chain(self.select.items().map(|row| row.field.as_str()))
+            .chain(select.items().map(|row| row.field.as_str()))
             .map(UnicodeWidthStr::width)
             .max()
             .unwrap_or(0) as u16
@@ -157,7 +205,7 @@ impl Draw for ProfileDetail {
 
         // Draw rows
         canvas.draw(
-            &self.select,
+            select,
             ComponentSelectProps {
                 styles: SelectStyles::table(),
                 spacing: Spacing::default(),
@@ -298,21 +346,24 @@ mod tests {
             ..Collection::factory(())
         };
         let harness = TestHarness::new(collection);
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            ProfileDetail::new(Some(&profile_id)),
-        );
+        let mut component =
+            TestComponent::new(&harness, &terminal, ProfileDetail::new());
 
+        let profile_id = Some(profile_id);
         component
             .int()
+            // Emulate selecting the profile
+            .send_event(BroadcastEvent::SelectedProfile(profile_id.clone()))
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("123")
             .send_key(KeyCode::Enter)
             // Tell all other previews to re-render
             .assert()
-            .broadcast([BroadcastEvent::RefreshPreviews]);
-        let field = &component.select[1];
+            .broadcast([
+                BroadcastEvent::SelectedProfile(profile_id),
+                BroadcastEvent::RefreshPreviews,
+            ]);
+        let field = &component.selected_profile().unwrap()[1];
         assert_eq!(field.template.template(), &"def123".into());
     }
 }

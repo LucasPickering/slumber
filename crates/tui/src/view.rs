@@ -1,7 +1,6 @@
 mod common;
 mod component;
 mod context;
-mod debug;
 mod event;
 pub mod persistent;
 mod state;
@@ -21,7 +20,6 @@ use crate::{
     view::{
         component::{Canvas, Component, ComponentExt, Root},
         context::ViewContext,
-        debug::DebugMonitor,
         event::Event,
     },
 };
@@ -56,9 +54,6 @@ use tracing::{trace, trace_span, warn};
 pub struct View {
     /// Root of the component tree
     root: Root,
-    /// Populated iff the `debug` config field is enabled. This tracks view
-    /// metrics and displays them to the user.
-    debug_monitor: Option<DebugMonitor>,
 }
 
 impl View {
@@ -83,15 +78,8 @@ impl View {
             messages_tx,
         );
 
-        let debug_monitor = if ViewContext::config().tui.debug {
-            Some(DebugMonitor::default())
-        } else {
-            None
-        };
-
         Self {
             root: Root::new(collection),
-            debug_monitor,
         }
     }
 
@@ -107,13 +95,7 @@ impl View {
             return ComponentMap::default();
         }
 
-        // If debug monitor is enabled, use it to capture view duration
-        if let Some(debug_monitor) = &self.debug_monitor {
-            debug_monitor
-                .draw(buffer, |buffer| Canvas::draw_all(buffer, &self.root, ()))
-        } else {
-            Canvas::draw_all(buffer, &self.root, ())
-        }
+        Canvas::draw_all(buffer, &self.root, ())
     }
 
     /// Persist all UI state to the database. This should be called at the end

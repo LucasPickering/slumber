@@ -6,7 +6,7 @@ use crate::{
     input::InputEvent,
     view::{
         common::actions::MenuItem,
-        context::UpdateContext,
+        context::{UpdateContext, ViewContext},
         event::{Event, EventMatch},
         persistent::PersistentStore,
         util::format_type_name,
@@ -16,12 +16,15 @@ use derive_more::Display;
 use ratatui::{
     buffer::Buffer,
     layout::{Position, Rect},
+    style::{Color, Style},
+    text::Span,
     widgets::{StatefulWidget, Widget},
 };
 use std::{
     any,
     collections::HashMap,
     sync::atomic::{AtomicU64, Ordering},
+    time::Instant,
 };
 use tracing::{instrument, trace, trace_span, warn};
 
@@ -222,6 +225,8 @@ pub struct Canvas<'buf> {
     /// the end of the draw, this is returned to the caller so it can be used
     /// during the subsequent update phase.
     components: ComponentMap,
+    /// Draw render times? This is read from the `debug` config field
+    debug: bool,
 }
 
 impl<'buf> Canvas<'buf> {
@@ -230,6 +235,7 @@ impl<'buf> Canvas<'buf> {
         Self {
             buffer,
             components: ComponentMap::default(),
+            debug: ViewContext::config().tui.debug,
         }
     }
 
@@ -288,7 +294,26 @@ impl<'buf> Canvas<'buf> {
         // Mark this component as visible so it can receive events
         self.components.0.insert(component.id(), metadata);
 
+        let start = Instant::now();
         component.draw(self, props, metadata);
+        let elapsed = start.elapsed();
+        // In debug mode, show the draw time for each component
+        if self.debug {
+            // Use Span instead of Line so it doesn't cover the whole line
+            let text = Span::styled(
+                format!("{}μs", elapsed.as_micros()),
+                Style::default().fg(Color::Black).bg(Color::Green),
+            );
+            let width = text.width() as u16;
+            // Bottom-right corner of the component
+            let area = Rect {
+                x: area.right() - width,
+                y: area.bottom() - 1,
+                width,
+                height: 1,
+            };
+            Widget::render(text, area, self.buffer);
+        }
     }
 
     /// Get the full screen area

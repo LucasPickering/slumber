@@ -179,7 +179,7 @@ pub fn yield_terminal(
 
 /// Set up terminal for TUI
 pub fn initialize_terminal() -> anyhow::Result<()> {
-    debug!("Initializing terminal");
+    info!("Initializing terminal");
     crossterm::terminal::enable_raw_mode()?;
     crossterm::execute!(
         io::stdout(),
@@ -191,7 +191,7 @@ pub fn initialize_terminal() -> anyhow::Result<()> {
 
 /// Return terminal to initial state
 pub fn restore_terminal() -> anyhow::Result<()> {
-    debug!("Restoring terminal");
+    info!("Restoring terminal");
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
         io::stdout(),

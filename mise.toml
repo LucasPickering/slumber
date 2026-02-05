@@ -20,6 +20,16 @@ description = "Generate doc content from Rust code"
 description = "Run tests"
 run = "cargo test"
 
+[tasks.tui-profile]
+description = "Run the TUI with cargo-flamegraph for profiling"
+env.CARGO_PROFILE_RELEASE_DEBUG = true
+env.SLUMBER_CONFIG_PATH = "${PWD}/data/config.yml"
+run = [
+    # dtrace requires root on MacOS
+    "cargo flamegraph --root --no-default-features --features=tui --bin=slumber",
+    "open flamegraph.svg",
+]
+
 [env]
 RUST_BACKTRACE = "1"
 

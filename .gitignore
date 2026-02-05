@@ -12,3 +12,6 @@ ids.txt
 gifs.md
 response.json
 .venv
+*.data
+*.old
+flamegraph.svg

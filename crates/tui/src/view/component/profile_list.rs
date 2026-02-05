@@ -132,8 +132,10 @@ impl Draw<SidebarProps> for ProfileList {
         metadata: DrawMetadata,
     ) {
         // Both formats use a pane outline
+        let title =
+            ViewContext::add_binding_hint("Profile", Action::SelectProfileList);
         let block = Pane {
-            title: "Profile",
+            title: &title,
             has_focus: metadata.has_focus(),
         }
         .generate();

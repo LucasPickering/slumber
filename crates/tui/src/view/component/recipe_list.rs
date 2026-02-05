@@ -199,8 +199,10 @@ impl Draw<SidebarProps> for RecipeList {
         metadata: DrawMetadata,
     ) {
         // Both formats use a pane outline
+        let title =
+            ViewContext::add_binding_hint("Recipe", Action::SelectRecipeList);
         let block = Pane {
-            title: "Recipe",
+            title: &title,
             has_focus: metadata.has_focus(),
         }
         .generate();

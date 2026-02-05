@@ -59,7 +59,8 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::{self, UnboundedReceiver},
-    task, time,
+    task,
+    time::{self, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, trace};
@@ -238,8 +239,10 @@ where
         self.draw(false)?; // Initial draw
 
         // This loop is limited by the rate that messages come in, with a
-        // minimum rate enforced by a timeout.
-        // The loop terminates when the cancel token is set
+        // minimum rate enforced by an interval. The loop terminates when the
+        // cancel token is set
+        let mut interval = time::interval(Self::TICK_TIME);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             // ===== Message Phase =====
             // Wait for one of 3 things to happen:
@@ -275,7 +278,7 @@ where
                         break;
                     }
                 },
-                () = time::sleep(Self::TICK_TIME) => None,
+                _ = interval.tick() => None,
                 () = self.cancel_token.cancelled() => break,
             };
 

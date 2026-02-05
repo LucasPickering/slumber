@@ -86,7 +86,7 @@ impl PrimaryView {
         let recipe_detail = Self::build_recipe_detail(recipe_id);
 
         let profile_list = ProfileList::new();
-        let profile_detail = ProfileDetail::new(profile_list.selected_id());
+        let profile_detail = ProfileDetail::new();
 
         // We don't have the request store here and there aren't any requests
         // loaded into it yet anyway, so we can't fill out the request yet.
@@ -505,9 +505,7 @@ impl Component for PrimaryView {
             .broadcast(|event| match event {
                 // Refresh previews when selected profile/recipe changes
                 BroadcastEvent::SelectedProfile(_) => {
-                    // Both panes can change when the profile changes
-                    self.profile_detail =
-                        ProfileDetail::new(self.profile_list.selected_id());
+                    // Recipe pane can change when profile changes
                     self.refresh_recipe();
                 }
                 BroadcastEvent::SelectedRecipe(_) => self.refresh_recipe(),

@@ -403,7 +403,7 @@ where
     /// if you're just checking that it's empty. This is important because
     /// propagated events *may* be intentional, but could also indicate a bug
     /// where you component isn't handling events it should (or vice versa).
-    pub fn update_draw(self, event: Event) -> Self {
+    pub fn send_event(self, event: impl Into<Event>) -> Self {
         // This is a safety check, so we don't end up handling events we didn't
         // expect to
         assert!(
@@ -432,7 +432,7 @@ where
             input.convert_event(terminal_event)
         })
         .expect("Event does not map to an input event");
-        self.update_draw(Event::Input(input_event))
+        self.send_event(Event::Input(input_event))
     }
 
     /// Simulate a left click at the given location, then drain events and draw.

@@ -219,7 +219,7 @@ impl TextBody {
         debug!(?file, "Wrote body to file for editing");
 
         let emitter = self.override_emitter;
-        ViewContext::send_message(Message::FileEdit {
+        ViewContext::push_message(Message::FileEdit {
             file,
             on_complete: Box::new(move |file| {
                 emitter.emit(SaveBodyOverride(file));
@@ -299,7 +299,7 @@ impl Component for TextBody {
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 RawBodyMenuAction::View => self.view_body(),
-                RawBodyMenuAction::Copy => ViewContext::send_message(
+                RawBodyMenuAction::Copy => ViewContext::push_message(
                     Message::CopyRecipe(RecipeCopyTarget::Body),
                 ),
                 RawBodyMenuAction::Edit => self.open_editor(),
@@ -483,10 +483,7 @@ mod tests {
     /// Test editing a raw body, which should open a file for the user to edit,
     /// then load the response
     #[rstest]
-    fn test_edit(
-        mut harness: TestHarness,
-        #[with(10, 1)] terminal: TestTerminal,
-    ) {
+    fn test_edit(harness: TestHarness, #[with(10, 1)] terminal: TestTerminal) {
         let recipe = Recipe {
             body: Some(RecipeBody::Raw("hello!".into())),
             ..Recipe::factory(())
@@ -502,7 +499,7 @@ mod tests {
         terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Edit the template
-        edit(&mut component, &mut harness, "hello!", "goodbye!");
+        edit(&mut component, &harness, "hello!", "goodbye!");
 
         assert_eq!(component.override_value(), Some("goodbye!".into()));
         terminal.assert_buffer_lines([vec![
@@ -518,7 +515,7 @@ mod tests {
 
         // Reset edited state
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -529,7 +526,7 @@ mod tests {
     /// with the error
     #[rstest]
     fn test_edit_invalid(
-        mut harness: TestHarness,
+        harness: TestHarness,
         #[with(20, 5)] terminal: TestTerminal,
     ) {
         let recipe = Recipe {
@@ -543,7 +540,7 @@ mod tests {
         );
 
         // Open the editor
-        edit(&mut component, &mut harness, "init", "{{");
+        edit(&mut component, &harness, "init", "{{");
 
         // We don't have a valid override, so we'll let the HTTP engine use the
         // original template
@@ -569,7 +566,7 @@ mod tests {
     /// then load the response
     #[rstest]
     fn test_edit_json(
-        mut harness: TestHarness,
+        harness: TestHarness,
         #[with(12, 1)] terminal: TestTerminal,
     ) {
         let initial_json = json!("hello!");
@@ -598,7 +595,7 @@ mod tests {
         ]]);
 
         // Open the editor
-        edit(&mut component, &mut harness, &initial_text, &override_text);
+        edit(&mut component, &harness, &initial_text, &override_text);
 
         assert_eq!(component.override_value(), Some(override_json.into()));
         terminal.assert_buffer_lines([vec![
@@ -615,7 +612,7 @@ mod tests {
 
         // Reset edited state
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -706,22 +703,20 @@ mod tests {
     /// file and allow the component to update with the new template.
     fn edit(
         component: &mut TestComponent<RecipeBodyDisplay>,
-        harness: &mut TestHarness,
+        harness: &TestHarness,
         initial_content: &str,
         content: &str,
     ) {
         harness.messages_rx().clear();
-        component
-            .int()
-            .send_key(KeyCode::Char('e'))
-            .assert()
-            .empty();
         let (file, on_complete) = assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::FileEdit {
+            component
+                .int(harness)
+                .send_key(KeyCode::Char('e'))
+                .into_propagated(),
+            [Message::FileEdit {
                 file,
                 on_complete,
-            } => (file, on_complete),
+            }] => (file, on_complete),
         );
         // Make sure the initial content is present as expected
         assert_eq!(fs::read_to_string(file.path()).unwrap(), initial_content);
@@ -730,6 +725,6 @@ mod tests {
         fs::write(file.path(), content).unwrap();
         on_complete(file);
         // Handle completion event
-        component.int().drain_draw().assert().empty();
+        component.int(harness).drain_draw().assert().empty();
     }
 }

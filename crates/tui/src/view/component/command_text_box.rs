@@ -335,12 +335,16 @@ mod tests {
 
         // Scroll back
         assert_eq!(component.text(), "");
-        component.int().send_key(KeyCode::Up).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Up)
+            .assert()
+            .empty();
         assert_eq!(component.text(), "three");
 
         // Scroll forward
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Up, KeyCode::Up, KeyCode::Down])
             .assert()
             .empty();
@@ -348,7 +352,7 @@ mod tests {
 
         // Submit
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([CommandTextBoxEvent::Submit]);
@@ -356,9 +360,17 @@ mod tests {
 
         // Submission resets scrollback state, so now when we go back from two
         // we get three instead of one
-        component.int().send_key(KeyCode::Up).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Up)
+            .assert()
+            .empty();
         assert_eq!(component.text(), "three");
-        component.int().send_key(KeyCode::Up).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Up)
+            .assert()
+            .empty();
         assert_eq!(component.text(), "one");
     }
 
@@ -381,7 +393,7 @@ mod tests {
 
         // Initial text should be used for the query
         component
-            .int()
+            .int(&harness)
             .send_text("t")
             .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
             .assert()
@@ -401,13 +413,13 @@ mod tests {
         ]);
 
         // Modifying while in search mode should update what's visible
-        component.int().send_text("h").assert().empty();
+        component.int(&harness).send_text("h").assert().empty();
         assert_eq!(component.text(), "th");
         assert_eq!(get_search_items(&component).unwrap(), &["three"]);
 
         // Enter closes the search AND submits
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([CommandTextBoxEvent::Submit]);
@@ -430,7 +442,7 @@ mod tests {
         component.set_area(bottom_row_area(&terminal));
 
         component
-            .int()
+            .int(&harness)
             .send_text("t")
             .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
             .assert()
@@ -440,7 +452,7 @@ mod tests {
         // Escape exits without modifying the text. This exits both the search
         // list *and* the text box.
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Esc)
             .assert()
             .emitted([CommandTextBoxEvent::Cancel]);
@@ -464,7 +476,7 @@ mod tests {
 
         // Initial text should be used for the query
         component
-            .int()
+            .int(&harness)
             .send_text("teefs")
             .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
             .assert()

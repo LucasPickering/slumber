@@ -92,7 +92,7 @@ impl History {
         // If the list is empty, it never sends a Select event so we need to
         // manually notify our friends that there's no request selected.
         if self.select.is_empty() {
-            ViewContext::push_event(BroadcastEvent::SelectedRequest(None));
+            ViewContext::push_message(BroadcastEvent::SelectedRequest(None));
         }
     }
 
@@ -119,7 +119,7 @@ impl Component for History {
         event
             .m()
             .action(|action, propagate| match action {
-                Action::Delete => ViewContext::push_event(
+                Action::Delete => ViewContext::push_message(
                     Event::DeleteRequests(DeleteTarget::Request),
                 ),
                 _ => propagate.set(),
@@ -136,12 +136,12 @@ impl Component for History {
                         DeleteTarget::Recipe { all_profiles: true }
                     }
                 };
-                ViewContext::push_event(Event::DeleteRequests(target));
+                ViewContext::push_message(Event::DeleteRequests(target));
             })
             .emitted(self.select.to_emitter(), |event| match event.kind {
                 SelectEventKind::Select => {
                     let id = self.select[event].id();
-                    ViewContext::push_event(BroadcastEvent::SelectedRequest(
+                    ViewContext::push_message(BroadcastEvent::SelectedRequest(
                         Some(id),
                     ));
                 }
@@ -337,13 +337,17 @@ mod tests {
         component.refresh(&mut harness.request_store_mut());
 
         // Initial state
-        component.int().drain_draw().assert().broadcast([
+        component.int(&harness).drain_draw().assert().broadcast([
             BroadcastEvent::SelectedRequest(Some(exchanges[0].id)),
         ]);
 
         // Select the next one
-        component.int().send_key(KeyCode::Down).assert().broadcast([
-            BroadcastEvent::SelectedRequest(Some(exchanges[1].id)),
-        ]);
+        component
+            .int(&harness)
+            .send_key(KeyCode::Down)
+            .assert()
+            .broadcast([BroadcastEvent::SelectedRequest(Some(
+                exchanges[1].id,
+            ))]);
     }
 }

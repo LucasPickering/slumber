@@ -364,11 +364,6 @@ impl<'buf> Canvas<'buf> {
 pub struct ComponentMap(HashMap<ComponentId, DrawMetadata>);
 
 impl ComponentMap {
-    /// Was this component drawn to the screen during the previous draw phase?
-    pub fn is_visible<T: Component + ?Sized>(&self, component: &T) -> bool {
-        self.0.contains_key(&component.id())
-    }
-
     /// Get the area that the component was drawn to. Return `None` iff the
     /// component is not visible.
     pub fn area<T: Component + ?Sized>(&self, component: &T) -> Option<Rect> {

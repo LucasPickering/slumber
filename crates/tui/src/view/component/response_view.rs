@@ -61,14 +61,14 @@ impl ResponseBodyView {
         // Use whatever text is visible to the user. This differs from saving
         // the body, because we can't copy binary content, so if the file is
         // binary we'll copy the hexcode text
-        ViewContext::send_message(Message::CopyText(
+        ViewContext::push_message(Message::CopyText(
             self.body.visible_text().to_string(),
         ));
     }
 
     pub fn save_response_body(&self) {
         // This will trigger a modal to ask the user for a path
-        ViewContext::send_message(Message::SaveResponseBody {
+        ViewContext::push_message(Message::SaveResponseBody {
             request_id: self.response.id,
             data: self.body.modified_text(),
         });
@@ -197,7 +197,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_copy_body(
-        mut harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
         #[case] response: ResponseRecord,
         #[case] expected_body: &str,
@@ -217,8 +217,8 @@ mod tests {
 
         component.copy_body();
         let body = assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::CopyText(body) => body,
+            harness.messages_rx().try_pop(),
+            Some(Message::CopyText(body)) => body,
         );
         assert_eq!(body, expected_body);
     }
@@ -261,7 +261,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_save_file(
-        mut harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
         #[case] response: ResponseRecord,
         #[case] query: Option<&str>,
@@ -284,20 +284,21 @@ mod tests {
         if let Some(query) = query {
             // Type something into the query box
             component
-                .int()
+                .int(&harness)
                 .send_key(KeyCode::Char('/'))
                 .send_text(query)
                 .send_key(KeyCode::Enter)
+                .run_task() // Run the command
+                .await
                 .assert()
                 .empty();
-            harness.run_task().await; // Run the command
-            component.int().drain_draw().assert().empty();
         }
 
         component.save_response_body();
         let (request_id, data) = assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::SaveResponseBody { request_id, data } => (request_id, data),
+            harness.messages_rx().try_pop(),
+            Some(Message::SaveResponseBody { request_id, data }) =>
+                (request_id, data),
         );
         assert_eq!(request_id, exchange.id);
         assert_eq!(data.as_deref(), expected_body);

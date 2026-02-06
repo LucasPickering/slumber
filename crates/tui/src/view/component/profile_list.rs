@@ -100,7 +100,7 @@ impl Component for ProfileList {
             .emitted(self.select.to_emitter(), |event| match event.kind {
                 SelectEventKind::Select => {
                     // Let everyone know the selected profile changed
-                    ViewContext::push_event(BroadcastEvent::SelectedProfile(
+                    ViewContext::push_message(BroadcastEvent::SelectedProfile(
                         self.selected_id().cloned(),
                     ));
                 }

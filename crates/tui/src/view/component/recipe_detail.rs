@@ -221,7 +221,7 @@ impl RecipeMenuAction {
     /// Send a global message/event to handle this event
     pub fn handle(self) {
         fn copy(target: RecipeCopyTarget) {
-            ViewContext::send_message(Message::CopyRecipe(target));
+            ViewContext::push_message(Message::CopyRecipe(target));
         }
 
         match self {

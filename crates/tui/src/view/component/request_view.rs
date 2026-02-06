@@ -53,7 +53,7 @@ impl RequestView {
     }
 
     pub fn copy_url(&self) {
-        ViewContext::send_message(Message::CopyText(
+        ViewContext::push_message(Message::CopyText(
             self.request.url.to_string(),
         ));
     }
@@ -69,7 +69,7 @@ impl RequestView {
         // formatting/querying but that could change
         if let Some(text_window) = &self.body_text_window {
             let body = text_window.text().to_string();
-            ViewContext::send_message(Message::CopyText(body));
+            ViewContext::push_message(Message::CopyText(body));
         }
     }
 }

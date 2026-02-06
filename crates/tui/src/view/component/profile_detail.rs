@@ -351,7 +351,7 @@ mod tests {
 
         let profile_id = Some(profile_id);
         component
-            .int()
+            .int(&harness)
             // Emulate selecting the profile
             .send_event(BroadcastEvent::SelectedProfile(profile_id.clone()))
             .send_keys([KeyCode::Down, KeyCode::Char('e')])

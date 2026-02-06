@@ -720,21 +720,21 @@ mod tests {
 
         // Select a basic action
         component
-            .int()
+            .int(&harness)
             .action(&["Action 2"])
             .assert()
             .emitted([TestAction::Action2]);
 
         // Actions can be performed by shortcut
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Char('x'), KeyCode::Char('e')])
             .assert()
             .emitted([TestAction::Shortcutted]);
 
         // Disabled action *cannot* be performed by shortcut
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Char('x'), KeyCode::Char('z')])
             .assert()
             .emitted([]);
@@ -776,7 +776,7 @@ mod tests {
         let mut component =
             TestComponent::new(&harness, &terminal, Actionable::default());
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('x'))
             .send_keys(inputs.iter().copied())
             .assert()
@@ -806,7 +806,7 @@ mod tests {
 
         // Group should be expanded when the modal is first opened
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Char('x'), KeyCode::Right, KeyCode::Enter])
             .assert()
             .emitted([TestAction::Nested1]);

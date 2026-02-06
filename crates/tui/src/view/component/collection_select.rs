@@ -95,7 +95,7 @@ impl Component for CollectionSelect {
                         // Safety: can't get here without select defined
                         let select = self.select.as_ref().unwrap();
                         let item = &select[event];
-                        ViewContext::send_message(Message::CollectionSelect(
+                        ViewContext::push_message(Message::CollectionSelect(
                             item.path.clone(),
                         ));
                     }

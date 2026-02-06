@@ -384,7 +384,7 @@ mod tests {
         );
         assert!(component.is_empty());
         // This shouldn't panic!
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
     }
 
     /// View window calculation and scrolling with variable-height items
@@ -424,7 +424,7 @@ mod tests {
         component.with_state(|state| state.offset = initial_offset);
         let item_props = |item: &Item, _| ((), item.height);
         component
-            .int_props(|| ComponentSelectProps {
+            .int_props(&harness, || ComponentSelectProps {
                 item_props: Box::new(item_props),
                 ..Default::default()
             })
@@ -498,7 +498,7 @@ mod tests {
 
             // Render to make sure it doesn't panic
             component
-                .int_props(|| ComponentSelectProps {
+                .int_props(&harness, || ComponentSelectProps {
                     item_props: Box::new(item_props),
                     ..Default::default()
                 })

@@ -145,7 +145,7 @@ pub fn view_text(text: &Text, mime: Option<Mime>) {
         return;
     };
     trace!(?file, "Wrote body to temporary file");
-    ViewContext::send_message(Message::FileView { file, mime });
+    ViewContext::push_message(Message::FileView { file, mime });
 }
 
 /// Format a datetime for the user

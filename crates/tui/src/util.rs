@@ -547,7 +547,7 @@ mod tests {
         // We need to run two futures concurrently:
         // - save_file() procedure
         // - Respondent that will pop the prompt messages and handle them
-        let (tx, mut rx) = message::queue();
+        let (tx, rx) = message::queue();
         let save_file_fut = save_file(
             tx,
             Some("default.txt".into()),
@@ -557,7 +557,7 @@ mod tests {
         let assertions_fut = async {
             // First we expect a prompt for the file path
             let (message, default, channel) = assert_matches!(
-                rx.pop_wait().await,
+                rx.pop_timeout().await,
                 Some(Message::Question(Question::Text {
                     message, default, channel, ..
                 })) => {
@@ -571,7 +571,7 @@ mod tests {
             if exists {
                 // Now we expect a confirmation prompt
                 let (message, channel) = assert_matches!(
-                    rx.pop_wait().await,
+                    rx.pop_timeout().await,
                     Some(Message::Question(Question::Confirm { message, channel })) => {
                         (message, channel)
                     },

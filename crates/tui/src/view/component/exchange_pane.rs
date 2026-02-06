@@ -358,13 +358,13 @@ impl ExchangePaneContent {
             }
             ExchangePaneMenuAction::ResendRequest => {
                 self.state.request().inspect(|request| {
-                    ViewContext::send_message(HttpMessage::Resend(
+                    ViewContext::push_message(HttpMessage::Resend(
                         request.request_id(),
                     ));
                 });
             }
             ExchangePaneMenuAction::DeleteRequest => {
-                ViewContext::push_event(Event::DeleteRequests(
+                ViewContext::push_message(Event::DeleteRequests(
                     DeleteTarget::Request,
                 ));
             }
@@ -383,7 +383,7 @@ impl Component for ExchangePaneContent {
             .action(|action, propagate| match action {
                 Action::Delete if self.state.request().is_some() => {
                     // Root handles deletion so it can show a confirm modal
-                    ViewContext::push_event(Event::DeleteRequests(
+                    ViewContext::push_message(Event::DeleteRequests(
                         DeleteTarget::Request,
                     ));
                 }

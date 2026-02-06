@@ -433,7 +433,7 @@ mod tests {
         component.open(form);
 
         component
-            .int()
+            .int(&harness)
             .drain_draw() // Draw so children are visible
             .send_text("123") // Modify username
             .inspect(|modal_queue| {
@@ -471,7 +471,7 @@ mod tests {
             text(&mut component, "Password", Some("hunter"), true);
 
         component
-            .int()
+            .int(&harness)
             .drain_draw() // Draw so children are visible
             .send_text("12") // Modify username
             .send_key(KeyCode::Tab) // Switch to password
@@ -520,7 +520,7 @@ mod tests {
         );
 
         component
-            .int()
+            .int(&harness)
             .drain_draw() // Draw so children are visible
             .send_key(KeyCode::Down)
             .assert()

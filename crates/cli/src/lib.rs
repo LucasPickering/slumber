@@ -88,11 +88,6 @@ pub struct GlobalArgs {
     /// Print the path to the log file for this session
     #[clap(long)]
     pub print_log_path: bool,
-
-    /// Test only: set the directory for the config, database, and log files
-    #[cfg(debug_assertions)]
-    #[clap(long, hide = true)]
-    pub data_dir: Option<PathBuf>,
 }
 
 impl GlobalArgs {
@@ -109,8 +104,6 @@ impl Default for GlobalArgs {
             file: None,
             log_level: LevelFilter::OFF,
             print_log_path: false,
-            #[cfg(debug_assertions)]
-            data_dir: None,
         }
     }
 }
@@ -134,12 +127,6 @@ impl CliCommand {
         if global.print_log_path {
             let path = paths::log_file();
             println!("Logging to {}", path.display());
-        }
-
-        // The --data-dir flag is used in integration tests to isolate files
-        #[cfg(debug_assertions)]
-        if let Some(path) = global.data_dir.as_deref() {
-            paths::set_data_directory(path.to_owned());
         }
 
         match self {

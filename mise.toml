@@ -22,8 +22,8 @@ run = "cargo test"
 
 [tasks.tui-profile]
 description = "Run the TUI with cargo-flamegraph for profiling"
-env.CARGO_PROFILE_RELEASE_DEBUG = true
-env.SLUMBER_CONFIG_PATH = "${PWD}/data/config.yml"
+env.CARGO_PROFILE_RELEASE_DEBUG = true # Include debug symbols
+env.SLUMBER_DATA_DIRECTORY = "${PWD}/data/" # Use local config/data dir
 run = [
     # dtrace requires root on MacOS
     "cargo flamegraph --root --no-default-features --features=tui --bin=slumber",

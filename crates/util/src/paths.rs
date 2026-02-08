@@ -1,16 +1,29 @@
 use path_clean::PathClean;
 use std::{
     borrow::Cow,
-    fs, io,
+    env, fs, io,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
 
-#[cfg(debug_assertions)]
+/// Environment variable to override the data directory for the entire process
+///
+/// Use this for CLI integration tests and when running with `--release` in
+/// development (e.g. for profiling).
+///
+/// This is unstable and **not publicly supported.** This behavior may change
+/// at any time and is only intended for testing, so it is not documented
+/// anywhere.
+const DATA_DIRECTORY_ENV_VAR: &str = "SLUMBER_DATA_DIRECTORY";
+
 thread_local! {
-    /// This is dev-only so it can be used in integration tests. In the past
-    /// this used an env var, but it's now a thread local so integration tests
-    /// can run in parallel on separate threads (env vars are process-wide).
+    /// Override the data directory for the current thread
+    ///
+    /// This is dev-only so it can be used in integration tests. This takes
+    /// **higher** priority than the environment variable, and should be used
+    /// wherever possibel because you can provide multiple overrides within a
+    /// single process (env vars are process-wide).
+    ///
     /// This will *not* be automatically reset, so any test that cares about the
     /// data dir needs to set this itself.
     static DATA_DIRECTORY_OVERRIDE: std::cell::RefCell<Option<PathBuf>> =
@@ -24,7 +37,7 @@ static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
 /// Override the data directory **for the current thread**
 ///
 /// This should be used via the [data_dir](super::test_util::data_dir)
-#[cfg(any(debug_assertions, test, feature = "test"))]
+#[cfg(any(test, feature = "test"))]
 pub fn set_data_directory(path: PathBuf) {
     DATA_DIRECTORY_OVERRIDE.with_borrow_mut(|dir| *dir = Some(path));
 }
@@ -33,7 +46,7 @@ pub fn set_data_directory(path: PathBuf) {
 ///
 /// This is called automatically by the [data_dir](super::test_util::data_dir)
 /// fixture at the end of the test
-#[cfg(any(debug_assertions, test, feature = "test"))]
+#[cfg(any(test, feature = "test"))]
 pub fn reset_data_directory() {
     DATA_DIRECTORY_OVERRIDE.with_borrow_mut(|dir| *dir = None);
 }
@@ -83,18 +96,23 @@ pub fn log_file() -> PathBuf {
 /// In debug mode, use a local directory for all files. In release, use the
 /// given path.
 fn debug_or(path: PathBuf) -> PathBuf {
-    #[cfg(debug_assertions)]
-    {
-        let _ = path; // Remove unused warning
-        // Check the thread-local override first for tests
-        DATA_DIRECTORY_OVERRIDE
-            .with_borrow(Clone::clone)
-            .unwrap_or_else(|| get_repo_root().join("data/"))
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        path
-    }
+    // Check the thread-local override first
+    DATA_DIRECTORY_OVERRIDE
+        .with_borrow(Clone::clone)
+        // Then the env var
+        .or_else(|| env::var(DATA_DIRECTORY_ENV_VAR).map(PathBuf::from).ok())
+        // Then the default - given path for release, local dir for debug
+        .unwrap_or_else(|| {
+            #[cfg(debug_assertions)]
+            {
+                let _ = path; // Remove unused warning
+                get_repo_root().join("data/")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                path
+            }
+        })
 }
 
 /// Ensure the parent directory of a file path exists

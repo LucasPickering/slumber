@@ -6,6 +6,7 @@ use crate::{
     util::{ResultReported, TempFile},
     view::{Event, Question},
 };
+use anyhow::Context;
 use futures::{FutureExt, future::LocalBoxFuture};
 use mime::Mime;
 use slumber_core::{
@@ -27,6 +28,7 @@ use std::{
     sync::Arc,
     task::{Poll, Waker},
 };
+use tokio::task;
 use tracing::trace;
 
 /// A message triggers some *asynchronous* action. Most state modifications can
@@ -266,6 +268,34 @@ impl MessageSender {
             future.await.reported(&tx);
         };
         self.send(Message::Spawn(future.boxed_local()));
+    }
+
+    /// Spawn CPU-bound work on a blocking thread
+    ///
+    /// The output of the blocking work will be passed back to the main thread.
+    /// It's then handed to the `into_message` function, which will pack the
+    /// data into a [Message] so it can be sent back to the main TUI loop and
+    /// used to update state.
+    pub fn spawn_blocking<T: 'static + Send>(
+        &self,
+        blocking: impl 'static + FnOnce() -> T + Send,
+        into_message: impl 'static + FnOnce(T) -> Message,
+    ) {
+        // We need two tasks here:
+        // - Inner blocking task does the CPU work on another thread
+        // - Outer local task runs on the main thread and just waits on the
+        //   inner task. Once it's done, it sends the outcome back to the loop
+        // We can't do the CPU work on the local task because it would block the
+        // loop, and we can't send the message from the blocking thread because
+        // messages are !Send
+        let messages_tx = self.clone();
+        self.spawn_result(async move {
+            let out = task::spawn_blocking(blocking)
+                .await
+                .context("Blocking thread panicked")?;
+            messages_tx.send(into_message(out));
+            Ok(())
+        });
     }
 }
 

@@ -9,6 +9,7 @@
     | jq('[.[] | { label: .name, value: .id }]')
     | select(message='Fish ID') }}"
   stream_compound: "command: {{ command(['echo', 'test']) }}\nfile: {{ file('Cargo.toml') }}"
+  large_body_command: "head -c {{ prompt(message='Bytes', default=500000) }} < /dev/urandom | base64"
 
 profiles:
   prd:
@@ -203,7 +204,7 @@ requests:
         name: Large Body
         method: POST
         url: "{{ host }}/anything"
-        body: "{{ file('Cargo.toml') | string() }}"
+        body: "{{ command(['sh', '-c', large_body_command]) }}"
 
   delay:
     $ref: "#/.base_request"

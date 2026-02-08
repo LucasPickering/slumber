@@ -3,7 +3,7 @@ use crate::{
     message::{Message, MessageSender},
     view::{ComponentMap, Event, InvalidCollection, UpdateContext, View},
 };
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use ratatui::buffer::Buffer;
 use slumber_config::Config;
 use slumber_core::{
@@ -11,7 +11,6 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
 };
 use std::sync::Arc;
-use tokio::task;
 
 /// Collection-specific top-level state
 ///
@@ -96,28 +95,13 @@ impl CollectionState {
     /// this will be extremely fast, but it's possible there's some edge case
     /// that causes it to be slow and we don't want to block the render loop.
     pub fn reload_collection(&self) {
-        let messages_tx = self.messages_tx.clone();
         let collection_file = self.collection_file.clone();
-        // We need two tasks here:
-        // - Inner blocking task runs on another thread and parses the YAML
-        // - Outer local task runs on the main thread and just waits on the
-        //   inner task. Once it's done, it sends the result back to the loop
-        // We can't do the parsing on the local task because it would block the
-        // loop, and we can't send the message from the blocking thread because
-        // messages are !Send
-        task::spawn_local(async move {
-            let result = task::spawn_blocking(move || collection_file.load())
-                .await
-                .context("Collection loading panicked");
-            let message = match result {
-                // Collection either loaded or failed. Either way, refresh the
-                // collection state with the result
-                Ok(result) => Message::CollectionEndReload(result),
-                // Join error - the parse thread panicked. Bad!!
-                Err(error) => Message::Error { error },
-            };
-            messages_tx.send(message);
-        });
+        self.messages_tx.spawn_blocking(
+            move || collection_file.load(),
+            // Collection either loaded or failed. Either way, refresh the
+            // collection state with the result
+            Message::CollectionEndReload,
+        );
     }
 
     /// Switch to a new version of the current collection file

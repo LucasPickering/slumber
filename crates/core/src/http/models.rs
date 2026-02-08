@@ -707,7 +707,7 @@ impl ResponseRecord {
     /// Get the value of the response's `Content-Type` header, and parse it as
     /// a known/supported content type
     pub fn content_type(&self) -> Option<ContentType> {
-        ContentType::from_headers(&self.headers).ok()
+        ContentType::try_from_headers(&self.headers).ok()
     }
 
     /// Get a suggested file name for the content of this response. First we'll

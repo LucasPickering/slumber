@@ -13,37 +13,38 @@ pub enum ContentType {
 }
 
 impl ContentType {
-    /// Parse a MIME string and map it to a known content type
-    fn parse_mime(mime_type: &str) -> Result<Self, ContentTypeError> {
-        let mime: Mime = mime_type
-            .parse()
-            .map_err(|_| ContentTypeError::MimeInvalid(mime_type.to_owned()))?;
-        Self::from_mime(&mime).ok_or(ContentTypeError::MimeUnknown(mime))
-    }
-
-    /// Get a known content type from a pre-parsed MIME type. Return `None` if
-    /// the MIME type isn't supported.
-    pub fn from_mime(mime: &Mime) -> Option<Self> {
+    /// Get a known content type from a pre-parsed MIME type
+    ///
+    /// Return `Err` if the MIME type is unknown.
+    pub fn try_from_mime(mime: &Mime) -> Result<Self, ContentTypeError> {
         let suffix = mime.suffix().map(|name| name.as_str());
         match (mime.type_(), mime.subtype(), suffix) {
             // JSON has a lot of extended types that follow the pattern
             // "application/*+json", match those too
             (APPLICATION, JSON, _) | (APPLICATION, _, Some("json")) => {
-                Some(Self::Json)
+                Ok(Self::Json)
             }
-            _ => None,
+            _ => Err(ContentTypeError::MimeUnknown(mime.clone())),
         }
     }
 
     /// Parse the content type from the `Content-Type` header
-    pub fn from_headers(headers: &HeaderMap) -> Result<Self, ContentTypeError> {
+    ///
+    /// Return `Err` if the `Content-Type` header is missing, contains an
+    /// invalid MIME value, or an unknown MIME type.
+    pub fn try_from_headers(
+        headers: &HeaderMap,
+    ) -> Result<Self, ContentTypeError> {
         let header_value = headers
             .get(header::CONTENT_TYPE)
             .map(HeaderValue::as_bytes)
             .ok_or(ContentTypeError::HeaderMissing)?;
         let header_value = std::str::from_utf8(header_value)
             .map_err(ContentTypeError::HeaderInvalid)?;
-        Self::parse_mime(header_value)
+        let mime: Mime = header_value.parse().map_err(|_| {
+            ContentTypeError::MimeInvalid(header_value.to_owned())
+        })?;
+        Self::try_from_mime(&mime)
     }
 
     /// Make a response body look pretty. If the input isn't valid for this
@@ -93,39 +94,53 @@ pub enum ContentTypeError {
 mod tests {
     use super::*;
     use rstest::rstest;
-    use slumber_util::assert_err;
+    use slumber_util::assert_result;
 
-    /// Test all content types and their variants
     #[rstest]
-    #[case::json("application/json", ContentType::Json)]
+    #[case::json("application/json", Ok(ContentType::Json))]
     #[case::json_with_metadata(
         // Test extra metadata in the content-type header
         "application/json; charset=utf-8; boundary=asdf",
-        ContentType::Json
+        Ok(ContentType::Json)
     )]
     // Test extended MIME type
-    #[case::json_extended("application/geo+json", ContentType::Json)]
+    #[case::json_extended("application/geo+json", Ok(ContentType::Json))]
+    // Error cases
+    #[case::error_json_empty_extension(
+        "application/+json",
+        Err("Unknown content type")
+    )]
+    #[case::error_unknown("text/html", Err("Unknown content type"))]
     fn test_try_from_mime(
-        #[case] mime_type: &str,
-        #[case] expected: ContentType,
+        #[case] mime_type: Mime,
+        #[case] expected: Result<ContentType, &str>,
     ) {
-        assert_eq!(ContentType::parse_mime(mime_type).unwrap(), expected);
+        assert_result(ContentType::try_from_mime(&mime_type), expected);
     }
 
-    /// Test invalid/unknown MIME types
     #[rstest]
-    #[case::invalid("json", "Invalid content type")]
-    #[case::json_empty_extension("application/+json", "Unknown content type")]
-    #[case::whitespace("application/ +json", "Invalid content type")]
-    #[case::unknown("text/html", "Unknown content type")]
-    fn test_try_from_mime_error(
-        #[case] mime_type: &str,
-        #[case] expected_error: &str,
+    #[case::json(Some("application/json"), Ok(ContentType::Json))]
+    // Error cases
+    #[case::error_missing(None, Err("Response has no Content-Type header"))]
+    #[case::error_invalid(Some("json"), Err("Invalid content type"))]
+    #[case::error_whitespace(
+        Some("application/ +json"),
+        Err("Invalid content type")
+    )]
+    fn test_try_from_headers(
+        #[case] content_type_header: Option<&'static str>,
+        #[case] expected: Result<ContentType, &str>,
     ) {
-        assert_err!(ContentType::parse_mime(mime_type), expected_error);
+        let headers = content_type_header
+            .into_iter()
+            .map(|value| {
+                (header::CONTENT_TYPE, HeaderValue::from_static(value))
+            })
+            .collect::<HeaderMap>();
+        assert_result(ContentType::try_from_headers(&headers), expected);
     }
 
-    /// Test all content types
+    /// Test prettification
     #[rstest]
     #[case::json(
         ContentType::Json,

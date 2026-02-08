@@ -294,7 +294,7 @@ mod tests {
 
         // Select query tab
         component
-            .int()
+            .int(&harness)
             .drain_draw() // Drain initial events
             .send_key(KeyCode::Right)
             .assert()
@@ -305,7 +305,7 @@ mod tests {
         // of row ordering to make sure higher rows don't overwrite lower ones,
         // or vice versa.
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Down, KeyCode::Char(' ')]) // Disable (p1,v0)
             .send_keys([KeyCode::Down, KeyCode::Char('e')]) // Override (p1,v1)
             .send_text("www")

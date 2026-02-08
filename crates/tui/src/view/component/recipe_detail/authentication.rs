@@ -309,7 +309,7 @@ mod tests {
 
         // Edit username
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
@@ -325,7 +325,7 @@ mod tests {
 
         // Reset username
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -333,7 +333,7 @@ mod tests {
 
         // Edit password
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("???")
             .send_key(KeyCode::Enter)
@@ -349,7 +349,7 @@ mod tests {
 
         // Reset password
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -374,7 +374,7 @@ mod tests {
 
         // Edit password
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e'), KeyCode::Enter])
             .assert()
             .empty();
@@ -399,7 +399,7 @@ mod tests {
 
         // Edit token
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
@@ -414,7 +414,7 @@ mod tests {
 
         // Reset token
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -434,7 +434,7 @@ mod tests {
         );
 
         component
-            .int()
+            .int(&harness)
             .action(&["Edit Token"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert()
@@ -446,7 +446,11 @@ mod tests {
             })
         );
 
-        component.int().action(&["Reset Token"]).assert().empty();
+        component
+            .int(&harness)
+            .action(&["Reset Token"])
+            .assert()
+            .empty();
         assert_eq!(component.override_value(), None);
     }
 

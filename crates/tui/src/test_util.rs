@@ -64,36 +64,3 @@ impl TestTerminal {
         self.0.borrow_mut().draw(f).unwrap();
     }
 }
-
-/// Assert that the event queue matches the given list of patterns. Each event
-/// can optionally include a conditional expression to apply additional
-/// assertions.
-macro_rules! assert_events {
-    ($($pattern:pat $(if $condition:expr)?),* $(,)?) => {
-        ViewContext::inspect_event_queue(|events| {
-            // Can't use expect(unused_mut) because not all invocations trigger
-            // the warning
-            #[allow(clippy::allow_attributes)]
-            #[allow(unused_mut)]
-            let mut len = 0;
-
-            // In order to support conditions on each individual event, we have
-            // to unpack them here
-            $(
-                let Some(event) = events.get(len) else {
-                    panic!(
-                        "Expected event {expected} but reached end of queue",
-                        expected = stringify!($pattern),
-                    );
-                };
-                slumber_util::assert_matches!(event, $pattern $(if $condition)?);
-                len += 1;
-            )*
-            // Make sure there aren't any trailing events
-            let actual_len = events.len();
-            assert_eq!(actual_len, len, "Too many events. Expected {len} but \
-                got {actual_len}: {events:?}");
-        });
-    }
-}
-pub(crate) use assert_events;

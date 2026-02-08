@@ -2,7 +2,7 @@
 
 use crate::{
     http::RequestStore,
-    message::{self, Message, MessageReceiver, MessageSender},
+    message::{self, Message, MessageReceiver},
     test_util::TestTerminal,
     view::{
         ComponentMap, UpdateContext,
@@ -21,11 +21,11 @@ use ratatui::layout::Rect;
 use rstest::fixture;
 use slumber_config::{Action, Config};
 use slumber_core::{collection::Collection, database::CollectionDatabase};
-use slumber_util::{Factory, assert_matches};
+use slumber_util::Factory;
 use std::{
     cell::RefCell,
     fmt::Debug,
-    iter,
+    iter, mem,
     ops::{Deref, DerefMut},
     rc::Rc,
     sync::Arc,
@@ -53,7 +53,6 @@ pub struct TestHarness {
     /// Otherwise we would have to pass it to every single draw and update fn.
     request_store: Rc<RefCell<RequestStore>>,
     messages_rx: MessageReceiver,
-    messages_tx: MessageSender,
 }
 
 impl TestHarness {
@@ -68,14 +67,13 @@ impl TestHarness {
             Config::default().into(),
             Arc::clone(&collection),
             database.clone(),
-            messages_tx.clone(),
+            messages_tx,
         );
         TestHarness {
             collection,
             database,
             request_store,
             messages_rx,
-            messages_tx,
         }
     }
 
@@ -96,23 +94,8 @@ impl TestHarness {
 
     /// Get a mutable reference to the message queue receiver, which can be to
     /// modify and assert on the message queue
-    pub fn messages_rx(&mut self) -> &mut MessageReceiver {
-        &mut self.messages_rx
-    }
-
-    /// Get a clone of the message sender
-    pub fn messages_tx(&self) -> MessageSender {
-        self.messages_tx.clone()
-    }
-
-    /// Pop a [Message::Spawn] off the queue and run the task
-    ///
-    /// Panic if the queue is empty or the next message isn't `Spawn`.
-    pub async fn run_task(&mut self) {
-        let future = assert_matches!(
-            self.messages_rx().pop_now(), Message::Spawn(future) => future
-        );
-        future.await;
+    pub fn messages_rx(&self) -> &MessageReceiver {
+        &self.messages_rx
     }
 }
 
@@ -142,6 +125,9 @@ pub struct TestComponent<'term, T> {
     /// Should the component be given focus on the next draw? Defaults to
     /// `true`
     has_focus: bool,
+    /// Messages propagated by the component constructor. These will be
+    /// forwarded to the first [int] call so they can be asserted on.
+    initial_propagated: Vec<Message>,
 }
 
 impl<'term, T> TestComponent<'term, T>
@@ -149,11 +135,11 @@ where
     T: Component + Debug,
 {
     /// Start building a new component
-    pub fn builder<Props>(
-        harness: &TestHarness,
+    pub fn builder<'msg, Props>(
+        harness: &'msg TestHarness,
         terminal: &'term TestTerminal,
         data: T,
-    ) -> TestComponentBuilder<'term, T, Props>
+    ) -> TestComponentBuilder<'term, 'msg, T, Props>
     where
         T: Draw<Props>,
     {
@@ -161,11 +147,10 @@ where
             terminal,
             database: harness.database.clone(),
             request_store: harness.request_store_owned(),
+            messages_rx: &harness.messages_rx,
             area: terminal.area(),
             component: TestWrapper::new(data),
             props: None,
-            // Most components shouldn't emit any events on init
-            assert_events: Box::new(|assert| assert.empty()),
         }
     }
 
@@ -197,12 +182,15 @@ where
 
     /// Get a helper to chain interactions and assertions on this component.
     /// Each draw will use `Props::default()` for the props value.
-    pub fn int<'a, Props>(&'a mut self) -> Interact<'term, 'a, T, Props>
+    pub fn int<'a, Props>(
+        &'a mut self,
+        harness: &'a TestHarness,
+    ) -> Interact<'term, 'a, T, Props>
     where
         T: Draw<Props>,
         Props: 'a + Default,
     {
-        self.int_props(Props::default)
+        self.int_props(harness, Props::default)
     }
 
     /// Get a helper to chain interactions and assertions on this component.
@@ -210,15 +198,20 @@ where
     /// next props value.
     pub fn int_props<'a, Props>(
         &'a mut self,
+        harness: &'a TestHarness,
         props_factory: impl 'a + Fn() -> Props,
     ) -> Interact<'term, 'a, T, Props>
     where
         T: Draw<Props>,
     {
+        // If any messages were propagated during startup, forward them to
+        // the first int() call
+        let propagated = mem::take(&mut self.initial_propagated);
         Interact {
             component: self,
+            messages_rx: &harness.messages_rx,
             props_factory: Box::new(props_factory),
-            propagated: Vec::new(),
+            propagated,
         }
     }
 
@@ -247,22 +240,28 @@ where
     }
 
     /// Drain events from the event queue, and handle them one-by-one. Return
-    /// the events that were propagated (i.e. not consumed by the component or
+    /// the messages that were propagated (i.e. not consumed by the component or
     /// its children), in the order they were queued/handled.
-    fn drain_events(&mut self) -> Vec<Event> {
+    fn drain_events(&mut self, messages_rx: &MessageReceiver) -> Vec<Message> {
         let mut persistent_store = PersistentStore::new(self.database.clone());
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
             component_map: &self.component_map,
             request_store: &mut self.request_store.borrow_mut(),
         };
-        while let Some(event) = ViewContext::pop_event() {
-            trace_span!("Handling event", ?event).in_scope(|| {
-                let event = self.component.update_all(&mut context, event);
-                if let Some(event) = event {
-                    propagated.push(event);
-                }
-            });
+        while let Some(message) = messages_rx.try_pop() {
+            if let Message::Event(event) = message {
+                trace_span!("Handling event", ?event).in_scope(|| {
+                    let event = self.component.update_all(&mut context, event);
+                    if let Some(event) = event {
+                        propagated.push(Message::Event(event));
+                    }
+                });
+            } else {
+                // All other message types CANNOT be handled by components, so
+                // they must be propagated
+                propagated.push(message);
+            }
         }
 
         // Persist values in the store after the update. This mimics what the
@@ -289,21 +288,17 @@ impl<T> DerefMut for TestComponent<'_, T> {
 }
 
 /// Helper for customizing a [TestComponent] before its initial draw
-pub struct TestComponentBuilder<'term, T, Props> {
+pub struct TestComponentBuilder<'term, 'msg, T, Props> {
     terminal: &'term TestTerminal,
     database: CollectionDatabase,
     request_store: Rc<RefCell<RequestStore>>,
+    messages_rx: &'msg MessageReceiver,
     area: Rect,
     component: TestWrapper<T>,
     props: Option<Props>,
-    /// Function to call after component initialization to assert on the list
-    /// of propagated events in the event queue. By default, it should use
-    /// [AssertPropagated::empty] to assert that the queue is empty.
-    #[expect(clippy::type_complexity)]
-    assert_events: Box<dyn FnOnce(AssertEvents<'_, '_, T>)>,
 }
 
-impl<'term, T, Props> TestComponentBuilder<'term, T, Props>
+impl<'term, T, Props> TestComponentBuilder<'term, '_, T, Props>
 where
     T: Component + Draw<Props> + Debug,
 {
@@ -328,26 +323,6 @@ where
         self
     }
 
-    /// Customize the assertion that is run on the list of events propagated on
-    /// init
-    ///
-    /// After the test component is created, all events in the queue are
-    /// drained, then the component is drawn. If there are any remaining
-    /// events in the queue from the initialization OR subsequent updates, they
-    /// can be asserted on here. By default, this calls
-    /// [AssertPropagated::empty], meaning the test will fail if any events
-    /// were queued and not handled in the initial update call.
-    ///
-    /// Call this with a custom assertion if your component intentionally queues
-    /// events during startup.
-    pub fn with_assert_events(
-        mut self,
-        assert_events: impl 'static + FnOnce(AssertEvents<'_, '_, T>),
-    ) -> Self {
-        self.assert_events = Box::new(assert_events);
-        self
-    }
-
     /// Build the component, process its initialization events, then do an
     /// initial draw
     ///
@@ -363,20 +338,15 @@ where
             area: self.area,
             component: self.component,
             has_focus: true,
+            initial_propagated: vec![],
         };
 
-        // Drain any events that may have been queued during component init,
+        // Drain any messages that may have been queued during component init,
         // then draw with the latest state
         let props = self.props.expect("Props not set for test component");
-        let propagated = component.drain_events();
+        // Propagated events just get tossed
+        component.initial_propagated = component.drain_events(self.messages_rx);
         component.draw(props);
-
-        // Use our closure to decide what events are expected
-        let assert = AssertEvents {
-            component: &mut component,
-            propagated,
-        };
-        (self.assert_events)(assert);
 
         component
     }
@@ -390,12 +360,16 @@ where
 #[derive(derive_more::Debug)]
 pub struct Interact<'term, 'comp, Component, Props> {
     component: &'comp mut TestComponent<'term, Component>,
+    /// Message queue receiver, from [TestHarness]
+    messages_rx: &'comp MessageReceiver,
     /// A repeatable function that generates a props object for each draw. In
     /// most cases this will just be `Props::default` or a function that
     /// repeatedly returns the same static value. In some cases though, the
     /// value can't be held across draws and must be recreated each time.
     props_factory: Box<dyn 'comp + Fn() -> Props>,
-    propagated: Vec<Event>,
+    /// Messages queued during this interaction that were not handled by the
+    /// component
+    propagated: Vec<Message>,
 }
 
 impl<'term, 'comp, Comp, Props> Interact<'term, 'comp, Comp, Props>
@@ -409,7 +383,7 @@ where
     /// where the UI needs to respond to some asynchronous event, such as a
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(mut self) -> Self {
-        let propagated = self.component.drain_events();
+        let propagated = self.component.drain_events(self.messages_rx);
         self.component.draw((self.props_factory)());
         self.propagated.extend(propagated);
         self
@@ -432,16 +406,14 @@ where
     pub fn update_draw(self, event: Event) -> Self {
         // This is a safety check, so we don't end up handling events we didn't
         // expect to
-        ViewContext::inspect_event_queue(|queue| {
-            assert!(
-                queue.is_empty(),
-                "Event queue is not empty. To prevent unintended side effects, \
+        assert!(
+            self.messages_rx.is_empty(),
+            "Message queue is not empty. To prevent unintended side effects, \
                 the queue must be empty before an update. Maybe you want to call
-                drain_draw() before the first interaction?\n\
-                {queue:?}"
-            );
-        });
-        ViewContext::push_event(event);
+                drain_draw() before the first interaction?\n{:?}",
+            self.messages_rx
+        );
+        ViewContext::push_message(event);
         self.drain_draw()
     }
 
@@ -588,20 +560,50 @@ where
         self
     }
 
+    /// Pop a [Message::Spawn] off the **propagated** list and run it
+    ///
+    /// Panic if the propagated is empty or the most recent propagated message
+    /// isn't `Spawn`. This uses the propagated list instead of the message
+    /// queue because this is typically called right after another interaction
+    /// that would drain the message queue. Any `Spawn` messages in the queue
+    /// would have been propagated. This is a bit shitty but it works (for now).
+    pub async fn run_task(mut self) -> Self {
+        let future = match self.propagated.pop() {
+            Some(Message::Spawn(future)) => future,
+            other => panic!(
+                "run_task expected Spawn message, but received: {other:?}"
+            ),
+        };
+        future.await;
+        // Handle any messages from the task
+        self.drain_draw()
+    }
+
     /// Get the underlying component value
     pub fn component_data(&self) -> &Comp {
         &self.component.component.inner
     }
 
-    /// Get propagated events as a slice
-    pub fn propagated(&self) -> &[Event] {
-        &self.propagated
+    /// Get the messages propagated during this interaction
+    ///
+    /// This will include any view events not handled by the component, as well
+    /// as all other message types. The returned value is an array of fixed size
+    /// `N`. The output if this is generally passed directly to
+    /// `assert_matches!()`, where you now exactly how many messages will be
+    /// returned. Returning an array makes it possible to match on owned values.
+    #[must_use]
+    #[track_caller]
+    pub fn into_propagated<const N: usize>(self) -> [Message; N] {
+        #[expect(clippy::expect_fun_call)] // Expect gives better stack trace
+        self.propagated
+            .try_into()
+            .expect(&format!("Expected {N} messages"))
     }
 
-    /// Get an [AssertEvents] to assert properties about the list of events
+    /// Get an [AssertMessages] to assert properties about the list of messages
     /// propagated by this interaction
-    pub fn assert(self) -> AssertEvents<'term, 'comp, Comp> {
-        AssertEvents {
+    pub fn assert(self) -> AssertMessages<'term, 'comp, Comp> {
+        AssertMessages {
             component: self.component,
             propagated: self.propagated,
         }
@@ -610,19 +612,19 @@ where
 
 /// Assert on the list of propagated events
 #[must_use = "Propagated events must be checked"]
-pub struct AssertEvents<'term, 'comp, Comp> {
+pub struct AssertMessages<'term, 'comp, Comp> {
     component: &'comp mut TestComponent<'term, Comp>,
-    propagated: Vec<Event>,
+    propagated: Vec<Message>,
 }
 
-impl<Comp> AssertEvents<'_, '_, Comp> {
+impl<Comp> AssertMessages<'_, '_, Comp> {
     /// Get the underlying component value
     pub fn component_data(&self) -> &Comp {
         &*self.component
     }
 
-    /// Assert that no events were propagated, i.e. the component handled all
-    /// given and generated events.
+    /// Assert that no messages were propagated, i.e. the component handled all
+    /// given and generated messages.
     #[track_caller]
     pub fn empty(self) {
         assert!(
@@ -632,20 +634,20 @@ impl<Comp> AssertEvents<'_, '_, Comp> {
         );
     }
 
-    /// Assert that one or more [BroadcastEvent]s were emitted. No other events
-    /// should have bene propagated.
+    /// Assert that one or more [BroadcastEvent]s were emitted. No other
+    /// messages should have bene propagated.
     #[track_caller]
     pub fn broadcast(self, expected: impl IntoIterator<Item = BroadcastEvent>) {
         let mut actual = Vec::new();
-        for event in self.propagated {
+        for message in self.propagated {
             // Do this map in a for loop instead of map() so the panic gets
             // attributed to our caller
-            if let Event::Broadcast(event) = event {
+            if let Message::Event(Event::Broadcast(event)) = message {
                 actual.push(event);
             } else {
                 panic!(
                     "Expected only broadcasts to have been propagated,\
-                        but received: {event:#?}"
+                        but received: {message:#?}"
                 )
             }
         }
@@ -664,15 +666,22 @@ impl<Comp> AssertEvents<'_, '_, Comp> {
     {
         let emitter = self.component.to_emitter();
         let mut emitted = Vec::new();
-        for event in self.propagated {
+        for message in self.propagated {
             // Do this map in a for loop instead of map() so the panic gets
             // attributed to our caller
-            match emitter.emitted(event) {
-                Ok(event) => emitted.push(event),
-                Err(event) => panic!(
-                    "Expected only events emitted by {emitter} to have \
+            if let Message::Event(event) = message {
+                match emitter.emitted(event) {
+                    Ok(event) => emitted.push(event),
+                    Err(event) => panic!(
+                        "Expected only events emitted by {emitter} to have \
                         been propagated, but received: {event:#?}",
-                ),
+                    ),
+                }
+            } else {
+                panic!(
+                    "Expected only emitted events to have been propagated,\
+                        but received: {message:#?}"
+                )
             }
         }
         let expected = expected.into_iter().collect_vec();

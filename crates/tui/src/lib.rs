@@ -22,7 +22,7 @@ use crate::{
         RecipeCopyTarget,
     },
     util::ResultReported,
-    view::{PreviewPrompter, RequestDisposition, TuiPrompter},
+    view::{Event, PreviewPrompter, RequestDisposition, TuiPrompter},
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
@@ -207,9 +207,8 @@ where
 
     /// Run the main TUI update loop
     ///
-    /// Any error returned from this is fatal. See the struct definition for a
-    /// description of the different phases of the run loop. If the loop exits
-    /// gracefully, return `self`. This is useful in integration tests.
+    /// Any error returned from this is fatal. If the loop exits gracefully,
+    /// return `self`. This is useful in integration tests.
     pub async fn run(
         mut self,
         input_stream: impl Stream<Item = terminput::Event>,
@@ -271,11 +270,6 @@ where
             // If an error occurs, store it so we can show the user
             self.handle_message(message).reported(&self.messages_tx);
 
-            // ===== Event Phase =====
-            // Let the view handle all queued events. Trigger a draw if there
-            // was anything in the queue.
-            self.state.drain_events();
-
             // ===== Draw Phase =====
             // Skip the draw if there are more messages in the queue. When
             // there's a lot of messages (e.g. holding down a key or a lot of
@@ -327,6 +321,7 @@ where
             Message::CopyText(text) => self.copy_text(text)?,
 
             Message::Error { error } => self.state.view.error(error),
+            Message::Event(event) => self.state.handle_event(event),
 
             Message::FileEdit { file, on_complete } => {
                 let editor = self.config.editor()?;
@@ -377,7 +372,9 @@ where
                 self.terminal.clear()?;
                 self.draw()?;
             }
-            Message::Input(event) => self.state.view.handle_input(event),
+            Message::Input(event) => {
+                self.state.handle_event(Event::Input(event));
+            }
 
             Message::Notify(message) => self.state.view.notify(message),
             Message::Question(question) => self.state.view.question(question),

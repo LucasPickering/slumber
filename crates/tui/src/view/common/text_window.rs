@@ -381,7 +381,7 @@ mod tests {
 
         // Scroll down
         component
-            .int_props(|| props.clone())
+            .int_props(&harness, || props.clone())
             .send_key(KeyCode::Down)
             .assert()
             .empty();
@@ -394,7 +394,7 @@ mod tests {
 
         // Scroll back up
         component
-            .int_props(|| props.clone())
+            .int_props(&harness, || props.clone())
             // Second does nothing
             .send_keys([KeyCode::Up, KeyCode::Up])
             .assert()
@@ -408,7 +408,7 @@ mod tests {
 
         // Scroll right
         component
-            .int_props(|| props.clone())
+            .int_props(&harness, || props.clone())
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
@@ -423,7 +423,7 @@ mod tests {
 
         // Scroll back left
         component
-            .int_props(|| props.clone())
+            .int_props(&harness, || props.clone())
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
@@ -502,7 +502,7 @@ mod tests {
 
         component.set_area(Rect::new(0, 0, 10, 3));
         component
-            .int_props(|| props.clone())
+            .int_props(&harness, || props.clone())
             .drain_draw()
             .assert()
             .empty();
@@ -514,7 +514,7 @@ mod tests {
 
         component.set_area(Rect::new(0, 0, 15, 4));
         component
-            .int_props(|| props.clone())
+            .int_props(&harness, || props.clone())
             .drain_draw()
             .assert()
             .empty();

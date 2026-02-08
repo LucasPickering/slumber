@@ -2,11 +2,7 @@ use crate::{
     http::RequestStore,
     input::InputBindings,
     message::{Message, MessageSender},
-    view::{
-        component::ComponentMap,
-        event::{Event, EventQueue},
-        styles::Styles,
-    },
+    view::{component::ComponentMap, styles::Styles},
 };
 use futures::FutureExt;
 use slumber_config::{Action, Config};
@@ -30,8 +26,6 @@ pub struct ViewContext {
     /// Persistence database. The TUI only ever needs to run DB ops related to
     /// our collection, so we can use a collection-restricted DB handle
     database: CollectionDatabase,
-    /// Queue of unhandled view events, which will be used to update view state
-    event_queue: EventQueue,
     /// Input:action bindings. Used in the view to show hotkey help/suggestions
     input_bindings: InputBindings,
     /// Sender to the async message queue, which is used to transmit data and
@@ -74,7 +68,6 @@ impl ViewContext {
                 config,
                 collection,
                 database,
-                event_queue: EventQueue::default(),
                 input_bindings,
                 messages_tx,
                 styles,
@@ -87,15 +80,6 @@ impl ViewContext {
         Self::INSTANCE.with_borrow(|context| {
             let context =
                 context.as_ref().expect("View context not initialized");
-            f(context)
-        })
-    }
-
-    /// Execute a function with mutable access to the context
-    fn with_mut<T>(f: impl FnOnce(&mut ViewContext) -> T) -> T {
-        Self::INSTANCE.with_borrow_mut(|context| {
-            let context =
-                context.as_mut().expect("View context not initialized");
             f(context)
         })
     }
@@ -120,31 +104,21 @@ impl ViewContext {
         Self::with(|context| Arc::clone(&context.config))
     }
 
-    /// Queue a view event to be handled by the component tree
-    pub fn push_event(event: impl Into<Event>) {
-        Self::with_mut(|context| context.event_queue.push(event.into()));
-    }
-
-    /// Pop an event off the event queue
-    pub fn pop_event() -> Option<Event> {
-        Self::with_mut(|context| context.event_queue.pop())
-    }
-
     /// Get a clone of the async message sender. Generally you should use
-    /// [Self::send_message] instead, but in some contexts you need the whole
+    /// [Self::push_message] instead, but in some contexts you need the whole
     /// sender.
     pub fn messages_tx() -> MessageSender {
         Self::with(|context| context.messages_tx.clone())
     }
 
     /// Send an async message on the channel
-    pub fn send_message(message: impl Into<Message>) {
+    pub fn push_message(message: impl Into<Message>) {
         Self::with(|context| context.messages_tx.send(message));
     }
 
     /// Spawn a future in a new task on the main thread. See [Message::Spawn]
     pub fn spawn(future: impl 'static + Future<Output = ()>) {
-        Self::send_message(Message::Spawn(future.boxed_local()));
+        Self::push_message(Message::Spawn(future.boxed_local()));
     }
 
     /// Get a clone of the stylesheet
@@ -165,18 +139,6 @@ impl ViewContext {
     }
 }
 
-/// Test-only utils
-#[cfg(test)]
-impl ViewContext {
-    /// Execute a function with read-only access to the event queue
-    pub fn inspect_event_queue(f: impl FnOnce(&[&Event])) {
-        Self::with(|context| {
-            let refs: Vec<_> = context.event_queue.to_vec();
-            f(refs.as_slice());
-        });
-    }
-}
-
 /// External data passed to
 /// [ComponentExt::update](crate::view::component::ComponentExt). This holds
 /// data that cannot be held in [ViewContext], typically because of borrowing
@@ -191,41 +153,21 @@ pub struct UpdateContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::assert_events,
-        view::{
-            event::DeleteTarget,
-            test_util::{TestHarness, harness},
-        },
-    };
+    use crate::view::test_util::{TestHarness, harness};
     use rstest::rstest;
     use slumber_util::assert_matches;
 
     #[rstest]
-    fn test_event_queue(_harness: TestHarness) {
-        assert_events!(); // Start empty
-
-        ViewContext::push_event(Event::DeleteRequests(DeleteTarget::Request));
-        assert_events!(Event::DeleteRequests(DeleteTarget::Request));
-
+    fn test_push_message(harness: TestHarness) {
+        ViewContext::push_message(Message::CollectionStartReload);
+        ViewContext::push_message(Message::CollectionEdit { location: None });
         assert_matches!(
-            ViewContext::pop_event(),
-            Some(Event::DeleteRequests(DeleteTarget::Request))
-        );
-        assert_events!(); // Empty again
-    }
-
-    #[rstest]
-    fn test_send_message(mut harness: TestHarness) {
-        ViewContext::send_message(Message::CollectionStartReload);
-        ViewContext::send_message(Message::CollectionEdit { location: None });
-        assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::CollectionStartReload
+            harness.messages_rx().try_pop(),
+            Some(Message::CollectionStartReload),
         );
         assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::CollectionEdit { .. }
+            harness.messages_rx().try_pop(),
+            Some(Message::CollectionEdit { .. }),
         );
     }
 }

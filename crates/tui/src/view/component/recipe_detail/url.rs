@@ -69,11 +69,12 @@ impl SessionKey for UrlKey {
 mod tests {
     use super::*;
     use crate::{
+        message::Message,
         test_util::{TestTerminal, terminal},
         view::test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
-    use slumber_util::Factory;
+    use slumber_util::{Factory, assert_matches};
     use terminput::KeyCode;
 
     /// Test edit/reset via keybind
@@ -89,27 +90,35 @@ mod tests {
         );
 
         // Check initial state
+        assert_matches!(
+            component.int(&harness).into_propagated(),
+            [Message::TemplatePreview { .. }]
+        );
         assert_eq!(component.override_value(), None);
 
         // Edit URL
-        component
-            .int()
-            .send_key(KeyCode::Char('e'))
-            .send_text("!!!")
-            .send_key(KeyCode::Enter)
-            .assert()
-            .empty();
+        assert_matches!(
+            component
+                .int(&harness)
+                .send_key(KeyCode::Char('e'))
+                .send_text("!!!")
+                .send_key(KeyCode::Enter)
+                .into_propagated(),
+            [Message::TemplatePreview { .. }]
+        );
         assert_eq!(
             component.override_value(),
             Some("/users/{{ username }}!!!".into())
         );
 
-        // Reset token
-        component
-            .int()
-            .send_key(KeyCode::Char('z'))
-            .assert()
-            .empty();
+        // Reset URL
+        assert_matches!(
+            component
+                .int(&harness)
+                .send_key(KeyCode::Char('z'))
+                .into_propagated(),
+            [Message::TemplatePreview { .. }]
+        );
         assert_eq!(component.override_value(), None);
     }
 
@@ -126,22 +135,34 @@ mod tests {
         );
 
         // Check initial state
+        assert_matches!(
+            component.int(&harness).into_propagated(),
+            [Message::TemplatePreview { .. }]
+        );
         assert_eq!(component.override_value(), None);
 
         // Edit URL
-        component
-            .int()
-            .action(&["Edit URL"])
-            .send_keys([KeyCode::Char('!'), KeyCode::Enter])
-            .assert()
-            .empty();
+        assert_matches!(
+            component
+                .int(&harness)
+                .action(&["Edit URL"])
+                .send_keys([KeyCode::Char('!'), KeyCode::Enter])
+                .into_propagated(),
+            [Message::TemplatePreview { .. }]
+        );
         assert_eq!(
             component.override_value(),
             Some("/users/{{ username }}!".into())
         );
 
-        // Edit URL
-        component.int().action(&["Reset URL"]).assert().empty();
+        // Reset URL
+        assert_matches!(
+            component
+                .int(&harness)
+                .action(&["Reset URL"])
+                .into_propagated(),
+            [Message::TemplatePreview { .. }]
+        );
         assert_eq!(component.override_value(), None);
     }
 

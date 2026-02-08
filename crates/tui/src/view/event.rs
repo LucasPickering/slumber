@@ -3,6 +3,7 @@
 
 use crate::{
     input::InputEvent,
+    message::Message,
     util::Flag,
     view::{ViewContext, common::actions::MenuAction, util::format_type_name},
 };
@@ -14,41 +15,12 @@ use slumber_core::{
 };
 use std::{
     any::{self, Any},
-    collections::VecDeque,
     fmt::Debug,
     marker::PhantomData,
     ops::Deref,
 };
 use terminput::ScrollDirection;
-use tracing::trace;
 use uuid::Uuid;
-
-/// A queue of view events. Any component within the view can add to this, and
-/// outside the view (e.g. from the main loop) it can be added to via the view.
-///
-/// This is drained by the view, which is responsible for passing those events
-/// down the component tree.
-#[derive(Default)]
-pub struct EventQueue(VecDeque<Event>);
-
-impl EventQueue {
-    /// Queue a view event to be handled by the component tree
-    pub fn push(&mut self, event: Event) {
-        trace!(?event, "Queueing view event");
-        self.0.push_back(event);
-    }
-
-    /// Pop an event off the queue
-    pub fn pop(&mut self) -> Option<Event> {
-        self.0.pop_front()
-    }
-
-    /// Collect references to each event into a vector, for asserting on it
-    #[cfg(test)]
-    pub fn to_vec(&self) -> Vec<&Event> {
-        self.0.iter().collect()
-    }
-}
 
 /// A trigger for state change in the view. Events are handled by
 /// [Component::update](crate::view::component::Component::update), and
@@ -56,9 +28,9 @@ impl EventQueue {
 /// Events can also trigger other events to propagate state changes, as well as
 /// side-effect messages to trigger app-wide changes (e.g. launch a request).
 ///
-/// This is conceptually different from [crate::Message] in that events are
-/// restricted to the queue and handled in the main thread. Messages can be
-/// queued asynchronously and are used to interact *between* threads.
+/// An [Event] is a subtype of [Message]. It's pushed through the same queue as
+/// all other messages, but events are handled by individual components instead
+/// of at the root message handler.
 #[derive(Debug)]
 pub enum Event {
     /// See [BroadcastEvent]
@@ -89,6 +61,12 @@ impl Event {
     /// Convert to [EventMatch] so its methods can be used to match the event
     pub fn m(self) -> EventMatch {
         Some(self).into()
+    }
+}
+
+impl From<Event> for Message {
+    fn from(event: Event) -> Self {
+        Self::Event(event)
     }
 }
 
@@ -123,6 +101,12 @@ pub enum BroadcastEvent {
     /// Selected request ID has changed. ID is `None` if there is no request
     /// selected.
     SelectedRequest(Option<RequestId>),
+}
+
+impl From<BroadcastEvent> for Message {
+    fn from(value: BroadcastEvent) -> Self {
+        Self::Event(Event::Broadcast(value))
+    }
 }
 
 /// Definition of what request(s) to start deletion for
@@ -311,7 +295,7 @@ impl<T: ?Sized> Emitter<T> {
 impl<T: Sized + LocalEvent> Emitter<T> {
     /// Push an event onto the event queue
     pub fn emit(&self, event: T) {
-        ViewContext::push_event(Event::Emitted {
+        ViewContext::push_message(Event::Emitted {
             emitter_id: self.id,
             emitter_type: format_type_name(any::type_name::<T>()),
             event: Box::new(event),
@@ -365,7 +349,7 @@ impl<T: Sized + LocalEvent> Emitter<T> {
 impl Emitter<dyn LocalEvent> {
     /// Push a type-erased event onto the event queue
     pub fn emit(&self, event: Box<dyn LocalEvent>) {
-        ViewContext::push_event(Event::Emitted {
+        ViewContext::push_message(Event::Emitted {
             emitter_id: self.id,
             // We lose the original type name :(
             emitter_type: format_type_name(any::type_name_of_val(&event)),

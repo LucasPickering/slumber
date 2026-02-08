@@ -154,7 +154,7 @@ impl PrimaryView {
 
     /// Send a request for the currently selected recipe
     fn send_request(&self) {
-        ViewContext::send_message(HttpMessage::Begin);
+        ViewContext::push_message(HttpMessage::Begin);
     }
 
     /// Refresh the recipe preview. Call this whenever the selected recipe *or*
@@ -548,7 +548,7 @@ impl Component for PrimaryView {
                 match menu_action {
                     PrimaryMenuAction::EditCollection(location) => {
                         // Forward to the main loop so it can open the editor
-                        ViewContext::send_message(Message::CollectionEdit {
+                        ViewContext::push_message(Message::CollectionEdit {
                             location,
                         });
                     }
@@ -670,25 +670,20 @@ mod tests {
 
     /// Create component to be tested
     fn create_component<'term>(
-        harness: &mut TestHarness,
+        harness: &TestHarness,
         terminal: &'term TestTerminal,
     ) -> TestComponent<'term, PrimaryView> {
         let recipe_id = harness.collection.first_recipe_id().clone();
         let profile_id = harness.collection.first_profile_id().clone();
-        let component =
-            TestComponent::builder(harness, terminal, PrimaryView::new())
-                .with_default_props()
-                // Initial events
-                .with_assert_events(|assert| {
-                    assert.broadcast([
-                        BroadcastEvent::SelectedRecipe(Some(recipe_id)),
-                        BroadcastEvent::SelectedProfile(Some(profile_id)),
-                        // Two events above each trigger a request selection
-                        BroadcastEvent::SelectedRequest(None),
-                        BroadcastEvent::SelectedRequest(None),
-                    ]);
-                })
-                .build();
+        let mut component =
+            TestComponent::new(harness, terminal, PrimaryView::new());
+        component.int(harness).assert().broadcast([
+            BroadcastEvent::SelectedRecipe(Some(recipe_id)),
+            BroadcastEvent::SelectedProfile(Some(profile_id)),
+            // Two events above each trigger a request selection
+            BroadcastEvent::SelectedRequest(None),
+            BroadcastEvent::SelectedRequest(None),
+        ]);
         // Clear template preview messages so we can test what we want
         harness.messages_rx().clear();
         component
@@ -696,20 +691,20 @@ mod tests {
 
     /// Test selected pane and fullscreen mode loading from persistence
     #[rstest]
-    fn test_pane_persistence(mut harness: TestHarness, terminal: TestTerminal) {
+    fn test_pane_persistence(harness: TestHarness, terminal: TestTerminal) {
         let mut view = ViewState::default();
         view.select_exchange_pane();
         view.toggle_fullscreen();
         harness.persistent_store().set(&ViewStateKey, &view);
 
-        let component = create_component(&mut harness, &terminal);
+        let component = create_component(&harness, &terminal);
         assert_eq!(component.view, view);
     }
 
     /// Test the request_config() getter
     #[rstest]
-    fn test_request_config(mut harness: TestHarness, terminal: TestTerminal) {
-        let component = create_component(&mut harness, &terminal);
+    fn test_request_config(harness: TestHarness, terminal: TestTerminal) {
+        let component = create_component(&harness, &terminal);
         let expected_config = RequestConfig {
             recipe_id: harness.collection.first_recipe_id().clone(),
             profile_id: Some(harness.collection.first_profile_id().clone()),
@@ -720,36 +715,40 @@ mod tests {
 
     /// Test "Edit Recipe" action
     #[rstest]
-    fn test_edit_recipe(mut harness: TestHarness, terminal: TestTerminal) {
-        let mut component = create_component(&mut harness, &terminal);
-        component.int().drain_draw().assert().empty();
+    fn test_edit_recipe(harness: TestHarness, terminal: TestTerminal) {
+        let mut component = create_component(&harness, &terminal);
+        component.int(&harness).drain_draw().assert().empty();
         harness.messages_rx().clear(); // Clear init junk
         let expected_location =
             harness.collection.first_recipe().location.clone();
 
-        component.int().action(&["Edit Recipe"]).assert().empty();
         // Event should be converted into a message appropriately
         let location = assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::CollectionEdit { location: Some(location) } => location
+            component
+                .int(&harness)
+                .action(&["Edit Recipe"])
+                .into_propagated(),
+            [Message::CollectionEdit { location: Some(location) }] => location
         );
         assert_eq!(location, expected_location);
     }
 
     /// Test "Edit Profile" action
     #[rstest]
-    fn test_edit_profile(mut harness: TestHarness, terminal: TestTerminal) {
-        let mut component = create_component(&mut harness, &terminal);
-        component.int().drain_draw().assert().empty();
+    fn test_edit_profile(harness: TestHarness, terminal: TestTerminal) {
+        let mut component = create_component(&harness, &terminal);
+        component.int(&harness).drain_draw().assert().empty();
         harness.messages_rx().clear(); // Clear init junk
         let expected_location =
             harness.collection.first_profile().location.clone();
 
-        component.int().action(&["Edit Profile"]).assert().empty();
         // Event should be converted into a message appropriately
         let location = assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::CollectionEdit { location: Some(location) } => location
+            component
+                .int(&harness)
+                .action(&["Edit Profile"])
+                .into_propagated(),
+            [Message::CollectionEdit { location: Some(location) }] => location
         );
         assert_eq!(location, expected_location);
     }
@@ -762,36 +761,30 @@ mod tests {
     #[case::curl("as cURL", RecipeCopyTarget::Curl)]
     #[case::python("as Python", RecipeCopyTarget::Python)]
     fn test_copy_action(
-        mut harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
         #[case] label: &str,
         #[case] expected_target: RecipeCopyTarget,
     ) {
-        let mut component = create_component(&mut harness, &terminal);
-
-        component
-            .int()
-            .send_key(KeyCode::Char('1')) // Select recipe detail
-            .action(&["Copy", label])
-            .assert()
-            .empty();
+        let mut component = create_component(&harness, &terminal);
 
         let actual_target = assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::CopyRecipe(target) => target
+            component
+                .int(&harness)
+                .send_key(KeyCode::Char('1')) // Select recipe detail
+                .action(&["Copy", label])
+                .into_propagated(),
+            [Message::CopyRecipe(target)] => target
         );
         assert_eq!(actual_target, expected_target);
 
-        component
-            .int()
-            .send_key(KeyCode::Char('r')) // Select recipe list
-            .action(&["Copy", label])
-            .assert()
-            .empty();
-
         let actual_target = assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::CopyRecipe(target) => target
+            component
+                .int(&harness)
+                .send_key(KeyCode::Char('r')) // Select recipe list
+                .action(&["Copy", label])
+                .into_propagated(),
+            [Message::CopyRecipe(target)] => target
         );
         assert_eq!(actual_target, expected_target);
     }

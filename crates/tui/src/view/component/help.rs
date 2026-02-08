@@ -188,7 +188,11 @@ mod tests {
         assert!(component.open);
 
         // Esc to close
-        component.int().send_key(KeyCode::Esc).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Esc)
+            .assert()
+            .empty();
         assert!(!component.open);
     }
 }

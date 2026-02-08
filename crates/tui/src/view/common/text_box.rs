@@ -490,6 +490,7 @@ struct TextStats {
 mod tests {
     use super::*;
     use crate::{
+        message::Message,
         test_util::{TestTerminal, terminal},
         view::test_util::{TestComponent, TestHarness, harness},
     };
@@ -540,7 +541,7 @@ mod tests {
         terminal.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
 
         // Type some text
-        component.int().send_text("hi!").assert().emitted([
+        component.int(&harness).send_text("hi!").assert().emitted([
             TextBoxEvent::Change,
             TextBoxEvent::Change,
             TextBoxEvent::Change,
@@ -554,33 +555,33 @@ mod tests {
 
         // Sending with a modifier applied should do nothing, unless it's shift
         component
-            .int()
+            .int(&harness)
             .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
             .assert()
             .emitted([TextBoxEvent::Change]);
         assert_state(&component.state, "hi!W", 4);
         assert_matches!(
             component
-                .int()
+                .int(&harness)
                 .send_key_modifiers(
                     // This is what crossterm actually sends
                     KeyCode::Char('W'),
                     KeyModifiers::CTRL | KeyModifiers::SHIFT,
                 )
-                .propagated(),
-            &[Event::Input { .. }]
+                .into_propagated(),
+            [Message::Event(Event::Input { .. })]
         );
         assert_state(&component.state, "hi!W", 4);
 
         // Test emitted events
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([TextBoxEvent::Submit]);
 
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Esc)
             .assert()
             .emitted([TextBoxEvent::Cancel]);
@@ -600,42 +601,62 @@ mod tests {
         );
 
         // Type some text
-        component.int().send_text("hello!").assert().emitted([
-            // One change event per letter
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-        ]);
+        component
+            .int(&harness)
+            .send_text("hello!")
+            .assert()
+            .emitted([
+                // One change event per letter
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+            ]);
         assert_state(&component.state, "hello!", 6);
 
         // Move around, delete some text.
-        component.int().send_key(KeyCode::Left).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Left)
+            .assert()
+            .empty();
         assert_state(&component.state, "hello!", 5);
 
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Backspace)
             .assert()
             .emitted([TextBoxEvent::Change]);
         assert_state(&component.state, "hell!", 4);
 
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Delete)
             .assert()
             .emitted([TextBoxEvent::Change]);
         assert_state(&component.state, "hell", 4);
 
-        component.int().send_key(KeyCode::Home).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Home)
+            .assert()
+            .empty();
         assert_state(&component.state, "hell", 0);
 
-        component.int().send_key(KeyCode::Right).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Right)
+            .assert()
+            .empty();
         assert_state(&component.state, "hell", 1);
 
-        component.int().send_key(KeyCode::End).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::End)
+            .assert()
+            .empty();
         assert_state(&component.state, "hell", 4);
     }
 
@@ -657,15 +678,19 @@ mod tests {
         .build();
 
         // Type some text
-        component.int().send_text("012345").assert().emitted([
-            // One change event per letter
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-        ]);
+        component
+            .int(&harness)
+            .send_text("012345")
+            .assert()
+            .emitted([
+                // One change event per letter
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+            ]);
         // End of the string is visible
         terminal.assert_buffer_lines([
             Line::from("   "),
@@ -675,7 +700,7 @@ mod tests {
 
         // Deleting from the end should scroll left
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Backspace)
             .assert()
             .emitted([TextBoxEvent::Change]);
@@ -686,7 +711,11 @@ mod tests {
         ]);
 
         // Back to the beginning
-        component.int().send_key(KeyCode::Home).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Home)
+            .assert()
+            .empty();
         terminal.assert_buffer_lines([
             Line::from("   "),
             vec![cursor("0"), text("12")].into(),
@@ -695,7 +724,7 @@ mod tests {
 
         // Scroll shouldn't move until the cursor gets off screen
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Right, KeyCode::Right])
             .assert()
             .empty();
@@ -706,7 +735,11 @@ mod tests {
         ]);
 
         // Push the scroll over
-        component.int().send_key(KeyCode::Right).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Right)
+            .assert()
+            .empty();
         terminal.assert_buffer_lines([
             Line::from("   "),
             vec![text("12"), cursor("3")].into(),
@@ -714,7 +747,11 @@ mod tests {
         ]);
 
         // Move back doesn't scroll left yet
-        component.int().send_key(KeyCode::Left).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Left)
+            .assert()
+            .empty();
         terminal.assert_buffer_lines([
             Line::from("   "),
             vec![text("1"), cursor("2"), text("3")].into(),
@@ -736,7 +773,7 @@ mod tests {
         );
 
         component
-            .int()
+            .int(&harness)
             .send_text("hi")
             .assert()
             .emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
@@ -789,7 +826,7 @@ mod tests {
 
         // Unfocused
         component.unfocus();
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
         terminal.assert_buffer_lines([vec![Span::styled(
             "unfocused",
             styles.text.patch(styles.placeholder),
@@ -811,7 +848,7 @@ mod tests {
 
         // Valid text, everything is normal
         component
-            .int()
+            .int(&harness)
             .send_text("he")
             .assert()
             .emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
@@ -822,19 +859,23 @@ mod tests {
         ]]);
 
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([TextBoxEvent::Submit]);
 
         // Invalid text, styling changes and no events are emitted
-        component.int().send_text("llo").assert().emitted([]);
+        component
+            .int(&harness)
+            .send_text("llo")
+            .assert()
+            .emitted([]);
         terminal.assert_buffer_lines([vec![
             Span::styled("hello", ViewContext::styles().text_box.invalid),
             cursor(" "),
         ]]);
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([]);

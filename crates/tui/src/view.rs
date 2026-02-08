@@ -11,16 +11,15 @@ mod util;
 
 pub use component::ComponentMap;
 pub use context::UpdateContext;
+pub use event::Event;
 pub use util::{InvalidCollection, PreviewPrompter, Question, TuiPrompter};
 
 use crate::{
     http::{RequestConfig, RequestState, RequestStore},
-    input::InputEvent,
     message::MessageSender,
     view::{
         component::{Canvas, Component, ComponentExt, Root},
         context::ViewContext,
-        event::Event,
     },
 };
 use indexmap::IndexMap;
@@ -45,11 +44,9 @@ use tracing::{trace, trace_span, warn};
 /// its own state. Certain global state (e.g. the database) is managed by the
 /// controller and exposed via event passing.
 ///
-/// External updates on the view are lazy, meaning calls to methods like
-/// [Self::handle_input] simply queue an event to handle the input. Call
-/// [Self::handle_events] to drain the queue once per loop. This is necessary
-/// because events can be triggered from other places too (e.g. from other
-/// events), so we need to make sure the queue is constantly being drained.
+/// View state is updated via [event messages](crate::message::Message::Event).
+/// Call [handle_event](Self::handle_event) when a view event is received on
+/// the message queue.
 #[derive(Debug)]
 pub struct View {
     /// Root of the component tree
@@ -151,38 +148,15 @@ impl View {
         self.root.notify(message.to_string());
     }
 
-    /// Queue an event to update the view according to an input event from the
-    /// user. If possible, a bound action is provided which tells us what
-    /// abstract action the input maps to.
-    pub fn handle_input(&self, event: InputEvent) {
-        ViewContext::push_event(Event::Input(event));
-    }
-
-    /// Drain all view events from the queue. The component three will process
-    /// events one by one. This should be called on every TUI loop. Return
-    /// whether or not an event was handled.
-    pub fn handle_events(&mut self, mut context: UpdateContext) -> bool {
-        // If we haven't done first render yet, don't drain the queue. This can
-        // happen after a collection reload, because of the structure of the
-        // main loop
-        if !context.component_map.is_visible(&self.root) {
-            return false;
-        }
-
-        let mut handled = false;
-        // It's possible for components to queue additional events, so keep
-        // going until the queue is empty
-        while let Some(event) = ViewContext::pop_event() {
-            handled = true;
-            trace_span!("Handling event", ?event).in_scope(|| {
-                match self.root.update_all(&mut context, event) {
-                    None => trace!("Event consumed"),
-                    // Consumer didn't eat the event - huh?
-                    Some(event) => warn!(?event, "Event was unhandled"),
-                }
-            });
-        }
-        handled
+    /// Update the view in response to a view event
+    pub fn handle_event(&mut self, mut context: UpdateContext, event: Event) {
+        trace_span!("Handling event", ?event).in_scope(|| {
+            match self.root.update_all(&mut context, event) {
+                None => trace!("Event consumed"),
+                // Consumer didn't eat the event - huh?
+                Some(event) => warn!(?event, "Event was unhandled"),
+            }
+        });
     }
 }
 
@@ -245,54 +219,4 @@ pub enum RequestDisposition {
         request_id: RequestId,
         prompt: Prompt,
     },
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        test_util::{TestTerminal, assert_events, terminal},
-        view::test_util::{TestHarness, harness},
-    };
-    use rstest::rstest;
-    use slumber_core::collection::Collection;
-    use slumber_util::Factory;
-
-    /// Test view handling and drawing during initial view setup
-    #[rstest]
-    fn test_initial_draw(harness: TestHarness, terminal: TestTerminal) {
-        let collection = Collection::factory(());
-        let mut view = View::new(
-            Config::default().into(),
-            Ok(collection.into()),
-            harness.database.clone(),
-            harness.messages_tx(),
-        );
-
-        // Initial events
-        assert_events!(
-            Event::Emitted { .. }, // Recipe list selection
-            Event::Emitted { .. }, // Primary pane selection
-        );
-
-        // Events should *still* be in the queue, because we haven't drawn yet
-        let mut component_map = ComponentMap::default();
-        let mut request_store = harness.request_store_mut();
-        view.handle_events(UpdateContext {
-            component_map: &component_map,
-            request_store: &mut request_store,
-        });
-        assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
-
-        // Nothing new
-        terminal.draw(|frame| component_map = view.draw(frame.buffer_mut()));
-        assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
-
-        // *Now* the queue is drained
-        view.handle_events(UpdateContext {
-            component_map: &component_map,
-            request_store: &mut request_store,
-        });
-        assert_events!();
-    }
 }

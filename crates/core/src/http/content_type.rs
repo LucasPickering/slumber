@@ -1,33 +1,11 @@
-//! Utilities for parsing response bodies into a variety of known content types.
-//! Each supported content type has its own struct which implements
-//! [ResponseContent]. If you want to parse as a statically known content type,
-//! just use that struct. If you just need to refer to the content _type_, and
-//! not a value, use [ContentType]. If you want to parse dynamically based on
-//! the response's metadata, use [ContentType::from_headers] and
-//! [ContentType::parse_content].
-
-use derive_more::{Deref, From};
 use mime::{APPLICATION, JSON, Mime};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    fmt::{Debug, Display},
-    str::Utf8Error,
-};
+use std::{fmt::Debug, str::Utf8Error};
 use thiserror::Error;
 
-/// All supported content types. Each variant should have a corresponding
-/// implementation of [ResponseContent].
-///
-/// Each content type is can be referred to in a few ways:
-/// - Its serialization string, which is only used within Slumber (e.g. in the
-///   collection model)
-/// - Its MIME type
-/// - Its file extension(s)
-///
-/// For the serialization string, obviously use serde. For the others, use
-/// the corresponding methods/associated functions.
+/// A known content type, for which we support prettification and syntax
+/// highlighting
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentType {
@@ -57,13 +35,6 @@ impl ContentType {
         }
     }
 
-    /// Get the MIME for this content type
-    pub fn to_mime(&self) -> Mime {
-        match self {
-            ContentType::Json => mime::APPLICATION_JSON,
-        }
-    }
-
     /// Parse the content type from the `Content-Type` header
     pub fn from_headers(headers: &HeaderMap) -> Result<Self, ContentTypeError> {
         let header_value = headers
@@ -73,28 +44,6 @@ impl ContentType {
         let header_value = std::str::from_utf8(header_value)
             .map_err(ContentTypeError::HeaderInvalid)?;
         Self::parse_mime(header_value)
-    }
-
-    /// Parse some content of this type. Return a dynamically dispatched content
-    /// object.
-    pub fn parse_content(
-        self,
-        content: &[u8],
-    ) -> Result<Box<dyn ResponseContent>, ContentTypeError> {
-        match self {
-            Self::Json => Ok(Box::new(Json::parse(content)?)),
-        }
-    }
-
-    /// Convert content from JSON into this format. Valid JSON should be valid
-    /// in any other format too, so this is infallible.
-    pub fn parse_json(
-        self,
-        content: serde_json::Value,
-    ) -> Box<dyn ResponseContent> {
-        match self {
-            Self::Json => Box::new(Json(content)),
-        }
     }
 
     /// Make a response body look pretty. If the input isn't valid for this
@@ -117,76 +66,11 @@ impl ContentType {
             }
         }
     }
-
-    /// Stringify a single JSON value into this format
-    pub fn value_to_string(self, value: &serde_json::Value) -> String {
-        match self {
-            ContentType::Json => match value {
-                serde_json::Value::Null => String::new(),
-                serde_json::Value::String(s) => s.clone(),
-                other => other.to_string(),
-            },
-        }
-    }
-
-    /// Stringify a list of JSON values into this format
-    pub fn vec_to_string(self, values: &Vec<&serde_json::Value>) -> String {
-        match self {
-            ContentType::Json => serde_json::to_string(&values).unwrap(),
-        }
-    }
-}
-
-/// A response content type that we know how to parse. This is defined as a
-/// trait rather than an enum because it breaks apart the logic more clearly.
-pub trait ResponseContent: Debug + Display + Send + Sync {
-    /// Get the type of this content
-    fn content_type(&self) -> ContentType;
-
-    /// Parse the response body as this type
-    fn parse(body: &[u8]) -> Result<Self, ContentTypeError>
-    where
-        Self: Sized;
-
-    /// Convert the content to JSON. JSON is the common language used for
-    /// querying internally, so everything needs to be convertible to/from JSON.
-    fn to_json(&self) -> Cow<'_, serde_json::Value>;
-
-    /// Facilitate downcasting generic parsed bodies to concrete types for tests
-    #[cfg(test)]
-    fn as_any(&self) -> &dyn std::any::Any;
-}
-
-/// JSON content type
-#[derive(Debug, derive_more::Display, Deref, From, PartialEq)]
-pub struct Json(serde_json::Value);
-
-impl ResponseContent for Json {
-    fn content_type(&self) -> ContentType {
-        ContentType::Json
-    }
-
-    fn parse(body: &[u8]) -> Result<Self, ContentTypeError> {
-        Ok(Self(serde_json::from_slice(body)?))
-    }
-
-    fn to_json(&self) -> Cow<'_, serde_json::Value> {
-        Cow::Borrowed(&self.0)
-    }
-
-    #[cfg(test)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self as &dyn std::any::Any
-    }
 }
 
 /// Error parsing a content type or extracting the content type from a response
 #[derive(Debug, Error)]
 pub enum ContentTypeError {
-    /// Error parsing content as JSON
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-
     /// Input was not a valid MIME type
     #[error("Invalid content type `{0}`")]
     MimeInvalid(String),
@@ -208,14 +92,8 @@ pub enum ContentTypeError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::ResponseRecord;
-    use reqwest::header::{
-        CONTENT_TYPE, HeaderMap, HeaderValue, InvalidHeaderValue,
-    };
     use rstest::rstest;
-    use serde_json::json;
-    use slumber_util::{Factory, assert_err};
-    use std::ops::Deref;
+    use slumber_util::assert_err;
 
     /// Test all content types and their variants
     #[rstest]
@@ -250,85 +128,17 @@ mod tests {
     /// Test all content types
     #[rstest]
     #[case::json(
-        "application/json",
-        "{\"hello\": \"goodbye\"}",
-        Json(json!({"hello": "goodbye"}))
+        ContentType::Json,
+        r#"{"hello": "goodbye"}"#,
+        Some("{\n  \"hello\": \"goodbye\"\n}")
     )]
-    fn test_parse_body<T: ResponseContent + PartialEq + 'static>(
-        #[case] content_type: &str,
+    // Invalid JSON => no pretty value available
+    #[case::invalid_json(ContentType::Json, r#"{"hello": "goodbye""#, None)]
+    fn test_prettyify(
+        #[case] content_type: ContentType,
         #[case] body: &str,
-        #[case] expected: T,
+        #[case] expected: Option<&str>,
     ) {
-        let response = ResponseRecord {
-            headers: headers(content_type),
-            body: body.into(),
-            ..ResponseRecord::factory(())
-        };
-        let content_type =
-            ContentType::from_headers(&response.headers).unwrap();
-        assert_eq!(
-            content_type
-                .parse_content(response.body.bytes())
-                .unwrap()
-                .deref()
-                // Downcast the result to desired type
-                .as_any()
-                .downcast_ref::<T>()
-                .unwrap(),
-            &expected
-        );
-    }
-
-    /// Test various failure cases
-    #[rstest]
-    #[case::no_content_type(
-        None::<&str>,
-        "",
-        "Response has no Content-Type header",
-    )]
-    #[case::unknown_content_type(
-        Some("bad-header"),
-        "",
-        "Invalid content type `bad-header`"
-    )]
-    #[case::invalid_header_utf8(
-        Some(b"\xc3\x28".as_slice()),
-        "",
-        "Content-Type header is not valid UTF-8",
-    )]
-    #[case::invalid_content(
-        Some("application/json"),
-        "not json!",
-        "expected ident"
-    )]
-    fn test_parse_body_error<
-        T: TryInto<HeaderValue, Error = InvalidHeaderValue>,
-    >(
-        #[case] content_type: Option<T>,
-        #[case] body: &str,
-        #[case] expected_error: &str,
-    ) {
-        let headers = match content_type {
-            Some(content_type) => headers(content_type),
-            None => HeaderMap::new(),
-        };
-        let response = ResponseRecord {
-            headers,
-            body: body.into(),
-            ..ResponseRecord::factory(())
-        };
-        let result = ContentType::from_headers(&response.headers).and_then(
-            |content_type| content_type.parse_content(response.body.bytes()),
-        );
-        assert_err!(result, expected_error);
-    }
-
-    /// Create header map with the given value for the content-type header
-    fn headers(
-        content_type: impl TryInto<HeaderValue, Error = InvalidHeaderValue>,
-    ) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, content_type.try_into().unwrap());
-        headers
+        assert_eq!(content_type.prettify(body).as_deref(), expected);
     }
 }

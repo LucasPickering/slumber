@@ -134,7 +134,7 @@ impl<PK> EditableTemplate<PK> {
         if let Ok(template) = text_box.into_text().parse::<Template>() {
             self.set_override(template);
             if self.refresh_on_edit {
-                ViewContext::push_event(BroadcastEvent::RefreshPreviews);
+                ViewContext::push_message(BroadcastEvent::RefreshPreviews);
             }
         }
     }
@@ -271,7 +271,7 @@ mod tests {
 
         // Modify the override and persist, should be updated in the store
         component
-            .int()
+            .int(&harness)
             // Edit and replace the text
             .send_key(KeyCode::Char('e'))
             .send_keys(iter::repeat_n(KeyCode::Backspace, 10))
@@ -284,7 +284,7 @@ mod tests {
 
         // Clear the override; should be removed from the store
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();

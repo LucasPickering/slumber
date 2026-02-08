@@ -4,7 +4,7 @@
 use crate::{
     input::InputEvent,
     util::{ResultReported, TempFile},
-    view::Question,
+    view::{Event, Question},
 };
 use futures::{FutureExt, future::LocalBoxFuture};
 use mime::Mime;
@@ -63,6 +63,12 @@ pub enum Message {
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
+
+    /// An event originated by the view that can modify view state
+    ///
+    /// Unlike all other [Message] variants, events are handled by individual
+    /// components rather than the root TUI loop.
+    Event(Event),
 
     /// Open a file in the user's external editor
     FileEdit {
@@ -276,7 +282,7 @@ impl MessageReceiver {
     /// Pop a message off the queue
     ///
     /// This will wait indefinitely until the next message is available.
-    pub async fn pop(&mut self) -> Message {
+    pub async fn pop(&self) -> Message {
         let queue = self.0.clone();
         std::future::poll_fn(move |cx: &mut std::task::Context<'_>| {
             if let Some(message) = queue.pop() {
@@ -295,21 +301,22 @@ impl MessageReceiver {
 #[cfg(test)]
 impl MessageReceiver {
     /// Assert that the message queue is empty
-    pub fn assert_empty(&mut self) {
+    pub fn assert_empty(&self) {
         if let Some(message) = self.0.pop() {
             panic!("Expected message queue to be empty, but got {message:?}");
         }
     }
 
-    /// Pop the next message off the queue. Panic if the queue is empty
-    pub fn pop_now(&mut self) -> Message {
-        self.0.pop().expect("Message queue empty")
+    /// Pop the next message off the queue immediately, or `None` if the queue
+    /// is empty
+    pub fn try_pop(&self) -> Option<Message> {
+        self.0.pop()
     }
 
     /// Pop the next message off the queue, waiting if empty. This will wait
     /// with a timeout to prevent missing messages from blocking a test forever.
     /// If the timeout expires, return `None`.
-    pub async fn pop_wait(&mut self) -> Option<Message> {
+    pub async fn pop_timeout(&self) -> Option<Message> {
         use std::time::Duration;
         tokio::time::timeout(Duration::from_millis(1000), self.pop())
             .await
@@ -317,7 +324,7 @@ impl MessageReceiver {
     }
 
     /// Clear all messages in the queue
-    pub fn clear(&mut self) {
+    pub fn clear(&self) {
         self.0.inner.borrow_mut().queue.clear();
     }
 }

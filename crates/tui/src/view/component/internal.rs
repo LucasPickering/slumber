@@ -50,9 +50,8 @@ pub trait Component: ToChild {
 
     /// Update the state of *just* this component according to the event.
     /// Returned outcome indicates whether the event was consumed (`None`), or
-    /// it should be propagated to our parent (`Some`). Use
-    /// [EventQueue](crate::view::event::EventQueue) to queue subsequent
-    /// events, and the given message sender to queue async messages.
+    /// it should be propagated to our parent (`Some`). Use the given message
+    /// sender to queue additional events and messages.
     ///
     /// Generally event matching should be done with [Event::m] and the
     /// matching methods defined by [EventMatch].
@@ -364,11 +363,6 @@ impl<'buf> Canvas<'buf> {
 pub struct ComponentMap(HashMap<ComponentId, DrawMetadata>);
 
 impl ComponentMap {
-    /// Was this component drawn to the screen during the previous draw phase?
-    pub fn is_visible<T: Component + ?Sized>(&self, component: &T) -> bool {
-        self.0.contains_key(&component.id())
-    }
-
     /// Get the area that the component was drawn to. Return `None` iff the
     /// component is not visible.
     pub fn area<T: Component + ?Sized>(&self, component: &T) -> Option<Rect> {

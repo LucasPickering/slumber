@@ -713,6 +713,7 @@ mod tests {
     use super::*;
     use crate::{
         input::InputEvent,
+        message::Message,
         test_util::{TestTerminal, terminal},
         view::{
             Generate,
@@ -792,7 +793,7 @@ mod tests {
 
         // Initial state - first item is at the bottom
         component
-            .int::<SelectListProps>()
+            .int::<SelectListProps>(&harness)
             .drain_draw()
             .assert()
             .empty();
@@ -805,7 +806,7 @@ mod tests {
 
         // Up -> next
         component
-            .int::<SelectListProps>()
+            .int::<SelectListProps>(&harness)
             .send_key(KeyCode::Up)
             .assert()
             .empty();
@@ -818,7 +819,7 @@ mod tests {
 
         // Down -> previous
         component
-            .int::<SelectListProps>()
+            .int::<SelectListProps>(&harness)
             .send_key(KeyCode::Down)
             .assert()
             .empty();
@@ -860,12 +861,20 @@ mod tests {
         let items = vec!["a", "b", "c"];
         let select: Select<&str, ListState> = Select::builder(items).build();
         let mut component = TestComponent::new(&harness, &terminal, select);
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
         assert_eq!(component.selected(), Some(&"a"));
-        component.int().send_key(KeyCode::Down).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Down)
+            .assert()
+            .empty();
         assert_eq!(component.selected(), Some(&"b"));
 
-        component.int().send_key(KeyCode::Up).assert().empty();
+        component
+            .int(&harness)
+            .send_key(KeyCode::Up)
+            .assert()
+            .empty();
         assert_eq!(component.selected(), Some(&"a"));
     }
 
@@ -876,20 +885,18 @@ mod tests {
         let select: Select<&str, ListState> = Select::builder(items)
             .subscribe([SelectEventKind::Select])
             .build();
-        let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_default_props()
-            // Event is emitted for the initial selection
-            .with_assert_events(|assert| {
-                assert.emitted([SelectEvent::select(0)]);
-            })
-            .build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
 
         // Initial selection
+        component
+            .int(&harness)
+            .assert()
+            .emitted([SelectEvent::select(0)]);
         assert_eq!(component.selected(), Some(&"a"));
 
         // Select another one
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Down)
             .assert()
             .emitted([SelectEvent::select(1)]);
@@ -905,7 +912,7 @@ mod tests {
         let mut component = TestComponent::new(&harness, &terminal, select);
 
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert()
             .emitted([SelectEvent::submit(1)]);
@@ -920,15 +927,15 @@ mod tests {
 
         // Select item by click. Click is always propagated
         assert_matches!(
-            component.int().click(0, 1).propagated(),
-            &[Event::Input(InputEvent::Click { .. })]
+            component.int(&harness).click(0, 1).into_propagated(),
+            [Message::Event(Event::Input(InputEvent::Click { .. }))]
         );
         assert_eq!(component.selected_index(), Some(1));
 
         // Click outside the select - does nothing
         assert_matches!(
-            component.int().click(0, 3).propagated(),
-            &[Event::Input(InputEvent::Click { .. })]
+            component.int(&harness).click(0, 3).into_propagated(),
+            [Message::Event(Event::Input(InputEvent::Click { .. }))]
         );
         assert_eq!(component.selected_index(), Some(1));
     }
@@ -942,18 +949,24 @@ mod tests {
         let mut component = TestComponent::new(&harness, &terminal, select);
 
         assert_matches!(
-            component.int().send_key(KeyCode::Enter).propagated(),
-            &[Event::Input(InputEvent::Key {
+            component
+                .int(&harness)
+                .send_key(KeyCode::Enter)
+                .into_propagated(),
+            [Message::Event(Event::Input(InputEvent::Key {
                 action: Some(Action::Submit),
                 ..
-            })]
+            }))]
         );
         assert_matches!(
-            component.int().send_key(KeyCode::Char(' ')).propagated(),
-            &[Event::Input(InputEvent::Key {
+            component
+                .int(&harness)
+                .send_key(KeyCode::Char(' '))
+                .into_propagated(),
+            [Message::Event(Event::Input(InputEvent::Key {
                 action: Some(Action::Toggle),
                 ..
-            })]
+            }))]
         );
     }
 
@@ -971,20 +984,19 @@ mod tests {
             .subscribe([SelectEventKind::Select])
             .build();
         let mut component: TestComponent<'_, Select<&'static str>> =
-            TestComponent::builder(&harness, &terminal, select)
-                .with_default_props()
-                // Event is emitted for the initial selection
-                .with_assert_events(|assert| {
-                    assert.emitted([SelectEvent::select(0)]);
-                })
-                .build();
+            TestComponent::new(&harness, &terminal, select);
+        // Event is emitted for the initial selection
+        component
+            .int(&harness)
+            .assert()
+            .emitted([SelectEvent::select(0)]);
 
         // Initial state
         assert_eq!(component.selected(), Some(&"a"));
 
         // Move down - skips over the disabled item
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Down)
             .assert()
             .emitted([SelectEvent::select(2)]);
@@ -992,7 +1004,7 @@ mod tests {
 
         // Move down again - skips over the disabled item
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Down)
             .assert()
             .emitted([SelectEvent::select(4)]);
@@ -1000,7 +1012,7 @@ mod tests {
 
         // Move up - skips over the disabled item
         component
-            .int()
+            .int(&harness)
             .send_key(KeyCode::Up)
             .assert()
             .emitted([SelectEvent::select(2)]);
@@ -1039,20 +1051,15 @@ mod tests {
                     .disabled_indexes(disabled_indexes)
                     .subscribe([SelectEventKind::Select])
                     .build();
-            let mut component =
-                TestComponent::builder(&harness, &terminal, select)
-                    .with_default_props()
-                    // Event is emitted iff there is 1+ enabled items
-                    .with_assert_events(|assert| {
-                        let first_enabled =
-                            assert.component_data().first_enabled_index();
-                        if let Some(index) = first_enabled {
-                            assert.emitted([SelectEvent::select(index)]);
-                        } else {
-                            assert.empty();
-                        }
-                    })
-                    .build();
+            let mut component = TestComponent::new(&harness, &terminal, select);
+            // Event is emitted iff there is 1+ enabled items
+            let assert = component.int(&harness).assert();
+            let first_enabled = assert.component_data().first_enabled_index();
+            if let Some(index) = first_enabled {
+                assert.emitted([SelectEvent::select(index)]);
+            } else {
+                assert.empty();
+            }
 
             assert_eq!(
                 component.selected_index(),
@@ -1060,7 +1067,7 @@ mod tests {
             );
 
             for input in inputs {
-                let interact = component.int().send_key(input);
+                let interact = component.int(&harness).send_key(input);
                 let select = interact.component_data();
                 let selected_index = select.selected_index();
                 match num_enabled {
@@ -1185,14 +1192,13 @@ mod tests {
         .persisted(&Key)
         .subscribe([SelectEventKind::Select])
         .build();
-        let component = TestComponent::builder(&harness, &terminal, select)
-            .with_default_props()
-            // Event is emitted for the persisted index. Item 0 does not get an
-            // event unless it's the one that ends up selected
-            .with_assert_events(move |assert| {
-                assert.emitted([SelectEvent::select(expected_index)]);
-            })
-            .build();
+        let mut component = TestComponent::new(&harness, &terminal, select);
+        // Event is emitted for the persisted index. Item 0 does not get an
+        // event unless it's the one that ends up selected
+        component
+            .int(&harness)
+            .assert()
+            .emitted([SelectEvent::select(expected_index)]);
         assert_eq!(component.selected_index(), Some(expected_index));
     }
 }

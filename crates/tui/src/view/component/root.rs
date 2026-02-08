@@ -199,7 +199,7 @@ impl Root {
         self.questions
             .open(QuestionModal::confirm(title, move |answer| {
                 if answer {
-                    ViewContext::send_message(message);
+                    ViewContext::push_message(message);
                 }
             }));
     }
@@ -217,7 +217,7 @@ impl Root {
                 "Cancel request?".into(),
                 move |answer| {
                     if answer {
-                        ViewContext::send_message(HttpMessage::Cancel(
+                        ViewContext::push_message(HttpMessage::Cancel(
                             request_id,
                         ));
                     }
@@ -256,9 +256,9 @@ impl Component for Root {
                         self.actions.open(actions);
                     }
                 }
-                Action::Quit => ViewContext::send_message(Message::Quit),
+                Action::Quit => ViewContext::push_message(Message::Quit),
                 Action::ReloadCollection => {
-                    ViewContext::send_message(Message::CollectionStartReload);
+                    ViewContext::push_message(Message::CollectionStartReload);
                 }
                 _ => propagate.set(),
             })
@@ -367,7 +367,7 @@ impl Component for CollectionErrorView {
                 // Edit the collection at the error location. Location will
                 // always be present if it's an error IN the YAML (as opposed
                 // to an IO error)
-                ViewContext::send_message(Message::CollectionEdit {
+                ViewContext::push_message(Message::CollectionEdit {
                     location: self.error.location().cloned(),
                 });
             }
@@ -439,7 +439,7 @@ mod tests {
             &terminal,
             Root::new(Ok(Arc::clone(&harness.collection))),
         );
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
 
         // Make sure profile+recipe were preselected correctly
         let primary = component.primary.as_ref().unwrap();
@@ -476,7 +476,7 @@ mod tests {
             &terminal,
             Root::new(Ok(Arc::clone(&harness.collection))),
         );
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
 
         // Make sure everything was preselected correctly
         let primary = component.primary.as_ref().unwrap();
@@ -510,7 +510,7 @@ mod tests {
             &terminal,
             Root::new(Ok(Arc::clone(&harness.collection))),
         );
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
 
         assert_eq!(
             component.primary.as_ref().unwrap().selected_request_id(),
@@ -544,7 +544,7 @@ mod tests {
             &terminal,
             Root::new(Ok(Arc::clone(&harness.collection))),
         );
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
 
         assert_eq!(
             component.primary.as_ref().unwrap().selected_request_id(),
@@ -553,7 +553,7 @@ mod tests {
 
         // Select the second recipe
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Char('r'), KeyCode::Down])
             .assert()
             .empty();
@@ -589,7 +589,7 @@ mod tests {
             &terminal,
             Root::new(Ok(Arc::clone(&harness.collection))),
         );
-        component.int().drain_draw().assert().empty();
+        component.int(&harness).drain_draw().assert().empty();
 
         assert_eq!(
             component.primary.as_ref().unwrap().selected_request_id(),
@@ -598,7 +598,7 @@ mod tests {
 
         // Select the second profile
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
             .assert()
             .empty();
@@ -612,7 +612,7 @@ mod tests {
     /// Test "Delete All Requests > This Profile" action via the recipe pane
     #[rstest]
     fn test_delete_recipe_requests(
-        mut harness: TestHarness,
+        harness: TestHarness,
         #[with(120, 20)] terminal: TestTerminal,
     ) {
         let recipe_id = harness.collection.first_recipe_id().clone();
@@ -631,7 +631,7 @@ mod tests {
         );
         // Select History list
         component
-            .int()
+            .int(&harness)
             .drain_draw()
             .send_key(KeyCode::Char('h'))
             .assert()
@@ -646,7 +646,7 @@ mod tests {
         // Select action but decline the confirmation
         let action_path = &["Delete All Requests", "This Profile"];
         component
-            .int()
+            .int(&harness)
             .action(action_path)
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
@@ -660,30 +660,26 @@ mod tests {
         );
 
         // Select action and accept. I don't feel like testing All Profiles too
-        component
-            .int()
-            .action(action_path)
-            // Confirm
-            .send_keys([KeyCode::Enter])
-            .assert()
-            .empty();
-
-        // It'd be nice to test that the request is actually deleted, but I
-        // haven't figured out a way to test messages in the event loop.
         assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::Http(HttpMessage::DeleteRecipe {
+            component
+                .int(&harness)
+                .action(action_path)
+                .send_key(KeyCode::Enter) // Confirm
+                .into_propagated(),
+            [Message::Http(HttpMessage::DeleteRecipe {
                 recipe_id: ref rid,
                 profile_filter: ref pf
-            }) if rid == &recipe_id && pf == &Some(profile_id).into()
+            })] if rid == &recipe_id && pf == &Some(profile_id).into()
         );
+        // It'd be nice to test that the request is actually deleted, but I
+        // haven't figured out a way to test messages in the event loop.
     }
 
     /// Test "Delete Request" action, which is available via the
     /// Request/Response pane
     #[rstest]
     fn test_delete_request(
-        mut harness: TestHarness,
+        harness: TestHarness,
         #[with(60, 20)] terminal: TestTerminal,
     ) {
         let recipe_id = harness.collection.first_recipe_id();
@@ -702,7 +698,7 @@ mod tests {
         );
         // Select exchange pane
         component
-            .int()
+            .int(&harness)
             .drain_draw()
             .send_key(KeyCode::Char('2'))
             .assert()
@@ -716,7 +712,7 @@ mod tests {
 
         // Select "Delete Request" but decline the confirmation
         component
-            .int()
+            .int(&harness)
             .action(&["Delete Request"])
             .send_keys([KeyCode::Left, KeyCode::Enter]) // Decline
             .assert()
@@ -728,18 +724,15 @@ mod tests {
             Some(new_exchange.id)
         );
 
-        component
-            .int()
-            .action(&["Delete Request"])
-            .send_keys([KeyCode::Enter]) // Confirm
-            .assert()
-            .empty();
-
         // It'd be nice to test that the request is actually deleted, but I
         // haven't figured out a way to test messages in the event loop.
         assert_matches!(
-            harness.messages_rx().pop_now(),
-            Message::Http(HttpMessage::DeleteRequest(request_id))
+            component
+                .int(&harness)
+                .action(&["Delete Request"])
+                .send_keys([KeyCode::Enter]) // Confirm
+                .into_propagated(),
+            [Message::Http(HttpMessage::DeleteRequest(request_id))]
                 if request_id == new_exchange.id
         );
     }

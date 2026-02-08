@@ -156,7 +156,7 @@ impl Component for RecipeList {
             .emitted(self.select.to_emitter(), |event| match event.kind {
                 SelectEventKind::Select => {
                     // Let everyone know the selected recipe changed
-                    ViewContext::push_event(BroadcastEvent::SelectedRecipe(
+                    ViewContext::push_message(BroadcastEvent::SelectedRecipe(
                         self.selected_recipe_id().cloned(),
                     ));
                 }

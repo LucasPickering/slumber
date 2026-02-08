@@ -305,7 +305,7 @@ mod tests {
         );
 
         component
-            .int()
+            .int(&harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("123")
             .send_key(KeyCode::Enter)

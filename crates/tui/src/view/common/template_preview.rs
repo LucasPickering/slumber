@@ -149,7 +149,7 @@ impl<PK> TemplatePreview<PK> {
                 emitter.emit(TemplatePreviewEvent(text));
             };
 
-            ViewContext::send_message(Message::TemplatePreview {
+            ViewContext::push_message(Message::TemplatePreview {
                 template: self.template().clone(),
                 can_stream: self.can_stream,
                 on_complete: Box::new(on_complete),
@@ -334,15 +334,15 @@ mod tests {
     #[case::static_("static!", false)]
     #[case::dynamic("{{ dynamic }}", true)]
     fn test_send_message(
-        mut harness: TestHarness,
+        harness: TestHarness,
         #[case] template: Template,
         #[case] should_send: bool,
     ) {
         TemplatePreview::new(TestKey, template, false);
         if should_send {
             assert_matches!(
-                harness.messages_rx().pop_now(),
-                Message::TemplatePreview { .. }
+                harness.messages_rx().try_pop(),
+                Some(Message::TemplatePreview { .. })
             );
         } else {
             harness.messages_rx().assert_empty();

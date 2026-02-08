@@ -479,7 +479,7 @@ mod tests {
 
         // Disable the second row
         component
-            .int_props(props_factory)
+            .int_props(&harness, props_factory)
             .send_keys([KeyCode::Down, KeyCode::Char(' ')])
             .assert()
             .empty();
@@ -496,7 +496,7 @@ mod tests {
 
         // Re-enable the row
         component
-            .int_props(props_factory)
+            .int_props(&harness, props_factory)
             .send_key(KeyCode::Char(' '))
             .assert()
             .empty();
@@ -527,7 +527,7 @@ mod tests {
 
         // Edit the second row
         component
-            .int_props(props_factory)
+            .int_props(&harness, props_factory)
             // Open the modal
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("!!!")
@@ -549,7 +549,7 @@ mod tests {
 
         // Reset edited state
         component
-            .int_props(props_factory)
+            .int_props(&harness, props_factory)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -572,7 +572,7 @@ mod tests {
         .build();
 
         component
-            .int_props(props_factory)
+            .int_props(&harness, props_factory)
             .action(&["Edit Row"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert()

@@ -1,7 +1,7 @@
 use crate::{
     http::{RequestConfig, RequestStore},
     message::{Message, MessageSender},
-    view::{ComponentMap, InvalidCollection, UpdateContext, View},
+    view::{ComponentMap, Event, InvalidCollection, UpdateContext, View},
 };
 use anyhow::{Context, anyhow};
 use ratatui::buffer::Buffer;
@@ -140,19 +140,15 @@ impl CollectionState {
         self.view.notify("Reloaded collection");
     }
 
-    /// Handle all events in the queue. Return `true` if at least one event was
-    /// consumed, `false` if the queue was empty
-    pub fn drain_events(&mut self) -> bool {
+    /// Update the view in response to a view event
+    pub fn handle_event(&mut self, event: Event) {
         let context = UpdateContext {
             component_map: &self.component_map,
             request_store: &mut self.request_store,
         };
-        let handled = self.view.handle_events(context);
+        self.view.handle_event(context, event);
         // Persist state after changes
-        if handled {
-            self.view.persist(self.database.clone());
-        }
-        handled
+        self.view.persist(self.database.clone());
     }
 
     /// Draw the view onto the screen

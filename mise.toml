@@ -21,14 +21,14 @@ description = "Run tests"
 run = "cargo test"
 
 [tasks.tui-profile]
-description = "Run the TUI with cargo-flamegraph for profiling"
+description = "Run the TUI with samply for profiling"
 env.CARGO_PROFILE_RELEASE_DEBUG = true # Include debug symbols
-env.SLUMBER_DATA_DIRECTORY = "${PWD}/data/" # Use local config/data dir
+env.SLUMBER_DATA_DIRECTORY = "{{ env.PWD }}/data/" # Use local config/data dir
 run = [
-    # dtrace requires root on MacOS
-    "cargo flamegraph --root --no-default-features --features=tui --bin=slumber",
-    "open flamegraph.svg",
+    "cargo build --no-default-features --features=tui --bin=slumber --release",
+    "samply record ./target/release/slumber",
 ]
+tools."cargo:samply" = "0.13.1"
 
 [env]
 RUST_BACKTRACE = "1"

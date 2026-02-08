@@ -14,5 +14,4 @@ response.json
 .venv
 *.data
 *.old
-flamegraph.svg
-cargo-flamegraph.stacks
+profile.json.gz

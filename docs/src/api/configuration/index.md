@@ -38,6 +38,15 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 
 Any unknown field in the config file will be rejected, unless it is a **top-level** field beginning with `.`. You can combine this with [YAML anchors](https://yaml.org/spec/1.2.2/#anchors-and-aliases) to define reusable components in your config file.
 
+```yaml
+.hidden_field:
+  my_color: red
+
+theme:
+  primary_color:
+    $ref: "#/.hidden_field/my_color"
+```
+
 ## Fields
 
 The following fields are available in `config.yml`:
@@ -48,7 +57,16 @@ The following fields are available in `config.yml`:
 
 **Default:** `[sh, -c]` (Unix), `[cmd, /S, /C]` (Windows)
 
-Shell used to execute commands within the TUI. Use `[]` for no shell (commands will be parsed and executed directly). [More info](../../user_guide/tui/filter_query.md)
+Shell used to execute commands within the TUI. Use `[]` for no shell (commands will be parsed and executed directly).
+
+[See Data Filtering & Querying for more info](../../user_guide/tui/filter_query.md).
+
+#### Example
+
+```yaml
+commands:
+  shell: ["fish", "--no-config", "-c"]
+```
 
 ### `commands.default_query`
 
@@ -56,7 +74,17 @@ Shell used to execute commands within the TUI. Use `[]` for no shell (commands w
 
 **Default:** `""`
 
-Default query command for all responses. [More info](../../user_guide/tui/filter_query.md)
+Default query command for all responses.
+
+[See Data Filtering & Querying for more info](../../user_guide/tui/filter_query.md).
+
+#### Example
+
+```yaml
+commands:
+  default_query:
+    json: jq
+```
 
 ### `editor`
 
@@ -64,7 +92,15 @@ Default query command for all responses. [More info](../../user_guide/tui/filter
 
 **Default:** `VISUAL`/`EDITOR` env vars, or `vim`
 
-Command to use when opening files for in-app editing. [More info](../../user_guide/tui/editor.md#editing)
+Command to use when opening files for in-app editing.
+
+[See In-App Editing for more info](../../user_guide/tui/editor.md#editing).
+
+#### Example
+
+```yaml
+editor: "hx"
+```
 
 ### `follow_redirects`
 
@@ -74,13 +110,29 @@ Command to use when opening files for in-app editing. [More info](../../user_gui
 
 Enable/disable following redirects (3xx status codes) automatically. If enabled, the HTTP client follow redirects [up to 10 times](https://docs.rs/reqwest/0.12.15/reqwest/index.html#redirect-policies).
 
+#### Example
+
+```yaml
+follow_redirects: false
+```
+
 ### `ignore_certificate_hosts`
 
 **Type:** `string`
 
 **Default:** `[]`
 
-Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md)
+Hostnames whose TLS certificate errors will be ignored. These values are _not_ wildcards; certificates will only be ignored for **exact matches**.
+
+[See TLS Certificate Errors for more info](../../troubleshooting/tls.md).
+
+#### Example
+
+```yaml
+ignore_certificate_hosts: ["my-site.local"]
+```
+
+In this case, any requests to `https://my-site.local/` will _not_ receive TLS certificate validation.
 
 ### `input_bindings`
 
@@ -88,7 +140,21 @@ Hostnames whose TLS certificate errors will be ignored. [More info](../../troubl
 
 **Default:** `{}`
 
-Override default input bindings. [More info](./input_bindings.md)
+Override default input bindings.
+
+[See Input Bindings for more info](./input_bindings.md).
+
+#### Example
+
+```yaml
+input_bindings:
+  up: [k]
+  down: [j]
+  left: [h]
+  right: [l]
+  scroll_left: [shift h]
+  scroll_right: [shift l]
+```
 
 ### `large_body_size`
 
@@ -98,13 +164,27 @@ Override default input bindings. [More info](./input_bindings.md)
 
 Size over which request/response bodies are not formatted/highlighted, for performance (bytes)
 
+#### Example
+
+```yaml
+large_body_size: 100000 # 100KB
+```
+
 ### `persist`
 
 **Type:** `boolean`
 
 **Default:** `true`
 
-Enable/disable the storage of requests and responses in Slumber's local database. This is only used in the TUI. CLI requests are _not_ persisted unless the `--persist` flag is passed, in which case they will always be persisted. [See here for more](../../user_guide/database.md).
+Enable/disable the storage of requests and responses in Slumber's local database. This is only used in the TUI. CLI requests are _not_ persisted unless the `--persist` flag is passed, in which case they will always be persisted.
+
+[See Database & Persistence for more info](../../user_guide/database.md).
+
+#### Example
+
+```yaml
+persist: false # Requests/responses will deleted upon closing a session
+```
 
 ### `pager`
 
@@ -114,7 +194,17 @@ Enable/disable the storage of requests and responses in Slumber's local database
 
 **Default:** `less` (Unix), `more` (Windows)
 
-Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md#paging)
+Command to use when opening files for viewing.
+
+[See In-App Paging for more info](../../user_guide/tui/editor.md#paging).
+
+#### Example
+
+```yaml
+pager:
+  json: fx
+  "*/*": bat
+```
 
 ### `preview_templates`
 
@@ -124,10 +214,25 @@ Command to use when opening files for viewing. [More info](../../user_guide/tui/
 
 Render template values in the TUI? If false, the raw template will be shown.
 
+#### Example
+
+```yaml
+preview_templates: false
+```
+
 ### `theme`
 
 **Type:** `Theme`
 
 **Default:** `{}`
 
-Visual customizations for the TUI. [More info](./theme.md)
+Visual customizations for the TUI.
+
+[See Theme for more info](./theme.md).
+
+#### Example
+
+```yaml
+theme:
+  primary_color: red
+```

@@ -98,28 +98,14 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
 ///
 /// The order of the variants matters! It defines the ordering used in the help
 /// modal (but doesn't affect behavior).
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    derive_more::Display,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     // vvvvv If adding a variant, make sure to update the docs vvvvv
-    #[display("Scroll Up")]
     ScrollUp,
-    #[display("Scroll Down")]
     ScrollDown,
-    #[display("Scroll Left")]
     ScrollLeft,
-    #[display("Scroll Right")]
     ScrollRight,
 
     /// Exit the app
@@ -127,14 +113,11 @@ pub enum Action {
     /// A special keybinding that short-circuits the standard view input
     /// process to force an exit. Standard shutdown will *still run*, but this
     /// input can't be consumed by any components in the view tree.
-    #[display("Force Quit")]
     ForceQuit,
 
     /// Focus the previous pane or form input
-    #[display("Prev Pane")]
     PreviousPane,
     /// Focus the next pane or form input
-    #[display("Next Pane")]
     NextPane,
 
     Up,
@@ -147,7 +130,6 @@ pub enum Action {
     End,
 
     /// Do a thing, e.g. submit in a text prompt. Alternatively, send a request
-    #[display("Send Request/Submit")]
     Submit,
     /// Toggle checkbox and similar components on/off
     Toggle,
@@ -165,24 +147,18 @@ pub enum Action {
     /// Browse request history
     History,
     /// Start a search/filter operation
-    #[display("Search/Filter")]
     Search,
     /// Enter a command to export data
-    #[display("Export")]
     Export,
     /// Force a collection reload (typically it's automatic)
-    #[display("Reload Collection")]
     ReloadCollection,
     /// Embiggen a pane
     Fullscreen,
     /// Open the actions modal
-    #[display("Open Actions")]
     OpenActions,
-    #[display("Help")]
     /// Open the help page
     OpenHelp,
     /// Search command history in query text box
-    #[display("Search Command History")]
     SearchHistory,
     /// Select the lower pane in the current layout
     ///
@@ -190,7 +166,6 @@ pub enum Action {
     #[serde(alias = "select_request", alias = "select_response")]
     SelectBottomPane,
     /// Open collection selection modal (unbound by default)
-    #[display("Select Collection")]
     SelectCollection,
     /// Select profile list pane
     SelectProfileList,
@@ -225,6 +200,14 @@ impl Action {
             // Most actions should not be hidden
             _ => true,
         }
+    }
+}
+
+impl Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Display an action as its serialized string, so the user immediately
+        // knows the correct key for the config file
+        write!(f, "{}", serde_yaml::to_string(self).unwrap())
     }
 }
 

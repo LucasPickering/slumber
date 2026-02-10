@@ -446,7 +446,7 @@ mod tests {
             // Exit edit mode, nav w/ arrow keys, then re-enter edit
             .send_keys([KeyCode::Esc, KeyCode::Up, KeyCode::Char('e')])
             .send_text("4") // Modify username again
-            .send_key_modifiers(KeyCode::Up, KeyModifiers::SHIFT) // Wrap to pw
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Up) // Wrap to pw
             .send_text("456") // Modify password
             .send_key(KeyCode::Enter) // Submit
             .assert()

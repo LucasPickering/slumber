@@ -452,14 +452,14 @@ where
     /// component, then drain events and draw.  See
     /// [Self::update_draw] about return value.
     pub fn send_key(self, code: KeyCode) -> Self {
-        self.send_key_modifiers(code, KeyModifiers::NONE)
+        self.send_key_modifiers(KeyModifiers::NONE, code)
     }
 
     /// [Self::send_key], but with modifier keys applied
     pub fn send_key_modifiers(
         self,
-        code: KeyCode,
         modifiers: KeyModifiers,
+        code: KeyCode,
     ) -> Self {
         let term_event = terminput::Event::Key(KeyEvent {
             code,

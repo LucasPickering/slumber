@@ -395,7 +395,7 @@ mod tests {
         component
             .int(&harness)
             .send_text("t")
-            .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
+            .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('r'))
             .assert()
             .empty();
         assert_eq!(component.text(), "t");
@@ -444,7 +444,7 @@ mod tests {
         component
             .int(&harness)
             .send_text("t")
-            .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
+            .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('r'))
             .assert()
             .empty();
         assert_eq!(get_search_items(&component).unwrap(), &["three", "two"]);
@@ -478,7 +478,7 @@ mod tests {
         component
             .int(&harness)
             .send_text("teefs")
-            .send_key_modifiers(KeyCode::Char('r'), KeyModifiers::CTRL)
+            .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('r'))
             .assert()
             .empty();
         assert_eq!(component.text(), "teefs");

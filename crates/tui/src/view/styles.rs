@@ -277,9 +277,7 @@ impl Styles {
                     .fg(theme.primary_text_color.into()),
                 hint: Style::default().fg(theme.hint_text_color.into()),
                 primary: Style::default().fg(theme.primary_color.into()),
-                edited: Style::default()
-                    .fg(theme.text_color.into())
-                    .add_modifier(Modifier::ITALIC),
+                edited: Style::default().add_modifier(Modifier::ITALIC),
                 error: Style::default().fg(theme.error_color.into()),
                 title: Style::default()
                     .fg(theme.text_color.into())
@@ -288,7 +286,9 @@ impl Styles {
             text_box: TextBoxStyle {
                 text: Style::default()
                     .bg(theme.text_box_background_color.into())
-                    .fg(theme.text_color.into()),
+                    .fg(theme.text_color.into())
+                    // Strip inherited modifiers
+                    .remove_modifier(Modifier::all()),
                 cursor: Style::default()
                     .bg(theme.primary_color.into())
                     .fg(theme.primary_text_color.into()),

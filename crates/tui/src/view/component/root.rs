@@ -421,7 +421,7 @@ mod tests {
         test_util::by_id,
     };
     use slumber_util::{Factory, assert_matches};
-    use terminput::KeyCode;
+    use terminput::{KeyCode, KeyModifiers};
 
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile
@@ -633,7 +633,7 @@ mod tests {
         component
             .int(&harness)
             .drain_draw()
-            .send_key(KeyCode::Char('h'))
+            .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('h'))
             .assert()
             .empty();
 

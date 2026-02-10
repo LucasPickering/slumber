@@ -556,7 +556,7 @@ mod tests {
         // Sending with a modifier applied should do nothing, unless it's shift
         component
             .int(&harness)
-            .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Char('W'))
             .assert()
             .emitted([TextBoxEvent::Change]);
         assert_state(&component.state, "hi!W", 4);
@@ -565,8 +565,8 @@ mod tests {
                 .int(&harness)
                 .send_key_modifiers(
                     // This is what crossterm actually sends
-                    KeyCode::Char('W'),
                     KeyModifiers::CTRL | KeyModifiers::SHIFT,
+                    KeyCode::Char('W'),
                 )
                 .into_propagated(),
             [Message::Event(Event::Input { .. })]

@@ -409,9 +409,9 @@ mod tests {
         // Scroll right
         component
             .int_props(&harness, || props.clone())
-            .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
-            .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
-            .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Right)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Right)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Right)
             .assert()
             .empty();
         terminal.assert_buffer_lines([
@@ -424,11 +424,11 @@ mod tests {
         // Scroll back left
         component
             .int_props(&harness, || props.clone())
-            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
-            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
-            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
             // Does nothing
-            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
+            .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
             .assert()
             .empty();
         terminal.assert_buffer_lines([

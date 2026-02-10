@@ -64,16 +64,20 @@
           "ctrl c"
         ],
         "scroll_up": [
-          "shift up"
+          "shift up",
+          "shift k"
         ],
         "scroll_down": [
-          "shift down"
+          "shift down",
+          "shift j"
         ],
         "scroll_left": [
-          "shift left"
+          "shift left",
+          "shift h"
         ],
         "scroll_right": [
-          "shift right"
+          "shift right",
+          "shift l"
         ],
         "open_actions": [
           "x"
@@ -88,7 +92,7 @@
           "f5"
         ],
         "history": [
-          "h"
+          "ctrl h"
         ],
         "search": [
           "/"
@@ -103,16 +107,20 @@
           "tab"
         ],
         "up": [
-          "up"
+          "up",
+          "k"
         ],
         "down": [
-          "down"
+          "down",
+          "j"
         ],
         "left": [
-          "left"
+          "left",
+          "h"
         ],
         "right": [
-          "right"
+          "right",
+          "l"
         ],
         "page_up": [
           "pageup"
@@ -223,16 +231,20 @@
           "ctrl c"
         ],
         "scroll_up": [
-          "shift up"
+          "shift up",
+          "shift k"
         ],
         "scroll_down": [
-          "shift down"
+          "shift down",
+          "shift j"
         ],
         "scroll_left": [
-          "shift left"
+          "shift left",
+          "shift h"
         ],
         "scroll_right": [
-          "shift right"
+          "shift right",
+          "shift l"
         ],
         "open_actions": [
           "x"
@@ -247,7 +259,7 @@
           "f5"
         ],
         "history": [
-          "h"
+          "ctrl h"
         ],
         "search": [
           "/"
@@ -262,16 +274,20 @@
           "tab"
         ],
         "up": [
-          "up"
+          "up",
+          "k"
         ],
         "down": [
-          "down"
+          "down",
+          "j"
         ],
         "left": [
-          "left"
+          "left",
+          "h"
         ],
         "right": [
-          "right"
+          "right",
+          "l"
         ],
         "page_up": [
           "pageup"

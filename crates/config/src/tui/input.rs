@@ -1,7 +1,7 @@
 //! Logic related to input handling. This is considered part of the controller.
 
 use derive_more::Deref;
-use indexmap::{IndexMap, indexmap};
+use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{
     Deserialize, Serialize,
@@ -291,21 +291,35 @@ impl DeserializeYaml for InputBinding {
     }
 }
 
-impl From<Vec<KeyCombination>> for InputBinding {
-    fn from(combo: Vec<KeyCombination>) -> Self {
-        Self(combo)
+impl From<Vec<(KeyModifiers, KeyCode)>> for InputBinding {
+    fn from(combos: Vec<(KeyModifiers, KeyCode)>) -> Self {
+        Self(
+            combos
+                .into_iter()
+                .map(|(modifiers, code)| KeyCombination { modifiers, code })
+                .collect(),
+        )
     }
 }
 
-impl From<KeyCombination> for InputBinding {
-    fn from(combo: KeyCombination) -> Self {
-        Self(vec![combo])
+impl From<(KeyModifiers, KeyCode)> for InputBinding {
+    fn from((modifiers, code): (KeyModifiers, KeyCode)) -> Self {
+        Self(vec![KeyCombination { modifiers, code }])
+    }
+}
+
+impl From<Vec<KeyCode>> for InputBinding {
+    fn from(value: Vec<KeyCode>) -> Self {
+        Self(value.into_iter().map(KeyCombination::from).collect())
     }
 }
 
 impl From<KeyCode> for InputBinding {
-    fn from(key_code: KeyCode) -> Self {
-        KeyCombination::from(key_code).into()
+    fn from(code: KeyCode) -> Self {
+        Self(vec![KeyCombination {
+            modifiers: KeyModifiers::NONE,
+            code,
+        }])
     }
 }
 
@@ -315,8 +329,8 @@ impl From<KeyCode> for InputBinding {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(into = "String", try_from = "String")]
 pub struct KeyCombination {
-    pub code: KeyCode,
     pub modifiers: KeyModifiers,
+    pub code: KeyCode,
 }
 
 impl KeyCombination {
@@ -411,7 +425,7 @@ impl FromStr for KeyCombination {
             modifiers |= modifier;
         }
 
-        Ok(Self { code, modifiers })
+        Ok(Self { modifiers, code })
     }
 }
 
@@ -474,67 +488,67 @@ impl InputMap {
 impl Default for InputMap {
     /// Default input bindings
     fn default() -> Self {
-        Self(indexmap! {
+        const CTRL: KeyModifiers = KeyModifiers::CTRL;
+        const SHIFT: KeyModifiers = KeyModifiers::SHIFT;
+
+        Self(IndexMap::from_iter([
             // vvvvv If making changes, make sure to update the docs vvvvv
-            Action::Quit => KeyCode::Char('q').into(),
-            Action::ForceQuit => KeyCombination {
-                code: KeyCode::Char('c'),
-                modifiers: KeyModifiers::CTRL,
-            }.into(),
-            Action::ScrollUp => KeyCombination {
-                code: KeyCode::Up,
-                modifiers: KeyModifiers::SHIFT,
-            }.into(),
-            Action::ScrollDown => KeyCombination {
-                code: KeyCode::Down,
-                modifiers: KeyModifiers::SHIFT,
-            }.into(),
-            Action::ScrollLeft => KeyCombination {
-                code: KeyCode::Left,
-                modifiers: KeyModifiers::SHIFT,
-            }.into(),
-            Action::ScrollRight => KeyCombination {
-                code: KeyCode::Right,
-                modifiers: KeyModifiers::SHIFT,
-            }.into(),
-            Action::OpenActions => KeyCode::Char('x').into(),
-            Action::OpenHelp => KeyCode::Char('?').into(),
-            Action::Fullscreen => KeyCode::Char('f').into(),
-            Action::ReloadCollection => KeyCode::F(5).into(),
-            Action::History => KeyCode::Char('h').into(),
-            Action::Search => KeyCode::Char('/').into(),
-            Action::Export => KeyCode::Char(':').into(),
-            Action::PreviousPane => KeyCombination {
-                code: KeyCode::Tab,
-                modifiers: KeyModifiers::SHIFT,
-            }.into(),
-            Action::NextPane => KeyCode::Tab.into(),
-            Action::Up => KeyCode::Up.into(),
-            Action::Down => KeyCode::Down.into(),
-            Action::Left => KeyCode::Left.into(),
-            Action::Right => KeyCode::Right.into(),
-            Action::PageUp => KeyCode::PageUp.into(),
-            Action::PageDown => KeyCode::PageDown.into(),
-            Action::Home => KeyCode::Home.into(),
-            Action::End => KeyCode::End.into(),
-            Action::Submit => KeyCode::Enter.into(),
-            Action::Toggle => KeyCode::Char(' ').into(),
-            Action::Cancel => KeyCode::Esc.into(),
-            Action::Delete => KeyCode::Delete.into(),
-            Action::Edit => KeyCode::Char('e').into(),
-            Action::Reset => KeyCode::Char('z').into(),
-            Action::View => KeyCode::Char('v').into(),
-            Action::SearchHistory => KeyCombination {
-                code: KeyCode::Char('r'),
-                modifiers: KeyModifiers::CTRL,
-            }.into(),
-            Action::SelectBottomPane => KeyCode::Char('2').into(),
-            Action::SelectCollection => KeyCode::F(3).into(),
-            Action::SelectProfileList => KeyCode::Char('p').into(),
-            Action::SelectRecipeList => KeyCode::Char('r').into(),
-            Action::SelectTopPane => KeyCode::Char('1').into(),
+            (Action::Quit, KeyCode::Char('q').into()),
+            (Action::ForceQuit, (CTRL, KeyCode::Char('c')).into()),
+            (
+                Action::ScrollUp,
+                vec![(SHIFT, KeyCode::Up), (SHIFT, KeyCode::Char('k'))].into(),
+            ),
+            (
+                Action::ScrollDown,
+                vec![(SHIFT, KeyCode::Down), (SHIFT, KeyCode::Char('j'))]
+                    .into(),
+            ),
+            (
+                Action::ScrollLeft,
+                vec![(SHIFT, KeyCode::Left), (SHIFT, KeyCode::Char('h'))]
+                    .into(),
+            ),
+            (
+                Action::ScrollRight,
+                vec![(SHIFT, KeyCode::Right), (SHIFT, KeyCode::Char('l'))]
+                    .into(),
+            ),
+            (Action::OpenActions, KeyCode::Char('x').into()),
+            (Action::OpenHelp, KeyCode::Char('?').into()),
+            (Action::Fullscreen, KeyCode::Char('f').into()),
+            (Action::ReloadCollection, KeyCode::F(5).into()),
+            (Action::History, (CTRL, KeyCode::Char('h')).into()),
+            (Action::Search, KeyCode::Char('/').into()),
+            (Action::Export, KeyCode::Char(':').into()),
+            (Action::PreviousPane, (SHIFT, KeyCode::Tab).into()),
+            (Action::NextPane, KeyCode::Tab.into()),
+            (Action::Up, vec![KeyCode::Up, KeyCode::Char('k')].into()),
+            (Action::Down, vec![KeyCode::Down, KeyCode::Char('j')].into()),
+            (Action::Left, vec![KeyCode::Left, KeyCode::Char('h')].into()),
+            (
+                Action::Right,
+                vec![KeyCode::Right, KeyCode::Char('l')].into(),
+            ),
+            (Action::PageUp, KeyCode::PageUp.into()),
+            (Action::PageDown, KeyCode::PageDown.into()),
+            (Action::Home, KeyCode::Home.into()),
+            (Action::End, KeyCode::End.into()),
+            (Action::Submit, KeyCode::Enter.into()),
+            (Action::Toggle, KeyCode::Char(' ').into()),
+            (Action::Cancel, KeyCode::Esc.into()),
+            (Action::Delete, KeyCode::Delete.into()),
+            (Action::Edit, KeyCode::Char('e').into()),
+            (Action::Reset, KeyCode::Char('z').into()),
+            (Action::View, KeyCode::Char('v').into()),
+            (Action::SearchHistory, (CTRL, KeyCode::Char('r')).into()),
+            (Action::SelectBottomPane, KeyCode::Char('2').into()),
+            (Action::SelectCollection, KeyCode::F(3).into()),
+            (Action::SelectProfileList, KeyCode::Char('p').into()),
+            (Action::SelectRecipeList, KeyCode::Char('r').into()),
+            (Action::SelectTopPane, KeyCode::Char('1').into()),
             // ^^^^^ If making changes, make sure to update the docs ^^^^^
-        })
+        ]))
     }
 }
 
@@ -631,6 +645,7 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indexmap::indexmap;
     use rstest::rstest;
     use slumber_util::{assert_err, yaml::deserialize_yaml};
     use terminput::{KeyEventKind, KeyEventState};
@@ -862,7 +877,7 @@ mod tests {
         KeyCode::Enter,
         None
     )]
-    #[case::unbound(Action::Submit, vec![], KeyCode::Enter, None)]
+    #[case::unbound(Action::Submit, InputBinding(vec![]), KeyCode::Enter, None)]
     fn test_user_bindings(
         #[case] action: Action,
         #[case] binding: impl Into<InputBinding>,

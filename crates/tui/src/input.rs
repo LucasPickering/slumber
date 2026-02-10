@@ -201,9 +201,9 @@ mod tests {
         })
     )]
     #[case::key_down_unmapped(
-        key_event(KeyEventKind::Press, KeyCode::Char('k'), KeyModifiers::NONE),
+        key_event(KeyEventKind::Press, KeyCode::Char('i'), KeyModifiers::NONE),
         Some(InputEvent::Key {
-            code: KeyCode::Char('k'),
+            code: KeyCode::Char('i'),
             modifiers: KeyModifiers::NONE,
             action: None,
         })
@@ -227,11 +227,11 @@ mod tests {
     #[case::key_repeat_unmapped(
         key_event(
             KeyEventKind::Repeat,
-            KeyCode::Char('k'),
+            KeyCode::Char('i'),
             KeyModifiers::NONE
         ),
         Some(InputEvent::Key {
-            code: KeyCode::Char('k'),
+            code: KeyCode::Char('i'),
             modifiers: KeyModifiers::NONE,
             action: None,
         })

@@ -179,30 +179,6 @@ pub enum Action {
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }
 
-impl Action {
-    /// Should this code be shown in the help dialog?
-    pub fn visible(self) -> bool {
-        match self {
-            // These actions are either obvious or have inline hints
-            Action::ForceQuit
-            | Action::Up
-            | Action::Down
-            | Action::Left
-            | Action::Right
-            | Action::PageUp
-            | Action::PageDown
-            | Action::Home
-            | Action::End
-            | Action::SelectProfileList
-            | Action::SelectRecipeList
-            | Action::SelectTopPane
-            | Action::SelectBottomPane => false,
-            // Most actions should not be hidden
-            _ => true,
-        }
-    }
-}
-
 impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Display an action as its serialized string, so the user immediately
@@ -252,7 +228,7 @@ impl Display for InputBinding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, combo) in self.0.iter().enumerate() {
             if i > 0 {
-                write!(f, ",")?;
+                write!(f, " / ")?;
             }
             write!(f, "{combo}")?;
         }
@@ -465,6 +441,11 @@ impl InputMap {
         // binding is also dropped
         new.0.retain(|_, binding| !binding.is_empty());
         new
+    }
+
+    /// Get the inner action:binding map
+    pub fn into_inner(self) -> IndexMap<Action, InputBinding> {
+        self.0
     }
 }
 

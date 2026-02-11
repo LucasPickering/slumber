@@ -20,11 +20,6 @@ impl InputBindings {
         Self { bindings }
     }
 
-    /// Get a map of all available bindings
-    pub fn bindings(&self) -> &InputMap {
-        &self.bindings
-    }
-
     /// Get the binding associated with a particular action. Useful for mapping
     /// input in reverse, when showing available bindings to the user.
     pub fn binding(&self, action: Action) -> Option<&InputBinding> {

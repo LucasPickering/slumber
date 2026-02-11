@@ -83,32 +83,31 @@ impl Component for Footer {
 
 impl Draw for Footer {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        // If a notification is present, it gets the entire footer.
-        // Notifications are auto-cleared so it's ok to hide other stuff
-        // temporarily
-        if let Some(notification) = &self.notification {
+        if self.help.is_open() {
+            // If the help page is open, render just that
+            canvas.draw(&self.help, (), metadata.area(), true);
+        } else if let Some(notification) = &self.notification {
+            // Otherwise, if a notification is present, it gets the entire
+            // footer. Notifications are auto-cleared so it's ok to hide other
+            // stuff temporarily
             canvas
                 .render_widget(notification.message.as_str(), metadata.area());
-            return;
+        } else {
+            // No notification - show help dialog and current collection path
+            let [collection_area, help_area] = Layout::horizontal([
+                Constraint::Length(self.collection_select.text().len() as u16),
+                Constraint::Min(0),
+            ])
+            .areas(metadata.area());
+
+            canvas.draw(
+                &self.collection_select,
+                (),
+                collection_area,
+                self.collection_select.is_open(),
+            );
+            canvas.draw(&self.help, (), help_area, false);
         }
-
-        // No notification - show help dialog and current collection path
-        let [collection_area, help_area] = Layout::horizontal([
-            Constraint::Length(self.collection_select.text().len() as u16),
-            Constraint::Min(0),
-        ])
-        .areas(metadata.area());
-
-        canvas.draw(
-            &self.collection_select,
-            (),
-            collection_area,
-            self.collection_select.is_open(),
-        );
-
-        // Draw help last. If it's in fullscreen mode, it draws over everything
-        // else
-        canvas.draw(&self.help, (), help_area, self.help.is_open());
     }
 }
 

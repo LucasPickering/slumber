@@ -77,7 +77,7 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
 - Refactor significant portions of the TUI logic. There should be no user-facing changes, but if you notice any bugs [please report them!](https://github.com/LucasPickering/slumber/issues/new/choose)
 - List items can now be selected by click
 - Recipe templates are now edited inline instead of in a pop-up modal
-- Help modal has been moved to a fullscreen page
+- Help modal has been moved to a fullscreen page a better layout
 - Make `slumber request` aliases `rq` and `req` visible
 - `slumber db collection delete` now accepts more than 1 collection at a time
 - Distinguish between different request body types in the history DB better

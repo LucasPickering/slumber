@@ -9,13 +9,14 @@ use crate::view::{
 use itertools::Itertools;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
-    text::{Line, Span},
-    widgets::{Row, Table},
+    prelude::{Buffer, Rect},
+    text::{Line, Span, Text},
+    widgets::{Row, Table, Widget},
 };
-use slumber_config::{Action, Config};
+use slumber_config::{Action, Config, InputBinding};
 use slumber_core::database::CollectionDatabase;
 use slumber_util::{doc_link, paths};
-use unicode_width::UnicodeWidthStr;
+use std::iter;
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -38,22 +39,6 @@ impl Help {
     pub fn is_open(&self) -> bool {
         self.open
     }
-
-    /// Get the list of bindings that will be shown in the modal
-    fn bindings() -> Vec<[String; 2]> {
-        ViewContext::with_input(|input| {
-            input
-                .bindings()
-                .iter()
-                .filter(|(action, _)| action.visible())
-                .map(|(action, binding)| {
-                    [action.to_string(), binding.to_string()]
-                })
-                // Sort alphabetically
-                .sorted_by_key(|[action, _]| action.to_string())
-                .collect()
-        })
-    }
 }
 
 impl Component for Help {
@@ -63,7 +48,7 @@ impl Component for Help {
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event.m().action(|action, propagate| match action {
-            Action::Cancel if self.open => self.open = false,
+            Action::Cancel | Action::Quit if self.open => self.open = false,
             _ => propagate.set(),
         })
     }
@@ -89,26 +74,16 @@ impl Draw for Help {
                 ["Configuration", &config_path],
                 ["Log", &log_path],
                 ["Collection", &collection_path],
-            ];
+            ]
+            .into_iter()
+            .map(|[label, value]| {
+                [Span::styled(label, styles.table.header), value.into()]
+            });
             let general_height = general_rows.len();
             let general = Table::new(
                 general_rows.into_iter().map(Row::new),
-                [column_width(general_rows, 0), Constraint::Min(0)],
+                [13.into(), Constraint::Min(0)],
             );
-
-            // Keybindings
-            let keybindings = Self::bindings();
-            let left_column_width = column_width(
-                keybindings.iter().map(|[action, binding]| {
-                    [action.as_str(), binding.as_str()]
-                }),
-                0,
-            );
-            let keybindings = Table::new(
-                keybindings.into_iter().map(Row::new),
-                [left_column_width, Constraint::Min(0)],
-            )
-            .header(Row::new(["Keybindings"]).style(styles.table.header));
 
             // Draw
             let block = Pane {
@@ -124,16 +99,15 @@ impl Draw for Help {
                 .alignment(Alignment::Right),
             );
             let area = canvas.area(); // Use the whole dang screen
-            let [collection_area, _, keybindings_area] = Layout::vertical([
-                Constraint::Length(general_height as u16 + 1),
-                Constraint::Length(1),
+            let [collection_area, keybindings_area] = Layout::vertical([
+                Constraint::Length(general_height as u16),
                 Constraint::Min(0),
             ])
             .areas(block.inner(area));
             canvas.render_widget(ClearFill, area);
             canvas.render_widget(block, area);
             canvas.render_widget(general, collection_area);
-            canvas.render_widget(keybindings, keybindings_area);
+            canvas.render_widget(Keybindings, keybindings_area);
         } else {
             // Show minimal help in the footer
             let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
@@ -153,17 +127,105 @@ impl Draw for Help {
     }
 }
 
-/// Get the width of the widest item in a column
-fn column_width<'a>(
-    rows: impl IntoIterator<Item = [&'a str; 2]>,
-    column: usize,
-) -> Constraint {
-    let width = rows
-        .into_iter()
-        .map(|row| row[column].width())
-        .max()
-        .unwrap_or(0);
-    Constraint::Length(width as u16)
+/// Widget to display all key bindings
+struct Keybindings;
+
+impl Keybindings {
+    /// Get input bindings grouped into similar sections
+    fn groups() -> impl IntoIterator<Item = (&'static str, Vec<Action>)> {
+        [
+            (
+                "Navigation",
+                vec![
+                    Action::Up,
+                    Action::Down,
+                    Action::Left,
+                    Action::Right,
+                    Action::ScrollUp,
+                    Action::ScrollDown,
+                    Action::ScrollLeft,
+                    Action::ScrollRight,
+                    Action::PageUp,
+                    Action::PageDown,
+                    Action::Home,
+                    Action::End,
+                ],
+            ),
+            (
+                "Pane Navigation",
+                vec![
+                    Action::PreviousPane,
+                    Action::NextPane,
+                    Action::SelectTopPane,
+                    Action::SelectBottomPane,
+                    Action::Fullscreen,
+                    Action::SelectProfileList,
+                    Action::SelectRecipeList,
+                    Action::History,
+                    Action::OpenHelp,
+                ],
+            ),
+            (
+                "Interaction",
+                vec![
+                    Action::OpenActions,
+                    Action::Submit,
+                    Action::Toggle,
+                    Action::Cancel,
+                    Action::Delete,
+                    Action::Edit,
+                    Action::Reset,
+                    Action::View,
+                    Action::Search,
+                    Action::Export,
+                    Action::SearchHistory,
+                ],
+            ),
+            (
+                "Collection Management",
+                vec![Action::SelectCollection, Action::ReloadCollection],
+            ),
+            ("Quittin' Time", vec![Action::Quit, Action::ForceQuit]),
+        ]
+    }
+}
+
+impl Widget for Keybindings {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let styles = ViewContext::styles();
+
+        // Helper to generate a group header row
+        let header_row = |group_name: &'static str| -> Row<'static> {
+            Row::new([
+                // Include a UNSTYLED padding line above the header
+                Text::from_iter([
+                    "".into(),
+                    Span::styled(group_name, styles.table.header),
+                ]),
+                "".into(),
+            ])
+            .height(2) // Padding above
+        };
+
+        // For each group, generate a header row and all of its actions
+        let rows =
+            Self::groups()
+                .into_iter()
+                .flat_map(|(group_name, actions)| {
+                    let binding_rows = actions.into_iter().map(|action| {
+                        let binding = ViewContext::with_input(|input| {
+                            input
+                                .binding(action)
+                                .map(InputBinding::to_string)
+                                .unwrap_or_else(|| "<unbound>".to_owned())
+                        });
+                        Row::new([action.to_string(), binding])
+                    });
+                    iter::once(header_row(group_name)).chain(binding_rows)
+                });
+        let table = Table::new(rows, [21.into(), Constraint::Min(0)]);
+        table.render(area, buf);
+    }
 }
 
 #[cfg(test)]
@@ -174,6 +236,8 @@ mod tests {
         view::test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
+    use slumber_config::InputMap;
+    use std::collections::HashSet;
     use terminput::KeyCode;
 
     /// Open and close the help page
@@ -194,5 +258,27 @@ mod tests {
             .assert()
             .empty();
         assert!(!component.open);
+    }
+
+    /// Make sure every bound action is visible in the Help page
+    #[rstest]
+    fn test_all_actions_shown() {
+        let groups = Keybindings::groups();
+        let shown_actions: Vec<_> = groups
+            .into_iter()
+            .flat_map(|(_, actions)| actions)
+            .collect();
+        let shown_actions_set = HashSet::from_iter(shown_actions.clone());
+        let all_actions_set: HashSet<_> =
+            InputMap::default().into_inner().into_keys().collect();
+        assert_eq!(
+            shown_actions_set, all_actions_set,
+            "Help page is missing actions"
+        );
+        assert_eq!(
+            shown_actions_set.len(),
+            shown_actions.len(),
+            "Help page has duplicate actions"
+        );
     }
 }

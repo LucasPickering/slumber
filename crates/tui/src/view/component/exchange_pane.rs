@@ -27,7 +27,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::{collection::RecipeNodeType, http::RequestId};
+use slumber_core::collection::RecipeNodeType;
 use std::{error::Error, sync::Arc};
 use strum::{EnumCount, EnumIter};
 
@@ -49,14 +49,6 @@ impl ExchangePane {
         Self {
             id: Default::default(),
             state: State::new(selected_request, selected_recipe_kind),
-        }
-    }
-
-    /// Get the ID of the displayed request
-    pub fn request_id(&self) -> Option<RequestId> {
-        match &self.state {
-            State::None | State::Folder | State::NoHistory => None,
-            State::Content { metadata, .. } => Some(metadata.request.id),
         }
     }
 }

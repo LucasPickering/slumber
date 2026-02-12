@@ -47,7 +47,7 @@ requests:
         ))
         .await
         // Wait for it to be picked up by the TUI
-        .wait_for_content("GET test", (1, 3).into())
+        .wait_for_content("GET test", (30, 3).into())
         .await
         .done()
         .await;
@@ -69,7 +69,7 @@ requests:
     let tui = Runner::new(tui)
         .run_until(fs::rename(&temp_file, &collection_path))
         .await
-        .wait_for_content("No recipes defined", (1, 3).into())
+        .wait_for_content("No recipes defined", (30, 3).into())
         .await
         .done()
         .await;
@@ -103,7 +103,7 @@ async fn test_initial_load_error(backend: TestBackend, data_dir: DataDir) {
     let tui = Runner::new(tui)
         .run_until(fs::write(&collection_path, "requests: {}"))
         .await
-        .wait_for_content("No recipes defined", (1, 3).into())
+        .wait_for_content("No recipes defined", (30, 3).into())
         .await
         .done()
         .await;
@@ -125,7 +125,7 @@ async fn test_reload_error(backend: TestBackend, data_dir: DataDir) {
     let tui = Runner::new(tui).done().await; // Draw so we can check output
     assert_eq!(tui.collection(), Some(&Collection::default()));
     tui.backend()
-        .assert_buffer_contains("No recipes defined", (1, 3).into());
+        .assert_buffer_contains("No recipes defined", (30, 3).into());
 
     // Update the file with an invalid collection. We go into the error state
     let tui = Runner::new(tui)
@@ -165,7 +165,7 @@ requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
     assert_eq!(db.get_collections().unwrap().len(), 2);
 
     // Make sure it loaded correctly
-    let tui = Runner::new(tui).done().await; // Draw so we can check output
+    let tui = Runner::new(tui).done().await;
     assert_eq!(
         tui.collection(),
         Some(&Collection {
@@ -174,7 +174,7 @@ requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
         })
     );
     tui.backend()
-        .assert_buffer_contains("No recipes defined", (1, 3).into());
+        .assert_buffer_contains("No recipes defined", (30, 3).into());
 
     // Open the collection menu and select the other collection
     let tui = Runner::new(tui)
@@ -197,7 +197,7 @@ requests: {"r1": {"method": "GET", "url": "http://localhost"}}"#,
         })
     );
     tui.backend()
-        .assert_buffer_contains("GET http://localhost", (1, 3).into());
+        .assert_buffer_contains("GET http://localhost", (30, 3).into());
 }
 
 /// Create a collection file and return its path

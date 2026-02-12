@@ -295,13 +295,13 @@ impl Widget for FolderTree<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TestTerminal, terminal};
+    use crate::view::test_util::{TestHarness, harness};
     use rstest::rstest;
     use slumber_core::{collection::Recipe, test_util::by_id};
     use slumber_util::{Factory, yaml::SourceLocation};
 
     #[rstest]
-    fn test_folder_tree(#[with(14, 10)] terminal: TestTerminal) {
+    fn test_folder_tree(#[with(14, 10)] mut harness: TestHarness) {
         let folder = Folder {
             id: "1f".into(),
             location: SourceLocation::default(),
@@ -346,11 +346,11 @@ mod tests {
             ]),
         };
 
-        terminal.draw(|f| {
+        harness.draw(|f| {
             f.render_widget(FolderTree { folder: &folder }, f.area());
         });
 
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             "1f",
             "├─1.1r",
             "├─1.2r",

@@ -161,10 +161,7 @@ impl Draw for ResponseHeadersView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use indexmap::indexmap;
     use rstest::rstest;
     use slumber_core::{http::Exchange, test_util::header_map};
@@ -197,8 +194,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_copy_body(
-        harness: TestHarness,
-        terminal: TestTerminal,
+        mut harness: TestHarness,
         #[case] response: ResponseRecord,
         #[case] expected_body: &str,
     ) {
@@ -207,8 +203,7 @@ mod tests {
             ..Exchange::factory(())
         };
         let component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             ResponseBodyView::new(
                 exchange.request.recipe_id.clone(),
                 exchange.response,
@@ -261,8 +256,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_save_file(
-        harness: TestHarness,
-        terminal: TestTerminal,
+        mut harness: TestHarness,
         #[case] response: ResponseRecord,
         #[case] query: Option<&str>,
         #[case] expected_body: Option<&str>,
@@ -273,8 +267,7 @@ mod tests {
             ..Exchange::factory(exchange_id)
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             ResponseBodyView::new(
                 exchange.request.recipe_id.clone(),
                 exchange.response,
@@ -284,7 +277,7 @@ mod tests {
         if let Some(query) = query {
             // Type something into the query box
             component
-                .int(&harness)
+                .int(&mut harness)
                 .send_key(KeyCode::Char('/'))
                 .send_text(query)
                 .send_key(KeyCode::Enter)

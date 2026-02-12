@@ -601,12 +601,9 @@ fn build_select(items: Vec<MenuItemDisplay>) -> Select<MenuItemDisplay> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            event::ToEmitter,
-            test_util::{TestComponent, TestHarness, harness},
-        },
+    use crate::view::{
+        event::ToEmitter,
+        test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
     use terminput::KeyCode;
@@ -714,27 +711,27 @@ mod tests {
 
     /// Test basic action menu interactions
     #[rstest]
-    fn test_actions(harness: TestHarness, terminal: TestTerminal) {
+    fn test_actions(mut harness: TestHarness) {
         let mut component =
-            TestComponent::new(&harness, &terminal, Actionable::default());
+            TestComponent::new(&mut harness, Actionable::default());
 
         // Select a basic action
         component
-            .int(&harness)
+            .int(&mut harness)
             .action(&["Action 2"])
             .assert()
             .emitted([TestAction::Action2]);
 
         // Actions can be performed by shortcut
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Char('x'), KeyCode::Char('e')])
             .assert()
             .emitted([TestAction::Shortcutted]);
 
         // Disabled action *cannot* be performed by shortcut
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Char('x'), KeyCode::Char('z')])
             .assert()
             .emitted([]);
@@ -768,15 +765,14 @@ mod tests {
         TestAction::Shortcutted,
     )]
     fn test_actions_nested(
-        harness: TestHarness,
-        #[with(80, 20)] terminal: TestTerminal,
+        #[with(80, 20)] mut harness: TestHarness,
         #[case] inputs: &[KeyCode],
         #[case] expected_action: TestAction,
     ) {
         let mut component =
-            TestComponent::new(&harness, &terminal, Actionable::default());
+            TestComponent::new(&mut harness, Actionable::default());
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('x'))
             .send_keys(inputs.iter().copied())
             .assert()
@@ -787,7 +783,7 @@ mod tests {
     /// for the pre-selected item in the list. If the first item is a group, it
     /// should open correctly on first draw.
     #[rstest]
-    fn test_first_group_selected(harness: TestHarness, terminal: TestTerminal) {
+    fn test_first_group_selected(mut harness: TestHarness) {
         let get_actions = |emitter: Emitter<TestAction>| {
             vec![MenuItem::Group {
                 name: "Nested".into(),
@@ -798,15 +794,12 @@ mod tests {
             }]
         };
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Actionable::new(get_actions),
-        );
+        let mut component =
+            TestComponent::new(&mut harness, Actionable::new(get_actions));
 
         // Group should be expanded when the modal is first opened
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Char('x'), KeyCode::Right, KeyCode::Enter])
             .assert()
             .emitted([TestAction::Nested1]);

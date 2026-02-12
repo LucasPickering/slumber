@@ -283,24 +283,20 @@ impl SessionKey for AuthenticationKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use rstest::rstest;
     use slumber_util::Factory;
     use terminput::KeyCode;
 
     /// Test edit basic username+password token via keybinds
     #[rstest]
-    fn test_edit_basic(harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_basic(mut harness: TestHarness) {
         let authentication = Authentication::Basic {
             username: "user1".into(),
             password: Some("hunter2".into()),
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
         );
 
@@ -309,7 +305,7 @@ mod tests {
 
         // Edit username
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
@@ -325,7 +321,7 @@ mod tests {
 
         // Reset username
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -333,7 +329,7 @@ mod tests {
 
         // Edit password
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("???")
             .send_key(KeyCode::Enter)
@@ -349,7 +345,7 @@ mod tests {
 
         // Reset password
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -358,23 +354,19 @@ mod tests {
 
     /// Test edit basic username via keybinds
     #[rstest]
-    fn test_edit_basic_empty_password(
-        harness: TestHarness,
-        terminal: TestTerminal,
-    ) {
+    fn test_edit_basic_empty_password(mut harness: TestHarness) {
         let authentication = Authentication::Basic {
             username: "user1".into(),
             password: None,
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
         );
 
         // Edit password
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e'), KeyCode::Enter])
             .assert()
             .empty();
@@ -384,13 +376,12 @@ mod tests {
 
     /// Test edit bearer token via keybinds
     #[rstest]
-    fn test_edit_bearer(harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_bearer(mut harness: TestHarness) {
         let authentication = Authentication::Bearer {
             token: "i am a token".into(),
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
         );
 
@@ -399,7 +390,7 @@ mod tests {
 
         // Edit token
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('e'))
             .send_text("!!!")
             .send_key(KeyCode::Enter)
@@ -414,7 +405,7 @@ mod tests {
 
         // Reset token
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -423,18 +414,17 @@ mod tests {
 
     /// Test edit/reset via menu action
     #[rstest]
-    fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_action(mut harness: TestHarness) {
         let authentication = Authentication::Bearer {
             token: "i am a token".into(),
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
         );
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .action(&["Edit Token"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert()
@@ -447,7 +437,7 @@ mod tests {
         );
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .action(&["Reset Token"])
             .assert()
             .empty();
@@ -456,7 +446,7 @@ mod tests {
 
     /// Basic auth fields should load persisted overrides
     #[rstest]
-    fn test_persisted_load_basic(harness: TestHarness, terminal: TestTerminal) {
+    fn test_persisted_load_basic(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
             AuthenticationKey::Username(recipe_id.clone()),
@@ -471,8 +461,7 @@ mod tests {
             password: None,
         };
         let component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             AuthenticationDisplay::new(recipe_id, authentication),
         );
 
@@ -487,10 +476,7 @@ mod tests {
 
     /// Bearer auth fields should load persisted overrides
     #[rstest]
-    fn test_persisted_load_bearer(
-        harness: TestHarness,
-        terminal: TestTerminal,
-    ) {
+    fn test_persisted_load_bearer(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
             AuthenticationKey::Token(recipe_id.clone()),
@@ -498,8 +484,7 @@ mod tests {
         );
         let authentication = Authentication::Bearer { token: "".into() };
         let component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             AuthenticationDisplay::new(recipe_id, authentication),
         );
 

@@ -485,12 +485,9 @@ impl CommandState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            context::ViewContext,
-            test_util::{TestComponent, TestHarness, harness},
-        },
+    use crate::view::{
+        context::ViewContext,
+        test_util::{TestComponent, TestHarness, harness},
     };
     use ratatui::{layout::Margin, text::Span};
     use rstest::{fixture, rstest};
@@ -533,13 +530,11 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_text_body(
-        harness: TestHarness,
-        #[with(27, 3)] terminal: TestTerminal,
+        #[with(27, 3)] mut harness: TestHarness,
         response: Arc<ResponseRecord>,
     ) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             QueryableBody::new(Key, response, None),
         );
 
@@ -547,7 +542,7 @@ mod tests {
         assert_eq!(component.last_executed_query, None);
         assert_eq!(component.modified_text().as_deref(), None);
         let styles = ViewContext::styles().text_box;
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}".into()],
             vec![gutter(" "), "".into()],
             vec![Span::styled(
@@ -558,7 +553,7 @@ mod tests {
 
         // Type something into the query box
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('/'))
             .send_text("head -c 1")
             .send_key(KeyCode::Enter)
@@ -574,12 +569,12 @@ mod tests {
 
         // Cancelling out of the text box should reset the query value
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('/'))
             .assert()
             .empty();
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("more text")
             .send_key(KeyCode::Esc)
             .assert()
@@ -589,7 +584,7 @@ mod tests {
         assert_eq!(component.command_focus, CommandFocus::None);
 
         // Check the view again
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![gutter("1"), " {                   ".into()],
             vec![gutter(" "), "                     ".into()],
             vec![Span::styled("head -c 1                  ", styles.text)],
@@ -601,8 +596,8 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_persistence(
-        harness: TestHarness,
-        terminal: TestTerminal,
+        mut harness: TestHarness,
+
         response: Arc<ResponseRecord>,
     ) {
         // Add initial query to the DB
@@ -611,13 +606,17 @@ mod tests {
             .set(&Key, &"head -c 1".to_owned());
 
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             // Default value should get tossed out
             QueryableBody::new(Key, response, Some("initial".into())),
         );
         // Run the initial task and handle subsequent events
-        component.int(&harness).run_task().await.assert().empty();
+        component
+            .int(&mut harness)
+            .run_task()
+            .await
+            .assert()
+            .empty();
 
         assert_eq!(component.last_executed_query.as_deref(), Some("head -c 1"));
         assert_eq!(&component.visible_text().to_string(), "{");
@@ -627,17 +626,20 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_default_query_initial(
-        harness: TestHarness,
-        terminal: TestTerminal,
+        mut harness: TestHarness,
         response: Arc<ResponseRecord>,
     ) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             QueryableBody::new(Key, response, Some("head -n 1".into())),
         );
         // Run the initial task and handle subsequent events
-        component.int(&harness).run_task().await.assert().empty();
+        component
+            .int(&mut harness)
+            .run_task()
+            .await
+            .assert()
+            .empty();
 
         assert_eq!(component.last_executed_query.as_deref(), Some("head -n 1"));
     }
@@ -647,20 +649,23 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_default_query_persisted(
-        harness: TestHarness,
-        terminal: TestTerminal,
+        mut harness: TestHarness,
         response: Arc<ResponseRecord>,
     ) {
         harness.persistent_store().set(&Key, &String::new());
 
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             // Default should override the persisted value
             QueryableBody::new(Key, response, Some("head -n 1".into())),
         );
         // Run the initial task and handle subsequent events
-        component.int(&harness).run_task().await.assert().empty();
+        component
+            .int(&mut harness)
+            .run_task()
+            .await
+            .assert()
+            .empty();
 
         assert_eq!(component.last_executed_query.as_deref(), Some("head -n 1"));
     }
@@ -669,28 +674,27 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_export(
-        harness: TestHarness,
-        terminal: TestTerminal,
+        mut harness: TestHarness,
         response: Arc<ResponseRecord>,
         temp_dir: TempDir,
     ) {
-        let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
-            QueryableBody::new(Key, response, None),
-        )
-        .with_default_props()
-        .with_area(terminal.area().inner(Margin {
+        let area = harness.terminal_area().inner(Margin {
             horizontal: 0,
             // Leave room for the text box scroll bar
             vertical: 1,
-        }))
+        });
+        let mut component = TestComponent::builder(
+            &mut harness,
+            QueryableBody::new(Key, response, None),
+        )
+        .with_default_props()
+        .with_area(area)
         .build();
 
         let path = temp_dir.join("test_export.json");
         let command = format!("tee {}", path.display());
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char(':'))
             .send_text(&command)
             .assert()
@@ -700,7 +704,7 @@ mod tests {
         // Success should push a notification
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .send_key(KeyCode::Enter)
                 .run_task()
                 .await
@@ -713,14 +717,14 @@ mod tests {
         // Error should be sent as a message. Testing that the error is actually
         // displayed is someone else's problem!!
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char(':'))
             .send_text("bad!")
             .assert()
             .empty();
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .send_key(KeyCode::Enter)
                 .run_task()
                 .await

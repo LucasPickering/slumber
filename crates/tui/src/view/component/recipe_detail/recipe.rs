@@ -264,10 +264,7 @@ impl RecipeTableKind for HeaderTableKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use indexmap::{IndexMap, indexmap};
     use rstest::rstest;
     use slumber_core::http::BuildFieldOverride;
@@ -278,7 +275,7 @@ mod tests {
     /// not unique on their own, so this ensures the index-based uniqueness is
     /// working correctly.
     #[rstest]
-    fn test_override_query(harness: TestHarness, terminal: TestTerminal) {
+    fn test_override_query(mut harness: TestHarness) {
         let recipe = Recipe {
             query: indexmap! {
                 "p0".into() => "v0".into(),
@@ -286,15 +283,12 @@ mod tests {
             },
             ..Recipe::factory(())
         };
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            RecipeDisplay::new(&recipe),
-        );
+        let mut component =
+            TestComponent::new(&mut harness, RecipeDisplay::new(&recipe));
 
         // Select query tab
         component
-            .int(&harness)
+            .int(&mut harness)
             .drain_draw() // Drain initial events
             .send_key(KeyCode::Right)
             .assert()
@@ -305,7 +299,7 @@ mod tests {
         // of row ordering to make sure higher rows don't overwrite lower ones,
         // or vice versa.
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Down, KeyCode::Char(' ')]) // Disable (p1,v0)
             .send_keys([KeyCode::Down, KeyCode::Char('e')]) // Override (p1,v1)
             .send_text("www")
@@ -323,11 +317,8 @@ mod tests {
         assert_eq!(component.query.to_build_overrides(), expected);
 
         // Rebuild the component and make sure state was persisted+reloaded
-        let component = TestComponent::new(
-            &harness,
-            &terminal,
-            RecipeDisplay::new(&recipe),
-        );
+        let component =
+            TestComponent::new(&mut harness, RecipeDisplay::new(&recipe));
         assert_eq!(component.query.to_build_overrides(), expected);
     }
 }

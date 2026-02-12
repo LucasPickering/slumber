@@ -70,7 +70,6 @@ mod tests {
     use super::*;
     use crate::{
         message::Message,
-        test_util::{TestTerminal, terminal},
         view::test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
@@ -79,10 +78,9 @@ mod tests {
 
     /// Test edit/reset via keybind
     #[rstest]
-    fn test_edit(harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit(mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             UrlDisplay::new(
                 RecipeId::factory(()),
                 "/users/{{ username }}".into(),
@@ -91,7 +89,7 @@ mod tests {
 
         // Check initial state
         assert_matches!(
-            component.int(&harness).into_propagated(),
+            component.int(&mut harness).into_propagated(),
             [Message::TemplatePreview { .. }]
         );
         assert_eq!(component.override_value(), None);
@@ -99,7 +97,7 @@ mod tests {
         // Edit URL
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .send_key(KeyCode::Char('e'))
                 .send_text("!!!")
                 .send_key(KeyCode::Enter)
@@ -114,7 +112,7 @@ mod tests {
         // Reset URL
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .send_key(KeyCode::Char('z'))
                 .into_propagated(),
             [Message::TemplatePreview { .. }]
@@ -124,10 +122,9 @@ mod tests {
 
     /// Test edit/reset via menu action
     #[rstest]
-    fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_action(mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             UrlDisplay::new(
                 RecipeId::factory(()),
                 "/users/{{ username }}".into(),
@@ -136,7 +133,7 @@ mod tests {
 
         // Check initial state
         assert_matches!(
-            component.int(&harness).into_propagated(),
+            component.int(&mut harness).into_propagated(),
             [Message::TemplatePreview { .. }]
         );
         assert_eq!(component.override_value(), None);
@@ -144,7 +141,7 @@ mod tests {
         // Edit URL
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .action(&["Edit URL"])
                 .send_keys([KeyCode::Char('!'), KeyCode::Enter])
                 .into_propagated(),
@@ -158,7 +155,7 @@ mod tests {
         // Reset URL
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .action(&["Reset URL"])
                 .into_propagated(),
             [Message::TemplatePreview { .. }]
@@ -168,14 +165,13 @@ mod tests {
 
     /// Basic auth fields should load persisted overrides
     #[rstest]
-    fn test_persisted_load(harness: TestHarness, terminal: TestTerminal) {
+    fn test_persisted_load(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
         harness
             .persistent_store()
             .set_session(UrlKey(recipe_id.clone()), "persisted/url".into());
         let component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             UrlDisplay::new(recipe_id, "default/url".into()),
         );
 

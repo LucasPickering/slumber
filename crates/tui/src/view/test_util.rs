@@ -3,7 +3,6 @@
 use crate::{
     http::RequestStore,
     message::{self, Message, MessageReceiver},
-    test_util::TestTerminal,
     view::{
         ComponentMap, UpdateContext,
         common::actions::{ActionMenu, MenuItem},
@@ -17,7 +16,7 @@ use crate::{
     },
 };
 use itertools::Itertools;
-use ratatui::layout::Rect;
+use ratatui::{Frame, Terminal, backend::TestBackend, layout::Rect};
 use rstest::fixture;
 use slumber_config::{Action, Config};
 use slumber_core::{collection::Collection, database::CollectionDatabase};
@@ -38,8 +37,20 @@ use tracing::trace_span;
 
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
 #[fixture]
-pub fn harness() -> TestHarness {
-    TestHarness::new(Collection::factory(()))
+pub fn harness(terminal_width: u16, terminal_height: u16) -> TestHarness {
+    TestHarness::new(Collection::factory(()), terminal_width, terminal_height)
+}
+
+/// Terminal width in chars, for injection to [harness] fixture
+#[fixture]
+fn terminal_width() -> u16 {
+    50
+}
+
+/// Terminal height in chars, for injection to [harness] fixture
+#[fixture]
+fn terminal_height() -> u16 {
+    20
 }
 
 /// A container for all singleton types needed for tests. Most TUI tests will
@@ -53,38 +64,44 @@ pub struct TestHarness {
     /// Otherwise we would have to pass it to every single draw and update fn.
     request_store: Rc<RefCell<RequestStore>>,
     messages_rx: MessageReceiver,
+    terminal: Terminal<TestBackend>,
 }
 
 impl TestHarness {
     /// Create a new test harness and initialize state
-    pub fn new(collection: Collection) -> Self {
+    pub fn new(
+        collection: Collection,
+        terminal_width: u16,
+        terminal_height: u16,
+    ) -> Self {
         let (messages_tx, messages_rx) = message::queue();
         let database = CollectionDatabase::factory(());
         let request_store =
             Rc::new(RefCell::new(RequestStore::new(database.clone())));
         let collection = Arc::new(collection);
+
+        let backend = TestBackend::new(terminal_width, terminal_height);
+        let terminal = Terminal::new(backend).unwrap();
+
         ViewContext::init(
             Config::default().into(),
             Arc::clone(&collection),
             database.clone(),
             messages_tx,
         );
+
         TestHarness {
             collection,
             database,
             request_store,
             messages_rx,
+            terminal,
         }
     }
 
     /// Get a mutable reference to the request store
     pub fn request_store_mut(&self) -> impl DerefMut<Target = RequestStore> {
         self.request_store.borrow_mut()
-    }
-
-    /// Get an `Rc` clone to the request store
-    pub fn request_store_owned(&self) -> Rc<RefCell<RequestStore>> {
-        Rc::clone(&self.request_store)
     }
 
     /// Get a [PersistentStore] pointing at the test database
@@ -96,6 +113,21 @@ impl TestHarness {
     /// modify and assert on the message queue
     pub fn messages_rx(&self) -> &MessageReceiver {
         &self.messages_rx
+    }
+
+    /// Draw to the terminal
+    pub fn draw(&mut self, f: impl FnOnce(&mut Frame)) {
+        self.terminal.draw(f).unwrap();
+    }
+
+    /// Get the terminal backend, for assertions
+    pub fn terminal_backend(&self) -> &TestBackend {
+        self.terminal.backend()
+    }
+
+    /// Get the area of the terminal buffer
+    pub fn terminal_area(&self) -> Rect {
+        self.terminal.backend().buffer().area
     }
 }
 
@@ -110,9 +142,7 @@ impl TestHarness {
 /// Use the [Deref] and [DerefMut] implementations to access the component under
 /// test.
 #[derive(Debug)]
-pub struct TestComponent<'term, T> {
-    /// Terminal to draw to
-    terminal: &'term TestTerminal,
+pub struct TestComponent<T> {
     database: CollectionDatabase,
     request_store: Rc<RefCell<RequestStore>>,
     /// Output of the most recent draw phase
@@ -130,25 +160,21 @@ pub struct TestComponent<'term, T> {
     initial_propagated: Vec<Message>,
 }
 
-impl<'term, T> TestComponent<'term, T>
+impl<T> TestComponent<T>
 where
     T: Component + Debug,
 {
     /// Start building a new component
-    pub fn builder<'msg, Props>(
-        harness: &'msg TestHarness,
-        terminal: &'term TestTerminal,
+    pub fn builder<Props>(
+        harness: &mut TestHarness,
         data: T,
-    ) -> TestComponentBuilder<'term, 'msg, T, Props>
+    ) -> TestComponentBuilder<'_, T, Props>
     where
         T: Draw<Props>,
     {
         TestComponentBuilder {
-            terminal,
-            database: harness.database.clone(),
-            request_store: harness.request_store_owned(),
-            messages_rx: &harness.messages_rx,
-            area: terminal.area(),
+            area: harness.terminal_area(),
+            harness,
             component: TestWrapper::new(data),
             props: None,
         }
@@ -156,18 +182,12 @@ where
 
     /// Shortcut for building and drawing a component with default props and
     /// the full terminal area
-    pub fn new<Props>(
-        harness: &TestHarness,
-        terminal: &'term TestTerminal,
-        data: T,
-    ) -> Self
+    pub fn new<Props>(harness: &mut TestHarness, data: T) -> Self
     where
         T: Draw<Props>,
         Props: Default,
     {
-        Self::builder(harness, terminal, data)
-            .with_default_props()
-            .build()
+        Self::builder(harness, data).with_default_props().build()
     }
 
     /// Modify the area the component will be drawn to
@@ -184,8 +204,8 @@ where
     /// Each draw will use `Props::default()` for the props value.
     pub fn int<'a, Props>(
         &'a mut self,
-        harness: &'a TestHarness,
-    ) -> Interact<'term, 'a, T, Props>
+        harness: &'a mut TestHarness,
+    ) -> Interact<'a, T, Props>
     where
         T: Draw<Props>,
         Props: 'a + Default,
@@ -198,9 +218,9 @@ where
     /// next props value.
     pub fn int_props<'a, Props>(
         &'a mut self,
-        harness: &'a TestHarness,
+        harness: &'a mut TestHarness,
         props_factory: impl 'a + Fn() -> Props,
-    ) -> Interact<'term, 'a, T, Props>
+    ) -> Interact<'a, T, Props>
     where
         T: Draw<Props>,
     {
@@ -209,6 +229,7 @@ where
         let propagated = mem::take(&mut self.initial_propagated);
         Interact {
             component: self,
+            terminal: &mut harness.terminal,
             messages_rx: &harness.messages_rx,
             props_factory: Box::new(props_factory),
             propagated,
@@ -223,20 +244,18 @@ where
     /// Draw this component onto the terminal, using the entire terminal frame
     /// as the draw area. If props are given, use them for the draw. If not,
     /// use the same props from the last draw.
-    fn draw<Props>(&mut self, props: Props)
+    fn draw<Props>(&mut self, frame: &mut Frame, props: Props)
     where
         T: Draw<Props>,
     {
-        self.terminal.draw(|frame| {
-            // Each draw gets a new canvas, as the Lord intended
-            self.component_map = Canvas::draw_all_area(
-                frame.buffer_mut(),
-                &self.component,
-                props,
-                self.area,
-                self.has_focus,
-            );
-        });
+        // Each draw gets a new canvas, as the Lord intended
+        self.component_map = Canvas::draw_all_area(
+            frame.buffer_mut(),
+            &self.component,
+            props,
+            self.area,
+            self.has_focus,
+        );
     }
 
     /// Drain events from the event queue, and handle them one-by-one. Return
@@ -273,7 +292,7 @@ where
 }
 
 // Manual impl needed to prevent bound `TestWrapper<T>: Deref>`
-impl<T> Deref for TestComponent<'_, T> {
+impl<T> Deref for TestComponent<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -281,24 +300,21 @@ impl<T> Deref for TestComponent<'_, T> {
     }
 }
 
-impl<T> DerefMut for TestComponent<'_, T> {
+impl<T> DerefMut for TestComponent<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.component.inner
     }
 }
 
 /// Helper for customizing a [TestComponent] before its initial draw
-pub struct TestComponentBuilder<'term, 'msg, T, Props> {
-    terminal: &'term TestTerminal,
-    database: CollectionDatabase,
-    request_store: Rc<RefCell<RequestStore>>,
-    messages_rx: &'msg MessageReceiver,
+pub struct TestComponentBuilder<'harness, T, Props> {
+    harness: &'harness mut TestHarness,
     area: Rect,
     component: TestWrapper<T>,
     props: Option<Props>,
 }
 
-impl<'term, T, Props> TestComponentBuilder<'term, '_, T, Props>
+impl<T, Props> TestComponentBuilder<'_, T, Props>
 where
     T: Component + Draw<Props> + Debug,
 {
@@ -329,11 +345,10 @@ where
     /// Draining initial events and drawing are considered universal
     /// functionality that all components will receive as part of their
     /// normal operation.
-    pub fn build(self) -> TestComponent<'term, T> {
+    pub fn build(self) -> TestComponent<T> {
         let mut component = TestComponent {
-            terminal: self.terminal,
-            database: self.database,
-            request_store: self.request_store,
+            database: self.harness.database.clone(),
+            request_store: self.harness.request_store.clone(),
             component_map: ComponentMap::default(),
             area: self.area,
             component: self.component,
@@ -345,8 +360,9 @@ where
         // then draw with the latest state
         let props = self.props.expect("Props not set for test component");
         // Propagated events just get tossed
-        component.initial_propagated = component.drain_events(self.messages_rx);
-        component.draw(props);
+        component.initial_propagated =
+            component.drain_events(&self.harness.messages_rx);
+        self.harness.draw(|frame| component.draw(frame, props));
 
         component
     }
@@ -358,21 +374,22 @@ where
 /// succeeded by a single draw, to update the view as needed.
 #[must_use = "Complete interaction with assert()"]
 #[derive(derive_more::Debug)]
-pub struct Interact<'term, 'comp, Component, Props> {
-    component: &'comp mut TestComponent<'term, Component>,
+pub struct Interact<'a, Component, Props> {
+    component: &'a mut TestComponent<Component>,
+    terminal: &'a mut Terminal<TestBackend>,
     /// Message queue receiver, from [TestHarness]
-    messages_rx: &'comp MessageReceiver,
+    messages_rx: &'a MessageReceiver,
     /// A repeatable function that generates a props object for each draw. In
     /// most cases this will just be `Props::default` or a function that
     /// repeatedly returns the same static value. In some cases though, the
     /// value can't be held across draws and must be recreated each time.
-    props_factory: Box<dyn 'comp + Fn() -> Props>,
+    props_factory: Box<dyn 'a + Fn() -> Props>,
     /// Messages queued during this interaction that were not handled by the
     /// component
     propagated: Vec<Message>,
 }
 
-impl<'term, 'comp, Comp, Props> Interact<'term, 'comp, Comp, Props>
+impl<'a, Comp, Props> Interact<'a, Comp, Props>
 where
     Comp: Component + Draw<Props> + Debug,
 {
@@ -384,7 +401,12 @@ where
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(mut self) -> Self {
         let propagated = self.component.drain_events(self.messages_rx);
-        self.component.draw((self.props_factory)());
+        self.terminal
+            .draw(|frame| {
+                let props = (self.props_factory)();
+                self.component.draw(frame, props);
+            })
+            .unwrap();
         self.propagated.extend(propagated);
         self
     }
@@ -602,7 +624,7 @@ where
 
     /// Get an [AssertMessages] to assert properties about the list of messages
     /// propagated by this interaction
-    pub fn assert(self) -> AssertMessages<'term, 'comp, Comp> {
+    pub fn assert(self) -> AssertMessages<'a, Comp> {
         AssertMessages {
             component: self.component,
             propagated: self.propagated,
@@ -612,12 +634,12 @@ where
 
 /// Assert on the list of propagated events
 #[must_use = "Propagated events must be checked"]
-pub struct AssertMessages<'term, 'comp, Comp> {
-    component: &'comp mut TestComponent<'term, Comp>,
+pub struct AssertMessages<'a, Comp> {
+    component: &'a mut TestComponent<Comp>,
     propagated: Vec<Message>,
 }
 
-impl<Comp> AssertMessages<'_, '_, Comp> {
+impl<Comp> AssertMessages<'_, Comp> {
     /// Get the underlying component value
     pub fn component_data(&self) -> &Comp {
         &*self.component

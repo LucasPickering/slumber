@@ -267,12 +267,9 @@ struct ProfileFieldProps {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            event::BroadcastEvent,
-            test_util::{TestComponent, TestHarness},
-        },
+    use crate::view::{
+        event::BroadcastEvent,
+        test_util::{TestComponent, TestHarness},
     };
     use indexmap::indexmap;
     use rstest::rstest;
@@ -284,7 +281,7 @@ mod tests {
     use terminput::KeyCode;
 
     #[rstest]
-    fn test_edit_template(terminal: TestTerminal) {
+    fn test_edit_template() {
         let profile_id = ProfileId::from("profile1");
         let collection = Collection {
             profiles: by_id([Profile {
@@ -297,15 +294,14 @@ mod tests {
             }]),
             ..Collection::factory(())
         };
-        let harness = TestHarness::new(collection);
+        let mut harness = TestHarness::new(collection, 50, 20);
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             ProfileDetail::new(Some(&profile_id)),
         );
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("123")
             .send_key(KeyCode::Enter)

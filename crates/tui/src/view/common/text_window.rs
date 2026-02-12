@@ -346,19 +346,13 @@ struct Offset {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use ratatui::text::Span;
     use rstest::rstest;
     use terminput::{KeyCode, KeyModifiers};
 
     #[rstest]
-    fn test_scroll(
-        #[with(10, 4)] terminal: TestTerminal,
-        harness: TestHarness,
-    ) {
+    fn test_scroll(#[with(10, 4)] mut harness: TestHarness) {
         let text =
             Text::from("łïne 1\nłïne 2 is longer\nłïne 3\nłïne 4\nłïne 5");
         let props = TextWindowProps {
@@ -369,10 +363,10 @@ mod tests {
             },
         };
         let mut component =
-            TestComponent::builder(&harness, &terminal, TextWindow::new(text))
+            TestComponent::builder(&mut harness, TextWindow::new(text))
                 .with_props(props.clone())
                 .build();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![line_num(1), " łïne 1 ▲".into()],
             vec![line_num(2), " łïne 2 █".into()],
             vec![line_num(3), " łïne 3 █".into()],
@@ -381,11 +375,11 @@ mod tests {
 
         // Scroll down
         component
-            .int_props(&harness, || props.clone())
+            .int_props(&mut harness, || props.clone())
             .send_key(KeyCode::Down)
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![line_num(2), " łïne 2 ▲".into()],
             vec![line_num(3), " łïne 3 █".into()],
             vec![line_num(4), " łïne 4 █".into()],
@@ -394,12 +388,12 @@ mod tests {
 
         // Scroll back up
         component
-            .int_props(&harness, || props.clone())
+            .int_props(&mut harness, || props.clone())
             // Second does nothing
             .send_keys([KeyCode::Up, KeyCode::Up])
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![line_num(1), " łïne 1 ▲".into()],
             vec![line_num(2), " łïne 2 █".into()],
             vec![line_num(3), " łïne 3 █".into()],
@@ -408,13 +402,13 @@ mod tests {
 
         // Scroll right
         component
-            .int_props(&harness, || props.clone())
+            .int_props(&mut harness, || props.clone())
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Right)
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Right)
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Right)
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![line_num(1), " e 1    ▲".into()],
             vec![line_num(2), " e 2 is █".into()],
             vec![line_num(3), " e 3    █".into()],
@@ -423,7 +417,7 @@ mod tests {
 
         // Scroll back left
         component
-            .int_props(&harness, || props.clone())
+            .int_props(&mut harness, || props.clone())
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
@@ -431,7 +425,7 @@ mod tests {
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![line_num(1), " łïne 1 ▲".into()],
             vec![line_num(2), " łïne 2 █".into()],
             vec![line_num(3), " łïne 3 █".into()],
@@ -440,12 +434,9 @@ mod tests {
     }
 
     #[rstest]
-    fn test_unicode(
-        #[with(35, 3)] terminal: TestTerminal,
-        harness: TestHarness,
-    ) {
+    fn test_unicode(#[with(35, 3)] mut harness: TestHarness) {
         let text = Text::from("intro\n💚💙💜 this is a longer line\noutro");
-        TestComponent::builder(&harness, &terminal, TextWindow::new(text))
+        TestComponent::builder(&mut harness, TextWindow::new(text))
             .with_props(TextWindowProps {
                 // Don't overflow the frame
                 margins: ScrollbarMargins {
@@ -454,7 +445,7 @@ mod tests {
                 },
             })
             .build();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![line_num(1), " intro                            ".into()],
             vec![line_num(2), " 💚💙💜 this is a longer line    ".into()],
             vec![line_num(3), " outro                            ".into()],
@@ -462,12 +453,9 @@ mod tests {
     }
 
     #[rstest]
-    fn test_unicode_scroll(
-        #[with(10, 2)] terminal: TestTerminal,
-        harness: TestHarness,
-    ) {
+    fn test_unicode_scroll(#[with(10, 2)] mut harness: TestHarness) {
         let text = Text::raw("💚💙💜💚💙💜");
-        TestComponent::builder(&harness, &terminal, TextWindow::new(text))
+        TestComponent::builder(&mut harness, TextWindow::new(text))
             .with_props(TextWindowProps {
                 // Don't overflow the frame
                 margins: ScrollbarMargins {
@@ -476,7 +464,7 @@ mod tests {
                 },
             })
             .build();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![line_num(1), " 💚💙💜💚".into()],
             vec![line_num(0), " ◀■■■■══▶".into()],
         ]);
@@ -485,7 +473,7 @@ mod tests {
     /// Growing the window reduces the maximum scroll. Scroll state should
     /// automatically be clamped to match
     #[rstest]
-    fn test_grow_window(terminal: TestTerminal, harness: TestHarness) {
+    fn test_grow_window(mut harness: TestHarness) {
         let text =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"]);
         let props = TextWindowProps {
@@ -496,13 +484,13 @@ mod tests {
             },
         };
         let mut component =
-            TestComponent::builder(&harness, &terminal, TextWindow::new(text))
+            TestComponent::builder(&mut harness, TextWindow::new(text))
                 .with_props(props.clone())
                 .build();
 
         component.set_area(Rect::new(0, 0, 10, 3));
         component
-            .int_props(&harness, || props.clone())
+            .int_props(&mut harness, || props.clone())
             .drain_draw()
             .assert()
             .empty();
@@ -514,7 +502,7 @@ mod tests {
 
         component.set_area(Rect::new(0, 0, 15, 4));
         component
-            .int_props(&harness, || props.clone())
+            .int_props(&mut harness, || props.clone())
             .drain_draw()
             .assert()
             .empty();

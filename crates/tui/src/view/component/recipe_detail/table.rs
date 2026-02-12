@@ -437,10 +437,7 @@ impl<T> Serialize for TypeName<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use rstest::rstest;
     use slumber_core::collection::RecipeId;
     use slumber_util::Factory;
@@ -459,7 +456,7 @@ mod tests {
 
     /// User can hide a row from the recipe
     #[rstest]
-    fn test_disabled_row(harness: TestHarness, terminal: TestTerminal) {
+    fn test_disabled_row(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
         let rows = [
             ("row0".into(), "value0".into()),
@@ -467,8 +464,7 @@ mod tests {
         ];
 
         let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())
@@ -479,7 +475,7 @@ mod tests {
 
         // Disable the second row
         component
-            .int_props(&harness, props_factory)
+            .int_props(&mut harness, props_factory)
             .send_keys([KeyCode::Down, KeyCode::Char(' ')])
             .assert()
             .empty();
@@ -496,7 +492,7 @@ mod tests {
 
         // Re-enable the row
         component
-            .int_props(&harness, props_factory)
+            .int_props(&mut harness, props_factory)
             .send_key(KeyCode::Char(' '))
             .assert()
             .empty();
@@ -507,7 +503,7 @@ mod tests {
 
     /// User can edit the value for a row
     #[rstest]
-    fn test_override_row(harness: TestHarness, terminal: TestTerminal) {
+    fn test_override_row(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
         let rows = [
             ("row0".into(), "value0".into()),
@@ -515,8 +511,7 @@ mod tests {
         ];
 
         let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())
@@ -527,7 +522,7 @@ mod tests {
 
         // Edit the second row
         component
-            .int_props(&harness, props_factory)
+            .int_props(&mut harness, props_factory)
             // Open the modal
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("!!!")
@@ -549,7 +544,7 @@ mod tests {
 
         // Reset edited state
         component
-            .int_props(&harness, props_factory)
+            .int_props(&mut harness, props_factory)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -559,20 +554,19 @@ mod tests {
 
     /// Test Edit menu action
     #[rstest]
-    fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_action(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
         let rows = [("row0".into(), "value0".into())];
 
         let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())
         .build();
 
         component
-            .int_props(&harness, props_factory)
+            .int_props(&mut harness, props_factory)
             .action(&["Edit Row"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert()
@@ -584,7 +578,7 @@ mod tests {
 
     /// Override templates should be loaded from the store on init
     #[rstest]
-    fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
+    fn test_persisted_override(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
         harness.persistent_store().set_session(
             RowPersistentKey::<TestKey>::new(
@@ -602,8 +596,7 @@ mod tests {
         );
         let rows = [("row0".into(), "".into()), ("row1".into(), "".into())];
         let component = TestComponent::builder(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
         )
         .with_props(props_factory())

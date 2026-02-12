@@ -235,12 +235,9 @@ enum EditableTemplateMenuAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            persistent::PersistentStore,
-            test_util::{TestComponent, TestHarness, harness},
-        },
+    use crate::view::{
+        persistent::PersistentStore,
+        test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
     use std::iter;
@@ -256,13 +253,12 @@ mod tests {
 
     /// Test persisting and restoring overrides
     #[rstest]
-    fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
+    fn test_persistence(mut harness: TestHarness) {
         harness
             .persistent_store()
             .set_session(Key, "persisted".into());
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             EditableTemplate::new("Item", Key, "default".into(), false, false),
         );
 
@@ -271,7 +267,7 @@ mod tests {
 
         // Modify the override and persist, should be updated in the store
         component
-            .int(&harness)
+            .int(&mut harness)
             // Edit and replace the text
             .send_key(KeyCode::Char('e'))
             .send_keys(iter::repeat_n(KeyCode::Backspace, 10))
@@ -284,7 +280,7 @@ mod tests {
 
         // Clear the override; should be removed from the store
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();

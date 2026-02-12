@@ -491,7 +491,6 @@ mod tests {
     use super::*;
     use crate::{
         message::Message,
-        test_util::{TestTerminal, terminal},
         view::test_util::{TestComponent, TestHarness, harness},
     };
     use ratatui::{layout::Margin, text::Span};
@@ -522,13 +521,9 @@ mod tests {
 
     /// Test the basic interaction loop on the text box
     #[rstest]
-    fn test_interaction(
-        harness: TestHarness,
-        #[with(10, 1)] terminal: TestTerminal,
-    ) {
+    fn test_interaction(#[with(10, 1)] mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             TextBox::default().subscribe([
                 TextBoxEvent::Cancel,
                 TextBoxEvent::Change,
@@ -538,16 +533,22 @@ mod tests {
 
         // Assert initial state/view
         assert_state(&component.state, "", 0);
-        terminal.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
+        harness
+            .terminal_backend()
+            .assert_buffer_lines([vec![cursor(" "), text("         ")]]);
 
         // Type some text
-        component.int(&harness).send_text("hi!").assert().emitted([
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-            TextBoxEvent::Change,
-        ]);
+        component
+            .int(&mut harness)
+            .send_text("hi!")
+            .assert()
+            .emitted([
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+                TextBoxEvent::Change,
+            ]);
         assert_state(&component.state, "hi!", 3);
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             text("hi!"),
             cursor(" "),
             text("      "),
@@ -555,14 +556,14 @@ mod tests {
 
         // Sending with a modifier applied should do nothing, unless it's shift
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Char('W'))
             .assert()
             .emitted([TextBoxEvent::Change]);
         assert_state(&component.state, "hi!W", 4);
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .send_key_modifiers(
                     // This is what crossterm actually sends
                     KeyModifiers::CTRL | KeyModifiers::SHIFT,
@@ -575,13 +576,13 @@ mod tests {
 
         // Test emitted events
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([TextBoxEvent::Submit]);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Esc)
             .assert()
             .emitted([TextBoxEvent::Cancel]);
@@ -590,19 +591,15 @@ mod tests {
     /// Test text navigation and deleting. [TextState] has its own tests so
     /// we're mostly just testing that keys are mapped correctly
     #[rstest]
-    fn test_navigation(
-        harness: TestHarness,
-        #[with(10, 1)] terminal: TestTerminal,
-    ) {
+    fn test_navigation(#[with(10, 1)] mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             TextBox::default().subscribe([TextBoxEvent::Change]),
         );
 
         // Type some text
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("hello!")
             .assert()
             .emitted([
@@ -618,42 +615,42 @@ mod tests {
 
         // Move around, delete some text.
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Left)
             .assert()
             .empty();
         assert_state(&component.state, "hello!", 5);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Backspace)
             .assert()
             .emitted([TextBoxEvent::Change]);
         assert_state(&component.state, "hell!", 4);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Delete)
             .assert()
             .emitted([TextBoxEvent::Change]);
         assert_state(&component.state, "hell", 4);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Home)
             .assert()
             .empty();
         assert_state(&component.state, "hell", 0);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Right)
             .assert()
             .empty();
         assert_state(&component.state, "hell", 1);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::End)
             .assert()
             .empty();
@@ -663,23 +660,23 @@ mod tests {
     /// Test text navigation and deleting. [TextState] has its own tests so
     /// we're mostly just testing that keys are mapped correctly
     #[rstest]
-    fn test_scroll(harness: TestHarness, #[with(3, 3)] terminal: TestTerminal) {
+    fn test_scroll(#[with(3, 3)] mut harness: TestHarness) {
+        // Leave vertical margin for the scroll bar
+        let area = harness.terminal_area().inner(Margin {
+            horizontal: 0,
+            vertical: 1,
+        });
         let mut component = TestComponent::builder(
-            &harness,
-            &terminal,
+            &mut harness,
             TextBox::default().subscribe([TextBoxEvent::Change]),
         )
         .with_default_props()
-        // Leave vertical margin for the scroll bar
-        .with_area(terminal.area().inner(Margin {
-            horizontal: 0,
-            vertical: 1,
-        }))
+        .with_area(area)
         .build();
 
         // Type some text
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("012345")
             .assert()
             .emitted([
@@ -692,7 +689,7 @@ mod tests {
                 TextBoxEvent::Change,
             ]);
         // End of the string is visible
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::from("   "),
             vec![text("45"), cursor(" ")].into(),
             "◀■▶".into(),
@@ -700,11 +697,11 @@ mod tests {
 
         // Deleting from the end should scroll left
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Backspace)
             .assert()
             .emitted([TextBoxEvent::Change]);
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::from("   "),
             vec![text("34"), cursor(" ")].into(),
             "◀■▶".into(),
@@ -712,11 +709,11 @@ mod tests {
 
         // Back to the beginning
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Home)
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::from("   "),
             vec![cursor("0"), text("12")].into(),
             "◀■▶".into(),
@@ -724,11 +721,11 @@ mod tests {
 
         // Scroll shouldn't move until the cursor gets off screen
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Right, KeyCode::Right])
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::from("   "),
             vec![text("01"), cursor("2")].into(),
             "◀■▶".into(),
@@ -736,11 +733,11 @@ mod tests {
 
         // Push the scroll over
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Right)
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::from("   "),
             vec![text("12"), cursor("3")].into(),
             "◀■▶".into(),
@@ -748,11 +745,11 @@ mod tests {
 
         // Move back doesn't scroll left yet
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Left)
             .assert()
             .empty();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::from("   "),
             vec![text("1"), cursor("2"), text("3")].into(),
             "◀■▶".into(),
@@ -760,42 +757,36 @@ mod tests {
     }
 
     #[rstest]
-    fn test_sensitive(
-        harness: TestHarness,
-        #[with(3, 1)] terminal: TestTerminal,
-    ) {
+    fn test_sensitive(#[with(3, 1)] mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             TextBox::default()
                 .sensitive(true)
                 .subscribe([TextBoxEvent::Change]),
         );
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("hi")
             .assert()
             .emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
 
         assert_state(&component.state, "hi", 2);
-        terminal.assert_buffer_lines([vec![text("••"), cursor(" ")]]);
+        harness
+            .terminal_backend()
+            .assert_buffer_lines([vec![text("••"), cursor(" ")]]);
     }
 
     #[rstest]
-    fn test_placeholder(
-        harness: TestHarness,
-        #[with(6, 1)] terminal: TestTerminal,
-    ) {
+    fn test_placeholder(#[with(6, 1)] mut harness: TestHarness) {
         let component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             TextBox::default().placeholder("hello"),
         );
 
         assert_state(&component.state, "", 0);
         let styles = ViewContext::styles().text_box;
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             cursor("h"),
             Span::styled("ello", styles.text.patch(styles.placeholder)),
             text(" "),
@@ -803,13 +794,9 @@ mod tests {
     }
 
     #[rstest]
-    fn test_placeholder_focused(
-        harness: TestHarness,
-        #[with(9, 1)] terminal: TestTerminal,
-    ) {
+    fn test_placeholder_focused(#[with(9, 1)] mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             TextBox::default()
                 .placeholder("unfocused")
                 .placeholder_focused("focused"),
@@ -818,7 +805,7 @@ mod tests {
 
         // Focused
         assert_state(&component.state, "", 0);
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             cursor("f"),
             Span::styled("ocused", styles.text.patch(styles.placeholder)),
             text("  "),
@@ -826,21 +813,19 @@ mod tests {
 
         // Unfocused
         component.unfocus();
-        component.int(&harness).drain_draw().assert().empty();
-        terminal.assert_buffer_lines([vec![Span::styled(
-            "unfocused",
-            styles.text.patch(styles.placeholder),
-        )]]);
+        component.int(&mut harness).drain_draw().assert().empty();
+        harness
+            .terminal_backend()
+            .assert_buffer_lines([vec![Span::styled(
+                "unfocused",
+                styles.text.patch(styles.placeholder),
+            )]]);
     }
 
     #[rstest]
-    fn test_validator(
-        harness: TestHarness,
-        #[with(6, 1)] terminal: TestTerminal,
-    ) {
+    fn test_validator(#[with(6, 1)] mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             TextBox::default()
                 .validator(|text| text.len() <= 2)
                 .subscribe([TextBoxEvent::Change, TextBoxEvent::Submit]),
@@ -848,34 +833,34 @@ mod tests {
 
         // Valid text, everything is normal
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("he")
             .assert()
             .emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             text("he"),
             cursor(" "),
             text("   "),
         ]]);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([TextBoxEvent::Submit]);
 
         // Invalid text, styling changes and no events are emitted
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("llo")
             .assert()
             .emitted([]);
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             Span::styled("hello", ViewContext::styles().text_box.invalid),
             cursor(" "),
         ]]);
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([]);

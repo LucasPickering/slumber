@@ -591,10 +591,7 @@ impl Default for ComponentId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestHarness, harness},
-    };
+    use crate::view::test_util::{TestHarness, harness};
     use Mode::*;
     use ratatui::layout::{Layout, Position};
     use rstest::{fixture, rstest};
@@ -822,18 +819,14 @@ mod tests {
     /// change state between focused/visible/hidden. In each state, **key**
     /// events should only go to focused components.
     #[rstest]
-    fn test_life_cycle(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        mut component: Root,
-    ) {
-        let draw_update_assert =
-            |component: &mut Root,
-             props: Option<RootProps>,
-             recipient: Recipient| {
+    fn test_life_cycle(mut harness: TestHarness, mut component: Root) {
+        let mut draw_update_assert =
+            move |component: &mut Root,
+                  props: Option<RootProps>,
+                  recipient: Recipient| {
                 let mut component_map = ComponentMap::default();
                 if let Some(props) = props {
-                    terminal.draw(|frame| {
+                    harness.draw(|frame| {
                         component_map = Canvas::draw_all(
                             frame.buffer_mut(),
                             component,
@@ -910,15 +903,14 @@ mod tests {
     // If the clicked child is hidden, it goes through to the parent
     #[case::mouse_hidden(click(0, 2), RootProps::fvh(), Recipient::Branch)]
     fn test_event(
-        harness: TestHarness,
-        terminal: TestTerminal,
+        mut harness: TestHarness,
         mut component: Root,
         #[case] event: Event,
         #[case] props: RootProps,
         #[case] expected_recipient: Recipient,
     ) {
         let mut component_map = ComponentMap::default();
-        terminal.draw(|frame| {
+        harness.draw(|frame| {
             component_map =
                 Canvas::draw_all(frame.buffer_mut(), &component, props);
         });

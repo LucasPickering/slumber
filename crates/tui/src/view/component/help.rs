@@ -231,10 +231,7 @@ impl Widget for Keybindings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use rstest::rstest;
     use slumber_config::InputMap;
     use std::collections::HashSet;
@@ -242,9 +239,8 @@ mod tests {
 
     /// Open and close the help page
     #[rstest]
-    fn test_open(harness: TestHarness, terminal: TestTerminal) {
-        let mut component =
-            TestComponent::new(&harness, &terminal, Help::default());
+    fn test_open(mut harness: TestHarness) {
+        let mut component = TestComponent::new(&mut harness, Help::default());
         assert!(!component.open);
 
         // Open help - this event is handled in the root
@@ -253,7 +249,7 @@ mod tests {
 
         // Esc to close
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Esc)
             .assert()
             .empty();

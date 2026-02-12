@@ -300,12 +300,9 @@ impl Scrollback {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            context::ViewContext,
-            test_util::{TestComponent, TestHarness, harness},
-        },
+    use crate::view::{
+        context::ViewContext,
+        test_util::{TestComponent, TestHarness, harness},
     };
     use ratatui::{style::Styled, text::Line};
     use rstest::{fixture, rstest};
@@ -322,21 +319,16 @@ mod tests {
 
     /// Scroll back/forth through command history
     #[rstest]
-    fn test_component_scrollback(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        _history_db: (),
-    ) {
+    fn test_component_scrollback(mut harness: TestHarness, _history_db: ()) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             CommandTextBox::new(TextBox::default()),
         );
 
         // Scroll back
         assert_eq!(component.text(), "");
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Up)
             .assert()
             .empty();
@@ -344,7 +336,7 @@ mod tests {
 
         // Scroll forward
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Up, KeyCode::Up, KeyCode::Down])
             .assert()
             .empty();
@@ -352,7 +344,7 @@ mod tests {
 
         // Submit
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([CommandTextBoxEvent::Submit]);
@@ -361,13 +353,13 @@ mod tests {
         // Submission resets scrollback state, so now when we go back from two
         // we get three instead of one
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Up)
             .assert()
             .empty();
         assert_eq!(component.text(), "three");
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Up)
             .assert()
             .empty();
@@ -377,30 +369,28 @@ mod tests {
     /// Search history with ctrl+r
     #[rstest]
     fn test_component_search(
-        harness: TestHarness,
-        #[with(6, 3)] terminal: TestTerminal,
+        #[with(6, 3)] mut harness: TestHarness,
         _history_db: (),
     ) {
         let styles = ViewContext::styles();
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             CommandTextBox::new(TextBox::default()),
         );
         // The search box blows up out of the given area, so use the bottom
         // line for the text box
-        component.set_area(bottom_row_area(&terminal));
+        component.set_area(bottom_row_area(&harness));
 
         // Initial text should be used for the query
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("t")
             .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('r'))
             .assert()
             .empty();
         assert_eq!(component.text(), "t");
         assert_eq!(get_search_items(&component).unwrap(), &["three", "two"]);
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             // Most recent last!!
             Line::from("two   "),
             Line::from("three ".set_style(styles.list.highlight)),
@@ -413,13 +403,13 @@ mod tests {
         ]);
 
         // Modifying while in search mode should update what's visible
-        component.int(&harness).send_text("h").assert().empty();
+        component.int(&mut harness).send_text("h").assert().empty();
         assert_eq!(component.text(), "th");
         assert_eq!(get_search_items(&component).unwrap(), &["three"]);
 
         // Enter closes the search AND submits
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Enter)
             .assert()
             .emitted([CommandTextBoxEvent::Submit]);
@@ -430,19 +420,17 @@ mod tests {
     /// selected item
     #[rstest]
     fn test_component_search_cancel(
-        harness: TestHarness,
-        #[with(6, 3)] terminal: TestTerminal,
+        #[with(6, 3)] mut harness: TestHarness,
         _history_db: (),
     ) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             CommandTextBox::new(TextBox::default()),
         );
-        component.set_area(bottom_row_area(&terminal));
+        component.set_area(bottom_row_area(&harness));
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("t")
             .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('r'))
             .assert()
@@ -452,7 +440,7 @@ mod tests {
         // Escape exits without modifying the text. This exits both the search
         // list *and* the text box.
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Esc)
             .assert()
             .emitted([CommandTextBoxEvent::Cancel]);
@@ -463,20 +451,18 @@ mod tests {
     /// enter search mode
     #[rstest]
     fn test_component_search_no_match(
-        harness: TestHarness,
-        #[with(6, 3)] terminal: TestTerminal,
+        #[with(6, 3)] mut harness: TestHarness,
         _history_db: (),
     ) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             CommandTextBox::new(TextBox::default()),
         );
-        component.set_area(bottom_row_area(&terminal));
+        component.set_area(bottom_row_area(&harness));
 
         // Initial text should be used for the query
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_text("teefs")
             .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('r'))
             .assert()
@@ -579,7 +565,7 @@ mod tests {
 
     /// Get the area of the bottom row of the terminal. This is where we render
     /// the text box to, so the history search can appear above it
-    fn bottom_row_area(terminal: &TestTerminal) -> Rect {
-        terminal.area().rows().next_back().unwrap()
+    fn bottom_row_area(harness: &TestHarness) -> Rect {
+        harness.terminal_area().rows().next_back().unwrap()
     }
 }

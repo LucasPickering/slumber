@@ -299,10 +299,7 @@ enum HistoryAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use itertools::Itertools;
     use rstest::rstest;
     use slumber_core::http::Exchange;
@@ -311,9 +308,9 @@ mod tests {
 
     /// Test that we can browse requests, and selecting one updates root state
     #[rstest]
-    fn test_navigation(harness: TestHarness, terminal: TestTerminal) {
-        let profile_id = harness.collection.first_profile_id();
-        let recipe_id = harness.collection.first_recipe_id();
+    fn test_navigation(mut harness: TestHarness) {
+        let profile_id = harness.collection.first_profile_id().clone();
+        let recipe_id = harness.collection.first_recipe_id().clone();
         // Populate the DB
         let exchanges = (0..2)
             .map(|_| {
@@ -328,22 +325,25 @@ mod tests {
         }
 
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            History::new(Some(profile_id.clone()), Some(recipe_id.clone())),
+            &mut harness,
+            History::new(Some(profile_id), Some(recipe_id)),
         );
         // Normally the initial refresh is triggered by the Select events from
         // the profile/recipe list. We need to refresh manually here
         component.refresh(&mut harness.request_store_mut());
 
         // Initial state
-        component.int(&harness).drain_draw().assert().broadcast([
-            BroadcastEvent::SelectedRequest(Some(exchanges[0].id)),
-        ]);
+        component
+            .int(&mut harness)
+            .drain_draw()
+            .assert()
+            .broadcast([BroadcastEvent::SelectedRequest(Some(
+                exchanges[0].id,
+            ))]);
 
         // Select the next one
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Down)
             .assert()
             .broadcast([BroadcastEvent::SelectedRequest(Some(

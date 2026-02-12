@@ -464,13 +464,10 @@ fn preview_json_template(json: &JsonTemplate) -> Template {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            context::ViewContext,
-            persistent::PersistentStore,
-            test_util::{TestComponent, TestHarness, harness},
-        },
+    use crate::view::{
+        context::ViewContext,
+        persistent::PersistentStore,
+        test_util::{TestComponent, TestHarness, harness},
     };
     use ratatui::{
         style::{Color, Styled},
@@ -484,26 +481,27 @@ mod tests {
     /// Test editing a raw body, which should open a file for the user to edit,
     /// then load the response
     #[rstest]
-    fn test_edit(harness: TestHarness, #[with(10, 1)] terminal: TestTerminal) {
+    fn test_edit(#[with(10, 1)] mut harness: TestHarness) {
         let recipe = Recipe {
             body: Some(RecipeBody::Raw("hello!".into())),
             ..Recipe::factory(())
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
         // Check initial state
         assert_eq!(component.override_value(), None);
-        terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
+        harness
+            .terminal_backend()
+            .assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Edit the template
-        edit(&mut component, &harness, "hello!", "goodbye!");
+        edit(&mut component, &mut harness, "hello!", "goodbye!");
 
         assert_eq!(component.override_value(), Some("goodbye!".into()));
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             edited("goodbye!"),
@@ -516,7 +514,7 @@ mod tests {
 
         // Reset edited state
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -526,27 +524,23 @@ mod tests {
     /// Test edit and provide an invalid template. It should show the template
     /// with the error
     #[rstest]
-    fn test_edit_invalid(
-        harness: TestHarness,
-        #[with(20, 5)] terminal: TestTerminal,
-    ) {
+    fn test_edit_invalid(#[with(20, 5)] mut harness: TestHarness) {
         let recipe = Recipe {
             body: Some(RecipeBody::Raw("init".into())),
             ..Recipe::factory(())
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
         // Open the editor
-        edit(&mut component, &harness, "init", "{{");
+        edit(&mut component, &mut harness, "init", "{{");
 
         // We don't have a valid override, so we'll let the HTTP engine use the
         // original template
         assert_eq!(component.override_value(), None);
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             vec![gutter("1"), " ".into(), "{{".into()],
             vec![],
             vec![error("{{                  ")],
@@ -566,10 +560,7 @@ mod tests {
     /// Test editing a JSON body, which should open a file for the user to edit,
     /// then load the response
     #[rstest]
-    fn test_edit_json(
-        harness: TestHarness,
-        #[with(12, 1)] terminal: TestTerminal,
-    ) {
+    fn test_edit_json(#[with(12, 1)] mut harness: TestHarness) {
         let initial_json = json!("hello!");
         let initial_text = initial_json.to_string();
         let override_json = json!("goodbye!");
@@ -580,14 +571,13 @@ mod tests {
             ..Recipe::factory(())
         };
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
         // Check initial state
         assert_eq!(component.override_value(), None);
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             // Apply syntax highlighting
@@ -596,10 +586,10 @@ mod tests {
         ]]);
 
         // Open the editor
-        edit(&mut component, &harness, &initial_text, &override_text);
+        edit(&mut component, &mut harness, &initial_text, &override_text);
 
         assert_eq!(component.override_value(), Some(override_json.into()));
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             // Apply syntax highlighting
@@ -613,7 +603,7 @@ mod tests {
 
         // Reset edited state
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
@@ -622,10 +612,7 @@ mod tests {
 
     /// Override template should be loaded from the persistence store on init
     #[rstest]
-    fn test_persisted_override(
-        harness: TestHarness,
-        #[with(10, 1)] terminal: TestTerminal,
-    ) {
+    fn test_persisted_override(#[with(10, 1)] mut harness: TestHarness) {
         let recipe = Recipe {
             body: Some(RecipeBody::Raw("".into())),
             ..Recipe::factory(())
@@ -635,13 +622,12 @@ mod tests {
             .set_session(BodyKey(recipe.id.clone()), "hello!".into());
 
         let component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
         assert_eq!(component.override_value(), Some("hello!".into()));
-        terminal.assert_buffer_lines([vec![
+        harness.terminal_backend().assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             edited("hello!"),
@@ -704,7 +690,7 @@ mod tests {
     /// file and allow the component to update with the new template.
     fn edit(
         component: &mut TestComponent<RecipeBodyDisplay>,
-        harness: &TestHarness,
+        harness: &mut TestHarness,
         initial_content: &str,
         content: &str,
     ) {

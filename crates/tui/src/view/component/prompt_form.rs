@@ -395,12 +395,9 @@ impl Generate for &SelectOption {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            common::modal::ModalQueue,
-            test_util::{TestComponent, TestHarness, harness},
-        },
+    use crate::view::{
+        common::modal::ModalQueue,
+        test_util::{TestComponent, TestHarness, harness},
     };
     use ratatui::style::{Style, Styled};
     use rstest::rstest;
@@ -412,9 +409,9 @@ mod tests {
     /// Navigate between multiple fields and submission. Submission is handled
     /// by the parent ModalQueue, so we have to use that here too.
     #[rstest]
-    fn test_navigation(harness: TestHarness, terminal: TestTerminal) {
+    fn test_navigation(mut harness: TestHarness) {
         let mut component =
-            TestComponent::new(&harness, &terminal, ModalQueue::default());
+            TestComponent::new(&mut harness, ModalQueue::default());
         // Build the form, then open its modal
         let mut form =
             PromptForm::new(&RecipeId::factory(()), RequestId::new());
@@ -433,7 +430,7 @@ mod tests {
         component.open(form);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .drain_draw() // Draw so children are visible
             .send_text("123") // Modify username
             .inspect(|modal_queue| {
@@ -459,10 +456,9 @@ mod tests {
 
     /// Text input field
     #[rstest]
-    fn test_text(harness: TestHarness, #[with(8, 5)] terminal: TestTerminal) {
+    fn test_text(#[with(8, 5)] mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             PromptForm::new(&RecipeId::factory(()), RequestId::new()),
         );
         let mut username_rx =
@@ -471,7 +467,7 @@ mod tests {
             text(&mut component, "Password", Some("hunter"), true);
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .drain_draw() // Draw so children are visible
             .send_text("12") // Modify username
             .send_key(KeyCode::Tab) // Switch to password
@@ -481,7 +477,7 @@ mod tests {
 
         // Check terminal contents
         let styles = ViewContext::styles();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::styled("Username", styles.form.title),
             Line::styled("user12  ", styles.form.content),
             Line::styled("Password", styles.form.title_highlight),
@@ -503,10 +499,9 @@ mod tests {
 
     /// Select input field
     #[rstest]
-    fn test_select(harness: TestHarness, #[with(7, 5)] terminal: TestTerminal) {
+    fn test_select(#[with(7, 5)] mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             PromptForm::new(&RecipeId::factory(()), RequestId::new()),
         );
         let mut species_rx = select(
@@ -520,7 +515,7 @@ mod tests {
         );
 
         component
-            .int(&harness)
+            .int(&mut harness)
             .drain_draw() // Draw so children are visible
             .send_key(KeyCode::Down)
             .assert()
@@ -528,7 +523,7 @@ mod tests {
 
         // Check terminal contents
         let styles = ViewContext::styles();
-        terminal.assert_buffer_lines([
+        harness.terminal_backend().assert_buffer_lines([
             Line::styled("Species", styles.form.title_highlight),
             Line::styled("holy sh", Style::default()),
             Line::styled("it's a ", styles.list.highlight),

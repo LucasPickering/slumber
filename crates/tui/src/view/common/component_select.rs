@@ -362,29 +362,27 @@ impl SelectState for ComponentSelectState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::test_util::{TestComponent, TestHarness, harness},
-    };
+    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use proptest::{collection, test_runner::TestRunner};
     use ratatui::{
         style::Styled,
         text::{Line, Text},
     };
     use rstest::rstest;
+    use slumber_core::collection::Collection;
+    use slumber_util::Factory;
     use std::iter;
 
     /// Make sure there are no faulty assumptions around the list being empty
     #[rstest]
-    fn test_empty_list(harness: TestHarness, terminal: TestTerminal) {
+    fn test_empty_list(mut harness: TestHarness) {
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             ComponentSelect::<Item>::default(),
         );
         assert!(component.is_empty());
         // This shouldn't panic!
-        component.int(&harness).drain_draw().assert().empty();
+        component.int(&mut harness).drain_draw().assert().empty();
     }
 
     /// View window calculation and scrolling with variable-height items
@@ -399,8 +397,7 @@ mod tests {
     // up, do that. This is relevant for resizes, when the window grows
     #[case::resize_up("e", 6, 5, &["c", "d", "e"])]
     fn test_view_window(
-        harness: TestHarness,
-        #[with(1, 10)] terminal: TestTerminal,
+        #[with(1, 10)] mut harness: TestHarness,
         #[case] selected: &str,
         #[case] initial_offset: u16,
         #[case] expected_offset: u16,
@@ -414,8 +411,7 @@ mod tests {
             Item::new("e", 5),
         ];
         let mut component = TestComponent::new(
-            &harness,
-            &terminal,
+            &mut harness,
             ComponentSelect::from(
                 Select::builder(items).preselect(&selected).build(),
             ),
@@ -424,7 +420,7 @@ mod tests {
         component.with_state(|state| state.offset = initial_offset);
         let item_props = |item: &Item, _| ((), item.height);
         component
-            .int_props(&harness, || ComponentSelectProps {
+            .int_props(&mut harness, || ComponentSelectProps {
                 item_props: Box::new(item_props),
                 ..Default::default()
             })
@@ -433,7 +429,7 @@ mod tests {
             .empty();
 
         // Check the state directly first
-        let view_height = terminal.area().height;
+        let view_height = harness.terminal_area().height;
         let window = component.window(item_props, view_height);
         let offset = component.with_state(|state| state.offset);
         assert_eq!(offset, expected_offset);
@@ -462,7 +458,9 @@ mod tests {
         // Cut that down to just what's visible
         let expected_lines =
             all_lines.skip(offset.into()).take(view_height.into());
-        terminal.assert_buffer_lines(expected_lines);
+        harness
+            .terminal_backend()
+            .assert_buffer_lines(expected_lines);
     }
 
     /// Test some properties of the scrolling view window:
@@ -471,7 +469,7 @@ mod tests {
     ///   - There's a lot of finicking math in the render, so just making sure
     ///     it doesn't crash with edge cases is useful
     #[rstest]
-    fn test_view_window_prop(harness: TestHarness) {
+    fn test_view_window_prop() {
         // I think the proptest! macro is annoying so I prefer manual
         type Params = (Vec<u16>, u16, usize, u16);
         let test = |(items, view_height, selected_index, offset): Params| {
@@ -491,14 +489,15 @@ mod tests {
                 .preselect_index(selected_index)
                 .build()
                 .into();
-            let terminal = TestTerminal::new(1, view_height);
-            let mut component = TestComponent::new(&harness, &terminal, select);
+            let mut harness =
+                TestHarness::new(Collection::factory(()), 1, view_height);
+            let mut component = TestComponent::new(&mut harness, select);
             let item_props = |item: &Item, _| ((), item.height);
             component.with_state(|state| state.offset = offset);
 
             // Render to make sure it doesn't panic
             component
-                .int_props(&harness, || ComponentSelectProps {
+                .int_props(&mut harness, || ComponentSelectProps {
                     item_props: Box::new(item_props),
                     ..Default::default()
                 })

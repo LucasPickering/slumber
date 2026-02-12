@@ -8,8 +8,6 @@ mod collection_state;
 mod http;
 mod input;
 mod message;
-#[cfg(test)]
-mod test_util;
 mod util;
 mod view;
 

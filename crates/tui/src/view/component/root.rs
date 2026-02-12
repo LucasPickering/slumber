@@ -407,12 +407,9 @@ impl Draw for CollectionErrorView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{TestTerminal, terminal},
-        view::{
-            component::history::SelectedRequestKey,
-            test_util::{TestComponent, TestHarness, harness},
-        },
+    use crate::view::{
+        component::history::SelectedRequestKey,
+        test_util::{TestComponent, TestHarness, harness},
     };
     use rstest::rstest;
     use slumber_core::{
@@ -426,25 +423,23 @@ mod tests {
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile
     #[rstest]
-    fn test_preload_request(harness: TestHarness, terminal: TestTerminal) {
+    fn test_preload_request(mut harness: TestHarness) {
         // Add a request into the DB that we expect to preload
-        let profile_id = harness.collection.first_profile_id();
-        let recipe_id = harness.collection.first_recipe_id();
+        let profile_id = harness.collection.first_profile_id().clone();
+        let recipe_id = harness.collection.first_recipe_id().clone();
         let exchange =
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(Ok(Arc::clone(&harness.collection))),
-        );
-        component.int(&harness).drain_draw().assert().empty();
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
+        component.int(&mut harness).drain_draw().assert().empty();
 
         // Make sure profile+recipe were preselected correctly
         let primary = component.primary.as_ref().unwrap();
-        assert_eq!(primary.selected_profile_id(), Some(profile_id));
-        assert_eq!(primary.selected_recipe_id(), Some(recipe_id));
+        assert_eq!(primary.selected_profile_id(), Some(&profile_id));
+        assert_eq!(primary.selected_recipe_id(), Some(&recipe_id));
         assert_eq!(primary.selected_request_id(), Some(exchange.id));
 
         // It'd be nice to assert on the view but it's just too complicated to
@@ -454,12 +449,9 @@ mod tests {
     /// Test that, on first render, if there's a persisted request ID, we load
     /// up to that instead of selecting the first in the list
     #[rstest]
-    fn test_load_persisted_request(
-        harness: TestHarness,
-        terminal: TestTerminal,
-    ) {
-        let recipe_id = harness.collection.first_recipe_id();
-        let profile_id = harness.collection.first_profile_id();
+    fn test_load_persisted_request(mut harness: TestHarness) {
+        let recipe_id = harness.collection.first_recipe_id().clone();
+        let profile_id = harness.collection.first_profile_id().clone();
         // This is the older one, but it should be loaded because of persistence
         let old_exchange =
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
@@ -471,27 +463,22 @@ mod tests {
             .persistent_store()
             .set(&SelectedRequestKey, &old_exchange.id);
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(Ok(Arc::clone(&harness.collection))),
-        );
-        component.int(&harness).drain_draw().assert().empty();
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
+        component.int(&mut harness).drain_draw().assert().empty();
 
         // Make sure everything was preselected correctly
         let primary = component.primary.as_ref().unwrap();
-        assert_eq!(primary.selected_profile_id(), Some(profile_id));
-        assert_eq!(primary.selected_recipe_id(), Some(recipe_id));
+        assert_eq!(primary.selected_profile_id(), Some(&profile_id));
+        assert_eq!(primary.selected_recipe_id(), Some(&recipe_id));
         assert_eq!(primary.selected_request_id(), Some(old_exchange.id));
     }
 
     /// Test that if the persisted request ID isn't in the DB, we'll fall back
     /// to selecting the most recent request
     #[rstest]
-    fn test_persisted_request_missing(
-        harness: TestHarness,
-        terminal: TestTerminal,
-    ) {
+    fn test_persisted_request_missing(mut harness: TestHarness) {
         let recipe_id = harness.collection.first_recipe_id();
         let profile_id = harness.collection.first_profile_id();
         let old_exchange =
@@ -505,12 +492,10 @@ mod tests {
             .persistent_store()
             .set(&SelectedRequestKey, &RequestId::new());
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(Ok(Arc::clone(&harness.collection))),
-        );
-        component.int(&harness).drain_draw().assert().empty();
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
+        component.int(&mut harness).drain_draw().assert().empty();
 
         assert_eq!(
             component.primary.as_ref().unwrap().selected_request_id(),
@@ -521,7 +506,7 @@ mod tests {
     /// Test that when the selected recipe changes, the selected request changes
     /// as well
     #[rstest]
-    fn test_recipe_change(terminal: TestTerminal) {
+    fn test_recipe_change() {
         let recipe1 = Recipe::factory(());
         let recipe2 = Recipe::factory(());
         let recipe1_id = recipe1.id.clone();
@@ -530,7 +515,7 @@ mod tests {
             recipes: by_id([recipe1, recipe2]).into(),
             ..Collection::factory(())
         };
-        let harness = TestHarness::new(collection);
+        let mut harness = TestHarness::new(collection, 50, 20);
         let profile_id = harness.collection.first_profile_id();
         let exchange1 =
             Exchange::factory((Some(profile_id.clone()), recipe1_id.clone()));
@@ -539,12 +524,10 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(Ok(Arc::clone(&harness.collection))),
-        );
-        component.int(&harness).drain_draw().assert().empty();
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
+        component.int(&mut harness).drain_draw().assert().empty();
 
         assert_eq!(
             component.primary.as_ref().unwrap().selected_request_id(),
@@ -553,7 +536,7 @@ mod tests {
 
         // Select the second recipe
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Char('r'), KeyCode::Down])
             .assert()
             .empty();
@@ -566,7 +549,7 @@ mod tests {
     /// Test that when the selected profile changes, the selected request
     /// changes as well
     #[rstest]
-    fn test_profile_change(terminal: TestTerminal) {
+    fn test_profile_change() {
         let profile1 = Profile::factory(());
         let profile2 = Profile::factory(());
         let profile1_id = profile1.id.clone();
@@ -575,7 +558,7 @@ mod tests {
             profiles: by_id([profile1, profile2]),
             ..Collection::factory(())
         };
-        let harness = TestHarness::new(collection);
+        let mut harness = TestHarness::new(collection, 50, 20);
         let recipe_id = harness.collection.first_recipe_id();
         let exchange1 =
             Exchange::factory((Some(profile1_id.clone()), recipe_id.clone()));
@@ -584,12 +567,10 @@ mod tests {
         harness.database.insert_exchange(&exchange1).unwrap();
         harness.database.insert_exchange(&exchange2).unwrap();
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(Ok(Arc::clone(&harness.collection))),
-        );
-        component.int(&harness).drain_draw().assert().empty();
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
+        component.int(&mut harness).drain_draw().assert().empty();
 
         assert_eq!(
             component.primary.as_ref().unwrap().selected_request_id(),
@@ -598,7 +579,7 @@ mod tests {
 
         // Select the second profile
         component
-            .int(&harness)
+            .int(&mut harness)
             .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
             .assert()
             .empty();
@@ -611,10 +592,7 @@ mod tests {
 
     /// Test "Delete All Requests > This Profile" action via the recipe pane
     #[rstest]
-    fn test_delete_recipe_requests(
-        harness: TestHarness,
-        #[with(120, 20)] terminal: TestTerminal,
-    ) {
+    fn test_delete_recipe_requests(#[with(120, 20)] mut harness: TestHarness) {
         let recipe_id = harness.collection.first_recipe_id().clone();
         let profile_id = harness.collection.first_profile_id().clone();
         let old_exchange =
@@ -624,14 +602,12 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(Ok(Arc::clone(&harness.collection))),
-        );
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
         // Select History list
         component
-            .int(&harness)
+            .int(&mut harness)
             .drain_draw()
             .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('h'))
             .assert()
@@ -646,7 +622,7 @@ mod tests {
         // Select action but decline the confirmation
         let action_path = &["Delete All Requests", "This Profile"];
         component
-            .int(&harness)
+            .int(&mut harness)
             .action(action_path)
             // Decline
             .send_keys([KeyCode::Left, KeyCode::Enter])
@@ -662,7 +638,7 @@ mod tests {
         // Select action and accept. I don't feel like testing All Profiles too
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .action(action_path)
                 .send_key(KeyCode::Enter) // Confirm
                 .into_propagated(),
@@ -678,10 +654,7 @@ mod tests {
     /// Test "Delete Request" action, which is available via the
     /// Request/Response pane
     #[rstest]
-    fn test_delete_request(
-        harness: TestHarness,
-        #[with(60, 20)] terminal: TestTerminal,
-    ) {
+    fn test_delete_request(#[with(60, 20)] mut harness: TestHarness) {
         let recipe_id = harness.collection.first_recipe_id();
         let profile_id = harness.collection.first_profile_id();
         let old_exchange =
@@ -691,14 +664,12 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(Ok(Arc::clone(&harness.collection))),
-        );
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
         // Select exchange pane
         component
-            .int(&harness)
+            .int(&mut harness)
             .drain_draw()
             .send_key(KeyCode::Char('2'))
             .assert()
@@ -712,7 +683,7 @@ mod tests {
 
         // Select "Delete Request" but decline the confirmation
         component
-            .int(&harness)
+            .int(&mut harness)
             .action(&["Delete Request"])
             .send_keys([KeyCode::Left, KeyCode::Enter]) // Decline
             .assert()
@@ -728,7 +699,7 @@ mod tests {
         // haven't figured out a way to test messages in the event loop.
         assert_matches!(
             component
-                .int(&harness)
+                .int(&mut harness)
                 .action(&["Delete Request"])
                 .send_keys([KeyCode::Enter]) // Confirm
                 .into_propagated(),

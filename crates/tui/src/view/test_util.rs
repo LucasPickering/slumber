@@ -109,10 +109,10 @@ impl TestHarness {
         PersistentStore::new(self.database.clone())
     }
 
-    /// Get a mutable reference to the message queue receiver, which can be to
-    /// modify and assert on the message queue
-    pub fn messages_rx(&self) -> &MessageReceiver {
-        &self.messages_rx
+    /// Get a mutable reference to the message queue receiver, which can be used
+    /// to modify and assert on the message queue
+    pub fn messages_rx(&mut self) -> &mut MessageReceiver {
+        &mut self.messages_rx
     }
 
     /// Draw to the terminal
@@ -230,7 +230,7 @@ where
         Interact {
             component: self,
             terminal: &mut harness.terminal,
-            messages_rx: &harness.messages_rx,
+            messages_rx: &mut harness.messages_rx,
             props_factory: Box::new(props_factory),
             propagated,
         }
@@ -261,7 +261,10 @@ where
     /// Drain events from the event queue, and handle them one-by-one. Return
     /// the messages that were propagated (i.e. not consumed by the component or
     /// its children), in the order they were queued/handled.
-    fn drain_events(&mut self, messages_rx: &MessageReceiver) -> Vec<Message> {
+    fn drain_events(
+        &mut self,
+        messages_rx: &mut MessageReceiver,
+    ) -> Vec<Message> {
         let mut persistent_store = PersistentStore::new(self.database.clone());
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
@@ -361,7 +364,7 @@ where
         let props = self.props.expect("Props not set for test component");
         // Propagated events just get tossed
         component.initial_propagated =
-            component.drain_events(&self.harness.messages_rx);
+            component.drain_events(&mut self.harness.messages_rx);
         self.harness.draw(|frame| component.draw(frame, props));
 
         component
@@ -378,7 +381,7 @@ pub struct Interact<'a, Component, Props> {
     component: &'a mut TestComponent<Component>,
     terminal: &'a mut Terminal<TestBackend>,
     /// Message queue receiver, from [TestHarness]
-    messages_rx: &'a MessageReceiver,
+    messages_rx: &'a mut MessageReceiver,
     /// A repeatable function that generates a props object for each draw. In
     /// most cases this will just be `Props::default` or a function that
     /// repeatedly returns the same static value. In some cases though, the

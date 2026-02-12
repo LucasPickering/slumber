@@ -334,7 +334,7 @@ mod tests {
     #[case::static_("static!", false)]
     #[case::dynamic("{{ dynamic }}", true)]
     fn test_send_message(
-        harness: TestHarness,
+        mut harness: TestHarness,
         #[case] template: Template,
         #[case] should_send: bool,
     ) {

@@ -158,7 +158,7 @@ mod tests {
     use slumber_util::assert_matches;
 
     #[rstest]
-    fn test_push_message(harness: TestHarness) {
+    fn test_push_message(mut harness: TestHarness) {
         ViewContext::push_message(Message::CollectionStartReload);
         ViewContext::push_message(Message::CollectionEdit { location: None });
         assert_matches!(

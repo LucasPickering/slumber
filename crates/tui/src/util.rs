@@ -547,7 +547,7 @@ mod tests {
         // We need to run two futures concurrently:
         // - save_file() procedure
         // - Respondent that will pop the prompt messages and handle them
-        let (tx, rx) = message::queue();
+        let (tx, mut rx) = message::queue();
         let save_file_fut = save_file(
             tx,
             Some("default.txt".into()),

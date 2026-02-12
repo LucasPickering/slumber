@@ -161,6 +161,9 @@
         "select_collection": [
           "f3"
         ],
+        "toggle_sidebar": [
+          "s"
+        ],
         "profile_list": [
           "p"
         ],
@@ -327,6 +330,9 @@
         ],
         "select_collection": [
           "f3"
+        ],
+        "toggle_sidebar": [
+          "s"
         ],
         "profile_list": [
           "p"

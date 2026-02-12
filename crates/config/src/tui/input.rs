@@ -162,6 +162,8 @@ pub enum Action {
     CommandHistory,
     /// Open collection selection modal (unbound by default)
     SelectCollection,
+    /// Show/hide the sidebar
+    ToggleSidebar,
     /// Select profile list pane
     #[serde(alias = "select_profile_list")] // Backward compatibility
     ProfileList,
@@ -506,6 +508,7 @@ impl Default for InputMap {
             (Action::View, KeyCode::Char('v').into()),
             (Action::CommandHistory, (CTRL, KeyCode::Char('r')).into()),
             (Action::SelectCollection, KeyCode::F(3).into()),
+            (Action::ToggleSidebar, KeyCode::Char('s').into()),
             (Action::ProfileList, KeyCode::Char('p').into()),
             (Action::RecipeList, KeyCode::Char('r').into()),
             (Action::TopPane, KeyCode::Char('1').into()),

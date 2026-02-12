@@ -159,6 +159,7 @@ impl Keybindings {
                     Action::TopPane,
                     Action::BottomPane,
                     Action::Fullscreen,
+                    Action::ToggleSidebar,
                     Action::ProfileList,
                     Action::RecipeList,
                     Action::History,

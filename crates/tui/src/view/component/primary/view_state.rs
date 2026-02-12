@@ -46,6 +46,17 @@ impl ViewState {
         }
     }
 
+    /// TODO
+    pub fn toggle_sidebar(&mut self) {
+        // TODO interact w/ fullscreen
+        // TODO tests
+        // TODO remember last sidebar
+        match self.layout {
+            PrimaryLayout::Default(_) => self.open_sidebar(Sidebar::Recipe),
+            PrimaryLayout::Sidebar { .. } => self.close_sidebar(),
+        }
+    }
+
     /// Select the previous pane in the cycle
     pub fn previous_pane(&mut self) {
         fn previous<T: PartialEq + IntoEnumIterator>(value: T) -> T {

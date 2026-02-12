@@ -60,6 +60,7 @@ input_bindings:
 | `open_help`         | `?`                     | Open help page                                                                                                                    |
 | `command_history`   | `ctrl r`                | Search command history in query/export text box                                                                                   |
 | `select_collection` | `f3`                    | Open collection select dialog                                                                                                     |
+| `toggle_sidebar`    | `s`                     | Show/hide the sidebar                                                                                                             |
 | `profile_list`      | `p`                     | Open Profile List dialog                                                                                                          |
 | `recipe_list`       | `r`                     | Select Recipe List pane                                                                                                           |
 | `top_pane`          | `1`                     | Select the upper pane (the recipe pane). Aliased to `select_recipe` for backward compatibility                                    |

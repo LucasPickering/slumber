@@ -481,6 +481,7 @@ impl Component for PrimaryView {
                 Action::History => self.view.open_sidebar(Sidebar::History),
                 Action::ProfileList => self.view.open_sidebar(Sidebar::Profile),
                 Action::RecipeList => self.view.open_sidebar(Sidebar::Recipe),
+                Action::ToggleSidebar => self.view.toggle_sidebar(),
                 Action::TopPane => self.view.select_top_pane(),
                 Action::BottomPane => self.view.select_bottom_pane(),
 
@@ -489,12 +490,6 @@ impl Component for PrimaryView {
                 // Exit fullscreen
                 Action::Cancel if self.view.is_fullscreen() => {
                     self.view.exit_fullscreen();
-                }
-                // Close sidebar if it's open, regardless of the selected pane
-                Action::Cancel
-                    if self.can_close_sidebar(context.request_store) =>
-                {
-                    self.view.close_sidebar();
                 }
                 _ => propagate.set(),
             })

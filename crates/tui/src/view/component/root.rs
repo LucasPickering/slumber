@@ -10,12 +10,13 @@ use crate::{
         component::{
             Canvas, Child, ComponentId, Draw, DrawMetadata, ToChild,
             footer::Footer,
+            help::{Help, HelpEvent},
             internal::ComponentExt,
             misc::{ErrorModal, QuestionModal},
             primary::PrimaryView,
         },
         context::UpdateContext,
-        event::{DeleteTarget, Event, EventMatch},
+        event::{DeleteTarget, Event, EventMatch, ToEmitter},
     },
 };
 use indexmap::IndexMap;
@@ -35,6 +36,8 @@ use tracing::warn;
 #[derive(Debug)]
 pub struct Root {
     id: ComponentId,
+    /// Fullscreen help page. `None` when it's closed
+    help: Option<Help>,
     /// The pane layout that forms the primary content
     ///
     /// The state of this is based on whether the collection loaded correctly.
@@ -61,6 +64,7 @@ impl Root {
         };
         Self {
             id: ComponentId::default(),
+            help: None,
             primary,
             footer: Footer::default(),
             actions: ActionMenu::default(),
@@ -243,7 +247,7 @@ impl Component for Root {
                 Action::Cancel => self.cancel_request(context),
                 // Handle open events here so that they can be eaten by other
                 // components *first*. E.g. text boxes want ? more than we do.
-                Action::OpenHelp => self.footer.open_help(),
+                Action::OpenHelp => self.help = Some(Help::default()),
                 Action::SelectCollection => {
                     self.footer.open_collection_select();
                 }
@@ -261,6 +265,12 @@ impl Component for Root {
                     ViewContext::push_message(Message::CollectionStartReload);
                 }
                 _ => propagate.set(),
+            })
+            // Help reports its own closure
+            .emitted_opt(self.help.as_ref().map(Help::to_emitter), |event| {
+                match event {
+                    HelpEvent::Close => self.help = None,
+                }
             })
             .any(|event| match event {
                 // Broadcast events are *supposed* to be propagated!
@@ -300,6 +310,7 @@ impl Component for Root {
             self.actions.to_child_mut(),
             self.questions.to_child_mut(),
             // Non-modals
+            self.help.to_child_mut(),
             self.footer.to_child_mut(),
             primary,
         ]
@@ -310,6 +321,12 @@ impl Draw for Root {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         // Clear the screen and apply the background color
         canvas.render_widget(ClearFill, metadata.area());
+
+        // If help is open, it takes up the whole page
+        if let Some(help) = &self.help {
+            canvas.draw(help, (), metadata.area(), true);
+            return;
+        }
 
         // Create layout
         let [main_area, footer_area] =

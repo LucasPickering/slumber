@@ -2,12 +2,17 @@ use crate::view::{
     UpdateContext, ViewContext,
     component::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        collection_select::CollectionSelect, help::Help,
+        collection_select::CollectionSelect,
     },
     event::{Emitter, Event, EventMatch},
     state::Notification,
 };
-use ratatui::layout::{Constraint, Layout};
+use itertools::Itertools;
+use ratatui::{
+    layout::{Constraint, Layout},
+    text::Span,
+};
+use slumber_config::Action;
 use tokio::time;
 use uuid::Uuid;
 
@@ -15,9 +20,6 @@ use uuid::Uuid;
 #[derive(Debug, Default)]
 pub struct Footer {
     id: ComponentId,
-    /// Show minimal help info in the footer, and open up to a fullscreen help
-    /// page
-    help: Help,
     /// Display current collection with a list that can open to switch
     /// collections
     collection_select: CollectionSelect,
@@ -29,11 +31,6 @@ impl Footer {
     /// Open the collection select menu
     pub fn open_collection_select(&mut self) {
         self.collection_select.open();
-    }
-
-    /// Open the fullscreen help page
-    pub fn open_help(&mut self) {
-        self.help.open();
     }
 
     /// Display an informational message to the user
@@ -74,26 +71,20 @@ impl Component for Footer {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![
-            self.help.to_child_mut(),
-            self.collection_select.to_child_mut(),
-        ]
+        vec![self.collection_select.to_child_mut()]
     }
 }
 
 impl Draw for Footer {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        if self.help.is_open() {
-            // If the help page is open, render just that
-            canvas.draw(&self.help, (), metadata.area(), true);
-        } else if let Some(notification) = &self.notification {
-            // Otherwise, if a notification is present, it gets the entire
-            // footer. Notifications are auto-cleared so it's ok to hide other
-            // stuff temporarily
+        if let Some(notification) = &self.notification {
+            // If a notification is present, it gets the entire footer.
+            // Notifications are auto-cleared so it's ok to hide other stuff
+            // temporarily
             canvas
                 .render_widget(notification.message.as_str(), metadata.area());
         } else {
-            // No notification - show help dialog and current collection path
+            // No notification - show collection selector and minimal help
             let [collection_area, help_area] = Layout::horizontal([
                 Constraint::Length(self.collection_select.text().len() as u16),
                 Constraint::Min(0),
@@ -106,7 +97,20 @@ impl Draw for Footer {
                 collection_area,
                 self.collection_select.is_open(),
             );
-            canvas.draw(&self.help, (), help_area, false);
+
+            // Help
+            let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
+            let text = actions
+                .into_iter()
+                .map(|action| {
+                    let binding = ViewContext::binding_display(action);
+                    format!("{binding} {action}")
+                })
+                .join(" / ");
+
+            let span = Span::styled(text, ViewContext::styles().text.highlight)
+                .into_right_aligned_line();
+            canvas.render_widget(span, help_area);
         }
     }
 }

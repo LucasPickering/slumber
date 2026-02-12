@@ -4,9 +4,8 @@ use crate::view::{
     common::{Pane, clear_fill::ClearFill},
     component::{Component, ComponentId, Draw},
     context::ViewContext,
-    event::{Event, EventMatch},
+    event::{Emitter, Event, EventMatch, ToEmitter},
 };
-use itertools::Itertools;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     prelude::{Buffer, Rect},
@@ -20,25 +19,11 @@ use std::iter;
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// A help footer that can be opened into a fullscreen help page
-///
-/// This manages its own open/close state and actions.
+/// A fullscreen help page
 #[derive(Debug, Default)]
 pub struct Help {
     id: ComponentId,
-    /// If true, render on the entire frame. If false, show a summary in the
-    /// footer
-    open: bool,
-}
-
-impl Help {
-    pub fn open(&mut self) {
-        self.open = true;
-    }
-
-    pub fn is_open(&self) -> bool {
-        self.open
-    }
+    emitter: Emitter<HelpEvent>,
 }
 
 impl Component for Help {
@@ -48,7 +33,9 @@ impl Component for Help {
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event.m().action(|action, propagate| match action {
-            Action::Cancel | Action::Quit if self.open => self.open = false,
+            Action::Cancel | Action::Quit | Action::OpenHelp => {
+                self.emitter.emit(HelpEvent::Close);
+            }
             _ => propagate.set(),
         })
     }
@@ -56,75 +43,69 @@ impl Component for Help {
 
 impl Draw for Help {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        if self.open {
-            // Fullscreen mode is open
-            let styles = ViewContext::styles();
+        let styles = ViewContext::styles();
 
-            // General info/metadata
-            let doc_link = doc_link("");
-            let config_path = Config::path().display().to_string();
-            let log_path = paths::log_file().display().to_string();
-            let collection_path =
-                ViewContext::with_database(CollectionDatabase::metadata)
-                    .map(|metadata| metadata.path.display().to_string())
-                    .unwrap_or_default();
-            let general_rows = [
-                ["Version", CRATE_VERSION],
-                ["Docs", &doc_link],
-                ["Configuration", &config_path],
-                ["Log", &log_path],
-                ["Collection", &collection_path],
-            ]
-            .into_iter()
-            .map(|[label, value]| {
-                [Span::styled(label, styles.table.header), value.into()]
-            });
-            let general_height = general_rows.len();
-            let general = Table::new(
-                general_rows.into_iter().map(Row::new),
-                [13.into(), Constraint::Min(0)],
-            );
+        // General info/metadata
+        let doc_link = doc_link("");
+        let config_path = Config::path().display().to_string();
+        let log_path = paths::log_file().display().to_string();
+        let collection_path =
+            ViewContext::with_database(CollectionDatabase::metadata)
+                .map(|metadata| metadata.path.display().to_string())
+                .unwrap_or_default();
+        let general_rows = [
+            ["Version", CRATE_VERSION],
+            ["Docs", &doc_link],
+            ["Configuration", &config_path],
+            ["Log", &log_path],
+            ["Collection", &collection_path],
+        ]
+        .into_iter()
+        .map(|[label, value]| {
+            [Span::styled(label, styles.table.header), value.into()]
+        });
+        let general_height = general_rows.len();
+        let general = Table::new(
+            general_rows.into_iter().map(Row::new),
+            [13.into(), Constraint::Min(0)],
+        );
 
-            // Draw
-            let block = Pane {
-                title: "Help",
-                has_focus: true,
-            }
-            .generate()
-            .title(
-                Line::from(format!(
-                    "{} to close",
-                    ViewContext::binding_display(Action::Cancel)
-                ))
-                .alignment(Alignment::Right),
-            );
-            let area = canvas.area(); // Use the whole dang screen
-            let [collection_area, keybindings_area] = Layout::vertical([
-                Constraint::Length(general_height as u16),
-                Constraint::Min(0),
-            ])
-            .areas(block.inner(area));
-            canvas.render_widget(ClearFill, area);
-            canvas.render_widget(block, area);
-            canvas.render_widget(general, collection_area);
-            canvas.render_widget(Keybindings, keybindings_area);
-        } else {
-            // Show minimal help in the footer
-            let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
-
-            let text = actions
-                .into_iter()
-                .map(|action| {
-                    let binding = ViewContext::binding_display(action);
-                    format!("{binding} {action}")
-                })
-                .join(" / ");
-
-            let span = Span::styled(text, ViewContext::styles().text.highlight)
-                .into_right_aligned_line();
-            canvas.render_widget(span, metadata.area());
+        // Draw
+        let block = Pane {
+            title: "Help",
+            has_focus: true,
         }
+        .generate()
+        .title(
+            Line::from(format!(
+                "{} to close",
+                ViewContext::binding_display(Action::Cancel)
+            ))
+            .alignment(Alignment::Right),
+        );
+        let area = metadata.area();
+        let [collection_area, keybindings_area] = Layout::vertical([
+            Constraint::Length(general_height as u16),
+            Constraint::Min(0),
+        ])
+        .areas(block.inner(area));
+        canvas.render_widget(ClearFill, area);
+        canvas.render_widget(block, area);
+        canvas.render_widget(general, collection_area);
+        canvas.render_widget(Keybindings, keybindings_area);
     }
+}
+
+impl ToEmitter<HelpEvent> for Help {
+    fn to_emitter(&self) -> Emitter<HelpEvent> {
+        self.emitter
+    }
+}
+
+/// Emitted event for [Help]
+#[derive(Debug)]
+pub enum HelpEvent {
+    Close,
 }
 
 /// Widget to display all key bindings
@@ -232,30 +213,9 @@ impl Widget for Keybindings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::{TestComponent, TestHarness, harness};
     use rstest::rstest;
     use slumber_config::InputMap;
     use std::collections::HashSet;
-    use terminput::KeyCode;
-
-    /// Open and close the help page
-    #[rstest]
-    fn test_open(mut harness: TestHarness) {
-        let mut component = TestComponent::new(&mut harness, Help::default());
-        assert!(!component.open);
-
-        // Open help - this event is handled in the root
-        component.open();
-        assert!(component.open);
-
-        // Esc to close
-        component
-            .int(&mut harness)
-            .send_key(KeyCode::Esc)
-            .assert()
-            .empty();
-        assert!(!component.open);
-    }
 
     /// Make sure every bound action is visible in the Help page
     #[rstest]

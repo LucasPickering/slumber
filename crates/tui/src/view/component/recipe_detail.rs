@@ -120,7 +120,7 @@ impl Draw for RecipeDetail {
                     "Recipe"
                 }
             },
-            Action::SelectTopPane,
+            Action::TopPane,
         );
         let mut block = Pane {
             title: &title,

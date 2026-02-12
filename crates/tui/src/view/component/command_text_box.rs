@@ -132,7 +132,7 @@ impl Component for CommandTextBox {
             .action(|action, propagate| match action {
                 Action::Up => self.scrollback_back(),
                 Action::Down => self.scrollback_forward(),
-                Action::SearchHistory => self.update_search(),
+                Action::CommandHistory => self.update_search(),
                 _ => propagate.set(),
             })
             .emitted_opt(

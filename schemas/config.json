@@ -155,23 +155,23 @@
         "view": [
           "v"
         ],
-        "search_history": [
+        "command_history": [
           "ctrl r"
-        ],
-        "select_bottom_pane": [
-          "2"
         ],
         "select_collection": [
           "f3"
         ],
-        "select_profile_list": [
+        "profile_list": [
           "p"
         ],
-        "select_recipe_list": [
+        "recipe_list": [
           "r"
         ],
-        "select_top_pane": [
+        "top_pane": [
           "1"
+        ],
+        "bottom_pane": [
+          "2"
         ]
       }
     },
@@ -322,23 +322,23 @@
         "view": [
           "v"
         ],
-        "search_history": [
+        "command_history": [
           "ctrl r"
-        ],
-        "select_bottom_pane": [
-          "2"
         ],
         "select_collection": [
           "f3"
         ],
-        "select_profile_list": [
+        "profile_list": [
           "p"
         ],
-        "select_recipe_list": [
+        "recipe_list": [
           "r"
         ],
-        "select_top_pane": [
+        "top_pane": [
           "1"
+        ],
+        "bottom_pane": [
+          "2"
         ]
       },
       "theme": {

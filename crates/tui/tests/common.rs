@@ -293,7 +293,9 @@ impl TestBackend {
     /// Assert that the screen buffer contains specific text at a location
     #[track_caller]
     pub fn assert_buffer_contains(&self, expected: &str, at: Position) {
-        self.try_buffer_contains(expected, at).unwrap();
+        if let Err(error) = self.try_buffer_contains(expected, at) {
+            panic!("{error}"); // Panic with Display instead of Debug impl
+        }
     }
 
     /// Get the sequence of texts copied to the clipboard

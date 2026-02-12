@@ -10,9 +10,9 @@ use strum::{EnumIter, IntoEnumIterator};
 pub struct ViewState {
     /// What panes are currently visible?
     layout: PrimaryLayout,
-    /// If `true`, the selected pane should take up the entire screen, and
-    /// other panes are not visible.
-    fullscreen: bool,
+    /// Selected sidebar. If the sidebar is closed, we still track this so we
+    /// know which sidebar to show if it's toggled open
+    sidebar: Sidebar,
 }
 
 impl ViewState {
@@ -21,39 +21,41 @@ impl ViewState {
         self.layout
     }
 
-    /// Get the open sidebar, or `None` if the sidebar is closed
-    pub fn sidebar(&self) -> Option<Sidebar> {
-        match self.layout {
-            PrimaryLayout::Default(_) => None,
-            PrimaryLayout::Sidebar { sidebar, .. } => Some(sidebar),
-        }
+    /// Get the selected sidebar
+    ///
+    /// There is always a sidebar selected, **even if it's not visible**. If
+    /// the sidebar is closed, this will be whichever sidebar was most recently
+    /// visible.
+    pub fn sidebar(&self) -> Sidebar {
+        self.sidebar
     }
 
     /// Open the sidebar with specific content
     pub fn open_sidebar(&mut self, sidebar: Sidebar) {
-        self.modify_layout(|layout| *layout = PrimaryLayout::sidebar(sidebar));
+        self.layout = PrimaryLayout::Sidebar(SidebarPane::Sidebar);
+        self.sidebar = sidebar;
     }
 
-    /// Close the sidebar and return to the default view
+    /// Close the sidebar and return to the wide view
     pub fn close_sidebar(&mut self) {
-        if let PrimaryLayout::Sidebar { selected_pane, .. } = self.layout {
+        if let PrimaryLayout::Sidebar(selected_pane) = self.layout {
             // Retain selected pane where possible
-            let pane = match selected_pane {
-                SidebarPane::Sidebar | SidebarPane::Top => DefaultPane::Top,
-                SidebarPane::Bottom => DefaultPane::Bottom,
-            };
-            self.layout = PrimaryLayout::Default(pane);
+            self.layout = PrimaryLayout::Wide(selected_pane.into());
         }
     }
 
-    /// TODO
+    /// Open/close the sidebar
     pub fn toggle_sidebar(&mut self) {
-        // TODO interact w/ fullscreen
-        // TODO tests
-        // TODO remember last sidebar
         match self.layout {
-            PrimaryLayout::Default(_) => self.open_sidebar(Sidebar::Recipe),
-            PrimaryLayout::Sidebar { .. } => self.close_sidebar(),
+            PrimaryLayout::Wide(pane) => {
+                // Toggle operations should be their own inverse, so we do NOT
+                // want to select the sidebar pane
+                self.layout = PrimaryLayout::Sidebar(pane.into());
+            }
+            PrimaryLayout::Fullscreen(pane) => {
+                self.layout = PrimaryLayout::Sidebar(pane);
+            }
+            PrimaryLayout::Sidebar(_) => self.close_sidebar(),
         }
     }
 
@@ -62,13 +64,15 @@ impl ViewState {
         fn previous<T: PartialEq + IntoEnumIterator>(value: T) -> T {
             after(T::iter().rev(), value)
         }
-        self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = previous(*pane),
-            PrimaryLayout::Sidebar {
-                selected_pane: pane,
-                ..
-            } => *pane = previous(*pane),
-        });
+
+        match &mut self.layout {
+            PrimaryLayout::Wide(pane) => *pane = previous(*pane),
+            PrimaryLayout::Sidebar(pane) => *pane = previous(*pane),
+            // Exit fullscreen before swapping panes
+            PrimaryLayout::Fullscreen(pane) => {
+                self.layout = PrimaryLayout::Sidebar(previous(*pane));
+            }
+        }
     }
 
     /// Select the next pane in the cycle
@@ -76,97 +80,105 @@ impl ViewState {
         fn next<T: PartialEq + IntoEnumIterator>(value: T) -> T {
             after(T::iter(), value)
         }
-        self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = next(*pane),
-            PrimaryLayout::Sidebar {
-                selected_pane: pane,
-                ..
-            } => *pane = next(*pane),
-        });
+
+        match &mut self.layout {
+            PrimaryLayout::Wide(pane) => *pane = next(*pane),
+            PrimaryLayout::Sidebar(pane) => *pane = next(*pane),
+            // Exit fullscreen before swapping panes
+            PrimaryLayout::Fullscreen(pane) => {
+                self.layout = PrimaryLayout::Sidebar(next(*pane));
+            }
+        }
     }
 
     /// Move focus to the upper pane in the layout
     pub fn select_top_pane(&mut self) {
-        self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = DefaultPane::Top,
-            PrimaryLayout::Sidebar {
-                selected_pane: pane,
-                ..
-            } => *pane = SidebarPane::Top,
-        });
+        match &mut self.layout {
+            PrimaryLayout::Wide(pane) => {
+                *pane = WidePane::Top;
+            }
+            PrimaryLayout::Sidebar(pane) | PrimaryLayout::Fullscreen(pane) => {
+                *pane = SidebarPane::Top;
+            }
+        }
     }
 
     /// Move focus to the lower pane in the layout
     pub fn select_bottom_pane(&mut self) {
-        self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = DefaultPane::Bottom,
-            PrimaryLayout::Sidebar {
-                selected_pane: pane,
-                ..
-            } => *pane = SidebarPane::Bottom,
-        });
+        match &mut self.layout {
+            PrimaryLayout::Wide(pane) => {
+                *pane = WidePane::Bottom;
+            }
+            PrimaryLayout::Sidebar(pane) | PrimaryLayout::Fullscreen(pane) => {
+                *pane = SidebarPane::Bottom;
+            }
+        }
     }
 
     /// Move focus to the Recipe pane
     pub fn select_recipe_pane(&mut self) {
+        // Recipe pane is visible on top in all views
         self.select_top_pane();
     }
 
     /// Move focus to the Profile pane. If it's not in this view, do nothing
     pub fn select_profile_pane(&mut self) {
-        self.modify_layout(|layout| match layout {
-            PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Profile,
-                selected_pane: pane,
-            } => *pane = SidebarPane::Bottom,
-            // Pane isn't visible
-            PrimaryLayout::Default(_)
-            | PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Recipe | Sidebar::History,
-                ..
-            } => {}
-        });
+        match &mut self.layout {
+            PrimaryLayout::Wide(_) => {}
+            PrimaryLayout::Sidebar(pane) | PrimaryLayout::Fullscreen(pane) => {
+                match self.sidebar {
+                    Sidebar::Recipe | Sidebar::History => {}
+                    Sidebar::Profile => *pane = SidebarPane::Bottom,
+                }
+            }
+        }
     }
 
     /// Move focus to the Exchange pane. If it's not in this view, do nothing
     pub fn select_exchange_pane(&mut self) {
-        self.modify_layout(|layout| match layout {
-            PrimaryLayout::Default(pane) => *pane = DefaultPane::Bottom,
-            PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Recipe | Sidebar::History,
-                selected_pane: pane,
-            } => *pane = SidebarPane::Bottom,
-            // Pane isn't visible
-            PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Profile,
-                ..
-            } => {}
-        });
+        match &mut self.layout {
+            PrimaryLayout::Wide(pane) => {
+                *pane = WidePane::Bottom;
+            }
+            PrimaryLayout::Sidebar(pane) | PrimaryLayout::Fullscreen(pane) => {
+                match self.sidebar {
+                    Sidebar::Recipe | Sidebar::History => {
+                        *pane = SidebarPane::Bottom;
+                    }
+                    Sidebar::Profile => {} // Exchange pane isn't visible
+                }
+            }
+        }
     }
 
     /// Is the selected pane fullscreened?
     pub fn is_fullscreen(&self) -> bool {
-        self.fullscreen
+        matches!(self.layout, PrimaryLayout::Fullscreen(_))
     }
 
     /// Enter/exit fullscreen mode for the currently selected pane
     pub fn toggle_fullscreen(&mut self) {
-        self.fullscreen ^= true;
+        match self.layout {
+            PrimaryLayout::Wide(pane) => {
+                self.layout = PrimaryLayout::Fullscreen(pane.into());
+            }
+            PrimaryLayout::Fullscreen(pane) => {
+                // We don't store what the layout was *before* fullscreen, so
+                // go back to having the sidebar open. It's a bit clunky but
+                // it's better than going to the sidebar closed, because the
+                // sidebar may be the fullscreened pane.
+                self.layout = PrimaryLayout::Sidebar(pane);
+            }
+            PrimaryLayout::Sidebar(pane) => {
+                self.layout = PrimaryLayout::Fullscreen(pane);
+            }
+        }
     }
 
     /// Exit fullscreen mode for the currently selected pane
     pub fn exit_fullscreen(&mut self) {
-        self.fullscreen = false;
-    }
-
-    /// Modify the current layout with a closure. This encapsulates layout
-    /// mutations so we can check for changes. If the layout ever changes, we
-    /// exit fullscreen.
-    fn modify_layout(&mut self, f: impl FnOnce(&mut PrimaryLayout)) {
-        let old = self.layout;
-        f(&mut self.layout);
-        if self.layout != old {
-            self.fullscreen = false;
+        if let PrimaryLayout::Fullscreen(pane) = self.layout {
+            self.layout = PrimaryLayout::Sidebar(pane);
         }
     }
 }
@@ -174,8 +186,8 @@ impl ViewState {
 impl Default for ViewState {
     fn default() -> Self {
         ViewState {
-            layout: PrimaryLayout::Default(DefaultPane::Top),
-            fullscreen: false,
+            layout: PrimaryLayout::Sidebar(SidebarPane::Top),
+            sidebar: Sidebar::Recipe,
         }
     }
 }
@@ -183,30 +195,28 @@ impl Default for ViewState {
 /// Which panes are visible, and which one is selected?
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PrimaryLayout {
-    /// Default layout: all sidebars are collapsed
-    Default(DefaultPane),
+    /// Sidebar is closed, so the main panes are *wider*
+    Wide(WidePane),
     /// Sidebar is open
-    Sidebar {
-        sidebar: Sidebar,
-        selected_pane: SidebarPane,
-    },
+    Sidebar(SidebarPane),
+    /// A single pane is visible (could be the sidebar pane)
+    Fullscreen(SidebarPane),
 }
 
-impl PrimaryLayout {
-    /// Open a sidebar layout
-    fn sidebar(sidebar: Sidebar) -> Self {
-        Self::Sidebar {
-            sidebar,
-            selected_pane: SidebarPane::Sidebar,
-        }
-    }
-}
-
-/// Selectable pane in [PrimaryLayout::Default]
+/// Selectable pane in [PrimaryLayout::Wide]
 #[derive(Copy, Clone, Debug, PartialEq, EnumIter, Serialize, Deserialize)]
-pub enum DefaultPane {
+pub enum WidePane {
     Top,
     Bottom,
+}
+
+impl From<SidebarPane> for WidePane {
+    fn from(pane: SidebarPane) -> Self {
+        match pane {
+            SidebarPane::Sidebar | SidebarPane::Top => Self::Top,
+            SidebarPane::Bottom => Self::Bottom,
+        }
+    }
 }
 
 /// Selectable pane in [PrimaryLayout::Sidebar]
@@ -215,6 +225,15 @@ pub enum SidebarPane {
     Sidebar,
     Top,
     Bottom,
+}
+
+impl From<WidePane> for SidebarPane {
+    fn from(pane: WidePane) -> Self {
+        match pane {
+            WidePane::Top => Self::Top,
+            WidePane::Bottom => Self::Bottom,
+        }
+    }
 }
 
 /// List content that can be displayed in the sidebar
@@ -241,72 +260,76 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    /// Transition into and out of fullscreen
-    #[test]
-    fn test_fullscreen() {
-        let mut state = ViewState {
-            layout: PrimaryLayout::Default(DefaultPane::Top),
-            fullscreen: true,
-        };
-
-        // Toggle out
-        state.toggle_fullscreen();
-        assert!(!state.fullscreen);
-
-        // Toggle back in
-        state.toggle_fullscreen();
-        assert!(state.fullscreen);
-
-        // Exit
-        state.exit_fullscreen();
-        assert!(!state.fullscreen);
-
-        // Exit again does nothing
-        state.exit_fullscreen();
-        assert!(!state.fullscreen);
+    impl From<(PrimaryLayout, Sidebar)> for ViewState {
+        fn from((layout, sidebar): (PrimaryLayout, Sidebar)) -> Self {
+            Self { layout, sidebar }
+        }
     }
 
-    /// Changing pane focus should exit fullscreen
-    #[rstest]
-    #[case::open_profile_list(
-        PrimaryLayout::Default(DefaultPane::Top),
-        |state: &mut ViewState| state.open_sidebar(Sidebar::Profile),
-    )]
-    #[case::open_recipe_list(
-        PrimaryLayout::Default(DefaultPane::Top),
-        |state: &mut ViewState| state.open_sidebar(Sidebar::Recipe),
-    )]
-    #[case::select_recipe_pane(
-        PrimaryLayout::Default(DefaultPane::Bottom),
-        ViewState::select_recipe_pane
-    )]
-    #[case::select_profile_pane(
-        PrimaryLayout::sidebar(Sidebar::Profile),
-        ViewState::select_profile_pane
-    )]
-    #[case::select_exchange_pane(
-        PrimaryLayout::Default(DefaultPane::Top),
-        ViewState::select_exchange_pane
-    )]
-    #[case::previous_pane(
-        PrimaryLayout::Default(DefaultPane::Top),
-        ViewState::previous_pane
-    )]
-    #[case::next_pane(
-        PrimaryLayout::Default(DefaultPane::Top),
-        ViewState::next_pane
-    )]
-    fn test_fullscreen_switch_panes(
-        #[case] layout: PrimaryLayout,
-        #[case] mutator: impl Fn(&mut ViewState),
-    ) {
-        let mut state = ViewState {
-            layout,
-            fullscreen: true,
-        };
+    impl From<PrimaryLayout> for ViewState {
+        fn from(layout: PrimaryLayout) -> Self {
+            Self {
+                layout,
+                sidebar: Sidebar::Recipe,
+            }
+        }
+    }
 
-        // Mutator should exit state
-        mutator(&mut state);
-        assert!(!state.fullscreen);
+    /// Test various transitions between different states and layouts
+    #[rstest]
+    // Sidebar
+    #[case::toggle_sidebar_open(
+        (PrimaryLayout::Wide(WidePane::Bottom), Sidebar::Profile).into(),
+        ViewState::toggle_sidebar,
+        // Selected pane is retained
+        (PrimaryLayout::Sidebar(SidebarPane::Bottom), Sidebar::Profile).into(),
+    )]
+    #[case::toggle_sidebar_close(
+        (PrimaryLayout::Sidebar(SidebarPane::Bottom), Sidebar::Profile).into(),
+        ViewState::toggle_sidebar,
+        // Selected pane is retained
+        (PrimaryLayout::Wide(WidePane::Bottom), Sidebar::Profile).into(),
+    )]
+    #[case::toggle_sidebar_close_sidebar_selected(
+        (PrimaryLayout::Sidebar(SidebarPane::Sidebar), Sidebar::Profile).into(),
+        ViewState::toggle_sidebar,
+        // Can't keep the sidebar selected, so default to the top pane
+        (PrimaryLayout::Wide(WidePane::Top), Sidebar::Profile).into(),
+    )]
+    // Fullscreen
+    #[case::toggle_fullscreen_open(
+        PrimaryLayout::Sidebar(SidebarPane::Sidebar).into(),
+        ViewState::toggle_fullscreen,
+        PrimaryLayout::Fullscreen(SidebarPane::Sidebar).into(),
+    )]
+    #[case::toggle_fullscreen_close(
+        PrimaryLayout::Fullscreen(SidebarPane::Sidebar).into(),
+        ViewState::toggle_fullscreen,
+        PrimaryLayout::Sidebar(SidebarPane::Sidebar).into(),
+    )]
+    #[case::toggle_fullscreen_open_wide(
+        PrimaryLayout::Wide(WidePane::Bottom).into(),
+        ViewState::toggle_fullscreen,
+        // Pane is mapped correctly
+        PrimaryLayout::Fullscreen(SidebarPane::Bottom).into(),
+    )]
+    // Exiting fullscreen always puts us back in sidebar layout, even if we
+    // started in wide
+    #[case::toggle_fullscreen_from_wide(
+        PrimaryLayout::Wide(WidePane::Bottom).into(),
+        |state: &mut ViewState| {
+            state.toggle_fullscreen();
+            state.toggle_fullscreen();
+        },
+        PrimaryLayout::Sidebar(SidebarPane::Bottom).into(),
+    )]
+    fn test_transitions(
+        #[case] initial: ViewState,
+        #[case] transition: impl FnOnce(&mut ViewState),
+        #[case] expected: ViewState,
+    ) {
+        let mut state = initial;
+        transition(&mut state);
+        assert_eq!(state, expected);
     }
 }

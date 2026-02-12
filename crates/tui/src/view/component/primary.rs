@@ -16,7 +16,7 @@ use crate::{
             history::History,
             misc::{SidebarEvent, SidebarProps},
             primary::view_state::{
-                DefaultPane, PrimaryLayout, Sidebar, SidebarPane, ViewState,
+                PrimaryLayout, Sidebar, SidebarPane, ViewState, WidePane,
             },
             profile_detail::ProfileDetail,
             profile_list::ProfileList,
@@ -258,56 +258,51 @@ impl PrimaryView {
         RecipeDetail::new(node)
     }
 
-    /// Should a cancel action close the sidebar?
-    fn can_close_sidebar(&self, request_store: &RequestStore) -> bool {
-        // If the sidebar is open and the request is *not* cancellable. We want
-        // request cancelling to take priority over closing the sidebar, but
-        // our parent has to handle the cancel action because that's where the
-        // necessary context is.
-        self.view.sidebar().is_some()
-            && self
-                .exchange_pane
-                .request_id()
-                .is_none_or(|request_id| !request_store.can_cancel(request_id))
-    }
-
     /// Draw the selected pane in fullscreen mode
-    fn draw_fullscreen(&self, canvas: &mut Canvas, area: Rect) {
-        let sidebar_props = SidebarProps::list();
-        match self.view.layout() {
+    fn draw_fullscreen(
+        &self,
+        canvas: &mut Canvas,
+        area: Rect,
+        selected_pane: SidebarPane,
+    ) {
+        match selected_pane {
             // Sidebar
-            PrimaryLayout::Sidebar {
-                sidebar,
-                selected_pane: SidebarPane::Sidebar,
-            } => match sidebar {
+            SidebarPane::Sidebar => match self.view.sidebar() {
                 Sidebar::Profile => {
-                    canvas.draw(&self.profile_list, sidebar_props, area, true);
+                    canvas.draw(
+                        &self.profile_list,
+                        SidebarProps::list(),
+                        area,
+                        true,
+                    );
                 }
                 Sidebar::Recipe => {
-                    canvas.draw(&self.recipe_list, sidebar_props, area, true);
+                    canvas.draw(
+                        &self.recipe_list,
+                        SidebarProps::list(),
+                        area,
+                        true,
+                    );
                 }
                 Sidebar::History => canvas.draw(&self.history, (), area, true),
             },
             // Top Pane - always Recipe
-            PrimaryLayout::Default(DefaultPane::Top)
-            | PrimaryLayout::Sidebar {
-                selected_pane: SidebarPane::Top,
-                ..
-            } => canvas.draw(&self.recipe_detail, (), area, true),
+            SidebarPane::Top => {
+                canvas.draw(&self.recipe_detail, (), area, true);
+            }
             // Bottom Pane - Exchange or Profile, depending on sidebar
-            PrimaryLayout::Default(DefaultPane::Bottom)
-            | PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Recipe | Sidebar::History,
-                selected_pane: SidebarPane::Bottom,
-            } => canvas.draw(&self.exchange_pane, (), area, true),
-            PrimaryLayout::Sidebar {
-                sidebar: Sidebar::Profile,
-                selected_pane: SidebarPane::Bottom,
-            } => canvas.draw(&self.profile_detail, (), area, true),
+            SidebarPane::Bottom => match self.view.sidebar() {
+                Sidebar::Recipe | Sidebar::History => {
+                    canvas.draw(&self.exchange_pane, (), area, true);
+                }
+                Sidebar::Profile => {
+                    canvas.draw(&self.profile_detail, (), area, true);
+                }
+            },
         }
     }
 
-    /// Draw the default layout
+    /// Draw the layout with wide panes
     ///
     /// +---------+
     /// | HEADERS |
@@ -318,11 +313,11 @@ impl PrimaryView {
     /// |         |
     /// | BOTTOM  |
     /// +---------+
-    fn draw_default(
+    fn draw_wide(
         &self,
         canvas: &mut Canvas,
         area: Rect,
-        selected_pane: DefaultPane,
+        selected_pane: WidePane,
     ) {
         let headers: &[&dyn Draw<_>] = &[&self.profile_list, &self.recipe_list];
 
@@ -351,13 +346,13 @@ impl PrimaryView {
             &self.recipe_detail,
             (),
             top_area,
-            selected_pane == DefaultPane::Top,
+            selected_pane == WidePane::Top,
         );
         canvas.draw(
             &self.exchange_pane,
             (),
             bottom_area,
-            selected_pane == DefaultPane::Bottom,
+            selected_pane == WidePane::Bottom,
         );
     }
 
@@ -376,9 +371,9 @@ impl PrimaryView {
         &self,
         canvas: &mut Canvas,
         area: Rect,
-        sidebar: Sidebar,
         selected_pane: SidebarPane,
     ) {
+        let sidebar = self.view.sidebar();
         let headers: &[&dyn Draw<_>] = match sidebar {
             Sidebar::Profile => &[&self.recipe_list],
             Sidebar::Recipe => &[&self.profile_list],
@@ -606,21 +601,17 @@ impl Draw for PrimaryView {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
 
-        if self.view.is_fullscreen() {
-            // Fullscreen - just a single pane
-            self.draw_fullscreen(canvas, area);
-        } else {
-            // Multi-pane layouts
-            match self.view.layout() {
-                PrimaryLayout::Default(selected_pane) => {
-                    self.draw_default(canvas, area, selected_pane);
-                }
-                PrimaryLayout::Sidebar {
-                    sidebar,
-                    selected_pane,
-                } => {
-                    self.draw_sidebar(canvas, area, sidebar, selected_pane);
-                }
+        // Multi-pane layouts
+        match self.view.layout() {
+            PrimaryLayout::Wide(selected_pane) => {
+                self.draw_wide(canvas, area, selected_pane);
+            }
+            PrimaryLayout::Sidebar(selected_pane) => {
+                self.draw_sidebar(canvas, area, selected_pane);
+            }
+            PrimaryLayout::Fullscreen(selected_pane) => {
+                // Fullscreen - just a single pane
+                self.draw_fullscreen(canvas, area, selected_pane);
             }
         }
 

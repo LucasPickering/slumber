@@ -659,12 +659,10 @@ impl RequestState {
     /// Get metadata about a request. Return `None` if the request hasn't been
     /// successfully built (yet)
     pub fn request_metadata(&self) -> RequestMetadata {
-        let id = self.id();
         match self {
             // In-progress states
             Self::Building { start_time, .. }
             | Self::Loading { start_time, .. } => RequestMetadata {
-                id,
                 start_time: *start_time,
                 end_time: None,
             },
@@ -680,24 +678,20 @@ impl RequestState {
                 end_time,
                 ..
             } => RequestMetadata {
-                id,
                 start_time: *start_time,
                 end_time: Some(*end_time),
             },
             Self::BuildError { error } => RequestMetadata {
-                id,
                 start_time: error.start_time,
                 end_time: Some(error.end_time),
             },
             Self::RequestError { error } => RequestMetadata {
-                id,
                 start_time: error.start_time,
                 end_time: Some(error.end_time),
             },
 
             // Completed
             Self::Response { exchange, .. } => RequestMetadata {
-                id,
                 start_time: exchange.start_time,
                 end_time: Some(exchange.end_time),
             },
@@ -727,8 +721,6 @@ impl RequestState {
 /// or failed.
 #[derive(Debug)]
 pub struct RequestMetadata {
-    /// ID of the request
-    pub id: RequestId,
     /// When was the request launched?
     pub start_time: DateTime<Utc>,
     /// When did the request end? This could be when the response came back, or

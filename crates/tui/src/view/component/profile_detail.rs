@@ -294,7 +294,7 @@ mod tests {
             }]),
             ..Collection::factory(())
         };
-        let mut harness = TestHarness::new(collection, 50, 20);
+        let mut harness = TestHarness::new(collection);
         let mut component = TestComponent::new(
             &mut harness,
             ProfileDetail::new(Some(&profile_id)),

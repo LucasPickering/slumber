@@ -515,7 +515,7 @@ mod tests {
             recipes: by_id([recipe1, recipe2]).into(),
             ..Collection::factory(())
         };
-        let mut harness = TestHarness::new(collection, 50, 20);
+        let mut harness = TestHarness::new(collection);
         let profile_id = harness.collection.first_profile_id();
         let exchange1 =
             Exchange::factory((Some(profile_id.clone()), recipe1_id.clone()));
@@ -558,7 +558,7 @@ mod tests {
             profiles: by_id([profile1, profile2]),
             ..Collection::factory(())
         };
-        let mut harness = TestHarness::new(collection, 50, 20);
+        let mut harness = TestHarness::new(collection);
         let recipe_id = harness.collection.first_recipe_id();
         let exchange1 =
             Exchange::factory((Some(profile1_id.clone()), recipe_id.clone()));

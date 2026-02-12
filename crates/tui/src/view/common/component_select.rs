@@ -490,7 +490,7 @@ mod tests {
                 .build()
                 .into();
             let mut harness =
-                TestHarness::new(Collection::factory(()), 1, view_height);
+                TestHarness::with_size(Collection::factory(()), 1, view_height);
             let mut component = TestComponent::new(&mut harness, select);
             let item_props = |item: &Item, _| ((), item.height);
             component.with_state(|state| state.offset = offset);

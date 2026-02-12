@@ -36,7 +36,11 @@ use tracing::trace_span;
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
 #[fixture]
 pub fn harness(terminal_width: u16, terminal_height: u16) -> TestHarness {
-    TestHarness::new(Collection::factory(()), terminal_width, terminal_height)
+    TestHarness::with_size(
+        Collection::factory(()),
+        terminal_width,
+        terminal_height,
+    )
 }
 
 /// Terminal width in chars, for injection to [harness] fixture
@@ -64,8 +68,13 @@ pub struct TestHarness {
 }
 
 impl TestHarness {
-    /// Create a new test harness and initialize state
-    pub fn new(
+    /// Create a new test harness with the given collection
+    pub fn new(collection: Collection) -> Self {
+        Self::with_size(collection, terminal_width(), terminal_height())
+    }
+
+    /// Create a new test harness with the given collection and terminal size
+    pub fn with_size(
         collection: Collection,
         terminal_width: u16,
         terminal_height: u16,

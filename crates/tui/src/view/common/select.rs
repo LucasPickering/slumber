@@ -1038,7 +1038,7 @@ mod tests {
             HashSet<usize>,
             Vec<KeyCode>,
         )| {
-            let mut harness = TestHarness::new(Collection::factory(()), 10, 10);
+            let mut harness = TestHarness::new(Collection::factory(()));
             let num_enabled = items.len() - disabled_indexes.len();
             // For simplicity, we're only looking for select events.
             // Seems like a safe assumption that if it doesn't emit

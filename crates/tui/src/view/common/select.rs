@@ -794,7 +794,7 @@ mod tests {
             .assert()
             .empty();
         assert_eq!(component.selected(), Some(&"one"));
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             "three".into(),
             "two  ".into(),
             "one  ".set_style(styles.highlight),
@@ -807,7 +807,7 @@ mod tests {
             .assert()
             .empty();
         assert_eq!(component.selected(), Some(&"two"));
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             "three".into(),
             "two  ".set_style(styles.highlight),
             "one  ".into(),
@@ -820,7 +820,7 @@ mod tests {
             .assert()
             .empty();
         assert_eq!(component.selected(), Some(&"one"));
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             "three".into(),
             "two  ".into(),
             "one  ".set_style(styles.highlight),

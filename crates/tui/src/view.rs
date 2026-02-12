@@ -83,16 +83,15 @@ impl View {
     /// Draw the view to a screen buffer
     ///
     /// Return the map of all drawn components.
-    #[must_use]
-    pub fn draw<'f>(&'f self, buffer: &'f mut Buffer) -> ComponentMap {
+    pub fn draw<'f>(&'f self, buffer: &'f mut Buffer) -> Canvas<'f> {
         // If the screen is too small to render anything, don't try. This avoids
         // panics within ratatui from trying to render borders and margins
         // outside the buffer area
-        if buffer.area().width <= 1 || buffer.area().height <= 1 {
-            return ComponentMap::default();
+        if buffer.area().width > 1 || buffer.area().height > 1 {
+            Canvas::draw_all(buffer, &self.root, ())
+        } else {
+            Canvas::new(buffer) // Empty canvas, no draw
         }
-
-        Canvas::draw_all(buffer, &self.root, ())
     }
 
     /// Persist all UI state to the database. This should be called at the end

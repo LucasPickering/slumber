@@ -477,18 +477,16 @@ mod tests {
 
         // Check terminal contents
         let styles = ViewContext::styles();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             Line::styled("Username", styles.form.title),
             Line::styled("user12  ", styles.form.content),
             Line::styled("Password", styles.form.title_highlight),
-            // Sensitive fields get masked, even when not editing
-            Line::from_iter([
-                "•••••••".set_style(styles.text_box.text),
-                " ".set_style(styles.text_box.cursor),
-            ]),
+            // Sensitive fields get masked
+            Line::from_iter(["••••••• ".set_style(styles.text_box.text)]),
             // Footer gets cut off
             Line::styled("Change F", styles.text.hint),
         ]);
+        harness.assert_cursor_position((7, 3));
 
         // Submit; submission event is handled by the ModalQueue. It's easier
         // just to call it manually since we test proper submission elsewhere
@@ -523,7 +521,7 @@ mod tests {
 
         // Check terminal contents
         let styles = ViewContext::styles();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             Line::styled("Species", styles.form.title_highlight),
             Line::styled("holy sh", Style::default()),
             Line::styled("it's a ", styles.list.highlight),

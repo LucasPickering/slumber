@@ -350,7 +350,7 @@ mod tests {
             f.render_widget(FolderTree { folder: &folder }, f.area());
         });
 
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             "1f",
             "├─1.1r",
             "├─1.2r",

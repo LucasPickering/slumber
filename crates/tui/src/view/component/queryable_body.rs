@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(component.last_executed_query, None);
         assert_eq!(component.modified_text().as_deref(), None);
         let styles = ViewContext::styles().text_box;
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}".into()],
             vec![gutter(" "), "".into()],
             vec![Span::styled(
@@ -584,7 +584,7 @@ mod tests {
         assert_eq!(component.command_focus, CommandFocus::None);
 
         // Check the view again
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![gutter("1"), " {                   ".into()],
             vec![gutter(" "), "                     ".into()],
             vec![Span::styled("head -c 1                  ", styles.text)],

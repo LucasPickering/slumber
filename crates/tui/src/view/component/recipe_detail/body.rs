@@ -493,15 +493,13 @@ mod tests {
 
         // Check initial state
         assert_eq!(component.override_value(), None);
-        harness
-            .terminal_backend()
-            .assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
+        harness.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Edit the template
         edit(&mut component, &mut harness, "hello!", "goodbye!");
 
         assert_eq!(component.override_value(), Some("goodbye!".into()));
-        harness.terminal_backend().assert_buffer_lines([vec![
+        harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             edited("goodbye!"),
@@ -540,7 +538,7 @@ mod tests {
         // We don't have a valid override, so we'll let the HTTP engine use the
         // original template
         assert_eq!(component.override_value(), None);
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![gutter("1"), " ".into(), "{{".into()],
             vec![],
             vec![error("{{                  ")],
@@ -577,7 +575,7 @@ mod tests {
 
         // Check initial state
         assert_eq!(component.override_value(), None);
-        harness.terminal_backend().assert_buffer_lines([vec![
+        harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             // Apply syntax highlighting
@@ -589,7 +587,7 @@ mod tests {
         edit(&mut component, &mut harness, &initial_text, &override_text);
 
         assert_eq!(component.override_value(), Some(override_json.into()));
-        harness.terminal_backend().assert_buffer_lines([vec![
+        harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             // Apply syntax highlighting
@@ -627,7 +625,7 @@ mod tests {
         );
 
         assert_eq!(component.override_value(), Some("hello!".into()));
-        harness.terminal_backend().assert_buffer_lines([vec![
+        harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             edited("hello!"),

@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use ratatui::{
-    layout::Rect,
+    layout::Position,
     text::{Line, Masked, Text},
     widgets::{Paragraph, ScrollbarOrientation},
 };
@@ -274,16 +274,12 @@ impl Draw<TextBoxProps> for TextBox {
         );
 
         if metadata.has_focus() {
-            // Apply cursor styling on type
-            let cursor_area = Rect {
+            // Use the terminal's native cursor
+            let cursor_position = Position {
                 x: area.x + text_stats.cursor_offset as u16 - scroll_x,
                 y: area.y,
-                width: 1,
-                height: 1,
             };
-            canvas
-                .buffer_mut()
-                .set_style(cursor_area, styles.text_box.cursor);
+            canvas.set_cursor_position(cursor_position);
 
             // Show scroll bar. We only show this while focused so we don't
             // cover up anyone else's scrollbar, e.g. in the queryable body
@@ -497,11 +493,6 @@ mod tests {
     use rstest::rstest;
     use slumber_util::assert_matches;
 
-    /// Create a span styled as the cursor
-    fn cursor(text: &str) -> Span<'_> {
-        Span::styled(text, ViewContext::styles().text_box.cursor)
-    }
-
     /// Create a span styled as text in the box
     fn text(text: &str) -> Span<'_> {
         Span::styled(text, ViewContext::styles().text_box.text)
@@ -533,9 +524,8 @@ mod tests {
 
         // Assert initial state/view
         assert_state(&component.state, "", 0);
-        harness
-            .terminal_backend()
-            .assert_buffer_lines([vec![cursor(" "), text("         ")]]);
+        harness.assert_buffer_lines([vec![text("          ")]]);
+        harness.assert_cursor_position((0, 0));
 
         // Type some text
         component
@@ -548,11 +538,8 @@ mod tests {
                 TextBoxEvent::Change,
             ]);
         assert_state(&component.state, "hi!", 3);
-        harness.terminal_backend().assert_buffer_lines([vec![
-            text("hi!"),
-            cursor(" "),
-            text("      "),
-        ]]);
+        harness.assert_buffer_lines([vec![text("hi!"), text("       ")]]);
+        harness.assert_cursor_position((3, 0));
 
         // Sending with a modifier applied should do nothing, unless it's shift
         component
@@ -689,11 +676,8 @@ mod tests {
                 TextBoxEvent::Change,
             ]);
         // End of the string is visible
-        harness.terminal_backend().assert_buffer_lines([
-            Line::from("   "),
-            vec![text("45"), cursor(" ")].into(),
-            "◀■▶".into(),
-        ]);
+        harness.assert_buffer_lines(["   ".into(), text("45 "), "◀■▶".into()]);
+        harness.assert_cursor_position((2, 1));
 
         // Deleting from the end should scroll left
         component
@@ -701,11 +685,8 @@ mod tests {
             .send_key(KeyCode::Backspace)
             .assert()
             .emitted([TextBoxEvent::Change]);
-        harness.terminal_backend().assert_buffer_lines([
-            Line::from("   "),
-            vec![text("34"), cursor(" ")].into(),
-            "◀■▶".into(),
-        ]);
+        harness.assert_buffer_lines(["   ".into(), text("34 "), "◀■▶".into()]);
+        harness.assert_cursor_position((2, 1));
 
         // Back to the beginning
         component
@@ -713,11 +694,8 @@ mod tests {
             .send_key(KeyCode::Home)
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
-            Line::from("   "),
-            vec![cursor("0"), text("12")].into(),
-            "◀■▶".into(),
-        ]);
+        harness.assert_buffer_lines(["   ".into(), text("012"), "◀■▶".into()]);
+        harness.assert_cursor_position((0, 1));
 
         // Scroll shouldn't move until the cursor gets off screen
         component
@@ -725,11 +703,8 @@ mod tests {
             .send_keys([KeyCode::Right, KeyCode::Right])
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
-            Line::from("   "),
-            vec![text("01"), cursor("2")].into(),
-            "◀■▶".into(),
-        ]);
+        harness.assert_buffer_lines(["   ".into(), text("012"), "◀■▶".into()]);
+        harness.assert_cursor_position((2, 1));
 
         // Push the scroll over
         component
@@ -737,11 +712,8 @@ mod tests {
             .send_key(KeyCode::Right)
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
-            Line::from("   "),
-            vec![text("12"), cursor("3")].into(),
-            "◀■▶".into(),
-        ]);
+        harness.assert_buffer_lines(["   ".into(), text("123"), "◀■▶".into()]);
+        harness.assert_cursor_position((2, 1));
 
         // Move back doesn't scroll left yet
         component
@@ -749,11 +721,8 @@ mod tests {
             .send_key(KeyCode::Left)
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
-            Line::from("   "),
-            vec![text("1"), cursor("2"), text("3")].into(),
-            "◀■▶".into(),
-        ]);
+        harness.assert_buffer_lines(["   ".into(), text("123"), "◀■▶".into()]);
+        harness.assert_cursor_position((1, 1));
     }
 
     #[rstest]
@@ -772,9 +741,8 @@ mod tests {
             .emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
 
         assert_state(&component.state, "hi", 2);
-        harness
-            .terminal_backend()
-            .assert_buffer_lines([vec![text("••"), cursor(" ")]]);
+        harness.assert_buffer_lines([text("•• ")]);
+        harness.assert_cursor_position((2, 0));
     }
 
     #[rstest]
@@ -786,11 +754,11 @@ mod tests {
 
         assert_state(&component.state, "", 0);
         let styles = ViewContext::styles().text_box;
-        harness.terminal_backend().assert_buffer_lines([vec![
-            cursor("h"),
-            Span::styled("ello", styles.text.patch(styles.placeholder)),
+        harness.assert_buffer_lines([vec![
+            Span::styled("hello", styles.text.patch(styles.placeholder)),
             text(" "),
         ]]);
+        harness.assert_cursor_position((0, 0));
     }
 
     #[rstest]
@@ -805,21 +773,19 @@ mod tests {
 
         // Focused
         assert_state(&component.state, "", 0);
-        harness.terminal_backend().assert_buffer_lines([vec![
-            cursor("f"),
-            Span::styled("ocused", styles.text.patch(styles.placeholder)),
+        harness.assert_buffer_lines([vec![
+            Span::styled("focused", styles.text.patch(styles.placeholder)),
             text("  "),
         ]]);
+        harness.assert_cursor_position((0, 0));
 
         // Unfocused
         component.unfocus();
         component.int(&mut harness).drain_draw().assert().empty();
-        harness
-            .terminal_backend()
-            .assert_buffer_lines([vec![Span::styled(
-                "unfocused",
-                styles.text.patch(styles.placeholder),
-            )]]);
+        harness.assert_buffer_lines([vec![Span::styled(
+            "unfocused",
+            styles.text.patch(styles.placeholder),
+        )]]);
     }
 
     #[rstest]
@@ -837,11 +803,8 @@ mod tests {
             .send_text("he")
             .assert()
             .emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
-        harness.terminal_backend().assert_buffer_lines([vec![
-            text("he"),
-            cursor(" "),
-            text("   "),
-        ]]);
+        harness.assert_buffer_lines([text("he    ")]);
+        harness.assert_cursor_position((2, 0));
 
         component
             .int(&mut harness)
@@ -855,10 +818,11 @@ mod tests {
             .send_text("llo")
             .assert()
             .emitted([]);
-        harness.terminal_backend().assert_buffer_lines([vec![
-            Span::styled("hello", ViewContext::styles().text_box.invalid),
-            cursor(" "),
-        ]]);
+        harness.assert_buffer_lines([Span::styled(
+            "hello ",
+            ViewContext::styles().text_box.invalid,
+        )]);
+        harness.assert_cursor_position((5, 0));
         component
             .int(&mut harness)
             .send_key(KeyCode::Enter)

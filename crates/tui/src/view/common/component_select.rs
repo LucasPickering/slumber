@@ -444,9 +444,7 @@ mod tests {
         // Cut that down to just what's visible
         let expected_lines =
             all_lines.skip(offset.into()).take(view_height.into());
-        harness
-            .terminal_backend()
-            .assert_buffer_lines(expected_lines);
+        harness.assert_buffer_lines(expected_lines);
     }
 
     /// Test some properties of the scrolling view window:

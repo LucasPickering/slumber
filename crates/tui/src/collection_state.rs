@@ -4,7 +4,7 @@ use crate::{
     view::{ComponentMap, Event, InvalidCollection, UpdateContext, View},
 };
 use anyhow::anyhow;
-use ratatui::buffer::Buffer;
+use ratatui::{Terminal, prelude::Backend};
 use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, CollectionError, CollectionFile},
@@ -136,8 +136,29 @@ impl CollectionState {
     }
 
     /// Draw the view onto the screen
-    pub fn draw(&mut self, buffer: &mut Buffer) {
-        self.component_map = self.view.draw(buffer);
+    pub fn draw<B>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+    ) -> Result<(), B::Error>
+    where
+        B: Backend,
+    {
+        let mut cursor_position = None;
+        terminal.draw(|frame| {
+            let canvas = self.view.draw(frame.buffer_mut());
+            cursor_position = canvas.cursor_position();
+            self.component_map = canvas.into_component_map();
+        })?;
+
+        // If a cursor position was set, show it. Otherwise, hide it
+        if let Some(cursor_position) = cursor_position {
+            terminal.set_cursor_position(cursor_position)?;
+            terminal.show_cursor()?;
+        } else {
+            terminal.hide_cursor()?;
+        }
+
+        Ok(())
     }
 
     /// Get the current request config for the selected recipe. The config

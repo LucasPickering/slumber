@@ -225,7 +225,7 @@ where
         });
         pin_mut!(input_stream);
 
-        self.draw()?; // Initial draw
+        self.state.draw(&mut self.terminal)?; // Initial draw
 
         // This loop is limited by the rate that messages come in, with a
         // minimum rate enforced by an interval. The loop terminates when the
@@ -278,7 +278,7 @@ where
             // because only drawn components receive key events. By batching
             // these events, key events may go to the wrong place.
             if self.messages_rx.is_empty() {
-                self.draw()?;
+                self.state.draw(&mut self.terminal)?;
             }
         }
 
@@ -368,7 +368,7 @@ where
                 // the terminal gets cleared but ratatui's (e.g. waking from
                 // sleep) buffer doesn't, so the two get out of sync
                 self.terminal.clear()?;
-                self.draw()?;
+                self.state.draw(&mut self.terminal)?;
             }
             Message::Input(event) => {
                 self.state.handle_event(Event::Input(event));
@@ -535,13 +535,6 @@ where
         info!("Initiating graceful shutdown");
         // Kill the main loop and all background tasks
         self.cancel_token.cancel();
-    }
-
-    /// Draw the view onto the screen
-    fn draw(&mut self) -> anyhow::Result<()> {
-        self.terminal
-            .draw(|frame| self.state.draw(frame.buffer_mut()))?;
-        Ok(())
     }
 
     /// Build and send a new request in a background task

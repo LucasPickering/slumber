@@ -15,7 +15,7 @@ use crate::{
 use derive_more::Display;
 use ratatui::{
     buffer::Buffer,
-    layout::{Position, Rect},
+    layout::{Offset, Position, Rect},
     style::{Color, Style},
     text::Span,
     widgets::{StatefulWidget, Widget},
@@ -218,9 +218,13 @@ pub trait Draw<Props = ()>: Component {
 /// A wrapper around a [Buffer] that manages draw state for a single frame of
 /// drawing.
 #[derive(derive_more::Debug)]
+#[must_use = "Call .into_component_map() to get rendered components"]
 pub struct Canvas<'buf> {
     /// Main frame buffer
     buffer: &'buf mut Buffer,
+    /// Position of the terminal cursor. `None` if the cursor should be hidden.
+    /// It's shown only when the user can type
+    cursor_position: Option<Position>,
     /// Throughout a draw, we track which components are drawn and where. At
     /// the end of the draw, this is returned to the caller so it can be used
     /// during the subsequent update phase.
@@ -234,19 +238,21 @@ impl<'buf> Canvas<'buf> {
     pub fn new(buffer: &'buf mut Buffer) -> Self {
         Self {
             buffer,
+            cursor_position: None,
             components: ComponentMap::default(),
             debug: ViewContext::config().tui.debug,
         }
     }
 
-    /// Create a new canvas and draw an entire component tree to it. Returns the
-    /// [ComponentMap] of all drawn components.
-    #[must_use]
+    /// Create a new canvas and draw an entire component tree to it
+    ///
+    /// Return the drawn canvas; you probably want to call
+    /// [Self::into_component_map] on it.
     pub fn draw_all<T, Props>(
         buffer: &'buf mut Buffer,
         root: &T,
         props: Props,
-    ) -> ComponentMap
+    ) -> Self
     where
         T: Component + Draw<Props>,
     {
@@ -254,22 +260,24 @@ impl<'buf> Canvas<'buf> {
     }
 
     /// [Self::draw_all], but the caller determines the area and focus of the
-    /// root component. Called directly only for tests, where those need to be
-    /// configured.
-    #[must_use]
+    /// root component
+    ///
+    /// Called directly only for tests, where those need to be configured.
+    /// Return the drawn canvas; you probably want to call
+    /// [Self::into_component_map] on it.
     pub fn draw_all_area<T, Props>(
         buffer: &'buf mut Buffer,
         root: &T,
         props: Props,
         area: Rect,
         has_focus: bool,
-    ) -> ComponentMap
+    ) -> Self
     where
         T: Component + Draw<Props>,
     {
         let mut canvas = Self::new(buffer);
         canvas.draw(root, props, area, has_focus);
-        canvas.components
+        canvas
     }
 
     /// Draw a component to the screen
@@ -326,6 +334,17 @@ impl<'buf> Canvas<'buf> {
         self.buffer
     }
 
+    /// Get the desired position of the terminal cursor, or `None` if it should
+    /// be hidden
+    pub fn cursor_position(&self) -> Option<Position> {
+        self.cursor_position
+    }
+
+    /// Show the cursor at the given position
+    pub fn set_cursor_position(&mut self, position: Position) {
+        self.cursor_position = Some(position);
+    }
+
     /// Render a [Widget] to the active buffer
     pub fn render_widget<W: Widget>(&mut self, widget: W, area: Rect) {
         widget.render(area, self.buffer);
@@ -371,8 +390,23 @@ impl<'buf> Canvas<'buf> {
             self.buffer[to] = mem::take(&mut other.buffer[from]);
         }
 
-        // Merge the list of visible components
+        // Merge other state
         self.components.0.extend(other.components.0);
+        // Other canvas gets priority, so takes its cursor first
+        self.cursor_position = other
+            .cursor_position
+            .map(|pos| {
+                // Shift from source to absolute, then to target
+                let from: Offset = from.as_position().into();
+                let to: Offset = to.as_position().into();
+                pos - from + to
+            })
+            .or(self.cursor_position);
+    }
+
+    /// Get the map of components that were visible in this canvas's draw
+    pub fn into_component_map(self) -> ComponentMap {
+        self.components
     }
 }
 
@@ -388,6 +422,7 @@ impl<'buf> Canvas<'buf> {
 /// For each drawn component, this stores metadata related to its last
 /// draw.
 #[derive(Debug, Default)]
+#[must_use = "Store component map to update visibility state"]
 pub struct ComponentMap(HashMap<ComponentId, DrawMetadata>);
 
 impl ComponentMap {
@@ -863,7 +898,8 @@ mod tests {
                             frame.buffer_mut(),
                             component,
                             props,
-                        );
+                        )
+                        .into_component_map();
                     });
                 }
 
@@ -944,7 +980,8 @@ mod tests {
         let mut component_map = ComponentMap::default();
         harness.draw(|frame| {
             component_map =
-                Canvas::draw_all(frame.buffer_mut(), &component, props);
+                Canvas::draw_all(frame.buffer_mut(), &component, props)
+                    .into_component_map();
         });
 
         let mut update_context = UpdateContext {
@@ -1000,6 +1037,56 @@ mod tests {
         // Buffer equals expectation
         let expected = Buffer::with_lines(expected_content);
         assert_eq!(buffer1, expected);
+    }
+
+    /// Canvas::merge picks up the right cursor position, giving priority to the
+    /// incoming canvas and shifting its position appropriately
+    #[rstest]
+    #[case::none_none(None, None, None)]
+    #[case::none_some(None, Some((1, 4).into()), Some((1, 4).into()))]
+    #[case::some_none(Some((3, 1).into()), None, Some((4, 4).into()))]
+    #[case::some_some(
+        // Take the first cursor, shifted by the source origin
+        Some((3, 1).into()), Some((1, 4).into()), Some((4, 4).into()),
+    )]
+    fn test_merge_cursor(
+        _harness: TestHarness,
+        #[case] from_cursor: Option<Position>,
+        #[case] to_cursor: Option<Position>,
+        #[case] expected: Option<Position>,
+    ) {
+        let mut buffer1 = Buffer::empty(Size::new(5, 5).into());
+        let mut canvas1 = Canvas::new(&mut buffer1);
+        if let Some(cursor) = to_cursor {
+            canvas1.set_cursor_position(cursor);
+        }
+
+        let mut buffer2 = Buffer::empty(Size::new(5, 5).into());
+        let mut canvas2 = Canvas::new(&mut buffer2);
+        if let Some(cursor) = from_cursor {
+            canvas2.set_cursor_position(cursor);
+        }
+
+        let width = 1;
+        let height = 1;
+        canvas1.merge(
+            canvas2,
+            // Map the cursor to the bottom-right corner
+            Rect {
+                x: 3,
+                y: 1,
+                width,
+                height,
+            },
+            Rect {
+                x: 4,
+                y: 4,
+                width,
+                height,
+            },
+        );
+
+        assert_eq!(canvas1.cursor_position(), expected);
     }
 
     /// Merging panics if the source and target areas are different sizes

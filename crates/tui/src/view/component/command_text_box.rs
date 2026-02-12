@@ -390,16 +390,12 @@ mod tests {
             .empty();
         assert_eq!(component.text(), "t");
         assert_eq!(get_search_items(&component).unwrap(), &["three", "two"]);
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             // Most recent last!!
             Line::from("two   "),
             Line::from("three ".set_style(styles.list.highlight)),
             // Text box line needs specific styling
-            Line::from_iter([
-                "t".set_style(styles.text_box.text),
-                " ".set_style(styles.text_box.cursor),
-                "    ".set_style(styles.text_box.text),
-            ]),
+            Line::from_iter(["t     ".set_style(styles.text_box.text)]),
         ]);
 
         // Modifying while in search mode should update what's visible

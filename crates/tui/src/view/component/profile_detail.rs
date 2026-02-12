@@ -124,7 +124,7 @@ impl Component for ProfileDetail {
 impl Draw for ProfileDetail {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let title =
-            ViewContext::add_binding_hint("Profile", Action::SelectBottomPane);
+            ViewContext::add_binding_hint("Profile", Action::BottomPane);
         let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),

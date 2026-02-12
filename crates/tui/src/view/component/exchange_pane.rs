@@ -82,7 +82,7 @@ impl Draw for ExchangePane {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let title = ViewContext::add_binding_hint(
             "Request / Response",
-            Action::SelectBottomPane,
+            Action::BottomPane,
         );
         let mut block = Pane {
             title: &title,

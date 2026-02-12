@@ -159,23 +159,22 @@ pub enum Action {
     /// Open the help page
     OpenHelp,
     /// Search command history in query text box
-    SearchHistory,
-    /// Select the lower pane in the current layout
-    ///
-    /// Aliases provide backward compatibility
-    #[serde(alias = "select_request", alias = "select_response")]
-    SelectBottomPane,
+    CommandHistory,
     /// Open collection selection modal (unbound by default)
     SelectCollection,
     /// Select profile list pane
-    SelectProfileList,
+    #[serde(alias = "select_profile_list")] // Backward compatibility
+    ProfileList,
     /// Select recipe list pane
-    SelectRecipeList,
+    #[serde(alias = "select_recipe_list")] // Backward compatibility
+    RecipeList,
     /// Select the upper pane in the current layout
-    ///
-    /// Aliases provide backward compatibility
-    #[serde(alias = "select_recipe")]
-    SelectTopPane,
+    #[serde(alias = "select_recipe")] // Backward compatibility
+    TopPane,
+    /// Select the lower pane in the current layout
+    // Aliases for backward compatibility
+    #[serde(alias = "select_request", alias = "select_response")]
+    BottomPane,
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }
 
@@ -505,12 +504,12 @@ impl Default for InputMap {
             (Action::Edit, KeyCode::Char('e').into()),
             (Action::Reset, KeyCode::Char('z').into()),
             (Action::View, KeyCode::Char('v').into()),
-            (Action::SearchHistory, (CTRL, KeyCode::Char('r')).into()),
-            (Action::SelectBottomPane, KeyCode::Char('2').into()),
+            (Action::CommandHistory, (CTRL, KeyCode::Char('r')).into()),
             (Action::SelectCollection, KeyCode::F(3).into()),
-            (Action::SelectProfileList, KeyCode::Char('p').into()),
-            (Action::SelectRecipeList, KeyCode::Char('r').into()),
-            (Action::SelectTopPane, KeyCode::Char('1').into()),
+            (Action::ProfileList, KeyCode::Char('p').into()),
+            (Action::RecipeList, KeyCode::Char('r').into()),
+            (Action::TopPane, KeyCode::Char('1').into()),
+            (Action::BottomPane, KeyCode::Char('2').into()),
             // ^^^^^ If making changes, make sure to update the docs ^^^^^
         ]))
     }

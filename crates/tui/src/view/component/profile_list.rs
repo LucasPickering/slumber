@@ -137,7 +137,7 @@ impl Draw<SidebarProps> for ProfileList {
     ) {
         // Both formats use a pane outline
         let title =
-            ViewContext::add_binding_hint("Profile", Action::SelectProfileList);
+            ViewContext::add_binding_hint("Profile", Action::ProfileList);
         let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),

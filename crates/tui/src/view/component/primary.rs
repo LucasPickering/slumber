@@ -479,14 +479,10 @@ impl Component for PrimaryView {
 
                 // Pane hotkeys
                 Action::History => self.view.open_sidebar(Sidebar::History),
-                Action::SelectProfileList => {
-                    self.view.open_sidebar(Sidebar::Profile);
-                }
-                Action::SelectRecipeList => {
-                    self.view.open_sidebar(Sidebar::Recipe);
-                }
-                Action::SelectTopPane => self.view.select_top_pane(),
-                Action::SelectBottomPane => self.view.select_bottom_pane(),
+                Action::ProfileList => self.view.open_sidebar(Sidebar::Profile),
+                Action::RecipeList => self.view.open_sidebar(Sidebar::Recipe),
+                Action::TopPane => self.view.select_top_pane(),
+                Action::BottomPane => self.view.select_bottom_pane(),
 
                 // Toggle fullscreen
                 Action::Fullscreen => self.view.toggle_fullscreen(),

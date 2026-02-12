@@ -88,7 +88,7 @@ impl Component for ResponseBodyView {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.body.to_child_mut()]
+        vec![self.body.to_child()]
     }
 }
 

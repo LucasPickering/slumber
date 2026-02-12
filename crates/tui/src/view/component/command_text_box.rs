@@ -164,7 +164,7 @@ impl Component for CommandTextBox {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.search.to_child_mut(), self.text_box.to_child_mut()]
+        vec![self.search.to_child(), self.text_box.to_child()]
     }
 }
 

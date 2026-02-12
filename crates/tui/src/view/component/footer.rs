@@ -71,7 +71,7 @@ impl Component for Footer {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.collection_select.to_child_mut()]
+        vec![self.collection_select.to_child()]
     }
 }
 

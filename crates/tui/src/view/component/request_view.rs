@@ -87,7 +87,7 @@ impl Component for RequestView {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.body_text_window.to_child_mut()]
+        vec![self.body_text_window.to_child()]
     }
 }
 

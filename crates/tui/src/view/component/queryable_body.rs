@@ -305,9 +305,9 @@ impl<K: PersistentKey<Value = String>> Component for QueryableBody<K> {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
-            self.query_text_box.to_child_mut(),
-            self.export_text_box.to_child_mut(),
-            self.text_state.text_window.to_child_mut(),
+            self.query_text_box.to_child(),
+            self.export_text_box.to_child(),
+            self.text_state.text_window.to_child(),
         ]
     }
 }

@@ -47,7 +47,7 @@ impl Component for UrlDisplay {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.url.to_child_mut()]
+        vec![self.url.to_child()]
     }
 }
 

@@ -586,13 +586,13 @@ impl Component for PrimaryView {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
-            self.prompt_forms.to_child_mut(), // Modal first - high priority
-            self.recipe_list.to_child_mut(),
-            self.recipe_detail.to_child_mut(),
-            self.profile_list.to_child_mut(),
-            self.profile_detail.to_child_mut(),
-            self.exchange_pane.to_child_mut(),
-            self.history.to_child_mut(),
+            self.prompt_forms.to_child(), // Modal first - high priority
+            self.recipe_list.to_child(),
+            self.recipe_detail.to_child(),
+            self.profile_list.to_child(),
+            self.profile_detail.to_child(),
+            self.exchange_pane.to_child(),
+            self.history.to_child(),
         ]
     }
 }

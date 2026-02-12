@@ -198,7 +198,7 @@ impl Component for History {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut()]
+        vec![self.select.to_child()]
     }
 }
 

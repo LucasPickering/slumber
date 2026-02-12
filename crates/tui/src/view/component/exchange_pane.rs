@@ -64,7 +64,7 @@ impl Component for ExchangePane {
                 vec![]
             }
             State::Content { content, .. } => {
-                vec![content.to_child_mut()]
+                vec![content.to_child()]
             }
         }
     }
@@ -482,25 +482,25 @@ impl Component for ExchangePaneContent {
             | ExchangePaneContentState::BuildError { .. } => vec![],
             ExchangePaneContentState::Loading { request }
             | ExchangePaneContentState::LoadingCancelled { request } => {
-                vec![request.to_child_mut()]
+                vec![request.to_child()]
             }
             ExchangePaneContentState::Response {
                 request,
                 response_headers,
                 response_body,
             } => vec![
-                request.to_child_mut(),
-                response_headers.to_child_mut(),
-                response_body.to_child_mut(),
+                request.to_child(),
+                response_headers.to_child(),
+                response_body.to_child(),
             ],
             ExchangePaneContentState::RequestError { request, .. } => {
-                vec![request.to_child_mut()]
+                vec![request.to_child()]
             }
         };
 
         // Content before tabs so the query text box gets priority on left/right
         // arrow keys
-        children.push(self.tabs.to_child_mut());
+        children.push(self.tabs.to_child());
         children
     }
 }

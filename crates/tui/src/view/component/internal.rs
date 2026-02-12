@@ -510,11 +510,11 @@ impl<'a> Child<'a> {
 /// Abstraction to convert a component type into [Child], which is a wrapper for
 /// a trait object.
 pub trait ToChild {
-    fn to_child_mut(&mut self) -> Child<'_>;
+    fn to_child(&mut self) -> Child<'_>;
 }
 
 impl<T: Component + Sized> ToChild for T {
-    fn to_child_mut(&mut self) -> Child<'_> {
+    fn to_child(&mut self) -> Child<'_> {
         Child::Borrowed {
             name: any::type_name::<Self>(),
             component: self,
@@ -523,9 +523,9 @@ impl<T: Component + Sized> ToChild for T {
 }
 
 impl<T: Component + Sized> ToChild for Option<T> {
-    fn to_child_mut(&mut self) -> Child<'_> {
+    fn to_child(&mut self) -> Child<'_> {
         match self {
-            Some(component) => component.to_child_mut(),
+            Some(component) => component.to_child(),
             None => Child::None,
         }
     }
@@ -679,7 +679,7 @@ mod tests {
         }
 
         fn children(&mut self) -> Vec<Child<'_>> {
-            vec![self.branch.to_child_mut()]
+            vec![self.branch.to_child()]
         }
     }
 
@@ -773,11 +773,7 @@ mod tests {
         }
 
         fn children(&mut self) -> Vec<Child<'_>> {
-            vec![
-                self.a.to_child_mut(),
-                self.b.to_child_mut(),
-                self.c.to_child_mut(),
-            ]
+            vec![self.a.to_child(), self.b.to_child(), self.c.to_child()]
         }
     }
 

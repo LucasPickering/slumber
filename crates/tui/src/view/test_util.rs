@@ -795,7 +795,7 @@ impl<T: Component> Component for TestWrapper<T> {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.actions.to_child_mut(), self.inner.to_child_mut()]
+        vec![self.actions.to_child(), self.inner.to_child()]
     }
 }
 

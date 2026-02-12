@@ -147,7 +147,7 @@ impl<Item: 'static + Component> Component for ComponentSelect<Item> {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        self.select.items_mut().map(ToChild::to_child_mut).collect()
+        self.select.items_mut().map(ToChild::to_child).collect()
     }
 }
 

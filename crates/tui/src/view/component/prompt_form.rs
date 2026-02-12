@@ -130,7 +130,7 @@ impl Component for PromptForm {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut()]
+        vec![self.select.to_child()]
     }
 }
 
@@ -264,8 +264,8 @@ impl Component for PromptInput {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         match self {
-            Self::Text { text_box, .. } => vec![text_box.to_child_mut()],
-            Self::Select { select, .. } => vec![select.to_child_mut()],
+            Self::Text { text_box, .. } => vec![text_box.to_child()],
+            Self::Select { select, .. } => vec![select.to_child()],
         }
     }
 }

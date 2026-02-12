@@ -126,9 +126,9 @@ impl Component for RecipeBodyDisplay {
     fn children(&mut self) -> Vec<Child<'_>> {
         match self {
             Self::Raw(text_body) | Self::Json(text_body) => {
-                vec![text_body.to_child_mut()]
+                vec![text_body.to_child()]
             }
-            Self::Form(form) => vec![form.to_child_mut()],
+            Self::Form(form) => vec![form.to_child()],
         }
     }
 }
@@ -331,7 +331,7 @@ impl Component for TextBody {
         let text_window = match &mut self.text_window {
             Ok(text_window) | Err((text_window, _)) => text_window,
         };
-        vec![self.preview.to_child_mut(), text_window.to_child_mut()]
+        vec![self.preview.to_child(), text_window.to_child()]
     }
 }
 

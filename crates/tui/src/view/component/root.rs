@@ -299,19 +299,19 @@ impl Component for Root {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         let primary = match &mut self.primary {
-            Ok(primary) => primary.to_child_mut(),
-            Err(error_view) => error_view.to_child_mut(),
+            Ok(primary) => primary.to_child(),
+            Err(error_view) => error_view.to_child(),
         };
         vec![
             // Modals first. They won't eat events when closed
             // Error modal is always shown first, so it gets events first
-            self.errors.to_child_mut(),
+            self.errors.to_child(),
             // Rest of the modals
-            self.actions.to_child_mut(),
-            self.questions.to_child_mut(),
+            self.actions.to_child(),
+            self.questions.to_child(),
             // Non-modals
-            self.help.to_child_mut(),
-            self.footer.to_child_mut(),
+            self.help.to_child(),
+            self.footer.to_child(),
             primary,
         ]
     }

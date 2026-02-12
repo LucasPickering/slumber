@@ -85,7 +85,7 @@ impl Component for ActionMenu {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.content.to_child_mut()]
+        vec![self.content.to_child()]
     }
 }
 
@@ -376,11 +376,7 @@ impl Component for ActionMenuContent {
         // only that one gets key events, and there's no visual overlap so they
         // shouldn't be competing for mouse events
 
-        self.stack
-            .iter_mut()
-            .rev()
-            .map(ToChild::to_child_mut)
-            .collect()
+        self.stack.iter_mut().rev().map(ToChild::to_child).collect()
     }
 }
 

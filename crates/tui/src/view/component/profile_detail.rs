@@ -117,7 +117,7 @@ impl Component for ProfileDetail {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut()]
+        vec![self.select.to_child()]
     }
 }
 
@@ -228,7 +228,7 @@ impl Component for ProfileField {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.template.to_child_mut()]
+        vec![self.template.to_child()]
     }
 }
 

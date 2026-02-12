@@ -104,7 +104,7 @@ impl Component for RecipeDetail {
                 vec![]
             }
             RecipeNodeState::Recipe { display, .. } => {
-                vec![display.to_child_mut()]
+                vec![display.to_child()]
             }
         }
     }

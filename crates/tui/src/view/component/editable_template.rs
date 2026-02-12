@@ -193,10 +193,7 @@ where
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![
-            self.preview.to_child_mut(),
-            self.edit_text_box.to_child_mut(),
-        ]
+        vec![self.preview.to_child(), self.edit_text_box.to_child()]
     }
 }
 

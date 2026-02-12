@@ -112,7 +112,7 @@ impl Component for CollectionSelect {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         // Select gets priority because it handles submission
-        vec![self.select.to_child_mut(), self.filter.to_child_mut()]
+        vec![self.select.to_child(), self.filter.to_child()]
     }
 }
 

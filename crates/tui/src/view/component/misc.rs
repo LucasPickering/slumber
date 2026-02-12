@@ -196,10 +196,10 @@ impl Component for QuestionModal {
     fn children(&mut self) -> Vec<Child<'_>> {
         match self {
             QuestionModal::Confirm { buttons, .. } => {
-                vec![buttons.to_child_mut()]
+                vec![buttons.to_child()]
             }
             QuestionModal::Text { text_box, .. } => {
-                vec![text_box.to_child_mut()]
+                vec![text_box.to_child()]
             }
         }
     }

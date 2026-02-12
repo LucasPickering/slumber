@@ -78,8 +78,8 @@ impl Component for AuthenticationDisplay {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         match &mut self.state {
-            State::Basic(basic) => vec![basic.to_child_mut()],
-            State::Bearer { token } => vec![token.to_child_mut()],
+            State::Basic(basic) => vec![basic.to_child()],
+            State::Bearer { token } => vec![token.to_child()],
         }
     }
 }
@@ -207,7 +207,7 @@ impl Component for BasicAuthentication {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut()]
+        vec![self.select.to_child()]
     }
 }
 
@@ -253,7 +253,7 @@ impl Component for BasicField {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.value.to_child_mut()]
+        vec![self.value.to_child()]
     }
 }
 

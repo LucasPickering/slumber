@@ -121,7 +121,7 @@ impl<Kind: RecipeTableKind> Component for RecipeTable<Kind> {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut()]
+        vec![self.select.to_child()]
     }
 }
 
@@ -264,7 +264,7 @@ impl<Kind: RecipeTableKind> Component for RecipeTableRow<Kind> {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.value.to_child_mut()]
+        vec![self.value.to_child()]
     }
 }
 

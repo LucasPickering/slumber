@@ -191,7 +191,7 @@ impl Component for RecipeList {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.select.to_child_mut(), self.filter.to_child_mut()]
+        vec![self.select.to_child(), self.filter.to_child()]
     }
 }
 

@@ -133,13 +133,13 @@ impl Component for RecipeDisplay {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         vec![
-            self.url.to_child_mut(),
-            self.body.to_child_mut(),
-            self.query.to_child_mut(),
-            self.headers.to_child_mut(),
-            self.authentication.to_child_mut(),
+            self.url.to_child(),
+            self.body.to_child(),
+            self.query.to_child(),
+            self.headers.to_child(),
+            self.authentication.to_child(),
             // Tabs last so edit text boxes can use left/right if needed
-            self.tabs.to_child_mut(),
+            self.tabs.to_child(),
         ]
     }
 }

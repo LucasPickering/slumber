@@ -133,7 +133,7 @@ impl<T: Component + Modal> Component for ModalQueue<T> {
 
     fn children(&mut self) -> Vec<Child<'_>> {
         if let Some(modal) = self.active_mut() {
-            vec![modal.to_child_mut()]
+            vec![modal.to_child()]
         } else {
             vec![]
         }

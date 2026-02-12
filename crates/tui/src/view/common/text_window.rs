@@ -193,25 +193,31 @@ impl Draw<TextWindowProps> for TextWindow {
         props: TextWindowProps,
         metadata: DrawMetadata,
     ) {
-        let gutter = Gutter {
-            text_size: self.text_size,
-            offset: self.offset.get(),
+        // Draw gutter if enabled
+        let text_area = if props.line_numbers {
+            let gutter = Gutter {
+                text_size: self.text_size,
+                offset: self.offset.get(),
+            };
+            let [gutter_area, _, text_area] = Layout::horizontal([
+                Constraint::Length(gutter.width()),
+                Constraint::Length(1), // Spacer
+                Constraint::Min(0),
+            ])
+            .areas(metadata.area());
+            canvas.render_widget(gutter, gutter_area);
+            text_area
+        } else {
+            // No gutter - text gets the whole area
+            metadata.area()
         };
-
-        let [gutter_area, _, text_area] = Layout::horizontal([
-            Constraint::Length(gutter.width()),
-            Constraint::Length(1), // Spacer
-            Constraint::Min(0),
-        ])
-        .areas(metadata.area());
 
         // Store window size for calculations in the update code
         let window_size = text_area.as_size();
         self.window_size.set(window_size);
         self.clamp_scroll(); // Revalidate scroll state if window size changes
 
-        // Draw gutter and text
-        canvas.render_widget(gutter, gutter_area);
+        // Draw text
         self.render_text(canvas.buffer_mut(), text_area);
 
         // Scrollbars
@@ -247,10 +253,21 @@ impl Draw<TextWindowProps> for TextWindow {
 }
 
 /// Draw props for [TextWindow]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TextWindowProps {
+    /// Show line numbers in gutter?
+    pub line_numbers: bool,
     /// See [ScrollbarMargins]
     pub margins: ScrollbarMargins,
+}
+
+impl Default for TextWindowProps {
+    fn default() -> Self {
+        Self {
+            line_numbers: true,
+            margins: ScrollbarMargins::default(),
+        }
+    }
 }
 
 /// How far outside the text window should scrollbars be placed? Margin of
@@ -361,6 +378,7 @@ mod tests {
                 right: 0,
                 bottom: 0,
             },
+            ..TextWindowProps::default()
         };
         let mut component =
             TestComponent::builder(&mut harness, TextWindow::new(text))
@@ -443,6 +461,7 @@ mod tests {
                     right: 0,
                     bottom: 0,
                 },
+                ..TextWindowProps::default()
             })
             .build();
         harness.assert_buffer_lines([
@@ -462,6 +481,7 @@ mod tests {
                     right: 0,
                     bottom: 0,
                 },
+                ..TextWindowProps::default()
             })
             .build();
         harness.assert_buffer_lines([
@@ -482,6 +502,7 @@ mod tests {
                 right: 0,
                 bottom: 0,
             },
+            ..TextWindowProps::default()
         };
         let mut component =
             TestComponent::builder(&mut harness, TextWindow::new(text))

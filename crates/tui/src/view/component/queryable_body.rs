@@ -328,6 +328,7 @@ impl<K: PersistentKey<Value = String>> Draw for QueryableBody<K> {
                         bottom: 2, // Extra margin to jump over the search box
                         ..Default::default()
                     },
+                    ..TextWindowProps::default()
                 },
                 body_area,
                 true,

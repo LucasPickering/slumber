@@ -23,6 +23,7 @@ use ratatui::{
 use std::{
     any,
     collections::HashMap,
+    mem,
     sync::atomic::{AtomicU64, Ordering},
     time::Instant,
 };
@@ -342,8 +343,35 @@ impl<'buf> Canvas<'buf> {
         widget.render(area, self.buffer, state);
     }
 
-    /// This is a shitty fix. To be reverted soon(tm)
-    pub fn merge_components(&mut self, other: Canvas) {
+    /// Copy one sub-area of one canvas into a sub-area of another
+    ///
+    /// Use this to complete the rendering of a virtual canvas. The source
+    /// canvas's contents within the `from` area will be copied to the `to`
+    /// area. The canvas's other internal state, including visible components,
+    /// will be merged as well.
+    ///
+    /// ## Panics
+    ///
+    /// Panic if `from` and `to` are not the same size.
+    pub fn merge(&mut self, other: Canvas, from: Rect, to: Rect) {
+        // Safety first!
+        debug_assert_eq!(
+            from.as_size(),
+            to.as_size(),
+            "Source and target areas are not the same size"
+        );
+
+        // Copy the other buffer's contents to our own. We know the two areas
+        // are the same size, so the positions() iters will be the same length
+        //
+        // It's possible this would be faster if we went by row instead of by
+        // cell. I don't think there's any way to do mem::take on entire rows
+        // at a time, so it would involve cloning. I haven't tested it.
+        for (from, to) in from.positions().zip(to.positions()) {
+            self.buffer[to] = mem::take(&mut other.buffer[from]);
+        }
+
+        // Merge the list of visible components
         self.components.0.extend(other.components.0);
     }
 }
@@ -593,9 +621,13 @@ mod tests {
     use super::*;
     use crate::view::test_util::{TestHarness, harness};
     use Mode::*;
-    use ratatui::layout::{Layout, Position};
+    use ratatui::{
+        layout::{Layout, Position, Size},
+        text::Line,
+    };
     use rstest::{fixture, rstest};
     use slumber_config::Action;
+    use std::collections::HashSet;
     use terminput::{KeyCode, KeyModifiers};
 
     /// The root component. This exists just to push [Branch] down the tree
@@ -922,5 +954,62 @@ mod tests {
 
         component.update_all(&mut update_context, event);
         component.branch.assert_received(expected_recipient);
+    }
+
+    /// Test merging two canvases together
+    /// - Only content from the source area is copied
+    /// - Content is copied to the target area of the main canvas
+    /// - Component maps are merged
+    #[rstest]
+    #[case::full_nonoverlapping(
+        Rect { x: 0, y: 0, width: 6, height: 1 },
+        Rect { x: 0, y: 1, width: 6, height: 1 },
+        ["hello!", "hello!"],
+    )]
+    #[case::partial_overwrite(
+        Rect { x: 0, y: 0, width: 3, height: 1 },
+        Rect { x: 3, y: 0, width: 3, height: 1 },
+        ["helhel", "      "],
+    )]
+    fn test_merge<'a>(
+        _harness: TestHarness,
+        #[case] from: Rect,
+        #[case] to: Rect,
+        #[case] expected_content: impl IntoIterator<Item = impl Into<Line<'a>>>,
+    ) {
+        let component1 = Leaf::default();
+        let mut buffer1 = Buffer::empty(Size::new(6, 2).into());
+        let mut canvas1 = Canvas::new(&mut buffer1);
+        canvas1.draw(&component1, (), canvas1.area(), true);
+
+        let component2 = Leaf::default();
+        let mut buffer2 = Buffer::empty(Size::new(6, 1).into());
+        let mut canvas2 = Canvas::new(&mut buffer2);
+        canvas2.draw(&component2, (), canvas2.area(), true);
+
+        // DO IT
+        canvas1.merge(canvas2, from, to);
+
+        // Visible component maps were merged
+        assert_eq!(
+            canvas1.components.0.into_keys().collect::<HashSet<_>>(),
+            [component1.id(), component2.id()]
+                .into_iter()
+                .collect::<HashSet<_>>()
+        );
+        // Buffer equals expectation
+        let expected = Buffer::with_lines(expected_content);
+        assert_eq!(buffer1, expected);
+    }
+
+    /// Merging panics if the source and target areas are different sizes
+    #[rstest]
+    #[should_panic(expected = "Source and target areas are not the same size")]
+    fn test_merge_panic(_harness: TestHarness) {
+        let mut buffer1 = Buffer::empty(Size::new(3, 3).into());
+        let mut canvas1 = Canvas::new(&mut buffer1);
+        let mut buffer2 = Buffer::empty(Size::new(3, 3).into());
+        let canvas2 = Canvas::new(&mut buffer2);
+        canvas1.merge(canvas2, Size::new(2, 2).into(), Size::new(2, 1).into());
     }
 }

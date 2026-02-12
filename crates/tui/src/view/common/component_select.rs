@@ -174,7 +174,6 @@ where
 
         let first_offset = window[0].offset; // We'll need this area
         let target_area = metadata.area(); // Area we'll eventually render into
-        let width = target_area.width;
 
         // It's possible some items are only partially visible. We have 3
         // options:
@@ -193,7 +192,7 @@ where
         let mut virtual_buffer = Buffer::empty(Rect {
             x: 0,
             y: 0,
-            width,
+            width: target_area.width,
             // Height of the virtual buffer is either the height of all visible
             // elements or, if the view is big enough to fit the entire list,
             // the height of the view
@@ -235,28 +234,15 @@ where
 
         // Copy the virtual buffer back to the canvas. An item can be partially
         // visible at the top *or* bottom of the list, so we need to slice down
-        // the buffer content to just what will fit into the view
-        let content = &mut virtual_canvas.buffer_mut().content;
-        // Drop the first y rows, where y is the distance between the top of the
-        // first item and the top of the view window
-        let y = self.with_state(|state| state.offset) - first_offset;
-        let start = usize::from(width * y);
-        // Drop lines overhanging below the view
-        let end = usize::from(width * (y + target_area.height));
-        // We need to copy this into a *third* buffer so we can call
-        // Buffer::merge
-        let buffer = Buffer {
-            area: target_area,
-            content: content.drain(start..end).collect(),
+        // the buffer content to just what will fit into the view.
+        let source_area = Rect {
+            x: 0,
+            // Drop the first y rows, where y is the distance between the top of
+            // the first item and the top of the view window
+            y: self.with_state(|state| state.offset) - first_offset,
+            ..target_area
         };
-        // Safety first!
-        debug_assert_eq!(
-            buffer.area().area() as usize,
-            buffer.content.len(),
-            "Source buffer content length does not match area"
-        );
-        canvas.buffer_mut().merge(&buffer);
-        canvas.merge_components(virtual_canvas);
+        canvas.merge(virtual_canvas, source_area, target_area);
     }
 }
 

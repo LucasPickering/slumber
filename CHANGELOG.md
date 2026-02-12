@@ -83,6 +83,8 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
 - Distinguish between different request body types in the history DB better
   - Past requests that didn't have a body persisted because the body was streamed or too large will now look like there was no body at all. Future requests will not have this issue.
 - Added default keybindings for vim-style (h/j/k/l) navigation
+- Use native terminal cursor in text box
+  - That means the style of the cursor will match your terminal theme, instead of using Slumber's primary color
 
 ### Fixed
 

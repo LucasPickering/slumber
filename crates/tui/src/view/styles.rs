@@ -163,7 +163,6 @@ pub struct TextStyle {
 #[derive(Clone, Debug)]
 pub struct TextBoxStyle {
     pub text: Style,
-    pub cursor: Style,
     pub placeholder: Style,
     pub invalid: Style,
 }
@@ -289,9 +288,6 @@ impl Styles {
                     .fg(theme.text_color.into())
                     // Strip inherited modifiers
                     .remove_modifier(Modifier::all()),
-                cursor: Style::default()
-                    .bg(theme.primary_color.into())
-                    .fg(theme.primary_text_color.into()),
                 placeholder: Style::default().fg(theme.text_color.into()),
                 invalid: Style::default()
                     .bg(theme.error_color.into())

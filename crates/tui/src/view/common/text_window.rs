@@ -366,7 +366,7 @@ mod tests {
             TestComponent::builder(&mut harness, TextWindow::new(text))
                 .with_props(props.clone())
                 .build();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![line_num(1), " łïne 1 ▲".into()],
             vec![line_num(2), " łïne 2 █".into()],
             vec![line_num(3), " łïne 3 █".into()],
@@ -379,7 +379,7 @@ mod tests {
             .send_key(KeyCode::Down)
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![line_num(2), " łïne 2 ▲".into()],
             vec![line_num(3), " łïne 3 █".into()],
             vec![line_num(4), " łïne 4 █".into()],
@@ -393,7 +393,7 @@ mod tests {
             .send_keys([KeyCode::Up, KeyCode::Up])
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![line_num(1), " łïne 1 ▲".into()],
             vec![line_num(2), " łïne 2 █".into()],
             vec![line_num(3), " łïne 3 █".into()],
@@ -408,7 +408,7 @@ mod tests {
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Right)
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![line_num(1), " e 1    ▲".into()],
             vec![line_num(2), " e 2 is █".into()],
             vec![line_num(3), " e 3    █".into()],
@@ -425,7 +425,7 @@ mod tests {
             .send_key_modifiers(KeyModifiers::SHIFT, KeyCode::Left)
             .assert()
             .empty();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![line_num(1), " łïne 1 ▲".into()],
             vec![line_num(2), " łïne 2 █".into()],
             vec![line_num(3), " łïne 3 █".into()],
@@ -445,7 +445,7 @@ mod tests {
                 },
             })
             .build();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![line_num(1), " intro                            ".into()],
             vec![line_num(2), " 💚💙💜 this is a longer line    ".into()],
             vec![line_num(3), " outro                            ".into()],
@@ -464,7 +464,7 @@ mod tests {
                 },
             })
             .build();
-        harness.terminal_backend().assert_buffer_lines([
+        harness.assert_buffer_lines([
             vec![line_num(1), " 💚💙💜💚".into()],
             vec![line_num(0), " ◀■■■■══▶".into()],
         ]);

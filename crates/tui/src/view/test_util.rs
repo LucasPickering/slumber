@@ -16,7 +16,12 @@ use crate::{
     },
 };
 use itertools::Itertools;
-use ratatui::{Frame, Terminal, backend::TestBackend, layout::Rect};
+use ratatui::{
+    Frame, Terminal,
+    backend::TestBackend,
+    layout::{Position, Rect},
+    text::Line,
+};
 use rstest::fixture;
 use slumber_config::{Action, Config};
 use slumber_core::{collection::Collection, database::CollectionDatabase};
@@ -124,9 +129,17 @@ impl TestHarness {
         self.terminal.draw(f).unwrap();
     }
 
-    /// Get the terminal backend, for assertions
-    pub fn terminal_backend(&self) -> &TestBackend {
-        self.terminal.backend()
+    /// Alias for [assert_buffer_lines](TestBackend::assert_buffer_lines)
+    pub fn assert_buffer_lines<'l>(
+        &self,
+        lines: impl IntoIterator<Item = impl Into<Line<'l>>>,
+    ) {
+        self.terminal.backend().assert_buffer_lines(lines);
+    }
+
+    /// Alias for [assert_cursor_position](TestBackend::assert_cursor_position)
+    pub fn assert_cursor_position(&mut self, position: impl Into<Position>) {
+        self.terminal.backend_mut().assert_cursor_position(position);
     }
 
     /// Get the area of the terminal buffer
@@ -248,18 +261,36 @@ where
     /// Draw this component onto the terminal, using the entire terminal frame
     /// as the draw area. If props are given, use them for the draw. If not,
     /// use the same props from the last draw.
-    fn draw<Props>(&mut self, frame: &mut Frame, props: Props)
-    where
+    fn draw<Props>(
+        &mut self,
+        terminal: &mut Terminal<TestBackend>,
+        props: Props,
+    ) where
         T: Draw<Props>,
     {
+        let mut cursor_position = None;
         // Each draw gets a new canvas, as the Lord intended
-        self.component_map = Canvas::draw_all_area(
-            frame.buffer_mut(),
-            &self.component,
-            props,
-            self.area,
-            self.has_focus,
-        );
+        terminal
+            .draw(|frame| {
+                let canvas = Canvas::draw_all_area(
+                    frame.buffer_mut(),
+                    &self.component,
+                    props,
+                    self.area,
+                    self.has_focus,
+                );
+                cursor_position = canvas.cursor_position();
+                self.component_map = canvas.into_component_map();
+            })
+            .unwrap();
+
+        // If a cursor position was set, show it. Otherwise, hide it
+        if let Some(cursor_position) = cursor_position {
+            terminal.set_cursor_position(cursor_position).unwrap();
+            terminal.show_cursor().unwrap();
+        } else {
+            terminal.hide_cursor().unwrap();
+        }
     }
 
     /// Drain events from the event queue, and handle them one-by-one. Return
@@ -371,7 +402,7 @@ where
             &mut self.harness.messages_rx,
             &mut self.harness.request_store,
         );
-        self.harness.draw(|frame| component.draw(frame, props));
+        component.draw(&mut self.harness.terminal, props);
 
         component
     }
@@ -415,12 +446,8 @@ where
         let propagated = self
             .component
             .drain_events(self.messages_rx, self.request_store);
-        self.terminal
-            .draw(|frame| {
-                let props = (self.props_factory)();
-                self.component.draw(frame, props);
-            })
-            .unwrap();
+        let props = (self.props_factory)();
+        self.component.draw(self.terminal, props);
         self.propagated.extend(propagated);
         self
     }

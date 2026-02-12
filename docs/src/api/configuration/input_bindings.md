@@ -57,7 +57,7 @@ input_bindings:
 | `reload_collection` | `f5`                    | Force reload collection file                                                                                                      |
 | `fullscreen`        | `f`                     | Fullscreen current pane                                                                                                           |
 | `open_actions`      | `x`                     | Open actions menu                                                                                                                 |
-| `open_help`         | `?`                     | Open help page                                                                                                                    |
+| `help`              | `?`                     | Open help page                                                                                                                    |
 | `command_history`   | `ctrl r`                | Search command history in query/export text box                                                                                   |
 | `select_collection` | `f3`                    | Open collection select dialog                                                                                                     |
 | `toggle_sidebar`    | `s`                     | Show/hide the sidebar                                                                                                             |

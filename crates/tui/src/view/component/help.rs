@@ -33,7 +33,7 @@ impl Component for Help {
 
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event.m().action(|action, propagate| match action {
-            Action::Cancel | Action::Quit | Action::OpenHelp => {
+            Action::Cancel | Action::Quit | Action::Help => {
                 self.emitter.emit(HelpEvent::Close);
             }
             _ => propagate.set(),
@@ -144,7 +144,7 @@ impl Keybindings {
                     Action::ProfileList,
                     Action::RecipeList,
                     Action::History,
-                    Action::OpenHelp,
+                    Action::Help,
                 ],
             ),
             (

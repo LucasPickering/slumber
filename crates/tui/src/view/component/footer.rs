@@ -99,7 +99,7 @@ impl Draw for Footer {
             );
 
             // Help
-            let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
+            let actions = [Action::OpenActions, Action::Help, Action::Quit];
             let text = actions
                 .into_iter()
                 .map(|action| {

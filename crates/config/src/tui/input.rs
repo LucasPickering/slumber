@@ -157,7 +157,8 @@ pub enum Action {
     /// Open the actions modal
     OpenActions,
     /// Open the help page
-    OpenHelp,
+    #[serde(alias = "open_help")] // Backward compatibility
+    Help,
     /// Search command history in query text box
     CommandHistory,
     /// Open collection selection modal (unbound by default)
@@ -480,7 +481,7 @@ impl Default for InputMap {
                     .into(),
             ),
             (Action::OpenActions, KeyCode::Char('x').into()),
-            (Action::OpenHelp, KeyCode::Char('?').into()),
+            (Action::Help, KeyCode::Char('?').into()),
             (Action::Fullscreen, KeyCode::Char('f').into()),
             (Action::ReloadCollection, KeyCode::F(5).into()),
             (Action::History, (CTRL, KeyCode::Char('h')).into()),

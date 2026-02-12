@@ -247,7 +247,7 @@ impl Component for Root {
                 Action::Cancel => self.cancel_request(context),
                 // Handle open events here so that they can be eaten by other
                 // components *first*. E.g. text boxes want ? more than we do.
-                Action::OpenHelp => self.help = Some(Help::default()),
+                Action::Help => self.help = Some(Help::default()),
                 Action::SelectCollection => {
                     self.footer.open_collection_select();
                 }

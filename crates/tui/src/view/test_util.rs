@@ -22,11 +22,9 @@ use slumber_config::{Action, Config};
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use slumber_util::Factory;
 use std::{
-    cell::RefCell,
     fmt::Debug,
     iter, mem,
     ops::{Deref, DerefMut},
-    rc::Rc,
     sync::Arc,
 };
 use terminput::{
@@ -60,9 +58,7 @@ pub struct TestHarness {
     // These are public because we don't care about external mutation
     pub collection: Arc<Collection>,
     pub database: CollectionDatabase,
-    /// `RefCell` needed so multiple components can hang onto this at once.
-    /// Otherwise we would have to pass it to every single draw and update fn.
-    request_store: Rc<RefCell<RequestStore>>,
+    request_store: RequestStore,
     messages_rx: MessageReceiver,
     terminal: Terminal<TestBackend>,
 }
@@ -76,8 +72,7 @@ impl TestHarness {
     ) -> Self {
         let (messages_tx, messages_rx) = message::queue();
         let database = CollectionDatabase::factory(());
-        let request_store =
-            Rc::new(RefCell::new(RequestStore::new(database.clone())));
+        let request_store = RequestStore::new(database.clone());
         let collection = Arc::new(collection);
 
         let backend = TestBackend::new(terminal_width, terminal_height);
@@ -100,8 +95,8 @@ impl TestHarness {
     }
 
     /// Get a mutable reference to the request store
-    pub fn request_store_mut(&self) -> impl DerefMut<Target = RequestStore> {
-        self.request_store.borrow_mut()
+    pub fn request_store_mut(&mut self) -> &mut RequestStore {
+        &mut self.request_store
     }
 
     /// Get a [PersistentStore] pointing at the test database
@@ -144,7 +139,6 @@ impl TestHarness {
 #[derive(Debug)]
 pub struct TestComponent<T> {
     database: CollectionDatabase,
-    request_store: Rc<RefCell<RequestStore>>,
     /// Output of the most recent draw phase
     component_map: ComponentMap,
     /// The area the component will be drawn to. This defaults to the whole
@@ -230,6 +224,7 @@ where
         Interact {
             component: self,
             terminal: &mut harness.terminal,
+            request_store: &mut harness.request_store,
             messages_rx: &mut harness.messages_rx,
             props_factory: Box::new(props_factory),
             propagated,
@@ -264,12 +259,13 @@ where
     fn drain_events(
         &mut self,
         messages_rx: &mut MessageReceiver,
+        request_store: &mut RequestStore,
     ) -> Vec<Message> {
         let mut persistent_store = PersistentStore::new(self.database.clone());
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
             component_map: &self.component_map,
-            request_store: &mut self.request_store.borrow_mut(),
+            request_store,
         };
         while let Some(message) = messages_rx.try_pop() {
             if let Message::Event(event) = message {
@@ -351,7 +347,6 @@ where
     pub fn build(self) -> TestComponent<T> {
         let mut component = TestComponent {
             database: self.harness.database.clone(),
-            request_store: self.harness.request_store.clone(),
             component_map: ComponentMap::default(),
             area: self.area,
             component: self.component,
@@ -363,8 +358,10 @@ where
         // then draw with the latest state
         let props = self.props.expect("Props not set for test component");
         // Propagated events just get tossed
-        component.initial_propagated =
-            component.drain_events(&mut self.harness.messages_rx);
+        component.initial_propagated = component.drain_events(
+            &mut self.harness.messages_rx,
+            &mut self.harness.request_store,
+        );
         self.harness.draw(|frame| component.draw(frame, props));
 
         component
@@ -379,9 +376,12 @@ where
 #[derive(derive_more::Debug)]
 pub struct Interact<'a, Component, Props> {
     component: &'a mut TestComponent<Component>,
-    terminal: &'a mut Terminal<TestBackend>,
     /// Message queue receiver, from [TestHarness]
     messages_rx: &'a mut MessageReceiver,
+    /// Request store to use for the update context
+    request_store: &'a mut RequestStore,
+    /// Terminal to draw to
+    terminal: &'a mut Terminal<TestBackend>,
     /// A repeatable function that generates a props object for each draw. In
     /// most cases this will just be `Props::default` or a function that
     /// repeatedly returns the same static value. In some cases though, the
@@ -403,7 +403,9 @@ where
     /// where the UI needs to respond to some asynchronous event, such as a
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(mut self) -> Self {
-        let propagated = self.component.drain_events(self.messages_rx);
+        let propagated = self
+            .component
+            .drain_events(self.messages_rx, self.request_store);
         self.terminal
             .draw(|frame| {
                 let props = (self.props_factory)();
@@ -559,7 +561,7 @@ where
         let items = {
             let context = UpdateContext {
                 component_map: &self.component.component_map,
-                request_store: &mut self.component.request_store.borrow_mut(),
+                request_store: self.request_store,
             };
             self.component.component.collect_actions(&context)
         };

@@ -837,7 +837,7 @@ mod tests {
 
                 let mut update_context = UpdateContext {
                     component_map: &component_map,
-                    request_store: &mut harness.request_store_mut(),
+                    request_store: harness.request_store_mut(),
                 };
 
                 component.update_all(&mut update_context, key_event());
@@ -917,7 +917,7 @@ mod tests {
 
         let mut update_context = UpdateContext {
             component_map: &component_map,
-            request_store: &mut harness.request_store_mut(),
+            request_store: harness.request_store_mut(),
         };
 
         component.update_all(&mut update_context, event);

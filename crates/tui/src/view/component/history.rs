@@ -330,7 +330,7 @@ mod tests {
         );
         // Normally the initial refresh is triggered by the Select events from
         // the profile/recipe list. We need to refresh manually here
-        component.refresh(&mut harness.request_store_mut());
+        component.refresh(harness.request_store_mut());
 
         // Initial state
         component

@@ -34,11 +34,7 @@ impl CommandTextBox {
         Self {
             id: ComponentId::default(),
             emitter: Emitter::default(),
-            text_box: text_box.subscribe([
-                TextBoxEvent::Cancel,
-                TextBoxEvent::Change,
-                TextBoxEvent::Submit,
-            ]),
+            text_box: text_box.subscribe([TextBoxEvent::Change]),
             scrollback: Scrollback::Inactive,
             search: None,
         }
@@ -87,20 +83,16 @@ impl CommandTextBox {
         let query = self.text();
         let commands = ViewContext::with_database(|db| db.get_commands(query))
             .unwrap_or_default(); // Error should be logged by the DB
-        if commands.is_empty() {
-            self.search = None;
-        } else {
-            // Load ALL the results into a select. draw() is responsible for
-            // limiting what's visible at a time. The DB caps the history
-            // length so this is bounded.
-            self.search = Some(
-                Select::builder(commands)
-                    // Most recent command is closest to the text box
-                    .direction(ListDirection::BottomToTop)
-                    .subscribe([SelectEventKind::Submit])
-                    .build(),
-            );
-        }
+
+        // Load ALL the results into a select. draw() is responsible for
+        // limiting what's visible at a time. The DB caps the history
+        // length so this is bounded.
+        self.search = Some(
+            Select::builder(commands)
+                // Most recent command is closest to the text box
+                .direction(ListDirection::BottomToTop)
+                .build(),
+        );
     }
 
     /// Cancel the search without taking its selection
@@ -133,6 +125,27 @@ impl Component for CommandTextBox {
                 Action::Up => self.scrollback_back(),
                 Action::Down => self.scrollback_forward(),
                 Action::CommandHistory => self.update_search(),
+                Action::Submit => {
+                    if self
+                        .search
+                        .as_ref()
+                        .is_some_and(|select| select.selected().is_some())
+                    {
+                        // If history is open and non-empty, select the command
+                        self.submit_search();
+                    } else {
+                        // Otherwise, submit the query
+                        self.emitter.emit(CommandTextBoxEvent::Submit);
+                        // If we've submitted from scrollback, reset scrollback
+                        // so we go to the front of the queue again
+                        self.reset_scrollback();
+                    }
+                }
+                Action::Cancel => {
+                    self.reset_scrollback();
+                    self.close_search();
+                    self.emitter.emit(CommandTextBoxEvent::Cancel);
+                }
                 _ => propagate.set(),
             })
             .emitted_opt(
@@ -149,22 +162,14 @@ impl Component for CommandTextBox {
                         self.update_search();
                     }
                 }
-                TextBoxEvent::Cancel => {
-                    self.reset_scrollback();
-                    self.close_search();
-                    self.emitter.emit(CommandTextBoxEvent::Cancel);
-                }
-                TextBoxEvent::Submit => {
-                    // If we've submitted from scrollback, reset scrollback so
-                    // we go to the front of the queue again
-                    self.reset_scrollback();
-                    self.emitter.emit(CommandTextBoxEvent::Submit);
-                }
+                TextBoxEvent::Cancel | TextBoxEvent::Submit => {}
             })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        vec![self.search.to_child(), self.text_box.to_child()]
+        // Textbox first so it gets all the char keybinds. We don't want j/k
+        // to scroll
+        vec![self.text_box.to_child(), self.search.to_child()]
     }
 }
 
@@ -412,6 +417,31 @@ mod tests {
         assert_eq!(component.text(), "three");
     }
 
+    /// h/j/k/l go to the text box, they do *not* navigate
+    #[rstest]
+    fn test_vim_navigation(
+        #[with(6, 3)] mut harness: TestHarness,
+        _history_db: (),
+    ) {
+        let mut component = TestComponent::new(
+            &mut harness,
+            CommandTextBox::new(TextBox::default()),
+        );
+        // The search box blows up out of the given area, so use the bottom
+        // line for the text box
+        component.set_area(bottom_row_area(&harness));
+
+        component
+            .int(&mut harness)
+            .send_text("t")
+            .send_key_modifiers(KeyModifiers::CTRL, KeyCode::Char('r'))
+            .send_text("hjkl")
+            .assert()
+            .empty();
+        assert_eq!(component.text(), "thjkl");
+        assert_eq!(get_search_items(&component).unwrap(), &[] as &[&str]);
+    }
+
     /// Search history with ctrl+r. Escape exits the query *without* taking the
     /// selected item
     #[rstest]
@@ -464,7 +494,7 @@ mod tests {
             .assert()
             .empty();
         assert_eq!(component.text(), "teefs");
-        assert_eq!(get_search_items(&component), None);
+        assert_eq!(get_search_items(&component).unwrap(), &[] as &[&str]);
     }
 
     /// Various scenarios scrolling back in history

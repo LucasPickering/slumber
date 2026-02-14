@@ -72,7 +72,7 @@ def generate(tape_path: str) -> str:
     """Generate a single GIF. Return the path to the generated GIF"""
     with TemporaryDirectory() as temp_dir:
         # Use a temporary dir for the DB so each gif is isolated
-        run(["vhs", tape_path], env={"SLUMBER_DB": temp_dir})
+        run(["vhs", tape_path], env={"SLUMBER_DATA_DIRECTORY": temp_dir})
     return get_gif_path(tape_path)
 
 

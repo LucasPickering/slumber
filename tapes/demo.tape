@@ -11,7 +11,7 @@ Set Theme "MaterialDark"
 Hide
 Type "cargo run"
 Enter
-Wait /q Quit/
+Wait /\[q\] quit/
 Type "l"
 Show
 
@@ -19,13 +19,12 @@ Show
 Sleep 1s
 Enter
 Sleep 2s
-Down 2
 
 # Edit param for list_fish
+Type "r"
+Down 2
 Sleep 1s
-Type "c"
-Sleep 0.5s
-Right
+Type "1"
 Sleep 0.5s
 Type "e"
 Sleep 0.5s
@@ -38,7 +37,7 @@ Sleep 0.5s
 
 # Send list_fish request
 Enter
-Type "r"
+Type "2"
 Sleep 2s
 
 # Search response

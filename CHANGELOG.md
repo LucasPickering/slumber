@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - QoL improvements such as selecting list items by click
 - CLI commands have been reorganized to be more consistent and discoverable
 
-While is is a major release with breaking changes, the breakages are fairly limited. There are no changes to the collection format, so it's unlikely you'll need to make any changes to your workflow to upgrade.
+While is is a major release with breaking changes, the breakages are fairly limited. It's unlikely you'll need to make any changes to upgrade, other than getting used to the new TUI layout.
 
 ### Breaking
 
@@ -70,7 +70,7 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
 ### Changed
 
 - Reconfigured the TUI layout. The main change is that the recipe, profile, and history lists open in an expandable sidebar now
-  - Switching between recipes and profiles should feel faster and more intuitive now
+  - Switching between recipes and profiles should feel faster and more intuitive
 - `prompt()` and `select()` calls are now grouped into a single form modal in the TUI
   - Previously, you'd be fed a series of modals one-by-one to fill out
 - Some menu actions have been moved into nested sections for better organization
@@ -89,7 +89,7 @@ The breaking changes in this release are mostly limited to CLI commands. The onl
 ### Fixed
 
 - Invalid body override template is displayed instead of being thrown away [#531](https://github.com/LucasPickering/slumber/issues/531)
-- Fix panic when SIGTERM is sent to a TUI process that failed to start and is display a collection error
+- Fix panic when SIGTERM is sent to a TUI process that failed to start and is displaying a collection error
 - Fix indentation in TUI display of multi-line errors
 - Fix collection file watching for vim, helix, and other editors that swap instead of writing [#706](https://github.com/LucasPickering/slumber/issues/706)
   - Previously, the file watching would break after the first write because these editors replace the edited file (specifically, the inode) instead of just writing to it

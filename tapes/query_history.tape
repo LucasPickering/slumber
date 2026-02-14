@@ -11,13 +11,14 @@ Set Theme "MaterialDark"
 Hide
 Type "cargo run"
 Enter
-Sleep 2s
+Wait /\[q\] quit/
 
 # Send List Fish request
+Type "r"
 Down 2
 Enter
-Sleep 1s
-Type "rf" # Fullscreen response pane
+Type "2f" # Fullscreen response pane
+Wait /to query/
 
 # Put some commands in history
 Type "/jq .[0]"

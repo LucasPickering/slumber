@@ -11,7 +11,7 @@ Set Theme "MaterialDark"
 Hide
 Type "cargo run"
 Enter
-Wait /q Quit/
+Wait /\[q\] quit/
 Show
 
 Sleep 1s

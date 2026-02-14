@@ -11,13 +11,14 @@ Set Theme "MaterialDark"
 Hide
 Type "cargo run"
 Enter
-Wait /q Quit/
+Wait /\[q\] quit/
 
 # Send List Fish request
+Type "r"
 Down 2
 Enter
 Sleep 1s
-Type "rf" # Fullscreen response pane
+Type "2f" # Fullscreen response pane
 Show
 
 Sleep 1s

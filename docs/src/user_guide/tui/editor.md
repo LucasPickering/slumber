@@ -2,7 +2,7 @@
 
 ## Editing
 
-![Open collection file in vim](../../images/editor.gif)
+![Open collection file in your editor](../../images/editor.gif)
 
 Slumber supports editing your collection file without leaving the app. To do so, open the actions menu (`x` by default), then select `Edit Recipe`. Slumber will open an external editor to modify the selected recipe. To determine which editor to use, Slumber checks these places in the following order:
 

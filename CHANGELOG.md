@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [5.0.0] - 2026-02-14
+
+<!-- ANCHOR: changelog -->
+
 5.0 is a huge release that focuses on two main areas:
 
 - A major refactor of the TUI includes:

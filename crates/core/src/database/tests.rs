@@ -102,7 +102,13 @@ fn test_collection_delete(collection_file: CollectionFile) {
     let key_type = "MyKey";
     let ui_key = "key1";
     collection.insert_exchange(&exchange).unwrap();
-    collection.set_ui(key_type, ui_key, "value1").unwrap();
+    collection
+        .set_ui(&[UiSetting {
+            key_type,
+            key: ui_key.to_owned(),
+            value: "value1".to_owned(),
+        }])
+        .unwrap();
     collection.insert_command("jq .").unwrap();
 
     // Sanity checks
@@ -149,11 +155,23 @@ fn test_collection_merge(
     let ui_key = "key1";
     // Target
     target.insert_exchange(&exchange1).unwrap();
-    target.set_ui(key_type, ui_key, "value1").unwrap();
+    target
+        .set_ui(&[UiSetting {
+            key_type,
+            key: ui_key.to_owned(),
+            value: "value1".to_owned(),
+        }])
+        .unwrap();
     target.insert_command("jq .").unwrap();
     // Source
     source.insert_exchange(&exchange2).unwrap();
-    source.set_ui(key_type, ui_key, "value2").unwrap();
+    source
+        .set_ui(&[UiSetting {
+            key_type,
+            key: ui_key.to_owned(),
+            value: "value2".to_owned(),
+        }])
+        .unwrap();
     source.insert_command("jq .").unwrap(); // Merged
     source.insert_command("jq .data").unwrap(); // Inserted
 
@@ -418,8 +436,20 @@ fn test_ui_state(
 
     let key_type = "MyKey";
     let ui_key = "key1";
-    collection1.set_ui(key_type, ui_key, "value1").unwrap();
-    collection2.set_ui(key_type, ui_key, "value2").unwrap();
+    collection1
+        .set_ui(&[UiSetting {
+            key_type,
+            key: ui_key.to_owned(),
+            value: "value1".to_owned(),
+        }])
+        .unwrap();
+    collection2
+        .set_ui(&[UiSetting {
+            key_type,
+            key: ui_key.to_owned(),
+            value: "value2".to_owned(),
+        }])
+        .unwrap();
 
     assert_eq!(
         collection1.get_ui(key_type, ui_key).unwrap(),

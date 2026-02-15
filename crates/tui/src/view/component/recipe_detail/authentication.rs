@@ -448,11 +448,11 @@ mod tests {
     #[rstest]
     fn test_persisted_load_basic(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
-        harness.persistent_store().set_session(
+        harness.set_session(
             AuthenticationKey::Username(recipe_id.clone()),
             "user".into(),
         );
-        harness.persistent_store().set_session(
+        harness.set_session(
             AuthenticationKey::Password(recipe_id.clone()),
             "hunter2".into(),
         );
@@ -478,7 +478,7 @@ mod tests {
     #[rstest]
     fn test_persisted_load_bearer(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
-        harness.persistent_store().set_session(
+        harness.set_session(
             AuthenticationKey::Token(recipe_id.clone()),
             "token".into(),
         );

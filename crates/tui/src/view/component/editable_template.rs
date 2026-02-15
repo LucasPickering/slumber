@@ -251,9 +251,7 @@ mod tests {
     /// Test persisting and restoring overrides
     #[rstest]
     fn test_persistence(mut harness: TestHarness) {
-        harness
-            .persistent_store()
-            .set_session(Key, "persisted".into());
+        harness.set_session(Key, "persisted".into());
         let mut component = TestComponent::new(
             &mut harness,
             EditableTemplate::new("Item", Key, "default".into(), false, false),
@@ -281,7 +279,6 @@ mod tests {
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
-        component.persist(&mut PersistentStore::new(harness.database));
         assert_eq!(component.template(), &"default".into());
         assert_eq!(PersistentStore::get_session(&Key), None);
     }

@@ -580,14 +580,14 @@ mod tests {
     #[rstest]
     fn test_persisted_override(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
-        harness.persistent_store().set_session(
+        harness.set_session(
             RowPersistentKey::<TestKey>::new(
                 recipe_id.clone(),
                 "row0".to_owned(),
             ),
             "p0".into(),
         );
-        harness.persistent_store().set_session(
+        harness.set_session(
             RowPersistentKey::<TestKey>::new(
                 recipe_id.clone(),
                 "row1".to_owned(),

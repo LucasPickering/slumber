@@ -132,7 +132,7 @@ impl CollectionState {
         };
         self.view.handle_event(context, event);
         // Persist state after changes
-        self.view.persist(self.database.clone());
+        self.view.persist(&self.database);
     }
 
     /// Draw the view onto the screen

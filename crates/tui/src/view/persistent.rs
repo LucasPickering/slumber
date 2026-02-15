@@ -4,7 +4,7 @@
 use crate::view::ViewContext;
 use anyhow::Context;
 use serde::{Serialize, de::DeserializeOwned};
-use slumber_core::database::CollectionDatabase;
+use slumber_core::database::{CollectionDatabase, UiSetting};
 use slumber_util::ResultTracedAnyhow;
 use std::{
     any::{self, Any},
@@ -34,11 +34,13 @@ use tracing::error;
 /// Unlike the DB store, the session store doesn't serialize the key and value.
 /// The key and value are both stored as `Box<dyn Any>`. This is possible
 /// because we're storing it in a thread local.
-pub struct PersistentStore {
-    database: CollectionDatabase,
+#[must_use = "Call store.commit() to persist settings to DB"]
+pub struct PersistentStore<'db> {
+    database: &'db CollectionDatabase,
+    settings: Vec<UiSetting>,
 }
 
-impl PersistentStore {
+impl<'db> PersistentStore<'db> {
     thread_local! {
         /// Static instance for the session store. Persistence is handled in the
         /// main view thread, so we only even need this in one thread. We could
@@ -51,8 +53,11 @@ impl PersistentStore {
     /// Create a new store from a database. This is a cheap operation, as the
     /// database connection is reference-counted. The store should be recreated
     /// for each update phase.
-    pub fn new(database: CollectionDatabase) -> Self {
-        Self { database }
+    pub fn new(database: &'db CollectionDatabase) -> Self {
+        Self {
+            database,
+            settings: vec![],
+        }
     }
 
     /// Get a value from the store
@@ -69,10 +74,11 @@ impl PersistentStore {
     pub fn set<K: PersistentKey>(&mut self, key: &K, value: &K::Value) {
         let key = Self::encode_json(key);
         let value = Self::encode_json(value);
-        self.database
-            .set_ui(Self::key_type::<K>(), &key, &value)
-            // Error is already traced in the DB, nothing to do with it here
-            .ok();
+        self.settings.push(UiSetting {
+            key_type: Self::key_type::<K>(),
+            key,
+            value,
+        });
     }
 
     /// Set a value in the store; if the value is `None`, do nothing
@@ -84,6 +90,15 @@ impl PersistentStore {
         if let Some(value) = value {
             self.set(key, value);
         }
+    }
+
+    /// Write the queue of persistent settings to the DB
+    ///
+    /// This **must** be called at the end of a frame to persist all UI state.
+    /// Writes are batched to improve performance.
+    pub fn commit(self) {
+        // Error is already traced in the DB so we can ignore it
+        let _ = self.database.set_ui(&self.settings);
     }
 
     /// Get a value from the session store

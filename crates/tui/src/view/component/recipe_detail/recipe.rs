@@ -295,7 +295,7 @@ mod tests {
             .empty();
         assert_eq!(component.tabs.selected(), Tab::Query);
 
-        // Test persistence of both disable and override state, with a mixture
+        // Test persistence of both disabled and override state, with a mixture
         // of row ordering to make sure higher rows don't overwrite lower ones,
         // or vice versa.
         component

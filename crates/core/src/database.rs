@@ -703,32 +703,37 @@ impl CollectionDatabase {
         Ok(value)
     }
 
-    /// Set the value of a UI state field
-    pub fn set_ui(
-        &self,
-        key_type: &str,
-        key: &str,
-        value: &str,
-    ) -> Result<(), DatabaseError> {
-        self.database
-            .connection()
-            .execute(
-                // Upsert!
-                "INSERT INTO ui_state_v2 (collection_id, key_type, key, value)
-                VALUES (:collection_id, :key_type, :key, :value)
-                ON CONFLICT DO UPDATE SET value = excluded.value",
-                named_params! {
-                    ":collection_id": self.collection_id,
-                    ":key_type": key_type,
-                    ":key": &key,
-                    ":value": value,
-                },
-            )
-            .map_err({
-                DatabaseError::add_context(format!(
-                    "Inserting UI state key `{key:?}`"
-                ))
+    /// Set all UI state fields
+    ///
+    /// This is done as a bulk update because the DB insert is a significant
+    /// portion of the overall TUI frame time. Batching all writes into a single
+    /// query/transaction speeds it up a bit. The persistence store is
+    /// responsible for batching all the rows together and calling this at
+    /// the end.
+    pub fn set_ui(&self, settings: &[UiSetting]) -> Result<(), DatabaseError> {
+        let mut conn = self.database.connection();
+        conn.transaction()
+            .and_then(|tx| {
+                let mut stmt = tx.prepare(
+                    // Upsert!
+                    "INSERT INTO ui_state_v2
+                        (collection_id, key_type, key, value)
+                    VALUES (:collection_id, :key_type, :key, :value)
+                    ON CONFLICT DO UPDATE SET value = excluded.value",
+                )?;
+
+                for setting in settings {
+                    stmt.execute(named_params! {
+                        ":collection_id": self.collection_id,
+                        ":key_type": setting.key_type,
+                        ":key": setting.key,
+                        ":value": setting.value,
+                    })?;
+                }
+                drop(stmt);
+                tx.commit()
             })
+            .map_err(DatabaseError::add_context("Inserting UI state key"))
             .traced()?;
         Ok(())
     }
@@ -990,6 +995,16 @@ impl From<Option<Option<ProfileId>>> for ProfileFilter<'static> {
             None => Self::All,
         }
     }
+}
+
+/// A row in the ui_state table
+///
+/// [CollectionDatabase::set_ui] takes a list of settings. This struct is a
+/// single element in that list.
+pub struct UiSetting {
+    pub key_type: &'static str,
+    pub key: String,
+    pub value: String,
 }
 
 /// Any error that can occur while accessing the local database

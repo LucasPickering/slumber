@@ -167,9 +167,7 @@ mod tests {
     #[rstest]
     fn test_persisted_load(mut harness: TestHarness) {
         let recipe_id = RecipeId::factory(());
-        harness
-            .persistent_store()
-            .set_session(UrlKey(recipe_id.clone()), "persisted/url".into());
+        harness.set_session(UrlKey(recipe_id.clone()), "persisted/url".into());
         let component = TestComponent::new(
             &mut harness,
             UrlDisplay::new(recipe_id, "default/url".into()),

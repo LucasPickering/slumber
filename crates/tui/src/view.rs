@@ -20,6 +20,7 @@ use crate::{
     view::{
         component::{Canvas, Component, ComponentExt, Root},
         context::ViewContext,
+        persistent::PersistentStore,
     },
 };
 use indexmap::IndexMap;
@@ -100,9 +101,10 @@ impl View {
     ///
     /// This takes `&mut self` because we dynamically load children, and those
     /// are always mutable.
-    pub fn persist(&mut self, database: CollectionDatabase) {
-        self.root
-            .persist_all(&mut persistent::PersistentStore::new(database));
+    pub fn persist(&mut self, database: &CollectionDatabase) {
+        let mut store = PersistentStore::new(database);
+        self.root.persist_all(&mut store);
+        store.commit();
     }
 
     /// ID of the selected profile. `None` iff the list is empty

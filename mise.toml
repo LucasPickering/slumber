@@ -35,3 +35,4 @@ RUST_BACKTRACE = "1"
 
 [tools]
 mdbook = "0.5.1"
+watchexec = "2.3.3"

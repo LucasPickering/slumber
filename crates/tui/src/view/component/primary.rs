@@ -674,7 +674,7 @@ mod tests {
         let mut view = ViewState::default();
         view.select_exchange_pane();
         view.toggle_fullscreen();
-        harness.persistent_store().set(&ViewStateKey, &view);
+        harness.set_persistent(&ViewStateKey, &view);
 
         let component = create_component(&mut harness);
         assert_eq!(component.view, view);

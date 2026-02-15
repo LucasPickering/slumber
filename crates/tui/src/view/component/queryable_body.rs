@@ -598,13 +598,10 @@ mod tests {
     #[tokio::test]
     async fn test_persistence(
         mut harness: TestHarness,
-
         response: Arc<ResponseRecord>,
     ) {
         // Add initial query to the DB
-        harness
-            .persistent_store()
-            .set(&Key, &"head -c 1".to_owned());
+        harness.set_persistent(&Key, &"head -c 1".to_owned());
 
         let mut component = TestComponent::new(
             &mut harness,
@@ -653,7 +650,7 @@ mod tests {
         mut harness: TestHarness,
         response: Arc<ResponseRecord>,
     ) {
-        harness.persistent_store().set(&Key, &String::new());
+        harness.set_persistent(&Key, &String::new());
 
         let mut component = TestComponent::new(
             &mut harness,

@@ -1176,7 +1176,7 @@ mod tests {
             }
         }
 
-        harness.persistent_store().set(&Key, &persisted_id.into());
+        harness.set_persistent(&Key, &persisted_id.into());
 
         // Second profile should be pre-selected because of persistence
         let select: Select<ProfileItem> = Select::builder(vec![

@@ -615,9 +615,7 @@ mod tests {
             body: Some(RecipeBody::Raw("".into())),
             ..Recipe::factory(())
         };
-        harness
-            .persistent_store()
-            .set_session(BodyKey(recipe.id.clone()), "hello!".into());
+        harness.set_session(BodyKey(recipe.id.clone()), "hello!".into());
 
         let component = TestComponent::new(
             &mut harness,

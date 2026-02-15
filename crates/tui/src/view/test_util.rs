@@ -12,7 +12,7 @@ use crate::{
         },
         context::ViewContext,
         event::{BroadcastEvent, Event, EventMatch, LocalEvent, ToEmitter},
-        persistent::PersistentStore,
+        persistent::{PersistentKey, PersistentStore, SessionKey},
     },
 };
 use itertools::Itertools;
@@ -113,9 +113,21 @@ impl TestHarness {
         &mut self.request_store
     }
 
-    /// Get a [PersistentStore] pointing at the test database
-    pub fn persistent_store(&self) -> PersistentStore {
-        PersistentStore::new(self.database.clone())
+    /// Insert a value into the persistent store
+    pub fn set_persistent<K: PersistentKey>(
+        &mut self,
+        key: &K,
+        value: &K::Value,
+    ) {
+        let mut store = PersistentStore::new(&self.database);
+        store.set(key, value);
+        store.commit();
+    }
+
+    /// Insert a value into the session store
+    pub fn set_session<K: SessionKey>(&mut self, key: K, value: K::Value) {
+        let mut store = PersistentStore::new(&self.database);
+        store.set_session(key, value);
     }
 
     /// Get a mutable reference to the message queue receiver, which can be used
@@ -301,7 +313,7 @@ where
         messages_rx: &mut MessageReceiver,
         request_store: &mut RequestStore,
     ) -> Vec<Message> {
-        let mut persistent_store = PersistentStore::new(self.database.clone());
+        let mut persistent_store = PersistentStore::new(&self.database);
         let mut propagated = Vec::new();
         let mut context = UpdateContext {
             component_map: &self.component_map,
@@ -325,6 +337,7 @@ where
         // Persist values in the store after the update. This mimics what the
         // event loop does
         self.component.persist_all(&mut persistent_store);
+        persistent_store.commit();
 
         propagated
     }

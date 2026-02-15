@@ -476,9 +476,7 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
-        harness
-            .persistent_store()
-            .set(&SelectedRequestKey, &old_exchange.id);
+        harness.set_persistent(&SelectedRequestKey, &old_exchange.id);
 
         let collection = Arc::clone(&harness.collection);
         let mut component =
@@ -505,9 +503,7 @@ mod tests {
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
         // Put a random ID in the DB
-        harness
-            .persistent_store()
-            .set(&SelectedRequestKey, &RequestId::new());
+        harness.set_persistent(&SelectedRequestKey, &RequestId::new());
 
         let collection = Arc::clone(&harness.collection);
         let mut component =

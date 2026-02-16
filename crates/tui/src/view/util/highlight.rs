@@ -5,11 +5,12 @@
 use crate::view::{context::ViewContext, styles::SyntaxStyles};
 use anyhow::Context;
 use itertools::Itertools;
+use mime::{APPLICATION, JSON, Mime};
 use ratatui::{
     style::Style,
     text::{Line, Span, Text},
 };
-use slumber_core::http::content_type::ContentType;
+use reqwest::header::{self, HeaderMap, HeaderValue};
 use slumber_util::ResultTracedAnyhow;
 use std::{
     borrow::Cow,
@@ -26,78 +27,135 @@ thread_local! {
     /// per thread. The view is single threaded, which means we only create one
     static HIGHLIGHTER: RefCell<(
         Highlighter,
-        HashMap<ContentType, HighlightConfiguration>,
+        HashMap<SyntaxType, HighlightConfiguration>,
     )> = RefCell::default();
 }
 
-/// Apply syntax highlighting to some text. Syntax language will be determined
-/// from the content type.
-pub fn highlight(content_type: ContentType, mut text: Text<'_>) -> Text<'_> {
-    HIGHLIGHTER.with_borrow_mut(|(highlighter, configs)| {
-        let config = configs
-            .entry(content_type)
-            .or_insert_with(|| get_config(content_type));
+/// A known MIME type, for which we support prettification and syntax
+/// highlighting
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum SyntaxType {
+    Json,
+}
 
-        let styles = ViewContext::styles().syntax;
+impl SyntaxType {
+    /// Get a known content type from a pre-parsed MIME type
+    ///
+    /// Return `None` if the MIME type is unknown.
+    pub fn from_mime(mime: &Mime) -> Option<Self> {
+        let suffix = mime.suffix().map(|name| name.as_str());
+        match (mime.type_(), mime.subtype(), suffix) {
+            // JSON has a lot of extended types that follow the pattern
+            // "application/*+json", match those too
+            (APPLICATION, JSON, _) | (APPLICATION, _, Some("json")) => {
+                Some(Self::Json)
+            }
+            _ => None,
+        }
+    }
 
-        // Each line in the input corresponds to one line in the output, so we
-        // can mutate each line inline
-        for line in &mut text.lines {
-            // Join the line into a single string so we can pass it to the
-            // highlighter. Unfortunately it can't handle subline parsing, it
-            // needs at least a line at a time
-            let joined = join_line(line);
-            let Ok(events) = highlighter
-                .highlight(config, joined.as_bytes(), None, |_| None)
-                .context("Syntax highlighting error")
-                .traced()
-            else {
-                continue; // Leave the line untouched
-            };
+    /// Parse the content type from the `Content-Type` header
+    ///
+    /// Return `None` if the `Content-Type` header is missing, contains an
+    /// invalid MIME value, or an unknown MIME type.
+    pub fn from_headers(headers: &HeaderMap) -> Option<Self> {
+        let header_value = headers
+            .get(header::CONTENT_TYPE)
+            .map(HeaderValue::as_bytes)?;
+        let header_value = std::str::from_utf8(header_value).ok()?;
+        let mime: Mime = header_value.parse().ok()?;
+        Self::from_mime(&mime)
+    }
 
-            let mut builder = LineBuilder::new(line);
-            for event in events {
-                match event.context("Syntax highlighting error").traced() {
-                    Ok(HighlightEvent::Source { start, end }) => {
-                        builder.push_span(&joined, start, end);
-                    }
-                    Ok(HighlightEvent::HighlightStart(index)) => {
-                        let name = HighlightName::from_index(index);
-                        builder.set_style(name.style(&styles));
-                    }
-                    Ok(HighlightEvent::HighlightEnd) => {
-                        builder.reset_style();
-                    }
-                    // Not sure what would cause an error here, it doesn't seem
-                    // like invalid syntax does it
-                    Err(_) => {}
+    /// Make a response body look pretty. If the input isn't valid for this
+    /// content type, return `None`
+    pub fn prettify(self, body: &str) -> Option<String> {
+        match self {
+            SyntaxType::Json => {
+                // The easiest way to prettify is to parse and restringify.
+                // There's definitely faster ways that don't require building
+                // the whole data structure in memory, but not via serde
+                if let Ok(parsed) =
+                    serde_json::from_str::<serde_json::Value>(body)
+                {
+                    // serde_json shouldn't fail serializing its own Value type
+                    serde_json::to_string_pretty(&parsed).ok()
+                } else {
+                    // Not valid JSON
+                    None
                 }
             }
-
-            *line = builder.build();
         }
+    }
 
-        text
-    })
+    /// Apply syntax highlighting to some text
+    pub fn highlight(self, mut text: Text<'_>) -> Text<'_> {
+        HIGHLIGHTER.with_borrow_mut(|(highlighter, configs)| {
+            let config =
+                configs.entry(self).or_insert_with(|| get_config(self));
+
+            let styles = ViewContext::styles().syntax;
+
+            // Each line in the input corresponds to one line in the output, so
+            // we can mutate each line inline
+            for line in &mut text.lines {
+                // Join the line into a single string so we can pass it to the
+                // highlighter. Unfortunately it can't handle subline parsing,
+                // it needs at least a line at a time
+                let joined = join_line(line);
+                let Ok(events) = highlighter
+                    .highlight(config, joined.as_bytes(), None, |_| None)
+                    .context("Syntax highlighting error")
+                    .traced()
+                else {
+                    continue; // Leave the line untouched
+                };
+
+                let mut builder = LineBuilder::new(line);
+                for event in events {
+                    match event.context("Syntax highlighting error").traced() {
+                        Ok(HighlightEvent::Source { start, end }) => {
+                            builder.push_span(&joined, start, end);
+                        }
+                        Ok(HighlightEvent::HighlightStart(index)) => {
+                            let name = HighlightName::from_index(index);
+                            builder.set_style(name.style(&styles));
+                        }
+                        Ok(HighlightEvent::HighlightEnd) => {
+                            builder.reset_style();
+                        }
+                        // Not sure what would cause an error here, it doesn't
+                        // seem like invalid syntax does
+                        // it
+                        Err(_) => {}
+                    }
+                }
+
+                *line = builder.build();
+            }
+
+            text
+        })
+    }
 }
 
 /// Apply syntax highlighting if the content type is `Some`, otherwise just
 /// return the given text
 pub fn highlight_if(
-    content_type: Option<ContentType>,
+    syntax_type: Option<SyntaxType>,
     text: Text<'_>,
 ) -> Text<'_> {
-    if let Some(content_type) = content_type {
-        highlight(content_type, text)
+    if let Some(syntax_type) = syntax_type {
+        syntax_type.highlight(text)
     } else {
         text
     }
 }
 
-/// Map [ContentType] to a syntax highlighting language
-fn get_config(content_type: ContentType) -> HighlightConfiguration {
+/// Map [SyntaxType] to a syntax highlighting language
+fn get_config(content_type: SyntaxType) -> HighlightConfiguration {
     let mut config = match content_type {
-        ContentType::Json => HighlightConfiguration::new(
+        SyntaxType::Json => HighlightConfiguration::new(
             tree_sitter_json::LANGUAGE.into(),
             "json",
             tree_sitter_json::HIGHLIGHTS_QUERY,
@@ -386,6 +444,61 @@ mod tests {
     use ratatui::style::Color;
     use rstest::rstest;
 
+    #[rstest]
+    #[case::json("application/json", Some(SyntaxType::Json))]
+    #[case::json_with_metadata(
+        // Test extra metadata in the content-type header
+        "application/json; charset=utf-8; boundary=asdf",
+        Some(SyntaxType::Json)
+    )]
+    // Test extended MIME type
+    #[case::json_extended("application/geo+json", Some(SyntaxType::Json))]
+    // Error cases
+    #[case::error_json_empty_extension("application/+json", None)]
+    #[case::error_unknown("text/html", None)]
+    fn test_from_mime(
+        #[case] mime_type: Mime,
+        #[case] expected: Option<SyntaxType>,
+    ) {
+        assert_eq!(SyntaxType::from_mime(&mime_type), expected);
+    }
+
+    #[rstest]
+    #[case::json(Some("application/json"), Some(SyntaxType::Json))]
+    // Error cases
+    #[case::error_missing(None, None)]
+    #[case::error_invalid(Some("json"), None)]
+    #[case::error_whitespace(Some("application/ +json"), None)]
+    fn test_from_headers(
+        #[case] content_type_header: Option<&'static str>,
+        #[case] expected: Option<SyntaxType>,
+    ) {
+        let headers = content_type_header
+            .into_iter()
+            .map(|value| {
+                (header::CONTENT_TYPE, HeaderValue::from_static(value))
+            })
+            .collect::<HeaderMap>();
+        assert_eq!(SyntaxType::from_headers(&headers), expected);
+    }
+
+    /// Test prettification
+    #[rstest]
+    #[case::json(
+        SyntaxType::Json,
+        r#"{"hello": "goodbye"}"#,
+        Some("{\n  \"hello\": \"goodbye\"\n}")
+    )]
+    // Invalid JSON => no pretty value available
+    #[case::invalid_json(SyntaxType::Json, r#"{"hello": "goodbye""#, None)]
+    fn test_prettyify(
+        #[case] content_type: SyntaxType,
+        #[case] body: &str,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(content_type.prettify(body).as_deref(), expected);
+    }
+
     /// Test that JSON is highlighted, by existing styling is retained
     #[rstest]
     fn test_highlight(_harness: TestHarness) {
@@ -409,7 +522,7 @@ mod tests {
             "}".into(),
         ]
         .into();
-        let highlighted = highlight(ContentType::Json, text);
+        let highlighted = SyntaxType::Json.highlight(text);
         let expected = vec![
             Line::from("{"),
             vec![

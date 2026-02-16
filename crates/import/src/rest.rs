@@ -10,7 +10,7 @@ use slumber_core::{
         QueryParameterValue, Recipe, RecipeBody, RecipeId, RecipeNode,
         RecipeTree,
     },
-    http::{HttpMethod, content_type::ContentType},
+    http::HttpMethod,
 };
 use slumber_template::{Identifier, Template};
 
@@ -77,18 +77,26 @@ fn build_authentication(r_auth: RestAuthorization) -> Authentication {
     }
 }
 
-/// If the request has JSON headers, mark it as such
-fn guess_content_type(
-    headers: &IndexMap<String, RestTemplate>,
-    variables: &RestVariables,
-) -> Option<ContentType> {
-    headers
-        .iter()
-        .any(|(name, value)| {
-            name.to_lowercase() == header::CONTENT_TYPE.as_str()
-                && value.render(variables) == mime::APPLICATION_JSON.to_string()
-        })
-        .then_some(ContentType::Json)
+/// Known body types with a structured variant in Slumber
+enum BodyType {
+    Json,
+}
+
+impl BodyType {
+    /// If the request has JSON headers, mark it as such
+    fn guess(
+        headers: &IndexMap<String, RestTemplate>,
+        variables: &RestVariables,
+    ) -> Option<Self> {
+        headers
+            .iter()
+            .any(|(name, value)| {
+                name.to_lowercase() == header::CONTENT_TYPE.as_str()
+                    && value.render(variables)
+                        == mime::APPLICATION_JSON.to_string()
+            })
+            .then_some(Self::Json)
+    }
 }
 
 fn build_body(
@@ -98,8 +106,8 @@ fn build_body(
 ) -> anyhow::Result<RecipeBody> {
     match body {
         RestBody::Text(text) => {
-            match guess_content_type(headers, variables) {
-                Some(ContentType::Json) => {
+            match BodyType::guess(headers, variables) {
+                Some(BodyType::Json) => {
                     // Parse the body as JSON. REST templates are compatible
                     // with Slumber templates so we don't need to transform
                     // the string at all

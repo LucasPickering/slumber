@@ -33,3 +33,25 @@ In addition to accepting MIME patterns, there are also predefined aliases to mak
 - Matching is done top to bottom, and **the first matching pattern will be used**. For this reason, your `*/*` pattern **should always be last**.
 - Matching is performed just against the [essence string](https://docs.rs/mime/latest/mime/struct.Mime.html#method.essence_str) of the recipe/request/response's `Content-Type` header, i.e. the `type/subtype` only. In the example `multipart/form-data; boundary=ABCDEFG`, the semicolon and everything after it **is not included in the match**.
 - Matching is performed by the [Rust glob crate](https://docs.rs/glob/latest/glob/struct.Pattern.html). Despite being intended for matching file paths, it works well for MIME types too because they are also `/`-delimited
+
+## Overrides
+
+If you want to treat a particular MIME type as a *different* MIME type, you can use the [`mime_override`](../configuration/index.md#mime_override) config field.
+
+For example, [if you have an ornery API that returns JSON that's incorrectly tagged as `text/javascript`](https://github.com/LucasPickering/slumber/issues/721):
+
+```yaml
+mime_override:
+  text/javascript: application/json
+```
+
+The **key** is any MIME pattern (meaning wildcards are supported). The **value** is any valid MIME type.
+
+These overrides will apply to all other configuration fields that use MIME maps as well as syntax highlighting.
+
+Because the keys of `mime_override` can be wildcards, you can map entire groups of MIME types. For example, if you want to treat all text as CSV:
+
+```yaml
+mime_override:
+  text/*: text/csv
+```

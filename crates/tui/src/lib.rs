@@ -330,7 +330,7 @@ where
                 on_complete(file);
             }
             Message::FileView { file, mime } => {
-                let pager = self.config.tui.pager(mime.as_ref())?;
+                let pager = self.config.pager(mime.as_ref())?;
                 util::yield_terminal(
                     pager.open(file.path()),
                     &self.messages_tx,

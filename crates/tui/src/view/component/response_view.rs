@@ -35,15 +35,13 @@ pub struct ResponseBodyView {
 impl ResponseBodyView {
     pub fn new(recipe_id: RecipeId, response: Arc<ResponseRecord>) -> Self {
         // Select default query based on content type
-        let config = &ViewContext::config().tui.commands;
+        let config = ViewContext::config();
         let mime = response.mime();
-        let default_query = mime
-            .as_ref()
-            .and_then(|mime| config.default_query.get(mime).cloned());
+        let default_query = config.default_query(mime.as_ref());
         let body = QueryableBody::new(
             ResponseQueryKey { recipe_id, mime },
             Arc::clone(&response),
-            default_query,
+            default_query.map(String::from),
         );
         Self {
             id: ComponentId::default(),

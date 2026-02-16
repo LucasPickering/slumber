@@ -1,13 +1,16 @@
 //! TUI-specific configuration
 
+mod cereal;
 mod input;
 mod mime;
 mod theme;
 
+pub use cereal::deserialize_tui_config;
 pub use input::{Action, InputBinding, InputMap, KeyCombination};
+pub use mime::MimeOverrideMap;
 pub use theme::{Color, Syntax, Theme};
 
-use crate::{EditorError, tui::mime::MimeMap};
+use crate::{Config, EditorError, tui::mime::MimeMap};
 use ::mime::Mime;
 use editor_command::Editor;
 use serde::Serialize;
@@ -22,13 +25,20 @@ pub struct TuiConfig {
     /// Configuration for in-app query and export commands
     pub commands: CommandsConfig,
 
+    /// Override mapping for MIME types
+    ///
+    /// This mapping is applied before any other MIME-based operations. It
+    /// allows you to dynamically replace a response's reported `Content-Type`.
+    /// It's useful when the server uses the wrong MIME.
+    mime_override: MimeOverrideMap,
+
     /// Command to use to browse response bodies. If provided, overrides
     /// `PAGER` environment variable.  This could be a single command, or a
     /// map of {content_type: command} to use different commands
     /// based on response type. Aliased for backward compatibility
     /// with the old name.
     #[serde(alias = "viewer", default)]
-    pub pager: MimeMap<String>,
+    pager: MimeMap<String>,
 
     /// Should templates be rendered inline in the UI, or should we show
     /// the raw text?
@@ -53,7 +63,23 @@ pub struct TuiConfig {
     pub persist: bool,
 }
 
-impl TuiConfig {
+impl Default for TuiConfig {
+    fn default() -> Self {
+        Self {
+            mime_override: Default::default(),
+            commands: CommandsConfig::default(),
+            pager: Default::default(),
+            preview_templates: true,
+            input_bindings: Default::default(),
+            theme: Default::default(),
+            debug: false,
+            persist: true,
+        }
+    }
+}
+
+// Extension for the root config for TUI-specific methods
+impl Config {
     /// Get an [Editor] to open the given file in the user's configured file
     /// pager. Default is `less` on Unix, `more` on Windows. Return an error
     /// if the command couldn't be built.
@@ -63,7 +89,7 @@ impl TuiConfig {
 
         // Select command from the config based on content type
         let config_command = mime
-            .and_then(|mime| self.pager.get(mime))
+            .and_then(|mime| self.tui.pager.get(&self.tui.mime_override, mime))
             .map(String::as_str);
 
         editor_command::EditorBuilder::new()
@@ -74,19 +100,21 @@ impl TuiConfig {
             .build()
             .map_err(EditorError)
     }
-}
 
-impl Default for TuiConfig {
-    fn default() -> Self {
-        Self {
-            commands: CommandsConfig::default(),
-            pager: Default::default(),
-            preview_templates: true,
-            input_bindings: Default::default(),
-            theme: Default::default(),
-            debug: false,
-            persist: true,
-        }
+    /// Get the default query command for a response body based on its MIME type
+    pub fn default_query(&self, mime: Option<&Mime>) -> Option<&str> {
+        mime.and_then(|mime| {
+            self.tui
+                .commands
+                .default_query
+                .get(&self.tui.mime_override, mime)
+        })
+        .map(String::as_str)
+    }
+
+    /// Get the MIME override map
+    pub fn mime_overrides(&self) -> &MimeOverrideMap {
+        &self.tui.mime_override
     }
 }
 

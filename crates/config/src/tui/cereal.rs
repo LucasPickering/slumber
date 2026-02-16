@@ -1,0 +1,201 @@
+//! TUI-specific config deserialization
+
+use crate::tui::{Color, CommandsConfig, Syntax, Theme, TuiConfig};
+use serde::de::{self, value::StringDeserializer};
+use slumber_util::yaml::{
+    self, DeserializeYaml, Expected, Field, LocatedError, SourceMap,
+    SourcedYaml, StructDeserializer,
+};
+
+/// Deserialize TUI-specific config fields from an existing deserializer
+pub fn deserialize_tui_config(
+    deserializer: &mut StructDeserializer,
+    source_map: &SourceMap,
+) -> yaml::Result<TuiConfig> {
+    let default = TuiConfig::default();
+    Ok(TuiConfig {
+        mime_override: deserializer.get(
+            Field::new("mime_override").or(default.mime_override),
+            source_map,
+        )?,
+        commands: deserializer
+            .get(Field::new("commands").or(default.commands), source_map)?,
+        pager: deserializer
+            .get(Field::new("pager").or(default.pager), source_map)?,
+        preview_templates: deserializer.get(
+            Field::new("preview_templates").or(default.preview_templates),
+            source_map,
+        )?,
+        input_bindings: deserializer.get(
+            Field::new("input_bindings").or(default.input_bindings),
+            source_map,
+        )?,
+        theme: deserializer
+            .get(Field::new("theme").or(default.theme), source_map)?,
+        debug: deserializer
+            .get(Field::new("debug").or(default.debug), source_map)?,
+        persist: deserializer
+            .get(Field::new("persist").or(default.persist), source_map)?,
+    })
+}
+
+impl DeserializeYaml for CommandsConfig {
+    fn expected() -> Expected {
+        Expected::Mapping
+    }
+
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        let default = Self::default();
+        let mut deserializer = StructDeserializer::new(yaml)?;
+        let config = Self {
+            shell: deserializer
+                .get(Field::new("shell").or(default.shell), source_map)?,
+            default_query: deserializer.get(
+                Field::new("default_query").or(default.default_query),
+                source_map,
+            )?,
+        };
+        deserializer.done()?;
+        Ok(config)
+    }
+}
+
+impl DeserializeYaml for Theme {
+    fn expected() -> Expected {
+        Expected::Mapping
+    }
+
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        let default = Self::default();
+        let mut deserializer = StructDeserializer::new(yaml)?;
+        let config = Self {
+            primary_color: deserializer.get(
+                Field::new("primary_color").or(default.primary_color),
+                source_map,
+            )?,
+            primary_text_color: deserializer.get(
+                Field::new("primary_text_color").or(default.primary_text_color),
+                source_map,
+            )?,
+            secondary_color: deserializer.get(
+                Field::new("secondary_color").or(default.secondary_color),
+                source_map,
+            )?,
+            success_color: deserializer.get(
+                Field::new("success_color").or(default.success_color),
+                source_map,
+            )?,
+            error_color: deserializer.get(
+                Field::new("error_color").or(default.error_color),
+                source_map,
+            )?,
+            text_color: deserializer.get(
+                Field::new("text_color").or(default.text_color),
+                source_map,
+            )?,
+            background_color: deserializer.get(
+                Field::new("background_color").or(default.background_color),
+                source_map,
+            )?,
+            border_color: deserializer.get(
+                Field::new("border_color").or(default.border_color),
+                source_map,
+            )?,
+            disabled_color: deserializer.get(
+                Field::new("disabled_color").or(default.disabled_color),
+                source_map,
+            )?,
+            hint_text_color: deserializer.get(
+                Field::new("hint_text_color").or(default.hint_text_color),
+                source_map,
+            )?,
+            text_box_background_color: deserializer.get(
+                Field::new("text_box_background_color")
+                    .or(default.text_box_background_color),
+                source_map,
+            )?,
+            alternate_row_background_color: deserializer.get(
+                Field::new("alternate_row_background_color")
+                    .or(default.alternate_row_background_color),
+                source_map,
+            )?,
+            alternate_row_text_color: deserializer.get(
+                Field::new("alternate_row_text_color")
+                    .or(default.alternate_row_text_color),
+                source_map,
+            )?,
+            syntax: deserializer
+                .get(Field::new("syntax").or(default.syntax), source_map)?,
+        };
+        deserializer.done()?;
+        Ok(config)
+    }
+}
+
+impl DeserializeYaml for Syntax {
+    fn expected() -> Expected {
+        Expected::Mapping
+    }
+
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        let default = Self::default();
+        let mut deserializer = StructDeserializer::new(yaml)?;
+        let config = Self {
+            comment_color: deserializer.get(
+                Field::new("comment_color").or(default.comment_color),
+                source_map,
+            )?,
+            builtin_color: deserializer.get(
+                Field::new("builtin_color").or(default.builtin_color),
+                source_map,
+            )?,
+            escape_color: deserializer.get(
+                Field::new("escape_color").or(default.escape_color),
+                source_map,
+            )?,
+            number_color: deserializer.get(
+                Field::new("number_color").or(default.number_color),
+                source_map,
+            )?,
+            string_color: deserializer.get(
+                Field::new("string_color").or(default.string_color),
+                source_map,
+            )?,
+            special_color: deserializer.get(
+                Field::new("special_color").or(default.special_color),
+                source_map,
+            )?,
+        };
+        deserializer.done()?;
+        Ok(config)
+    }
+}
+
+impl DeserializeYaml for Color {
+    fn expected() -> Expected {
+        Expected::String
+    }
+
+    fn deserialize(
+        yaml: SourcedYaml,
+        _source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        let location = yaml.location;
+        let s = yaml.try_into_string()?;
+        // Use ratatui's serde implementation
+        <ratatui_core::style::Color as de::Deserialize>::deserialize(
+            StringDeserializer::new(s),
+        )
+        .map(Color::from)
+        .map_err(|error: de::value::Error| LocatedError::other(error, location))
+    }
+}

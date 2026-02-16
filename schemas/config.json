@@ -43,6 +43,11 @@
         "default_query": {}
       }
     },
+    "mime_override": {
+      "description": "Override mapping for MIME types\n\nThis mapping is applied before any other MIME-based operations. It\nallows you to dynamically replace a response's reported `Content-Type`.\nIt's useful when the server uses the wrong MIME.",
+      "$ref": "#/$defs/MimeOverrideMap",
+      "default": {}
+    },
     "pager": {
       "description": "Command to use to browse response bodies. If provided, overrides\n`PAGER` environment variable.  This could be a single command, or a\nmap of {content_type: command} to use different commands\nbased on response type. Aliased for backward compatibility\nwith the old name.",
       "$ref": "#/$defs/MimeMap",
@@ -224,6 +229,7 @@
         ],
         "default_query": {}
       },
+      "mime_override": {},
       "pager": {},
       "preview_templates": true,
       "input_bindings": {
@@ -407,6 +413,15 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "MimeOverrideMap": {
+      "description": "A map of MIME types overridden by the user\n\nThis is used to map unknown MIME types to known ones. For example:\n\n`\"text/javascript\": json` will treat all `text/javascript` bodies as JSON\nbodies for the purposes of syntax highlighting, pager selection, etc.\n\nThe keys can be any MIME pattern (including wildcards), but the values\n**must be valid MIME types**.",
+      "$ref": "#/$defs/MimeMap",
+      "examples": [
+        {
+          "text/javascript": "application/json"
+        }
+      ]
     },
     "InputMap": {
       "description": "Mapping of actions to input bindings\n\nIntuitively this should be binding:action since we get key events from the\nuser and need to look up the corresponding actions. But we can't look up a\nbinding from the map based on an input event because event<=>binding\nmatching is more nuanced that simple equality (e.g. bonus modifiers keys can\nbe ignored). We have to iterate over map when checking inputs, but keying by\naction at least allows us to look up action=>binding for help text.",

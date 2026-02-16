@@ -16,22 +16,44 @@ use std::str::FromStr;
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct MimeMap<V> {
-    // We take the first matching pattern, so order matters. The most general
-    // patterns should go last. This could be a vec of tuples since we never
-    // actually do keyed lookup, but that makes ser/de more complicated.
+    /// Mapped MIME patterns
+    ///
+    /// We take the first matching pattern, so order matters. The most general
+    /// patterns should go last. This could be a vec of tuples since we never
+    /// actually do keyed lookup, but that makes ser/de more complicated.
+    ///
+    /// I'm sure there's a fancy way to do <O(n) lookup, but these maps will be
+    /// less than 10 elements typically so it really does not matter.
     patterns: IndexMap<MimePattern, V>,
 }
 
 impl<V> MimeMap<V> {
     /// Get the value of the **first** pattern in the map that matches the given
-    /// string. Matching is only performed on the "essence" of the given mime
-    /// type, i.e. the `type/subtype`. This means extensions of the type are
-    /// ignored. It's very unlikely the user would want a different value based
-    /// on extensions.
-    pub fn get(&self, mime: &Mime) -> Option<&V> {
+    /// string
+    ///
+    /// Matching is only performed on the "essence" of the given mime type, i.e.
+    /// the `type/subtype`. This means extensions of the type are ignored. It's
+    /// very unlikely the user would want a different value based on extensions.
+    ///
+    /// `mime_overrides` is passed from the config object so the MIME type can
+    /// be transformed according to the user's config before performing the
+    /// lookup in this map.
+    pub fn get(
+        &self,
+        mime_overrides: &MimeOverrideMap,
+        mime: &Mime,
+    ) -> Option<&V> {
+        // Check for an override first
+        let mime = mime_overrides.get(mime);
+        self.get_inner(mime)
+    }
+
+    /// Get a value from the map **without** override mapping
+    fn get_inner(&self, mime: &Mime) -> Option<&V> {
+        let essence_str = mime.essence_str();
         self.patterns
             .iter()
-            .find(|(pattern, _)| pattern.matches(mime.essence_str()))
+            .find(|(pattern, _)| pattern.matches(essence_str))
             .map(|(_, value)| value)
     }
 }
@@ -45,7 +67,7 @@ impl<V> Default for MimeMap<V> {
     }
 }
 
-impl DeserializeYaml for MimeMap<String> {
+impl<V: DeserializeYaml> DeserializeYaml for MimeMap<V> {
     fn expected() -> Expected {
         Expected::OneOf(&[&Expected::String, &Expected::Mapping])
     }
@@ -54,15 +76,124 @@ impl DeserializeYaml for MimeMap<String> {
         yaml: SourcedYaml,
         source_map: &SourceMap,
     ) -> yaml::Result<Self> {
-        let patterns: IndexMap<MimePattern, String> = if yaml.data.is_mapping()
-        {
-            DeserializeYaml::deserialize(yaml, source_map)?
+        let patterns = if yaml.data.is_mapping() {
+            // Deserialize a mapping like {"json": v1, "*/*": v2}
+            IndexMap::<MimePattern, V>::deserialize(yaml, source_map)?
         } else {
             // Deserialize a single value as a map of {"*/*": value}
-            let s = yaml.try_into_string()?;
-            indexmap! { MimePattern::default() => s }
+            let value = V::deserialize(yaml, source_map)?;
+            indexmap! { MimePattern::default() => value }
         };
         Ok(Self { patterns })
+    }
+}
+
+/// A map of MIME types overridden by the user
+///
+/// This is used to map unknown MIME types to known ones. For example:
+///
+/// `"text/javascript": json` will treat all `text/javascript` bodies as JSON
+/// bodies for the purposes of syntax highlighting, pager selection, etc.
+///
+/// The keys can be any MIME pattern (including wildcards), but the values
+/// **must be valid MIME types**.
+#[derive(Debug, Default, Serialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(transparent)]
+#[cfg_attr(feature = "schema", schemars(example = Self::example()))]
+pub struct MimeOverrideMap(MimeMap<MimeAdopt>);
+
+impl MimeOverrideMap {
+    /// Map a MIME type according to the override mapping
+    ///
+    /// If the MIME isn't in the override map, return the given MIME.
+    pub fn get<'a>(&'a self, mime: &'a Mime) -> &'a Mime {
+        // Overriding is *not* recursive, we only do one level of lookup
+        self.0.get_inner(mime).map(|mime| &mime.0).unwrap_or(mime)
+    }
+
+    /// JSON Schema example value
+    #[cfg(feature = "schema")]
+    fn example() -> Self {
+        Self::from_iter([("text/javascript", mime::APPLICATION_JSON)])
+    }
+}
+
+// Build maps for tests
+impl FromIterator<(&'static str, Mime)> for MimeOverrideMap {
+    fn from_iter<T: IntoIterator<Item = (&'static str, Mime)>>(
+        iter: T,
+    ) -> Self {
+        let patterns = iter
+            .into_iter()
+            .map(|(key, value)| (key.parse().unwrap(), MimeAdopt(value)))
+            .collect();
+        Self(MimeMap { patterns })
+    }
+}
+
+impl DeserializeYaml for MimeOverrideMap {
+    fn expected() -> Expected {
+        Expected::Mapping
+    }
+
+    fn deserialize(
+        yaml: SourcedYaml,
+        source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        // We can't reuse MimeMap's deserialization because we *don't* support
+        // the single-value case here. That would effectively override all MIMEs
+        // to a single type, which doesn't really make sense.
+        let patterns =
+            IndexMap::<MimePattern, MimeAdopt>::deserialize(yaml, source_map)?;
+        Ok(Self(MimeMap { patterns }))
+    }
+}
+
+/// Workaround for the orphan rule
+#[derive(Debug, PartialEq)]
+struct MimeAdopt(Mime);
+
+impl Serialize for MimeAdopt {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Serialize as string
+        self.0.as_ref().serialize(serializer)
+    }
+}
+
+impl DeserializeYaml for MimeAdopt {
+    fn expected() -> Expected {
+        Expected::String
+    }
+
+    fn deserialize(
+        yaml: SourcedYaml,
+        _source_map: &SourceMap,
+    ) -> yaml::Result<Self> {
+        let location = yaml.location;
+        let s = yaml.try_into_string()?;
+        let mime: Mime = s
+            .parse()
+            .map_err(|error| LocatedError::other(error, location))?;
+        Ok(Self(mime))
+    }
+}
+
+// Use a string for the schema
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for MimeAdopt {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        String::schema_name()
+    }
+
+    fn json_schema(
+        generator: &mut schemars::SchemaGenerator,
+    ) -> schemars::Schema {
+        String::json_schema(generator)
     }
 }
 
@@ -138,6 +269,7 @@ impl DeserializeYaml for MimePattern {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mime::APPLICATION_JSON;
     use rstest::rstest;
     use serde_yaml::Mapping;
     use slumber_util::yaml::deserialize_yaml;
@@ -184,6 +316,7 @@ mod tests {
     #[case::json_plain("application/json", "json")]
     #[case::json_extension("application/ld+json", "json")]
     #[case::essence("text/csv; charset=utf-8", "csv")]
+    #[case::override_mime("text/override; charset=utf-8", "json")]
     fn test_match_mimes(#[case] mime: Mime, #[case] expected: String) {
         let map = map(&[
             ("text/csv", "csv"),
@@ -193,7 +326,9 @@ mod tests {
             // This should never get hit because it's after the default case
             ("audio/*", "audio"),
         ]);
-        let actual = map.get(&mime).unwrap();
+        let overrides =
+            MimeOverrideMap::from_iter([("text/override", APPLICATION_JSON)]);
+        let actual = map.get(&overrides, &mime).unwrap();
         assert_eq!(actual, &expected);
     }
 }

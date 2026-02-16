@@ -134,7 +134,10 @@ impl Draw for RequestView {
 /// Calculate body text, including syntax highlighting. We have to clone the
 /// body to prevent a self-reference. Return `None` if the request has no body
 fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
-    let syntax_type = SyntaxType::from_headers(&request.headers);
+    let syntax_type = SyntaxType::from_headers(
+        ViewContext::config().mime_overrides(),
+        &request.headers,
+    );
     match &request.body {
         RequestBody::None => None,
         RequestBody::Stream => Some(Text::raw("<stream>")),

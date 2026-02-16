@@ -439,7 +439,9 @@ struct SaveBodyOverride(TempFile);
 
 /// Apply syntax highlighting according to the body MIME type
 fn highlight(mime: Option<&Mime>, text: Text<'static>) -> Text<'static> {
-    let syntax_type = mime.and_then(SyntaxType::from_mime);
+    let syntax_type = mime.and_then(|mime| {
+        SyntaxType::from_mime(ViewContext::config().mime_overrides(), mime)
+    });
     highlight::highlight_if(syntax_type, text)
 }
 

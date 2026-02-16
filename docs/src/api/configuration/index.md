@@ -170,20 +170,27 @@ Size over which request/response bodies are not formatted/highlighted, for perfo
 large_body_size: 100000 # 100KB
 ```
 
-### `persist`
+### `mime_override`
 
-**Type:** `boolean`
+**Type:** `mapping[Mime, string]` (see [MIME Maps](./mime.md))
 
-**Default:** `true`
+**Default:** `{}`
 
-Enable/disable the storage of requests and responses in Slumber's local database. This is only used in the TUI. CLI requests are _not_ persisted unless the `--persist` flag is passed, in which case they will always be persisted.
+A mapping to apply to MIME types for all MIME-based operations.
 
-[See Database & Persistence for more info](../../user_guide/database.md).
+MIME operations include:
+- Pager selection
+- Default query selection
+- Syntax highlighting
+
+See [MIME Overrides](./mime.md#overrides) for more.
 
 #### Example
 
 ```yaml
-persist: false # Requests/responses will deleted upon closing a session
+mime_override:
+  # Treat all JavaScript responses as JSON
+  text/javascript: application/json
 ```
 
 ### `pager`
@@ -204,6 +211,22 @@ Command to use when opening files for viewing.
 pager:
   json: fx
   "*/*": bat
+```
+
+### `persist`
+
+**Type:** `boolean`
+
+**Default:** `true`
+
+Enable/disable the storage of requests and responses in Slumber's local database. This is only used in the TUI. CLI requests are _not_ persisted unless the `--persist` flag is passed, in which case they will always be persisted.
+
+[See Database & Persistence for more info](../../user_guide/database.md).
+
+#### Example
+
+```yaml
+persist: false # Requests/responses will deleted upon closing a session
 ```
 
 ### `preview_templates`

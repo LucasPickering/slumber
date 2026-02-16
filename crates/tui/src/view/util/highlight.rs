@@ -11,6 +11,7 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 use reqwest::header::{self, HeaderMap, HeaderValue};
+use slumber_config::MimeOverrideMap;
 use slumber_util::ResultTracedAnyhow;
 use std::{
     borrow::Cow,
@@ -41,8 +42,15 @@ pub enum SyntaxType {
 impl SyntaxType {
     /// Get a known content type from a pre-parsed MIME type
     ///
-    /// Return `None` if the MIME type is unknown.
-    pub fn from_mime(mime: &Mime) -> Option<Self> {
+    /// Return `None` if the MIME type is unknown. `mime_overrides` is a mapping
+    /// of MIME transformations to apply *before* parsing the MIME into a syntax
+    /// type. This is sourced from the config.
+    pub fn from_mime(
+        mime_overrides: &MimeOverrideMap,
+        mime: &Mime,
+    ) -> Option<Self> {
+        // Apply MIME override first
+        let mime = mime_overrides.get(mime);
         let suffix = mime.suffix().map(|name| name.as_str());
         match (mime.type_(), mime.subtype(), suffix) {
             // JSON has a lot of extended types that follow the pattern
@@ -58,13 +66,16 @@ impl SyntaxType {
     ///
     /// Return `None` if the `Content-Type` header is missing, contains an
     /// invalid MIME value, or an unknown MIME type.
-    pub fn from_headers(headers: &HeaderMap) -> Option<Self> {
+    pub fn from_headers(
+        mime_overrides: &MimeOverrideMap,
+        headers: &HeaderMap,
+    ) -> Option<Self> {
         let header_value = headers
             .get(header::CONTENT_TYPE)
             .map(HeaderValue::as_bytes)?;
         let header_value = std::str::from_utf8(header_value).ok()?;
         let mime: Mime = header_value.parse().ok()?;
-        Self::from_mime(&mime)
+        Self::from_mime(mime_overrides, &mime)
     }
 
     /// Make a response body look pretty. If the input isn't valid for this
@@ -440,6 +451,7 @@ fn split_cow(s: Cow<'_, str>, at: usize) -> (Cow<'_, str>, Cow<'_, str>) {
 mod tests {
     use super::*;
     use crate::view::test_util::{TestHarness, harness};
+    use mime::APPLICATION_JSON;
     use pretty_assertions::assert_eq;
     use ratatui::style::Color;
     use rstest::rstest;
@@ -453,6 +465,7 @@ mod tests {
     )]
     // Test extended MIME type
     #[case::json_extended("application/geo+json", Some(SyntaxType::Json))]
+    #[case::mime_override("text/fake", Some(SyntaxType::Json))]
     // Error cases
     #[case::error_json_empty_extension("application/+json", None)]
     #[case::error_unknown("text/html", None)]
@@ -460,7 +473,9 @@ mod tests {
         #[case] mime_type: Mime,
         #[case] expected: Option<SyntaxType>,
     ) {
-        assert_eq!(SyntaxType::from_mime(&mime_type), expected);
+        let overrides =
+            MimeOverrideMap::from_iter([("text/fake", APPLICATION_JSON)]);
+        assert_eq!(SyntaxType::from_mime(&overrides, &mime_type), expected);
     }
 
     #[rstest]
@@ -479,7 +494,10 @@ mod tests {
                 (header::CONTENT_TYPE, HeaderValue::from_static(value))
             })
             .collect::<HeaderMap>();
-        assert_eq!(SyntaxType::from_headers(&headers), expected);
+        assert_eq!(
+            SyntaxType::from_headers(&MimeOverrideMap::default(), &headers),
+            expected
+        );
     }
 
     /// Test prettification
@@ -499,7 +517,7 @@ mod tests {
         assert_eq!(content_type.prettify(body).as_deref(), expected);
     }
 
-    /// Test that JSON is highlighted, by existing styling is retained
+    /// Test that JSON is highlighted, but existing styling is retained
     #[rstest]
     fn test_highlight(_harness: TestHarness) {
         fn fg(color: Color) -> Style {

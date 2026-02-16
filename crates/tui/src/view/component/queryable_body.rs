@@ -98,7 +98,10 @@ impl<K> QueryableBody<K> {
                 "Enter export command (ex: `tee > response.json`)",
             ));
 
-        let syntax_type = SyntaxType::from_headers(&response.headers);
+        let syntax_type = SyntaxType::from_headers(
+            ViewContext::config().mime_overrides(),
+            &response.headers,
+        );
         let text_state = TextState::new(syntax_type, &response.body, true);
 
         let mut slf = Self {
@@ -161,7 +164,10 @@ impl<K> QueryableBody<K> {
             // Reset to initial body
             self.last_executed_query = None;
             self.query_state = CommandState::None;
-            let syntax_type = SyntaxType::from_headers(&self.response.headers);
+            let syntax_type = SyntaxType::from_headers(
+                ViewContext::config().mime_overrides(),
+                &self.response.headers,
+            );
             self.text_state = TextState::new(
                 syntax_type,
                 &self.response.body,
@@ -266,8 +272,10 @@ impl<K: PersistentKey<Value = String>> Component for QueryableBody<K> {
             .emitted(self.emitter, |CommandComplete(result)| match result {
                 Ok(stdout) => {
                     self.query_state = CommandState::Ok;
-                    let syntax_type =
-                        SyntaxType::from_headers(&self.response.headers);
+                    let syntax_type = SyntaxType::from_headers(
+                        ViewContext::config().mime_overrides(),
+                        &self.response.headers,
+                    );
                     self.text_state = TextState::new(
                         // Assume the output has the same syntax type
                         syntax_type,

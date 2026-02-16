@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `mime_override` config field to modify response `Content-Type` [#721](https://github.com/LucasPickering/slumber/issues/721)
+
 <!-- ANCHOR: changelog -->
 
 ## [5.0.0] - 2026-02-14

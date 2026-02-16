@@ -15,7 +15,10 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, PersistentStore},
-        util::{highlight, str_to_text},
+        util::{
+            highlight::{self, SyntaxType},
+            str_to_text,
+        },
     },
 };
 use anyhow::Context;
@@ -26,7 +29,7 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
-    http::{ResponseBody, ResponseRecord, content_type::ContentType},
+    http::{ResponseBody, ResponseRecord},
     util::MaybeStr,
 };
 use std::{borrow::Cow, mem, sync::Arc};
@@ -95,8 +98,8 @@ impl<K> QueryableBody<K> {
                 "Enter export command (ex: `tee > response.json`)",
             ));
 
-        let text_state =
-            TextState::new(response.content_type(), &response.body, true);
+        let syntax_type = SyntaxType::from_headers(&response.headers);
+        let text_state = TextState::new(syntax_type, &response.body, true);
 
         let mut slf = Self {
             id: ComponentId::default(),
@@ -158,8 +161,9 @@ impl<K> QueryableBody<K> {
             // Reset to initial body
             self.last_executed_query = None;
             self.query_state = CommandState::None;
+            let syntax_type = SyntaxType::from_headers(&self.response.headers);
             self.text_state = TextState::new(
-                self.response.content_type(),
+                syntax_type,
                 &self.response.body,
                 true, // Prettify
             );
@@ -262,9 +266,11 @@ impl<K: PersistentKey<Value = String>> Component for QueryableBody<K> {
             .emitted(self.emitter, |CommandComplete(result)| match result {
                 Ok(stdout) => {
                     self.query_state = CommandState::Ok;
+                    let syntax_type =
+                        SyntaxType::from_headers(&self.response.headers);
                     self.text_state = TextState::new(
-                        // Assume the output has the same content type
-                        self.response.content_type(),
+                        // Assume the output has the same syntax type
+                        syntax_type,
                         &ResponseBody::new(stdout),
                         // Don't prettify - user controls this output. If
                         // it's not pretty already, that's on them
@@ -380,7 +386,7 @@ struct TextState {
 impl TextState {
     /// Calculate display text based on current body/query
     fn new<T: AsRef<[u8]>>(
-        content_type: Option<ContentType>,
+        syntax_type: Option<SyntaxType>,
         body: &ResponseBody<T>,
         prettify: bool,
     ) -> Self {
@@ -409,15 +415,15 @@ impl TextState {
                 }
             }
         } else if let Some(text) = body.text() {
-            // Prettify for known content types. We _don't_ do this in a
+            // Prettify for known syntax types. We _don't_ do this in a
             // separate task because it's generally very fast. If this is slow
             // enough that it affects the user, the "large" body size is
             // probably too low
-            let (text, pretty): (Cow<str>, bool) = if let Some(content_type) =
-                content_type
+            let (text, pretty): (Cow<str>, bool) = if let Some(syntax_type) =
+                syntax_type
                 && prettify
             {
-                content_type
+                syntax_type
                     .prettify(text)
                     .map(|body| (Cow::Owned(body), true))
                     .unwrap_or((Cow::Borrowed(text), false))
@@ -425,8 +431,7 @@ impl TextState {
                 (Cow::Borrowed(text), false)
             };
 
-            let text =
-                highlight::highlight_if(content_type, str_to_text(&text));
+            let text = highlight::highlight_if(syntax_type, str_to_text(&text));
             TextState {
                 text_window: TextWindow::new(text),
                 pretty,

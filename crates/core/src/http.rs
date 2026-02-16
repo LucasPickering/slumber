@@ -35,7 +35,6 @@
 //! +----------+
 //! ```
 
-pub mod content_type;
 mod curl;
 mod models;
 #[cfg(test)]

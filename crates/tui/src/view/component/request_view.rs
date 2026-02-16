@@ -12,13 +12,17 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::{format_byte_size, highlight, view_text},
+        util::{
+            format_byte_size,
+            highlight::{self, SyntaxType},
+            view_text,
+        },
     },
 };
 use ratatui::{layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
-    http::{RequestBody, RequestId, RequestRecord, content_type::ContentType},
+    http::{RequestBody, RequestId, RequestRecord},
     util::MaybeStr,
 };
 use std::sync::Arc;
@@ -130,7 +134,7 @@ impl Draw for RequestView {
 /// Calculate body text, including syntax highlighting. We have to clone the
 /// body to prevent a self-reference. Return `None` if the request has no body
 fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
-    let content_type = ContentType::try_from_headers(&request.headers).ok();
+    let syntax_type = SyntaxType::from_headers(&request.headers);
     match &request.body {
         RequestBody::None => None,
         RequestBody::Stream => Some(Text::raw("<stream>")),
@@ -142,7 +146,7 @@ fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
             )))
         }
         RequestBody::Some(bytes) => Some(highlight::highlight_if(
-            content_type,
+            syntax_type,
             format!("{:#}", MaybeStr(bytes)).into(),
         )),
     }

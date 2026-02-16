@@ -3,12 +3,9 @@
 //! stages, meaning the request or response may not actually be present, if the
 //! exchange is incomplete or failed.
 
-use crate::{
-    collection::{
-        Authentication, JsonTemplate, JsonTemplateError, ProfileId, RecipeId,
-        UnknownRecipeError,
-    },
-    http::content_type::ContentType,
+use crate::collection::{
+    Authentication, JsonTemplate, JsonTemplateError, ProfileId, RecipeId,
+    UnknownRecipeError,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
@@ -702,12 +699,6 @@ impl ResponseRecord {
     /// Get the value of the response's `Content-Type` header, if any
     pub fn mime(&self) -> Option<Mime> {
         content_type_header(&self.headers)
-    }
-
-    /// Get the value of the response's `Content-Type` header, and parse it as
-    /// a known/supported content type
-    pub fn content_type(&self) -> Option<ContentType> {
-        ContentType::try_from_headers(&self.headers).ok()
     }
 
     /// Get a suggested file name for the content of this response. First we'll

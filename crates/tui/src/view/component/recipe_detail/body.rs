@@ -18,7 +18,10 @@ use crate::{
         context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, SessionKey},
-        util::{highlight, view_text},
+        util::{
+            highlight::{self, SyntaxType},
+            view_text,
+        },
     },
 };
 use anyhow::Context;
@@ -32,7 +35,7 @@ use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
-    http::{BodyOverride, content_type::ContentType},
+    http::BodyOverride,
 };
 use slumber_template::{Template, TemplateParseError};
 use std::{error::Error as StdError, fs};
@@ -436,9 +439,8 @@ struct SaveBodyOverride(TempFile);
 
 /// Apply syntax highlighting according to the body MIME type
 fn highlight(mime: Option<&Mime>, text: Text<'static>) -> Text<'static> {
-    let content_type =
-        mime.and_then(|mime| ContentType::try_from_mime(mime).ok());
-    highlight::highlight_if(content_type, text)
+    let syntax_type = mime.and_then(SyntaxType::from_mime);
+    highlight::highlight_if(syntax_type, text)
 }
 
 /// Convert a JSON object into a single template for preview in a TextBody

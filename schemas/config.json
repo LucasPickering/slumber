@@ -43,7 +43,7 @@
         "default_query": {}
       }
     },
-    "mime_override": {
+    "mime_overrides": {
       "description": "Override mapping for MIME types\n\nThis mapping is applied before any other MIME-based operations. It\nallows you to dynamically replace a response's reported `Content-Type`.\nIt's useful when the server uses the wrong MIME.",
       "$ref": "#/$defs/MimeOverrideMap",
       "default": {}
@@ -229,7 +229,7 @@
         ],
         "default_query": {}
       },
-      "mime_override": {},
+      "mime_overrides": {},
       "pager": {},
       "preview_templates": true,
       "input_bindings": {

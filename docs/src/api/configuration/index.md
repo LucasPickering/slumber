@@ -170,7 +170,7 @@ Size over which request/response bodies are not formatted/highlighted, for perfo
 large_body_size: 100000 # 100KB
 ```
 
-### `mime_override`
+### `mime_overrides`
 
 **Type:** `mapping[Mime, string]` (see [MIME Maps](./mime.md))
 
@@ -188,7 +188,7 @@ See [MIME Overrides](./mime.md#overrides) for more.
 #### Example
 
 ```yaml
-mime_override:
+mime_overrides:
   # Treat all JavaScript responses as JSON
   text/javascript: application/json
 ```

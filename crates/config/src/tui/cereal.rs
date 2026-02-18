@@ -14,8 +14,8 @@ pub fn deserialize_tui_config(
 ) -> yaml::Result<TuiConfig> {
     let default = TuiConfig::default();
     Ok(TuiConfig {
-        mime_override: deserializer.get(
-            Field::new("mime_override").or(default.mime_override),
+        mime_overrides: deserializer.get(
+            Field::new("mime_overrides").or(default.mime_overrides),
             source_map,
         )?,
         commands: deserializer

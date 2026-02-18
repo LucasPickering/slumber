@@ -36,12 +36,12 @@ In addition to accepting MIME patterns, there are also predefined aliases to mak
 
 ## Overrides
 
-If you want to treat a particular MIME type as a *different* MIME type, you can use the [`mime_override`](../configuration/index.md#mime_override) config field.
+If you want to treat a particular MIME type as a *different* MIME type, you can use the [`mime_overrides`](../configuration/index.md#mime_overrides) config field.
 
 For example, [if you have an ornery API that returns JSON that's incorrectly tagged as `text/javascript`](https://github.com/LucasPickering/slumber/issues/721):
 
 ```yaml
-mime_override:
+mime_overrides:
   text/javascript: application/json
 ```
 
@@ -49,9 +49,9 @@ The **key** is any MIME pattern (meaning wildcards are supported). The **value**
 
 These overrides will apply to all other configuration fields that use MIME maps as well as syntax highlighting.
 
-Because the keys of `mime_override` can be wildcards, you can map entire groups of MIME types. For example, if you want to treat all text as CSV:
+Because the keys of `mime_overrides` can be wildcards, you can map entire groups of MIME types. For example, if you want to treat all text as CSV:
 
 ```yaml
-mime_override:
+mime_overrides:
   text/*: text/csv
 ```

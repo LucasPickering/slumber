@@ -30,7 +30,7 @@ pub struct TuiConfig {
     /// This mapping is applied before any other MIME-based operations. It
     /// allows you to dynamically replace a response's reported `Content-Type`.
     /// It's useful when the server uses the wrong MIME.
-    mime_override: MimeOverrideMap,
+    mime_overrides: MimeOverrideMap,
 
     /// Command to use to browse response bodies. If provided, overrides
     /// `PAGER` environment variable.  This could be a single command, or a
@@ -66,7 +66,7 @@ pub struct TuiConfig {
 impl Default for TuiConfig {
     fn default() -> Self {
         Self {
-            mime_override: Default::default(),
+            mime_overrides: Default::default(),
             commands: CommandsConfig::default(),
             pager: Default::default(),
             preview_templates: true,
@@ -89,7 +89,7 @@ impl Config {
 
         // Select command from the config based on content type
         let config_command = mime
-            .and_then(|mime| self.tui.pager.get(&self.tui.mime_override, mime))
+            .and_then(|mime| self.tui.pager.get(&self.tui.mime_overrides, mime))
             .map(String::as_str);
 
         editor_command::EditorBuilder::new()
@@ -107,14 +107,14 @@ impl Config {
             self.tui
                 .commands
                 .default_query
-                .get(&self.tui.mime_override, mime)
+                .get(&self.tui.mime_overrides, mime)
         })
         .map(String::as_str)
     }
 
     /// Get the MIME override map
     pub fn mime_overrides(&self) -> &MimeOverrideMap {
-        &self.tui.mime_override
+        &self.tui.mime_overrides
     }
 }
 

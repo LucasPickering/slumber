@@ -23,23 +23,16 @@ pub use value::{
 };
 
 use bytes::{Bytes, BytesMut};
-use futures::{Stream, StreamExt, TryStreamExt, future, stream};
+use futures::{FutureExt, Stream, StreamExt, TryStreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use slumber_util::NEW_ISSUE_LINK;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, mem, sync::Arc};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
 pub trait Context: Sized {
-    /// Does the render target support streaming? Typically this should return
-    /// `false`.
-    ///
-    /// This is a method on the context to avoid plumbing around a second object
-    /// to all render locations.
-    fn can_stream(&self) -> bool;
-
     /// Get the value of a field from the context. The implementor can decide
     /// where fields are derived from. Fields can also be computed dynamically
     /// and be `async`. For example, fields can be loaded from a map of nested
@@ -198,17 +191,7 @@ impl Template {
                 }
                 TemplateChunk::Expression(expression) => {
                     match expression.render(context).await {
-                        Ok(lazy) if context.can_stream() => {
-                            RenderedChunk::Rendered(lazy)
-                        }
-                        // If the context doesn't support streaming, resolve
-                        // the lazy value now
-                        Ok(lazy) => lazy
-                            .resolve()
-                            .await
-                            .map_or_else(RenderedChunk::Error, |value| {
-                                RenderedChunk::Rendered(value.into())
-                            }),
+                        Ok(lazy) => RenderedChunk::Rendered(lazy),
                         Err(error) => RenderedChunk::Error(error),
                     }
                 }
@@ -326,6 +309,31 @@ impl RenderedOutput {
             }
             RenderedChunk::Error(_) => true,
         })
+    }
+
+    /// Resolve all streams in all chunks in-place
+    ///
+    /// If this returns `Ok`, it is guaranteed that [Self::has_stream] will
+    /// return `false`.
+    pub async fn resolve_streams(&mut self) -> Result<(), RenderError> {
+        for chunk in &mut self.0 {
+            match chunk {
+                RenderedChunk::Raw(_)
+                | RenderedChunk::Error(_)
+                | RenderedChunk::Rendered(LazyValue::Value(_)) => {}
+                RenderedChunk::Rendered(lazy @ LazyValue::Stream { .. }) => {
+                    // Resolve the stream and put the resolved value back
+                    let v = mem::replace(lazy, Value::Null.into());
+                    *lazy = v.resolve().await?.into();
+                }
+                // Recursion!!
+                RenderedChunk::Rendered(LazyValue::Nested(output)) => {
+                    output.resolve_streams().boxed_local().await?;
+                }
+            }
+        }
+        debug_assert!(!self.has_stream()); // Sanity check
+        Ok(())
     }
 
     /// Unpack this output into a single lazy value. If the output is a single

@@ -30,7 +30,7 @@ use tokio_util::io::ReaderStream;
 async fn test_expression(#[case] template: Template, #[case] expected: Value) {
     assert_eq!(
         template
-            .render(&TestContext::default())
+            .render(&TestContext)
             .await
             .try_collect_value()
             .await
@@ -58,7 +58,7 @@ async fn test_render_value(
 ) {
     assert_eq!(
         template
-            .render(&TestContext::default())
+            .render(&TestContext)
             .await
             .try_collect_value()
             .await
@@ -88,9 +88,12 @@ async fn test_render_stream(
     // Assert on the individual chunks
     #[case] expected: Vec<&'static [u8]>,
 ) {
-    let context = TestContext { can_stream: true };
     // Join into a stream, then collect the stream
-    let stream = template.render(&context).await.try_into_stream().unwrap();
+    let stream = template
+        .render(&TestContext)
+        .await
+        .try_into_stream()
+        .unwrap();
     let chunks = stream.try_collect::<Vec<Bytes>>().await.unwrap();
     assert_eq!(chunks, expected);
 }
@@ -100,9 +103,8 @@ async fn test_render_stream(
 #[tokio::test]
 async fn test_render_stream_chunk_error() {
     let template: Template = "{{ unknown() }}".into();
-    let context = TestContext { can_stream: true };
     let result = template
-        .render(&context)
+        .render(&TestContext)
         .await
         .try_into_stream()
         .map(|_| "stream");
@@ -114,8 +116,11 @@ async fn test_render_stream_chunk_error() {
 #[tokio::test]
 async fn test_render_stream_collect_error() {
     let template: Template = "{{ file('fake.txt') }}".into();
-    let context = TestContext { can_stream: true };
-    let stream = template.render(&context).await.try_into_stream().unwrap();
+    let stream = template
+        .render(&TestContext)
+        .await
+        .try_into_stream()
+        .unwrap();
     assert_err(
         stream.try_collect::<BytesMut>().await,
         if cfg!(unix) {
@@ -188,10 +193,7 @@ fn test_from_json(#[case] json: serde_json::Value, #[case] expected: Value) {
 #[tokio::test]
 async fn test_pipe(#[case] template: Template, #[case] expected: &str) {
     assert_eq!(
-        template
-            .render_string(&TestContext::default())
-            .await
-            .unwrap(),
+        template.render_string(&TestContext).await.unwrap(),
         expected
     );
 }
@@ -219,22 +221,13 @@ async fn test_function_error(
     #[case] template: Template,
     #[case] expected_error: &str,
 ) {
-    assert_err(
-        template.render_string(&TestContext::default()).await,
-        expected_error,
-    );
+    assert_err(template.render_string(&TestContext).await, expected_error);
 }
 
 #[derive(Debug, Default)]
-struct TestContext {
-    can_stream: bool,
-}
+struct TestContext;
 
 impl Context for TestContext {
-    fn can_stream(&self) -> bool {
-        self.can_stream
-    }
-
     async fn get_field(
         &self,
         identifier: &Identifier,

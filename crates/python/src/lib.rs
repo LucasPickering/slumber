@@ -269,7 +269,8 @@ impl HttpProvider for PythonHttpProvider {
     ) -> Result<Exchange, TriggeredRequestError> {
         if self.trigger_dependencies {
             let ticket = self.http_engine.build(seed, template_context).await?;
-            let exchange = ticket.send().await?;
+            // Python requests are never persisted
+            let exchange = ticket.send(None).await?;
             Ok(exchange)
         } else {
             Err(TriggeredRequestError::NotAllowed)
@@ -428,7 +429,8 @@ impl Request {
             .build(seed, &context)
             .await
             .map_err(ErrorDisplay::new)?;
-        let exchange = ticket.send().await.map_err(ErrorDisplay::new)?;
+        // Python requests are never persisted
+        let exchange = ticket.send(None).await.map_err(ErrorDisplay::new)?;
         Ok(exchange)
     }
 }

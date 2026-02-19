@@ -611,7 +611,7 @@ async fn test_body_stream(
             )
         });
 
-    let exchange = ticket.send().await.unwrap();
+    let exchange = ticket.send(None).await.unwrap();
 
     // Note: this doesn't actually enforce that the body was streamed
     // chunk-by-chunk, we just know that the right bytes got there in the end.
@@ -993,7 +993,7 @@ async fn test_profile_duplicate(
 
     // Make sure the URL rendered correctly before sending
     let expected_url: Url = format!("{host}/first/first").parse().unwrap();
-    let exchange = ticket.send().await.unwrap();
+    let exchange = ticket.send(None).await.unwrap();
 
     assert_eq!(exchange.response.status, StatusCode::OK);
     assert_eq!(exchange.request.url, expected_url);
@@ -1043,12 +1043,13 @@ async fn test_send_request(http_engine: HttpEngine) {
         url: "{{ host }}/get".into(),
         ..Recipe::factory(())
     };
+    let database = CollectionDatabase::factory(());
     let context = template_context(recipe, Some(&server.uri()));
     let seed = seed(&context, BuildOptions::default());
 
     // Build+send the request
     let ticket = http_engine.build(seed, &context).await.unwrap();
-    let exchange = ticket.send().await.unwrap();
+    let exchange = ticket.send(Some(database.clone())).await.unwrap();
 
     // Cheat on this one, because we don't know exactly when the server
     // resolved it
@@ -1072,6 +1073,9 @@ async fn test_send_request(http_engine: HttpEngine) {
             body: ResponseBody::new(b"hello!".as_slice().into())
         }
     );
+
+    // Ensure it was persisted
+    assert_eq!(database.get_request(exchange.id).unwrap(), Some(exchange));
 }
 
 /// Leading/trailing newlines should be stripped from rendered header
@@ -1333,7 +1337,7 @@ async fn test_follow_redirects(
 
     // Build+send the request
     let ticket = http_engine.build(seed, &context).await.unwrap();
-    let exchange = ticket.send().await.unwrap();
+    let exchange = ticket.send(None).await.unwrap();
 
     assert_eq!(exchange.response.status, expected_status);
 }

@@ -77,7 +77,7 @@ impl HttpProvider for TestHttpProvider {
     ) -> Result<Exchange, TriggeredRequestError> {
         if let Some(http_engine) = &self.http_engine {
             let ticket = http_engine.build(seed, template_context).await?;
-            let exchange = ticket.send().await?;
+            let exchange = ticket.send(None).await?;
             Ok(exchange)
         } else {
             Err(TriggeredRequestError::NotAllowed)

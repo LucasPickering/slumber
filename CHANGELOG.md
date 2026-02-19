@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add `mime_overrides` config field to modify response `Content-Type` [#721](https://github.com/LucasPickering/slumber/issues/721)
 
+### Fixed
+
+- Fix request being persisted incorrectly when changing collections while in-flight
+
 <!-- ANCHOR: changelog -->
 
 ## [5.0.0] - 2026-02-14

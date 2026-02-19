@@ -24,7 +24,7 @@ use slumber_core::{
     util::MaybeStr,
 };
 use slumber_template::{Expression, Template};
-use slumber_util::{OptionExt, ResultTraced, ResultTracedAnyhow};
+use slumber_util::{OptionExt, ResultTracedAnyhow};
 use std::{
     error::Error,
     fs::OpenOptions,
@@ -270,11 +270,8 @@ impl Subcommand for RequestCommand {
             self.display.write_request(ticket.record());
 
             // Run the request
-            let exchange = ticket.send().await?;
-            if self.persist {
-                // Error here shouldn't be propagated, just logged
-                let _ = database.insert_exchange(&exchange).traced();
-            }
+            let persist_to = if self.persist { Some(database) } else { None };
+            let exchange = ticket.send(persist_to).await?;
             let status = exchange.response.status;
 
             self.display.write_response(&exchange.response)?;
@@ -503,7 +500,8 @@ impl HttpProvider for CliHttpProvider {
     ) -> Result<Exchange, TriggeredRequestError> {
         if self.trigger_dependencies {
             let ticket = self.http_engine.build(seed, template_context).await?;
-            let exchange = ticket.send().await?;
+            // Triggered requests are never persisted here
+            let exchange = ticket.send(None).await?;
             Ok(exchange)
         } else {
             Err(TriggeredRequestError::NotAllowed)

@@ -378,9 +378,9 @@ pub trait HttpProvider: Debug {
         recipe_id: &RecipeId,
     ) -> Result<Option<Exchange>, StoredRequestError>;
 
-    /// Build and send an HTTP request. The implementor may choose whether
-    /// triggered chained requests will be sent, and whether the result should
-    /// be persisted in the database.
+    /// Build and send a triggered HTTP request. The implementor may choose
+    /// whether triggered requests can actually be sent, and whether the result
+    /// should be persisted in the database.
     async fn send_request(
         &self,
         seed: RequestSeed,

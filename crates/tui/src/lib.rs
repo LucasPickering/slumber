@@ -37,7 +37,7 @@ use slumber_core::{
     http::{HttpEngine, RequestId, RequestSeed, RequestTicket},
     render::{Prompter, TemplateContext},
 };
-use slumber_template::{RenderedOutput, Template};
+use slumber_template::{Render, RenderedOutput, Template};
 use slumber_util::yaml::SourceLocation;
 use std::{
     io::{self, Stdout},

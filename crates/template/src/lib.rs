@@ -22,6 +22,7 @@ pub use value::{
     Arguments, FunctionOutput, LazyValue, StreamSource, TryFromValue, Value,
 };
 
+use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use futures::{Stream, StreamExt, TryStreamExt, future, stream};
 use itertools::Itertools;
@@ -49,6 +50,42 @@ pub trait Context: Sized {
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
     ) -> Result<LazyValue, RenderError>;
+}
+
+/// A template-ish value that can be rendered to [RenderedOutput]
+///
+/// This abstraction allows for more complex templates to be built on top of
+/// [Template].
+#[async_trait(?Send)] // Needed for dyn compatibility
+pub trait Render<Ctx: Context> {
+    /// Render the template, returning the individual rendered chunks
+    ///
+    /// If any individual chunk fails to render, its error will be returned
+    /// inline as [RenderedChunk::Error] and the rest of the template will still
+    /// be rendered. The returned output can be transformed into a variety of
+    /// final output types.
+    async fn render(&self, context: &Ctx) -> RenderedOutput;
+
+    /// Render this template to bytes
+    ///
+    /// This is a convenience method for rendering to [RenderedOutput] and
+    /// collecting the output into a byte string.
+    async fn render_bytes(&self, context: &Ctx) -> Result<Bytes, RenderError> {
+        self.render(context).await.try_collect_bytes().await
+    }
+
+    /// Render this template to a string
+    ///
+    /// This is a convenience method for rendering to [RenderedOutput] and
+    /// collecting the output into string. If the output is not valid UTF-8,
+    /// return an error.
+    async fn render_string(
+        &self,
+        context: &Ctx,
+    ) -> Result<String, RenderError> {
+        let bytes = self.render_bytes(context).await?;
+        String::from_utf8(bytes.into()).map_err(RenderError::other)
+    }
 }
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -173,14 +210,11 @@ impl Template {
             .iter()
             .any(|chunk| matches!(chunk, TemplateChunk::Expression(_)))
     }
+}
 
-    /// Render the template, returning the individual rendered chunks rather
-    /// than stitching them together into a string. If any individual chunk
-    /// fails to render, its error will be returned inline as
-    /// [RenderedChunk::Error] and the rest of the template will still be
-    /// rendered. The returned output can be transformed into a variety of final
-    /// output types.
-    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedOutput {
+#[async_trait(?Send)]
+impl<Ctx: Context> Render<Ctx> for Template {
+    async fn render(&self, context: &Ctx) -> RenderedOutput {
         // Map over each parsed chunk, and render the expressions into values.
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
@@ -201,25 +235,6 @@ impl Template {
         // Concurrency!
         let chunks = future::join_all(futures).await;
         RenderedOutput(chunks)
-    }
-
-    /// Convenience method for rendering a template and collecting the output
-    /// into a byte string.
-    pub async fn render_bytes<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<Bytes, RenderError> {
-        self.render(context).await.try_collect_bytes().await
-    }
-
-    /// Convenience method for rendering a template and collecting the output
-    /// into a string. If the output is not valid UTF-8, return an error.
-    pub async fn render_string<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<String, RenderError> {
-        let bytes = self.render_bytes(context).await?;
-        String::from_utf8(bytes.into()).map_err(RenderError::other)
     }
 }
 

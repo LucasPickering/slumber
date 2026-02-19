@@ -1,6 +1,6 @@
 use crate::{
-    Arguments, Context, Identifier, LazyValue, RenderError, Template, Value,
-    value::StreamSource,
+    Arguments, Context, Identifier, LazyValue, Render, RenderError, Template,
+    Value, value::StreamSource,
 };
 use bytes::{Bytes, BytesMut};
 use futures::{StreamExt, TryFutureExt, TryStreamExt};

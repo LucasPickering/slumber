@@ -11,6 +11,7 @@ rust-version = {workspace = true}
 version = {workspace = true}
 
 [dependencies]
+async-trait = {workspace = true}
 bytes = {workspace = true, features = ["serde"]}
 derive_more = {workspace = true, features = ["debug", "deref", "display", "from"]}
 futures = {workspace = true}

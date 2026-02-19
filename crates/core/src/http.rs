@@ -64,7 +64,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{RenderError, StreamSource, Template};
+use slumber_template::{Render, RenderError, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, hash::Hash};
 use tracing::{Instrument, error, info, info_span};

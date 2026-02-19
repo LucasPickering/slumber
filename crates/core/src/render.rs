@@ -27,7 +27,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
 use slumber_template::{
-    Arguments, Identifier, LazyValue, RenderError, Template, Value,
+    Arguments, Identifier, LazyValue, Render, RenderError, Template, Value,
 };
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,

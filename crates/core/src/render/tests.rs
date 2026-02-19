@@ -17,7 +17,9 @@ use futures::{StreamExt, TryStreamExt};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{Expression, Literal, StreamSource, Template, Value};
+use slumber_template::{
+    Expression, Literal, Render, StreamSource, Template, Value,
+};
 use slumber_util::{
     Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
     temp_dir,

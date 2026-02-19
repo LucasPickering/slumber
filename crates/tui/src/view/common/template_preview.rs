@@ -320,6 +320,7 @@ mod tests {
         render::TemplateContext,
         test_util::by_id,
     };
+    use slumber_template::Render;
     use slumber_util::{Factory, assert_matches};
 
     #[derive(Debug, PartialEq)]

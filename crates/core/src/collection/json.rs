@@ -4,7 +4,7 @@ use crate::render::TemplateContext;
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_template::{
-    RenderError, Template, TemplateParseError, TryFromValue,
+    Render, RenderError, Template, TemplateParseError, TryFromValue,
 };
 use std::str::FromStr;
 use thiserror::Error;

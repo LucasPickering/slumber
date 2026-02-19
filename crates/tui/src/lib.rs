@@ -32,16 +32,13 @@ use ratatui::{
 };
 use slumber_config::{Action, Config};
 use slumber_core::{
-    collection::{Collection, CollectionFile, ProfileId},
+    collection::{Collection, CollectionFile, ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
-    http::{
-        Exchange, HttpEngine, RequestError, RequestId, RequestSeed,
-        RequestTicket,
-    },
+    http::{HttpEngine, RequestId, RequestSeed, RequestTicket},
     render::{Prompter, TemplateContext},
 };
 use slumber_template::{RenderedOutput, Template};
-use slumber_util::{ResultTraced, yaml::SourceLocation};
+use slumber_util::yaml::SourceLocation;
 use std::{
     io::{self, Stdout},
     ops::Deref,
@@ -454,8 +451,11 @@ where
                 RequestDisposition::Change(id)
             }
             HttpMessage::Complete(result) => {
-                let id = self.complete_request(result).id();
-                RequestDisposition::Change(id)
+                let state = match result {
+                    Ok(exchange) => self.state.request_store.response(exchange),
+                    Err(error) => self.state.request_store.request_error(error),
+                };
+                RequestDisposition::Change(state.id())
             }
             HttpMessage::Cancel(request_id) => {
                 let id = self.state.request_store.cancel(request_id).id();
@@ -553,6 +553,10 @@ where
             self.template_context(profile_id.clone(), Some(&seed));
         let http_engine = self.http_engine.clone();
         let messages_tx = self.messages_tx.clone();
+        // Grab the target database *before* starting the build. If we change
+        // collections while the request is building OR loading, it will still
+        // be persisted to the correct DB.
+        let persist_to = self.persist_to(&recipe_id);
 
         // Don't use spawn_result here, because errors are handled specially for
         // requests
@@ -569,7 +573,7 @@ where
                 }
             };
 
-            Self::send_request_inner(ticket, messages_tx).await;
+            Self::send_request_inner(ticket, persist_to, messages_tx).await;
         };
         self.spawn(util::cancellable(&cancel_token, future));
 
@@ -620,9 +624,14 @@ where
         );
 
         // Launch the request in a task
+        let persist_to = self.persist_to(&ticket.record().recipe_id);
         self.spawn(util::cancellable(
             &cancel_token,
-            Self::send_request_inner(ticket, self.messages_tx.clone()),
+            Self::send_request_inner(
+                ticket,
+                persist_to,
+                self.messages_tx.clone(),
+            ),
         ));
         Ok(id)
     }
@@ -630,42 +639,38 @@ where
     /// Inner helper to send a request and report its status to the loop
     async fn send_request_inner(
         ticket: RequestTicket,
+        persist_to: Option<CollectionDatabase>,
         messages_tx: MessageSender,
     ) {
         // Report liftoff
         messages_tx.send(HttpMessage::Loading(Arc::clone(ticket.record())));
 
         // Send the request and report the result to the main loop
-        let result = ticket.send().await.map_err(Arc::new);
+        let result = ticket.send(persist_to).await.map_err(Arc::new);
         messages_tx.send(HttpMessage::Complete(result));
     }
 
-    /// Process the result of an HTTP request
-    fn complete_request(
-        &mut self,
-        result: Result<Exchange, Arc<RequestError>>,
-    ) -> &RequestState {
-        match result {
-            Ok(exchange) => {
-                // Shouldn't be reachable if the collection isn't defined
-                // TODO there's a bug here if the collection swaps while the
-                // request is in flight
-                let collection = self.collection().expect("Collection missing");
+    /// Get the database that an upcoming request should be persisted to
+    ///
+    /// If the request should be persisted at all, this is the DB of the current
+    /// collection. This checks both the global config `persist` field as well
+    /// as the recipe's `persist` field. Return `None` if it should not be
+    /// persisted. We need to calculate this DB *before* the request is sent,
+    /// because it's possible to switch to a new collection while the request is
+    /// in flight.
+    fn persist_to(&self, recipe_id: &RecipeId) -> Option<CollectionDatabase> {
+        let collection = self.collection().expect("Collection missing");
 
-                // Persist in the DB if not disabled by global config or recipe
-                let persist = self.config.tui.persist
-                    && collection
-                        .recipes
-                        .try_get_recipe(&exchange.request.recipe_id)
-                        .is_ok_and(|recipe| recipe.persist);
-                if persist {
-                    let _ =
-                        self.state.database.insert_exchange(&exchange).traced();
-                }
-
-                self.state.request_store.response(exchange)
-            }
-            Err(error) => self.state.request_store.request_error(error),
+        // Persist in the DB if not disabled by global config or recipe
+        let persist = self.config.tui.persist
+            && collection
+                .recipes
+                .get_recipe(recipe_id)
+                .is_some_and(|recipe| recipe.persist);
+        if persist {
+            Some(self.database().clone())
+        } else {
+            None
         }
     }
 
@@ -833,6 +838,7 @@ where
         let http_provider = TuiHttpProvider::new(
             self.http_engine.clone(),
             self.messages_tx.clone(),
+            self.config.tui.persist.then(|| self.database().clone()),
             is_preview,
         );
         let prompter: Box<dyn Prompter> = if let Some(seed) = seed {

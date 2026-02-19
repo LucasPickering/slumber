@@ -106,8 +106,8 @@ impl CollectionState {
 
     /// Switch to a new version of the current collection file
     ///
-    /// This does *not* full rebuild state because the collection file hasn't
-    /// changed. We can keep the DB, request store, etc.
+    /// This does *not* fully rebuild state because we're using the same
+    /// collection file. We can keep the DB, request store, etc.
     pub fn set_collection(
         &mut self,
         result: Result<Collection, CollectionError>,

@@ -399,9 +399,9 @@ async fn test_request_exit_status() {
 }
 
 /// Test the `--persist` flag. The main request should be persisted, but the
-/// triggered will **will not**. This is partially a technical decision (makes
+/// triggered one **will not**. This is partially a technical decision (makes
 /// the code simpler) and partially a user-friendliness one. It's not entirely
-/// clear which one the user would wait, so prefer the less "destructive"
+/// clear which one the user would want, so prefer the less "destructive"
 /// option.
 #[tokio::test]
 async fn test_request_persist() {

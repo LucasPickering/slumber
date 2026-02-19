@@ -44,6 +44,7 @@ pub use models::*;
 
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
+    database::CollectionDatabase,
     http::curl::CurlBuilder,
     render::TemplateContext,
 };
@@ -466,7 +467,16 @@ impl RequestTicket {
     /// launched until the consumer starts awaiting the future. For in-flight
     /// time tracking, track your own start time immediately before/after
     /// sending the request.
-    pub async fn send(self) -> Result<Exchange, RequestError> {
+    ///
+    /// `persist_to` is the database that the exchange should be persisted to
+    /// upon completion. Pass `None` if it should not be persisted. This will
+    /// *not* check the recipe's `persist` field before persisting; that's the
+    /// caller's responsibility. Some frontends bypass this field (e.g. CLI's
+    /// `--persist` flag always persist).
+    pub async fn send(
+        self,
+        persist_to: Option<CollectionDatabase>,
+    ) -> Result<Exchange, RequestError> {
         let id = self.record.id;
 
         // Capture the future in a span. Beware of async tracing!
@@ -500,6 +510,12 @@ impl RequestTicket {
                     start_time,
                     end_time,
                 };
+
+                // If a DB was provided, save the exchange to it
+                if let Some(database) = persist_to {
+                    // Error here shouldn't kill the response, just log it
+                    let _ = database.insert_exchange(&exchange).traced();
+                }
 
                 Ok(exchange)
             }

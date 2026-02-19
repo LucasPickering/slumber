@@ -445,6 +445,9 @@ pub struct TuiHttpProvider {
     /// For to making more requests with
     http_engine: HttpEngine,
     messages_tx: MessageSender,
+    /// Database to persist triggered requests to. `None` if persistence is
+    /// disabled globally.
+    persist_to: Option<CollectionDatabase>,
     /// Are we rendering request previews, or the real deal? This controls
     /// whether we'll send triggered requests or not
     preview: bool,
@@ -454,11 +457,13 @@ impl TuiHttpProvider {
     pub fn new(
         http_engine: HttpEngine,
         messages_tx: MessageSender,
+        persist_to: Option<CollectionDatabase>,
         preview: bool,
     ) -> Self {
         Self {
             http_engine,
             messages_tx,
+            persist_to,
             preview,
         }
     }
@@ -498,6 +503,17 @@ impl HttpProvider for TuiHttpProvider {
             let request_id = seed.id;
             let profile_id = template_context.selected_profile.clone();
             let recipe_id = seed.recipe_id.clone();
+            // Check if persistence is enabled for the triggered recipe
+            let persist_recipe = template_context
+                .collection
+                .recipes
+                .get_recipe(&recipe_id)
+                .is_some_and(|recipe| recipe.persist);
+            let persist_to = if persist_recipe {
+                self.persist_to.clone()
+            } else {
+                None
+            };
 
             self.messages_tx.send(HttpMessage::Triggered {
                 request_id,
@@ -520,9 +536,8 @@ impl HttpProvider for TuiHttpProvider {
             self.messages_tx
                 .send(HttpMessage::Loading(Arc::clone(ticket.record())));
 
-            // Clone the exchange so we can persist it in the DB/store and
-            // still return it
-            let result = ticket.send().await.map_err(Arc::new);
+            // Clone the exchange so we can put it in the store and return it
+            let result = ticket.send(persist_to).await.map_err(Arc::new);
             self.messages_tx.send(HttpMessage::Complete(result.clone()));
             result.map_err(TriggeredRequestError::Send)
         }

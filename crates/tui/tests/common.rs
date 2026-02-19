@@ -178,13 +178,13 @@ impl Runner {
             // Eww stinky sleep bad. We need to wait for the TUI loop task to
             // receive the response message. Otherwise, it's possible to exit
             // this call and immediatelly call done(), which will terminate the
-            // loop before it has a chance to process the thread.
+            // loop before it has a chance to receive the message in the queue.
             //
             // Using a sleep sucks, but I couldn't find any other async
             // conditions to wait on. We could repeatedly check the DB, but that
             // ends up taking longer and hogs the main thread. This sleep went
             // 1000/1000 in a test so I think we're good :)
-            time::sleep(Duration::from_millis(10)).await;
+            time::sleep(Duration::from_millis(100)).await;
             Ok::<_, Infallible>(())
         })
         .await

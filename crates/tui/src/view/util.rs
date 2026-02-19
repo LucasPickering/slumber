@@ -4,7 +4,7 @@ pub mod highlight;
 
 use crate::{
     message::{HttpMessage, Message, MessageSender},
-    util::{ResultReported, TempFile},
+    util::{ResultReported, TempFile, syntax::SyntaxType},
     view::ViewContext,
 };
 use chrono::{
@@ -131,16 +131,22 @@ pub fn str_to_text(s: &str) -> Text<'static> {
 pub fn view_text(text: &Text, mime: Option<Mime>) {
     // Write text to the file line-by-line. This avoids having to copy the bytes
     // to a single chunk of bytes just to write them out
-    let Some(file) = TempFile::with_file(|file| {
-        for line in &text.lines {
-            for span in &line.spans {
-                file.write_all(span.content.as_bytes())?;
+    let Some(file) = TempFile::with_file(
+        |file| {
+            for line in &text.lines {
+                for span in &line.spans {
+                    file.write_all(span.content.as_bytes())?;
+                }
+                // Every line gets a line ending, so we end up with a trailing
+                // one
+                file.write_all(b"\n")?;
             }
-            // Every line gets a line ending, so we end up with a trailing one
-            file.write_all(b"\n")?;
-        }
-        Ok(())
-    })
+            Ok(())
+        },
+        mime.as_ref().and_then(|mime| {
+            SyntaxType::from_mime(ViewContext::config().mime_overrides(), mime)
+        }),
+    )
     .reported(&ViewContext::messages_tx()) else {
         return;
     };

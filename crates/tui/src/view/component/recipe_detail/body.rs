@@ -1,6 +1,6 @@
 use crate::{
     message::{Message, RecipeCopyTarget},
-    util::{ResultReported, TempFile},
+    util::{ResultReported, TempFile, syntax::SyntaxType},
     view::{
         Component, Generate,
         common::{
@@ -18,10 +18,7 @@ use crate::{
         context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, SessionKey},
-        util::{
-            highlight::{self, SyntaxType},
-            view_text,
-        },
+        util::{highlight, view_text},
     },
 };
 use anyhow::Context;
@@ -212,10 +209,16 @@ impl TextBody {
     /// the body to a temp file so the editor subprocess can access it. We'll
     /// read it back later.
     fn open_editor(&mut self) {
-        let Some(file) =
-            TempFile::new(self.preview.template().display().as_bytes())
-                .reported(&ViewContext::messages_tx())
-        else {
+        let Some(file) = TempFile::new(
+            self.preview.template().display().as_bytes(),
+            self.mime.as_ref().and_then(|mime| {
+                SyntaxType::from_mime(
+                    ViewContext::config().mime_overrides(),
+                    mime,
+                )
+            }),
+        )
+        .reported(&ViewContext::messages_tx()) else {
             // Write failed
             return;
         };

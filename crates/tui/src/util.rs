@@ -1,5 +1,8 @@
+pub mod syntax;
+
 use crate::{
     message::{Message, MessageSender},
+    util::syntax::SyntaxType,
     view::Question,
 };
 use anyhow::{Context, bail};
@@ -81,18 +84,33 @@ pub struct TempFile {
 }
 
 impl TempFile {
-    /// Create a new temporary file with the given contents
-    pub fn new(contents: &[u8]) -> anyhow::Result<Self> {
-        Self::with_file(|file| file.write_all(contents))
+    /// Create a new temporary file with the given contents and MIME type
+    ///
+    /// The MIME type will be used to set the file extension, to inform the
+    /// opening editor/pager about the content type.
+    pub fn new(
+        contents: &[u8],
+        syntax_type: Option<SyntaxType>,
+    ) -> anyhow::Result<Self> {
+        Self::with_file(|file| file.write_all(contents), syntax_type)
     }
 
     /// Create a new temporary file and call a function to initialize it with
     /// data. This is used for writing a ratatui `Text` object to a file, which
     /// isn't accessible as a single chunk of bytes.
+    ///
+    /// The MIME type will be used to set the file extension, to inform the
+    /// opening editor/pager about the content type.
     pub fn with_file(
         mut writer: impl FnMut(&mut File) -> io::Result<()>,
+        syntax_type: Option<SyntaxType>,
     ) -> anyhow::Result<Self> {
-        let path = env::temp_dir().join(format!("slumber-{}", Uuid::new_v4()));
+        let file_name = format!(
+            "slumber-{tag}.{extension}",
+            tag = Uuid::new_v4(),
+            extension = Self::extension(syntax_type)
+        );
+        let path = env::temp_dir().join(file_name);
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -109,6 +127,14 @@ impl TempFile {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Get the file extension for a MIME type
+    fn extension(syntax_type: Option<SyntaxType>) -> &'static str {
+        match syntax_type {
+            None => "txt",
+            Some(SyntaxType::Json) => "json",
+        }
     }
 }
 

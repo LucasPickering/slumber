@@ -1,5 +1,6 @@
 use crate::{
     message::Message,
+    util::syntax::SyntaxType,
     view::{
         Component, ViewContext,
         common::{
@@ -12,11 +13,7 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::{
-            format_byte_size,
-            highlight::{self, SyntaxType},
-            view_text,
-        },
+        util::{format_byte_size, highlight, view_text},
     },
 };
 use ratatui::{layout::Layout, prelude::Constraint, text::Text};

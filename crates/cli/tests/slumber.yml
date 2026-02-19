@@ -99,3 +99,8 @@ requests:
     body:
       type: json
       data: { "a": "{{ a }}", "b": "{{ b }}" }
+
+  do_not_persist:
+    method: GET
+    url: "{{host}}/secret"
+    persist: false

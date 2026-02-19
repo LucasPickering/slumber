@@ -1,10 +1,12 @@
 //! Utilities for working with templated JSON
 
 use crate::render::TemplateContext;
+use async_trait::async_trait;
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_template::{
-    Render, RenderError, Template, TemplateParseError, TryFromValue,
+    Context, Render, RenderError, RenderedOutput, Template, TemplateParseError,
+    Value, ValueError,
 };
 use std::str::FromStr;
 use thiserror::Error;
@@ -51,47 +53,64 @@ impl JsonTemplate {
     }
 
     /// Render all templates to strings and return a static JSON value
-    pub async fn render(
+    pub async fn render_json(
         &self,
         context: &TemplateContext,
     ) -> Result<serde_json::Value, RenderError> {
-        let rendered = match self {
-            Self::Null => serde_json::Value::Null,
-            Self::Bool(b) => serde_json::Value::Bool(*b),
-            Self::Number(number) => serde_json::Value::Number(number.clone()),
-            Self::String(template) => {
-                // Render to a JSON value instead of just a string. If the
-                // template is a single chunk that returns a non-string value
-                // (e.g. a number or array), use that value directly. This
-                // enables non-string values
-                serde_json::Value::try_from_value(
-                    template.render(context).await.try_collect_value().await?,
-                )
-                .map_err(|error| RenderError::Value(error.error))?
-            }
-            Self::Array(array) => {
-                let array = future::try_join_all(
-                    array.iter().map(|item| item.render(context)),
-                )
-                .await?;
-                serde_json::Value::Array(array)
-            }
-            Self::Object(map) => {
-                let map = future::try_join_all(map.iter().map(
-                    |(key, value)| async {
-                        let key = key.render_string(context).await?;
-                        let value = value.render(context).await?;
-                        Ok::<_, RenderError>((key, value))
-                    },
-                ))
-                .await?;
-                serde_json::Value::Object(map.into_iter().collect())
-            }
-        };
-        Ok(rendered)
+        // Collect render output as a single value. The renderer should always
+        // output a single chunk, so it gets unpacked back to one value.
+        let value = self.render(context).await.try_collect_value().await?;
+        // Convert the template value to a JSON value via serde
+        let json = serde_json::to_value(value).map_err(ValueError::from)?;
+        Ok(json)
     }
 }
 
+#[async_trait(?Send)]
+impl<Ctx: Context> Render<Ctx> for JsonTemplate {
+    async fn render(&self, context: &Ctx) -> RenderedOutput {
+        match self {
+            JsonTemplate::Null => Value::Null.into(),
+            JsonTemplate::Bool(b) => Value::Boolean(*b).into(),
+            JsonTemplate::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Integer(i).into()
+                } else if let Some(f) = n.as_f64() {
+                    Value::Float(f).into()
+                } else {
+                    // Integer is out of i64 range. Template values really
+                    // should be a superset of JSON values, but right now that's
+                    // not the case.
+                    Err(RenderError::from(ValueError::other("TODO"))).into()
+                }
+            }
+            JsonTemplate::String(template) => template.render(context).await,
+            JsonTemplate::Array(array) => {
+                // Render each value and collection into an Array
+                future::try_join_all(array.iter().map(|value| async {
+                    value.render(context).await.try_collect_value().await
+                }))
+                .await
+                .map(Value::from)
+                .into() // Wrap into RenderedOutput
+            }
+            JsonTemplate::Object(map) => {
+                // Render each key/value and collect into an Object
+                future::try_join_all(map.iter().map(|(key, value)| async {
+                    let key = key.render_string(context).await?;
+                    let value =
+                        value.render(context).await.try_collect_value().await?;
+                    Ok::<_, RenderError>((key, value))
+                }))
+                .await
+                .map(Value::from)
+                .into() // Wrap into RenderedOutput
+            }
+        }
+    }
+}
+
+// TODO get rid of this once JSON templates aren't previewed fuckily
 impl From<&JsonTemplate> for serde_json::Value {
     /// Convert a [JsonTemplate] to a [serde_json::Value], stringifying
     /// templates
@@ -204,45 +223,61 @@ pub enum JsonTemplateError {
 mod tests {
     use super::*;
     use crate::{
-        collection::Profile, render::TemplateContext, test_util::by_id,
+        collection::Profile,
+        render::TemplateContext,
+        test_util::{by_id, invalid_utf8},
     };
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
     use slumber_util::{Factory, assert_result};
 
-    /// Test that object keys are rendered as templates
+    /// Render JSON templates to JSON values
     #[rstest]
-    #[case::template_key(
+    #[case::null(json!(null), Ok(json!(null)))]
+    #[case::bool(json!(true), Ok(json!(true)))]
+    #[case::integer(json!(3), Ok(json!(3)))]
+    #[case::float(json!(3.15), Ok(json!(3.15)))]
+    #[case::string(json!("{{ username }}"), Ok(json!("testuser")))]
+    #[case::array(
+        json!([1, 2, "{{ username }}"]),
+        Ok(json!([1, 2, "testuser"])),
+    )]
+    #[case::object(
         json!({"{{ user_id }}": {"name": "{{ username }}"}}),
         Ok(json!({"123": {"name": "testuser"}})),
     )]
-    #[case::invalid_key(
-        json!({"{{ user_id": {"name": "{{ username }}"}}),
-        Err("invalid expression"),
-    )]
+    // serde_json converts the byte string to a number array. Seems reasonable
+    // enough.
+    #[case::bytes(json!("{{ invalid_utf8 }}"), Ok(json!([0xc3, 0x28])))]
+    // Once we have non-string profile values we can test:
+    // - Invalid int/float values
+    // - Unpacking strings
     #[tokio::test]
-    async fn test_render_template_keys(
+    async fn test_render_json(
         #[case] input: serde_json::Value,
         #[case] expected: Result<serde_json::Value, &str>,
     ) {
         let profile = Profile {
             data: indexmap! {
                 "user_id".into() => "123".into(),
-                "username".into() => "testuser".into()
+                "username".into() => "testuser".into(),
+                "invalid_utf8".into() => invalid_utf8(),
             },
             ..Profile::factory(())
         };
         let context =
             TemplateContext::factory((by_id([profile]), indexmap! {}));
 
-        let result = match JsonTemplate::try_from(input) {
-            // If we're expecting an error, it should happen during the parse
-            // so don't check for errors during render. Saves having to
-            // consolidate the error types
-            Ok(json) => Ok(json.render(&context).await.unwrap()),
-            Err(error) => Err(error),
-        };
+        let template = JsonTemplate::try_from(input).expect("Invalid template");
+        let result = template.render_json(&context).await;
         assert_result(result, expected);
+    }
+
+    /// Parsing a JSON value with a key that isn't a valid template is an error
+    #[test]
+    fn test_invalid_key_template() {
+        let json = json!({"{{ invalid_key": {"name": "{{ username }}"}});
+        assert_result(JsonTemplate::try_from(json), Err("invalid expression"));
     }
 }

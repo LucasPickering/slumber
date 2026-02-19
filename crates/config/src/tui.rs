@@ -30,7 +30,7 @@ pub struct TuiConfig {
     /// This mapping is applied before any other MIME-based operations. It
     /// allows you to dynamically replace a response's reported `Content-Type`.
     /// It's useful when the server uses the wrong MIME.
-    mime_overrides: MimeOverrideMap,
+    pub mime_overrides: MimeOverrideMap,
 
     /// Command to use to browse response bodies. If provided, overrides
     /// `PAGER` environment variable.  This could be a single command, or a
@@ -38,7 +38,7 @@ pub struct TuiConfig {
     /// based on response type. Aliased for backward compatibility
     /// with the old name.
     #[serde(alias = "viewer", default)]
-    pager: MimeMap<String>,
+    pub pager: MimeMap<String>,
 
     /// Should templates be rendered inline in the UI, or should we show
     /// the raw text?

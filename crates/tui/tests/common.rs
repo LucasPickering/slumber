@@ -9,6 +9,7 @@ use ratatui::{
     prelude::Backend,
 };
 use rstest::fixture;
+use slumber_config::Config;
 use slumber_core::{
     collection::Collection, database::CollectionDatabase, http::RequestId,
 };
@@ -139,6 +140,15 @@ impl Runner {
             .send_key(KeyCode::Enter)
     }
 
+    /// Open the recipe list, select a recipe by index, and send it
+    ///
+    /// The index is the number from the top (starting at 0)
+    pub fn send_request(self, index: usize) -> Self {
+        self.send_key(KeyCode::Char('r'))
+            .send_keys(iter::repeat_n(KeyCode::Down, index))
+            .send_key(KeyCode::Enter)
+    }
+
     /// Run a fallible future the local task set
     ///
     /// Use this for futures that have to run concurrently with the TUI.
@@ -232,6 +242,14 @@ impl Runner {
             Err(_) => panic!("Test timed out after {TIMEOUT:?}"),
         }
     }
+}
+
+/// Create a config file with the given data and return its path
+pub fn config_file(directory: &Path, config: &Config) -> PathBuf {
+    let path = directory.join("config.yml");
+    let mut file = File::create_new(&path).unwrap();
+    serde_yaml::to_writer(&file, config).unwrap();
+    path
 }
 
 /// Create a collection file with the given data, and return its path

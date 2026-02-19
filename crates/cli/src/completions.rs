@@ -196,23 +196,9 @@ mod tests {
     #[rstest]
     fn test_complete_recipe(_current_dir: CurrentDirGuard) {
         let completions = complete(complete_recipe());
-        assert_eq!(
-            &completions,
-            &[
-                "getUser",
-                "query",
-                "headers",
-                "authBasic",
-                "authBearer",
-                "textBody",
-                "jsonBody",
-                "fileBody",
-                "urlencoded",
-                "multipart",
-                "chained",
-                "override",
-            ]
-        );
+        // Just check the first few, so we don't have to update this whenever
+        // more recipes are added
+        assert_eq!(&completions[..3], &["getUser", "query", "headers",]);
     }
 
     /// Complete recipe IDs from the collection OR request IDs from the database
@@ -234,22 +220,16 @@ mod tests {
                 .unwrap();
         }
 
-        let completions = complete(complete_recipe_or_request_id());
+        let mut completions = complete(complete_recipe_or_request_id());
+        // Ignore most of the recipes, so we don't have to update this whenever
+        // more recipes are added
+        completions.drain(3..completions.len() - 2);
         assert_eq!(
             &completions,
             &[
                 "getUser",
                 "query",
                 "headers",
-                "authBasic",
-                "authBearer",
-                "textBody",
-                "jsonBody",
-                "fileBody",
-                "urlencoded",
-                "multipart",
-                "chained",
-                "override",
                 &id2.to_string(),
                 &id1.to_string()
             ]

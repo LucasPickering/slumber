@@ -450,6 +450,46 @@ async fn test_request_persist() {
     assert_eq!(*status, StatusCode::OK);
 }
 
+/// Test `--persist` when the recipe has `persist: false`. It should **still
+/// persist**. The CLI flag takes priority.
+#[tokio::test]
+async fn test_request_persist_disabled() {
+    // Mock HTTP response
+    let server = MockServer::start().await;
+    let host = server.uri();
+    Mock::given(matchers::method("GET"))
+        .and(matchers::path("/secret"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
+    let (mut command, data_dir) = common::slumber();
+    command.args([
+        "request",
+        "do_not_persist",
+        "--persist",
+        "-o",
+        &format!("host={host}"),
+    ]);
+    command.assert().success();
+
+    // Request was persisted
+    let database = Database::from_directory(&data_dir).unwrap();
+    let requests = database.get_all_requests().unwrap();
+    let (recipe_id, profile_id, status) = assert_matches!(
+        requests.as_slice(),
+        [ExchangeSummary {
+            recipe_id,
+            profile_id,
+            status,
+            ..
+        }] => (recipe_id, profile_id, status),
+    );
+    assert_eq!(recipe_id, &"do_not_persist".into());
+    assert_eq!(profile_id, &Some("profile1".into()));
+    assert_eq!(*status, StatusCode::OK);
+}
+
 /// When loading a collection, the DB should be updated to reflect its name
 #[tokio::test]
 async fn test_set_collection_name() {

@@ -10,9 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add `mime_overrides` config field to modify response `Content-Type` [#721](https://github.com/LucasPickering/slumber/issues/721)
 
+### Changed
+
+- Tweak some pane manipulation behavior
+  - The layout now generally treats the Recipe sidebar as the default. After closing another sidebar (with `Enter`, *not* with `s`), it will default back to the Recipe sidebar the next time you open the sidebar with `s`.
+
 ### Fixed
 
 - Fix request being persisted incorrectly when changing collections while in-flight
+- Fix Exchange pane fullscreening as the Profile pane if the Profile list was the last opened sidebar
 
 <!-- ANCHOR: changelog -->
 

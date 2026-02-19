@@ -16,7 +16,7 @@ use crate::{
             history::History,
             misc::{SidebarEvent, SidebarProps},
             primary::view_state::{
-                PrimaryLayout, Sidebar, SidebarPane, ViewState, WidePane,
+                PrimaryLayout, PrimaryPane, SelectedState, Sidebar, ViewState,
             },
             profile_detail::ProfileDetail,
             profile_list::ProfileList,
@@ -258,50 +258,6 @@ impl PrimaryView {
         RecipeDetail::new(node)
     }
 
-    /// Draw the selected pane in fullscreen mode
-    fn draw_fullscreen(
-        &self,
-        canvas: &mut Canvas,
-        area: Rect,
-        selected_pane: SidebarPane,
-    ) {
-        match selected_pane {
-            // Sidebar
-            SidebarPane::Sidebar => match self.view.sidebar() {
-                Sidebar::Profile => {
-                    canvas.draw(
-                        &self.profile_list,
-                        SidebarProps::list(),
-                        area,
-                        true,
-                    );
-                }
-                Sidebar::Recipe => {
-                    canvas.draw(
-                        &self.recipe_list,
-                        SidebarProps::list(),
-                        area,
-                        true,
-                    );
-                }
-                Sidebar::History => canvas.draw(&self.history, (), area, true),
-            },
-            // Top Pane - always Recipe
-            SidebarPane::Top => {
-                canvas.draw(&self.recipe_detail, (), area, true);
-            }
-            // Bottom Pane - Exchange or Profile, depending on sidebar
-            SidebarPane::Bottom => match self.view.sidebar() {
-                Sidebar::Recipe | Sidebar::History => {
-                    canvas.draw(&self.exchange_pane, (), area, true);
-                }
-                Sidebar::Profile => {
-                    canvas.draw(&self.profile_detail, (), area, true);
-                }
-            },
-        }
-    }
-
     /// Draw the layout with wide panes
     ///
     /// +---------+
@@ -313,11 +269,12 @@ impl PrimaryView {
     /// |         |
     /// | BOTTOM  |
     /// +---------+
-    fn draw_wide(
+    fn draw_wide_layout(
         &self,
         canvas: &mut Canvas,
         area: Rect,
-        selected_pane: WidePane,
+        top: SelectedState<PrimaryPane>,
+        bottom: SelectedState<PrimaryPane>,
     ) {
         let headers: &[&dyn Draw<_>] = &[&self.profile_list, &self.recipe_list];
 
@@ -342,18 +299,8 @@ impl PrimaryView {
         }
 
         // Panes
-        canvas.draw(
-            &self.recipe_detail,
-            (),
-            top_area,
-            selected_pane == WidePane::Top,
-        );
-        canvas.draw(
-            &self.exchange_pane,
-            (),
-            bottom_area,
-            selected_pane == WidePane::Bottom,
-        );
+        self.draw_pane(canvas, top_area, top);
+        self.draw_pane(canvas, bottom_area, bottom);
     }
 
     /// Draw the sidebar layout
@@ -367,14 +314,15 @@ impl PrimaryView {
     /// | A |         |
     /// | R | BOTTOM  |
     /// +---+---------+
-    fn draw_sidebar(
+    fn draw_sidebar_layout(
         &self,
         canvas: &mut Canvas,
         area: Rect,
-        selected_pane: SidebarPane,
+        sidebar: SelectedState<Sidebar>,
+        top: SelectedState<PrimaryPane>,
+        bottom: SelectedState<PrimaryPane>,
     ) {
-        let sidebar = self.view.sidebar();
-        let headers: &[&dyn Draw<_>] = match sidebar {
+        let headers: &[&dyn Draw<_>] = match sidebar.value {
             Sidebar::Profile => &[&self.recipe_list],
             Sidebar::Recipe => &[&self.profile_list],
             Sidebar::History => &[&self.profile_list, &self.recipe_list],
@@ -405,43 +353,63 @@ impl PrimaryView {
             canvas.draw(*header, header_props, *area, false);
         }
 
-        // Sidebar
-        let sidebar_selected = selected_pane == SidebarPane::Sidebar;
-        match sidebar {
+        self.draw_sidebar(canvas, sidebar_area, sidebar);
+        self.draw_pane(canvas, top_area, top);
+        self.draw_pane(canvas, bottom_area, bottom);
+    }
+
+    /// Draw a primary pane to the given area
+    fn draw_pane(
+        &self,
+        canvas: &mut Canvas,
+        area: Rect,
+        pane: SelectedState<PrimaryPane>,
+    ) {
+        match pane.value {
+            PrimaryPane::Recipe => {
+                canvas.draw(&self.recipe_detail, (), area, pane.selected);
+            }
+            PrimaryPane::Exchange => {
+                canvas.draw(&self.exchange_pane, (), area, pane.selected);
+            }
+            PrimaryPane::Profile => {
+                canvas.draw(&self.profile_detail, (), area, pane.selected);
+            }
+            PrimaryPane::Sidebar(sidebar) => self.draw_sidebar(
+                canvas,
+                area,
+                SelectedState {
+                    value: sidebar,
+                    selected: pane.selected,
+                },
+            ),
+        }
+    }
+
+    /// Draw a sidebar pane
+    fn draw_sidebar(
+        &self,
+        canvas: &mut Canvas,
+        area: Rect,
+        sidebar: SelectedState<Sidebar>,
+    ) {
+        match sidebar.value {
             Sidebar::Profile => canvas.draw(
                 &self.profile_list,
                 SidebarProps::list(),
-                sidebar_area,
-                sidebar_selected,
+                area,
+                sidebar.selected,
             ),
             Sidebar::Recipe => canvas.draw(
                 &self.recipe_list,
                 SidebarProps::list(),
-                sidebar_area,
-                sidebar_selected,
+                area,
+                sidebar.selected,
             ),
             Sidebar::History => {
-                canvas.draw(&self.history, (), sidebar_area, sidebar_selected);
+                canvas.draw(&self.history, (), area, sidebar.selected);
             }
         }
-
-        // Panes
-        canvas.draw(
-            &self.recipe_detail,
-            (),
-            top_area,
-            selected_pane == SidebarPane::Top,
-        );
-        let bottom: &dyn Draw = match sidebar {
-            Sidebar::Profile => &self.profile_detail,
-            Sidebar::Recipe | Sidebar::History => &self.exchange_pane,
-        };
-        canvas.draw(
-            bottom,
-            (),
-            bottom_area,
-            selected_pane == SidebarPane::Bottom,
-        );
     }
 }
 
@@ -601,17 +569,17 @@ impl Draw for PrimaryView {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
 
-        // Multi-pane layouts
         match self.view.layout() {
-            PrimaryLayout::Wide(selected_pane) => {
-                self.draw_wide(canvas, area, selected_pane);
+            PrimaryLayout::Wide { top, bottom } => {
+                self.draw_wide_layout(canvas, area, top, bottom);
             }
-            PrimaryLayout::Sidebar(selected_pane) => {
-                self.draw_sidebar(canvas, area, selected_pane);
-            }
-            PrimaryLayout::Fullscreen(selected_pane) => {
-                // Fullscreen - just a single pane
-                self.draw_fullscreen(canvas, area, selected_pane);
+            PrimaryLayout::Sidebar {
+                sidebar,
+                top,
+                bottom,
+            } => self.draw_sidebar_layout(canvas, area, sidebar, top, bottom),
+            PrimaryLayout::Fullscreen { pane } => {
+                self.draw_pane(canvas, area, pane);
             }
         }
 
@@ -649,23 +617,31 @@ mod tests {
     use slumber_util::assert_matches;
     use terminput::KeyCode;
 
-    /// Create component to be tested
-    fn create_component(
-        harness: &mut TestHarness,
-    ) -> TestComponent<PrimaryView> {
-        let recipe_id = harness.collection.first_recipe_id().clone();
-        let profile_id = harness.collection.first_profile_id().clone();
-        let mut component = TestComponent::new(harness, PrimaryView::new());
-        component.int(harness).assert().broadcast([
-            BroadcastEvent::SelectedRecipe(Some(recipe_id)),
-            BroadcastEvent::SelectedProfile(Some(profile_id)),
-            // Two events above each trigger a request selection
-            BroadcastEvent::SelectedRequest(None),
-            BroadcastEvent::SelectedRequest(None),
-        ]);
-        // Clear template preview messages so we can test what we want
-        harness.messages_rx().clear();
+    /// Test various workflows that modify the layout
+    #[rstest]
+    #[case::fullscreen_exchange_after_profile(
+        // There was a bug where this would fullscreen the Profile pane instead
+        &[
+            KeyCode::Char('p'), // Open profile list
+            KeyCode::Enter, // Close profile list
+            KeyCode::Char('2'), // Select Exchange pane
+            KeyCode::Char('f'), // Fullscreen it
+        ],
+        // Exchange pane should be fullscreened
+        PrimaryLayout::Fullscreen { pane: pane(PrimaryPane::Exchange, true) },
+    )]
+    fn test_layout_transitions(
+        mut harness: TestHarness,
+        #[case] keys: &[KeyCode],
+        #[case] expected: PrimaryLayout,
+    ) {
+        let mut component = create_component(&mut harness);
         component
+            .int(&mut harness)
+            .send_keys(keys.to_owned())
+            .assert()
+            .empty();
+        assert_eq!(component.view.layout(), expected);
     }
 
     /// Test selected pane and fullscreen mode loading from persistence
@@ -765,5 +741,31 @@ mod tests {
             [Message::CopyRecipe(target)] => target
         );
         assert_eq!(actual_target, expected_target);
+    }
+
+    /// Create component to be tested
+    fn create_component(
+        harness: &mut TestHarness,
+    ) -> TestComponent<PrimaryView> {
+        let recipe_id = harness.collection.first_recipe_id().clone();
+        let profile_id = harness.collection.first_profile_id().clone();
+        let mut component = TestComponent::new(harness, PrimaryView::new());
+        component.int(harness).assert().broadcast([
+            BroadcastEvent::SelectedRecipe(Some(recipe_id)),
+            BroadcastEvent::SelectedProfile(Some(profile_id)),
+            // Two events above each trigger a request selection
+            BroadcastEvent::SelectedRequest(None),
+            BroadcastEvent::SelectedRequest(None),
+        ]);
+        // Clear template preview messages so we can test what we want
+        harness.messages_rx().clear();
+        component
+    }
+
+    fn pane(pane: PrimaryPane, selected: bool) -> SelectedState<PrimaryPane> {
+        SelectedState {
+            value: pane,
+            selected,
+        }
     }
 }

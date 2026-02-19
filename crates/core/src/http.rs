@@ -763,7 +763,7 @@ impl Recipe {
             | (Some(RecipeBody::Raw(_)), Some(BodyOverride::Json(json)))
             | (Some(RecipeBody::Stream(_)), Some(BodyOverride::Json(json)))
             | (Some(RecipeBody::Json(_)), Some(BodyOverride::Json(json))) => {
-                json.render(context)
+                json.render_json(context)
                     .await
                     .map(|value| Some(RenderedBody::Json(value)))
                     .map_err(RequestBuildErrorKind::BodyRender)

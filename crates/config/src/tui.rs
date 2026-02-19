@@ -19,8 +19,7 @@ use std::env;
 /// Configuration specific to the TUI
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(default))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema), schemars(default))]
 pub struct TuiConfig {
     /// Configuration for in-app query and export commands
     pub commands: CommandsConfig,
@@ -121,8 +120,7 @@ impl Config {
 /// Configuration for in-app query and export commands
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(default))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema), schemars(default))]
 pub struct CommandsConfig {
     /// Wrapping shell to parse and execute commands
     /// If empty, commands will be parsed with shell-words and run natievly

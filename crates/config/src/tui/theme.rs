@@ -107,9 +107,9 @@ impl Default for Syntax {
 /// [the ratatui docs](https://docs.rs/ratatui/0.29.0/ratatui/style/enum.Color.html#impl-FromStr-for-Color).
 #[derive(Copy, Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(
     feature = "schema",
+    derive(schemars::JsonSchema),
     schemars(rename = "Color", schema_with = "color_schema")
 )]
 // This wrapper lets us define deserialization and schema generation easily

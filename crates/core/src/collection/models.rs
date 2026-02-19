@@ -31,16 +31,16 @@ use tracing::info;
 /// of configuration.
 #[derive(Debug, Default, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(
     feature = "schema",
+    derive(schemars::JsonSchema),
     schemars(
         // Allow any top-level property beginning with .
         extend("patternProperties" = {
             "^\\.": { "description": "Ignore any property beginning with `.`" }
         }),
         example = Collection::example(),
-    )
+    ),
 )]
 pub struct Collection {
     /// Descriptive name for the collection
@@ -138,8 +138,11 @@ impl slumber_util::Factory for Collection {
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(example = Profile::example()))]
+#[cfg_attr(
+    feature = "schema",
+    derive(schemars::JsonSchema),
+    schemars(example = Profile::example()),
+)]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
@@ -222,8 +225,11 @@ impl slumber_util::Factory for ProfileId {
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(example = Folder::example()))]
+#[cfg_attr(
+    feature = "schema",
+    derive(schemars::JsonSchema),
+    schemars(example = Folder::example()),
+)]
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
@@ -266,8 +272,11 @@ impl slumber_util::Factory for Folder {
 /// and intuitive.
 #[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(example = Recipe::example()))]
+#[cfg_attr(
+    feature = "schema",
+    derive(schemars::JsonSchema),
+    schemars(example = Recipe::example()),
+)]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,

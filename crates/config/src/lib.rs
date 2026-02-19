@@ -48,9 +48,9 @@ const DEFAULT_OLD: &str = include_str!("default_old.yml");
 /// picked up until the app restarts.
 #[derive(Debug, Default, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(
     feature = "schema",
+    derive(schemars::JsonSchema),
     schemars(
         default,
         // Allow any top-level property beginning with .
@@ -58,7 +58,7 @@ const DEFAULT_OLD: &str = include_str!("default_old.yml");
             "^\\.": { "description": "Ignore any property beginning with `.`" }
         }),
         example = Config::default(),
-    )
+    ),
 )]
 pub struct Config {
     /// Command to use for in-app editing. If provided, overrides
@@ -235,8 +235,7 @@ impl Config {
 /// Configuration for the engine that handles HTTP requests
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(default))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema), schemars(default))]
 pub struct HttpEngineConfig {
     /// TLS cert errors on these hostnames are ignored. Be careful!
     pub ignore_certificate_hosts: Vec<String>,

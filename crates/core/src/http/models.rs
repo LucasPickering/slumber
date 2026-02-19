@@ -155,11 +155,13 @@ pub struct HttpVersionParseError {
 // ergonomic at the cost of some flexibility.
 #[derive(Copy, Clone, Debug, EnumIter, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "schema",
+    derive(schemars::JsonSchema),
+    schemars(!try_from, rename_all = "UPPERCASE"), // Show as a string enum
+)]
 // Use FromStr to enable case-insensitivity
 #[serde(into = "&str", try_from = "String")]
-// Show as a string enum
-#[cfg_attr(feature = "schema", schemars(!try_from, rename_all = "UPPERCASE"))]
 pub enum HttpMethod {
     Connect,
     Delete,

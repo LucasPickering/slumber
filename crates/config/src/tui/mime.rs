@@ -99,9 +99,12 @@ impl<V: DeserializeYaml> DeserializeYaml for MimeMap<V> {
 /// **must be valid MIME types**.
 #[derive(Debug, Default, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "schema",
+    derive(schemars::JsonSchema),
+    schemars(example = Self::example()),
+)]
 #[serde(transparent)]
-#[cfg_attr(feature = "schema", schemars(example = Self::example()))]
 pub struct MimeOverrideMap(MimeMap<MimeAdopt>);
 
 impl MimeOverrideMap {

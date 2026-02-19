@@ -195,10 +195,6 @@ pub struct SingleRenderContext<'a> {
 }
 
 impl slumber_template::Context for SingleRenderContext<'_> {
-    fn can_stream(&self) -> bool {
-        self.can_stream
-    }
-
     async fn get_field(
         &self,
         field: &Identifier,
@@ -235,7 +231,12 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             })?;
 
         // Render the nested template
-        let output = template.render(self).await;
+        let mut output = template.render(self).await;
+
+        // If we don't allow streaming, resolve the value now so it gets cached
+        if !self.can_stream {
+            output.resolve_streams().await?;
+        }
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no

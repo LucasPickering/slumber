@@ -75,7 +75,7 @@ impl ProfileList {
         let items = profiles.values().map(ProfileListItem::new).collect();
 
         Select::builder(items)
-            .subscribe([SelectEventKind::Select, SelectEventKind::Submit])
+            .subscribe([SelectEventKind::Select])
             .filter(filter)
             .persisted(&SelectedProfileKey)
             .build()
@@ -92,6 +92,9 @@ impl Component for ProfileList {
             .m()
             .click(|_, _| self.emitter.emit(SidebarEvent::Open))
             .action(|action, propagate| match action {
+                Action::Submit | Action::Cancel => {
+                    self.emitter.emit(SidebarEvent::Reset);
+                }
                 Action::Search => self.filter_focused = true,
 
                 _ => propagate.set(),
@@ -104,11 +107,7 @@ impl Component for ProfileList {
                         self.selected_id().cloned(),
                     ));
                 }
-                // Close the list on Enter
-                SelectEventKind::Submit => {
-                    self.emitter.emit(SidebarEvent::Close);
-                }
-                SelectEventKind::Toggle => {}
+                SelectEventKind::Submit | SelectEventKind::Toggle => {}
             })
             // Emitted events from filter
             .emitted(self.filter.to_emitter(), |event| match event {

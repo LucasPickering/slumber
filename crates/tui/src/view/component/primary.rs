@@ -31,7 +31,7 @@ use crate::{
 };
 use indexmap::IndexMap;
 use ratatui::{
-    layout::{Layout, Rect, Spacing},
+    layout::{Layout, Offset, Rect, Spacing},
     prelude::Constraint,
 };
 use serde::Serialize;
@@ -410,6 +410,19 @@ impl PrimaryView {
                 canvas.draw(&self.history, (), area, sidebar.selected);
             }
         }
+
+        // Draw toggle hotkey hint
+        let bottom_row = area.offset(Offset {
+            x: 1,
+            y: (area.height - 1).into(),
+        });
+        canvas.render_widget(
+            format!(
+                "Toggle Sidebar {binding}",
+                binding = ViewContext::binding_display(Action::ToggleSidebar),
+            ),
+            bottom_row,
+        );
     }
 }
 
@@ -483,19 +496,19 @@ impl Component for PrimaryView {
                 SidebarEvent::Open => {
                     self.view.open_sidebar(Sidebar::Recipe);
                 }
-                SidebarEvent::Close => self.view.close_sidebar(),
+                SidebarEvent::Reset => self.view.reset_sidebar(),
             })
             .emitted(self.profile_list.to_emitter(), |event| match event {
                 SidebarEvent::Open => {
                     self.view.open_sidebar(Sidebar::Profile);
                 }
-                SidebarEvent::Close => self.view.close_sidebar(),
+                SidebarEvent::Reset => self.view.reset_sidebar(),
             })
             .emitted(self.history.to_emitter(), |event| match event {
                 SidebarEvent::Open => {
                     self.view.open_sidebar(Sidebar::History);
                 }
-                SidebarEvent::Close => self.view.close_sidebar(),
+                SidebarEvent::Reset => self.view.reset_sidebar(),
             })
             // Handle our own menu action type
             .emitted(self.global_actions_emitter, |menu_action| {
@@ -619,6 +632,23 @@ mod tests {
 
     /// Test various workflows that modify the layout
     #[rstest]
+    #[case::submit_sidebar(
+        &[KeyCode::Char('p'), KeyCode::Enter],
+        PrimaryLayout::Sidebar {
+            sidebar: state(Sidebar::Recipe, true),
+            top: state(PrimaryPane::Recipe, false),
+            bottom: state(PrimaryPane::Exchange, false),
+        },
+    )]
+    #[case::cancel_sidebar(
+        // Functionally the same as submitting the sidebar
+        &[KeyCode::Char('p'), KeyCode::Esc],
+        PrimaryLayout::Sidebar {
+            sidebar: state(Sidebar::Recipe, true),
+            top: state(PrimaryPane::Recipe, false),
+            bottom: state(PrimaryPane::Exchange, false),
+        },
+    )]
     #[case::fullscreen_exchange_after_profile(
         // There was a bug where this would fullscreen the Profile pane instead
         &[
@@ -628,7 +658,7 @@ mod tests {
             KeyCode::Char('f'), // Fullscreen it
         ],
         // Exchange pane should be fullscreened
-        PrimaryLayout::Fullscreen { pane: pane(PrimaryPane::Exchange, true) },
+        PrimaryLayout::Fullscreen { pane: state(PrimaryPane::Exchange, true) },
     )]
     fn test_layout_transitions(
         mut harness: TestHarness,
@@ -762,10 +792,7 @@ mod tests {
         component
     }
 
-    fn pane(pane: PrimaryPane, selected: bool) -> SelectedState<PrimaryPane> {
-        SelectedState {
-            value: pane,
-            selected,
-        }
+    fn state<T>(value: T, selected: bool) -> SelectedState<T> {
+        SelectedState { value, selected }
     }
 }

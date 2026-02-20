@@ -86,15 +86,12 @@ impl ViewState {
         self.selected_pane = SelectedPane::Sidebar;
     }
 
-    /// Close the sidebar and return to the wide view
+    /// Reset to the recipe sidebar
     ///
-    /// This will reset the "last opened" sidebar to the recipe list. The recipe
-    /// list is treated as the default, so when a sidebar is closed (as opposed
-    /// to hidden by toggle), its state is cleared.
-    pub fn close_sidebar(&mut self) {
-        self.sidebar_open = false;
+    /// Call this when submitting/cancelling a secondary sidebar. This will
+    /// *not* close the sidebar, just revert to the default content.
+    pub fn reset_sidebar(&mut self) {
         self.sidebar = Sidebar::Recipe;
-        self.fix_selected_pane();
     }
 
     /// Open/close the sidebar
@@ -102,11 +99,6 @@ impl ViewState {
         // A toggle is a "soft" close, so we don't wipe out the selected
         // sidebar. When re-opening, we want to re-show the same sidebar.
         self.sidebar_open ^= true;
-        self.fix_selected_pane();
-    }
-
-    /// Make sure the sidebar isn't selected while it's closed
-    fn fix_selected_pane(&mut self) {
         if !self.sidebar_open && self.selected_pane == SelectedPane::Sidebar {
             self.selected_pane = SelectedPane::Top;
         }
@@ -330,6 +322,20 @@ mod tests {
             fullscreen: false,
         },
     )]
+    #[case::reset_sidebar(
+        ViewState {
+            sidebar: Sidebar::History,
+            sidebar_open: true,
+            ..Default::default()
+        },
+        ViewState::reset_sidebar,
+        // Sidebar remains open
+        ViewState {
+            sidebar: Sidebar::Recipe,
+            sidebar_open: true,
+            ..Default::default()
+        },
+    )]
     // Fullscreen
     #[case::toggle_fullscreen_open(
         ViewState {
@@ -476,7 +482,7 @@ mod tests {
             open_recipe_sidebar,
             open_profile_sidebar,
             open_history_sidebar,
-            ViewState::close_sidebar,
+            ViewState::reset_sidebar,
             ViewState::toggle_sidebar,
             ViewState::previous_pane,
             ViewState::next_pane,

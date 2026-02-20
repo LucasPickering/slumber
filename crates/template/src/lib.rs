@@ -66,6 +66,15 @@ pub trait Render<Ctx: Context> {
     /// final output types.
     async fn render(&self, context: &Ctx) -> RenderedOutput;
 
+    /// TODO
+    async fn render_to<O: RenderOutput>(
+        &self,
+        context: &Ctx,
+    ) -> Result<O, RenderError> {
+        let output = self.render(context).await;
+        O::from_chunks(output.0).await
+    }
+
     /// Render this template to bytes
     ///
     /// This is a convenience method for rendering to [RenderedOutput] and
@@ -85,6 +94,44 @@ pub trait Render<Ctx: Context> {
     ) -> Result<String, RenderError> {
         let bytes = self.render_bytes(context).await?;
         String::from_utf8(bytes.into()).map_err(RenderError::other)
+    }
+}
+
+/// TODO
+pub trait RenderOutput: Sized {
+    async fn from_chunks(
+        chunks: Vec<RenderedChunk>,
+    ) -> Result<Self, RenderError>;
+}
+
+impl RenderOutput for Value {
+    async fn from_chunks(
+        chunks: Vec<RenderedChunk>,
+    ) -> Result<Self, RenderError> {
+        fn unpack(chunks: Vec<RenderedChunk>) -> LazyValue {
+            todo!()
+        }
+
+        // If we only have one chunk, unpack it into a value
+        let value = match unpack(chunks) {
+            LazyValue::Value(value) => value,
+            lazy @ LazyValue::Stream { .. } => lazy.resolve().await?,
+            LazyValue::Nested(output) => {
+                // Render to bytes
+                let bytes = output.try_collect_bytes().await?;
+                Value::Bytes(bytes)
+            }
+        };
+
+        // Try to convert bytes to string, because that's generally more
+        // useful to the consumer
+        match value {
+            Value::Bytes(bytes) => match String::from_utf8(bytes.into()) {
+                Ok(s) => Ok(Value::String(s)),
+                Err(error) => Ok(Value::Bytes(error.into_bytes().into())),
+            },
+            _ => Ok(value),
+        }
     }
 }
 

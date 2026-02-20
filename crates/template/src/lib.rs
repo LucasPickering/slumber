@@ -23,12 +23,12 @@ pub use value::{
 };
 
 use bytes::{Bytes, BytesMut};
-use futures::{FutureExt, Stream, StreamExt, TryStreamExt, future, stream};
+use futures::{Stream, StreamExt, TryStreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use slumber_util::NEW_ISSUE_LINK;
-use std::{fmt::Debug, mem, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
@@ -309,31 +309,6 @@ impl RenderedOutput {
             }
             RenderedChunk::Error(_) => true,
         })
-    }
-
-    /// Resolve all streams in all chunks in-place
-    ///
-    /// If this returns `Ok`, it is guaranteed that [Self::has_stream] will
-    /// return `false`.
-    pub async fn resolve_streams(&mut self) -> Result<(), RenderError> {
-        for chunk in &mut self.0 {
-            match chunk {
-                RenderedChunk::Raw(_)
-                | RenderedChunk::Error(_)
-                | RenderedChunk::Rendered(LazyValue::Value(_)) => {}
-                RenderedChunk::Rendered(lazy @ LazyValue::Stream { .. }) => {
-                    // Resolve the stream and put the resolved value back
-                    let v = mem::replace(lazy, Value::Null.into());
-                    *lazy = v.resolve().await?.into();
-                }
-                // Recursion!!
-                RenderedChunk::Rendered(LazyValue::Nested(output)) => {
-                    output.resolve_streams().boxed_local().await?;
-                }
-            }
-        }
-        debug_assert!(!self.has_stream()); // Sanity check
-        Ok(())
     }
 
     /// Unpack this output into a single lazy value. If the output is a single

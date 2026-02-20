@@ -297,21 +297,6 @@ mod tests {
     use super::*;
     use crate::assert_err;
     use rstest::rstest;
-    use serde::Deserialize;
-
-    #[derive(Debug, PartialEq, Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Data {
-        data: Inner,
-    }
-
-    #[derive(Debug, PartialEq, Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Inner {
-        i: i32,
-        b: bool,
-        s: String,
-    }
 
     #[rstest]
     #[case::zero(Duration::from_secs(0), "0s")]

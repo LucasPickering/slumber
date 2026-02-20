@@ -441,6 +441,19 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         self.context
     }
 
+    /// Replace the context value by mapping it through a function
+    pub fn map_context<Ctx2>(
+        self,
+        f: impl FnOnce(&'ctx Ctx) -> &'ctx Ctx2,
+    ) -> Arguments<'ctx, Ctx2> {
+        Arguments {
+            context: f(self.context),
+            position: self.position,
+            num_popped: self.num_popped,
+            keyword: self.keyword,
+        }
+    }
+
     /// Pop the next positional argument off the front of the queue and convert
     /// it to type `T` using its [TryFromValue] implementation. Return an error
     /// if there are no positional arguments left or the conversion fails.

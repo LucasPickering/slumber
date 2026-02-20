@@ -42,9 +42,15 @@ use tracing::error;
 /// becomes a bottleneck, we can `Arc` some stuff.
 ///
 /// One instance of this context applies to all renders in a group (a render
-/// group is all the renders for a single request). [SingleRenderContext] is a
-/// wrapper for each individual render. Use [Self::streaming] to get the wrapper
-/// for a render.
+/// group is all the renders for a single request). It's important to use the
+/// same context for an entire request so common profile fields can be cached
+/// between components of the request.
+///
+/// This context does not emit streams from profile fields. If a field renders
+/// to a stream, it will be eagerly resolved. This is fine for most contexts
+/// because the value must be resolved to build the request. For outputs that
+/// support streaming though (request bodies), use [TemplateContext::stream] to
+/// get a context that will emit streams.
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Entire request collection
@@ -74,19 +80,80 @@ pub struct TemplateContext {
 }
 
 impl TemplateContext {
-    ///  Wrap this context for a single render, with streaming optionally
-    /// enabled
-    pub fn streaming(&self, can_stream: bool) -> SingleRenderContext<'_> {
-        SingleRenderContext {
-            context: self,
-            can_stream,
-        }
+    /// Get a version of this template context that supports streaming
+    pub fn stream(&self) -> StreamTemplateContext<'_> {
+        StreamTemplateContext { context: self }
     }
 
     fn current_profile(&self) -> Option<&Profile> {
         self.selected_profile
             .as_ref()
             .and_then(|id| self.collection.profiles.get(id))
+    }
+
+    /// Evaluate a profile field
+    ///
+    /// Resolved values will be cached. If `can_stream` is disabled and the
+    /// returned value is a stream, it will be resolved and cached. If
+    /// `can_stream` is enabled, streams will be returned natively.
+    async fn get_field_inner(
+        &self,
+        field: &Identifier,
+        can_stream: bool,
+    ) -> Result<LazyValue, RenderError> {
+        // Check the field cache to see if this value is already being computed
+        // somewhere else. If it is, we'll block on that and re-use the result.
+        // If not, we get a guard back, meaning we're responsible for the
+        // computation. At the end, we'll write back to the guard so everyone
+        // else can copy our homework.
+        let guard =
+            match self.state.field_cache.get_or_init(field.clone()).await {
+                FieldCacheOutcome::Hit(value) => return Ok(value.into()),
+                FieldCacheOutcome::Miss(guard) => guard,
+            };
+
+        // We're responsible for the computation. Grab the field's value
+        let template = self
+            // Check overrides first
+            .overrides
+            .get(field.as_str())
+            .or_else(|| {
+                // Check the current profile
+                let profile = self.current_profile()?;
+                profile.data.get(field.as_str())
+            })
+            .ok_or_else(|| FunctionError::UnknownField {
+                field: field.to_string(),
+            })?;
+
+        // Render the nested template
+        let output = template.render(self).await;
+
+        // If the output is a value, we can cache it. If it's a stream, it can't
+        // be cloned so it can't be cached. In practice there's probably no
+        // reason to include the same stream field twice in a single body, but
+        // if that happens we'll have to compute it twice. This saves us a lot
+        // of annoying machinery though.
+        if can_stream && output.has_stream() {
+            // If the nested template rendered to a single chunk, we can unpack
+            // it out of its chunk list. If it had multiple chunks, we need to
+            // keep all of them to provide both a correct preview and the final
+            // stream
+            Ok(output.unpack())
+        } else {
+            let value = output.try_collect_value().await.map_err(
+                // We *could* just return the error, but wrap it to give
+                // additional context
+                |error| {
+                    RenderError::from(FunctionError::ProfileNested {
+                        field: field.clone(),
+                        error,
+                    })
+                },
+            )?;
+            guard.set(value.clone());
+            Ok(LazyValue::Value(value))
+        }
     }
 
     /// Get the most recent response for a profile+recipe pair. This will
@@ -180,89 +247,12 @@ impl TemplateContext {
     }
 }
 
-/// A wrapper for [TemplateContext] that provides the
-/// [slumber_template::Context] trait. While [TemplateContext] is intended to be
-/// used for multiple renders within a render group, this is meant for an
-/// individual render. As such, it captures settings that can vary across
-/// different renders in the same group.
-#[derive(Debug, Deref)]
-pub struct SingleRenderContext<'a> {
-    #[deref]
-    context: &'a TemplateContext,
-    /// Is streaming supported for this component? Enabled for request bodies,
-    /// disabled for everything else.
-    can_stream: bool,
-}
-
-impl slumber_template::Context for SingleRenderContext<'_> {
+impl slumber_template::Context for TemplateContext {
     async fn get_field(
         &self,
         field: &Identifier,
     ) -> Result<LazyValue, RenderError> {
-        // Check the field cache to see if this value is already being computed
-        // somewhere else. If it is, we'll block on that and re-use the result.
-        // If not, we get a guard back, meaning we're responsible for the
-        // computation. At the end, we'll write back to the guard so everyone
-        // else can copy our homework.
-        let guard = match self
-            .context
-            .state
-            .field_cache
-            .get_or_init(field.clone())
-            .await
-        {
-            FieldCacheOutcome::Hit(value) => return Ok(value.into()),
-            FieldCacheOutcome::Miss(guard) => guard,
-        };
-
-        // We're responsible for the computation. Grab the field's value
-        let template = self
-            // Check overrides first
-            .context
-            .overrides
-            .get(field.as_str())
-            .or_else(|| {
-                // Check the current profile
-                let profile = self.context.current_profile()?;
-                profile.data.get(field.as_str())
-            })
-            .ok_or_else(|| FunctionError::UnknownField {
-                field: field.to_string(),
-            })?;
-
-        // Render the nested template
-        let mut output = template.render(self).await;
-
-        // If we don't allow streaming, resolve the value now so it gets cached
-        if !self.can_stream {
-            output.resolve_streams().await?;
-        }
-
-        // If the output is a value, we can cache it. If it's a stream, it can't
-        // be cloned so it can't be cached. In practice there's probably no
-        // reason to include the same stream field twice in a single body, but
-        // if that happens we'll have to compute it twice. This saves us a lot
-        // of annoying machinery though.
-        if output.has_stream() {
-            // If the nested template rendered to a single chunk, we can unpack
-            // it out of its chunk list. If it had multiple chunks, we need to
-            // keep all of them to provide both a correct preview and the final
-            // stream
-            Ok(output.unpack())
-        } else {
-            let value = output.try_collect_value().await.map_err(
-                // We *could* just return the error, but wrap it to give
-                // additional context
-                |error| {
-                    RenderError::from(FunctionError::ProfileNested {
-                        field: field.clone(),
-                        error,
-                    })
-                },
-            )?;
-            guard.set(value.clone());
-            Ok(LazyValue::Value(value))
-        }
+        self.get_field_inner(field, false).await
     }
 
     async fn call(
@@ -299,6 +289,36 @@ impl slumber_template::Context for SingleRenderContext<'_> {
             "upper" => functions::upper(arguments),
             _ => Err(RenderError::FunctionUnknown),
         }
+    }
+}
+
+/// A [TemplateContext] that supports streaming
+///
+/// By default, [TemplateContext] will not emit streamed values from profile
+/// fields. All streams are resolved eagerly and cached. For output destinations
+/// that support streaming (request bodies), use [TemplateContext::stream] to
+/// get a context that will emit streams instead of eagerly resolving them.
+#[derive(Debug, Deref)]
+pub struct StreamTemplateContext<'a> {
+    #[deref]
+    context: &'a TemplateContext,
+}
+
+impl slumber_template::Context for StreamTemplateContext<'_> {
+    async fn get_field(
+        &self,
+        field: &Identifier,
+    ) -> Result<LazyValue, RenderError> {
+        self.get_field_inner(field, true).await
+    }
+
+    async fn call(
+        &self,
+        function_name: &Identifier,
+        arguments: Arguments<'_, Self>,
+    ) -> Result<LazyValue, RenderError> {
+        let arguments = arguments.map_context(|ctx| ctx.context);
+        self.context.call(function_name, arguments).await
     }
 }
 

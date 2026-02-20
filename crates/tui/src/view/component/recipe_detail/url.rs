@@ -29,7 +29,7 @@ impl UrlDisplay {
 
     /// Get the preview text widget. This is used where the URL is drawn
     /// non-interactively
-    pub fn preview(&self) -> &Text {
+    pub fn preview(&'_ self) -> &'_ Text<'_> {
         self.url.text()
     }
 

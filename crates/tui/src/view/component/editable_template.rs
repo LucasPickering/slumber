@@ -89,7 +89,7 @@ impl<PK> EditableTemplate<PK> {
     }
 
     /// Get visible preview text
-    pub fn text(&self) -> &Text {
+    pub fn text(&'_ self) -> &'_ Text<'_> {
         &self.text
     }
 

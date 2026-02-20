@@ -353,7 +353,7 @@ impl TestBackend {
 
     /// Get a reference to the screen buffer. This borrows the `RefCell`, so
     /// don't hold it longer than you need it.
-    pub fn buffer(&self) -> Ref<Buffer> {
+    pub fn buffer(&'_ self) -> Ref<'_, Buffer> {
         Ref::map(self.backend.borrow(), |backend| backend.buffer())
     }
 }

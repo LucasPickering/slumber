@@ -195,6 +195,8 @@ impl FromStr for RecipeOrRequest {
 }
 
 /// Format a datetime in ISO 8601 format
-fn format_time_iso(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
+fn format_time_iso(
+    time: &'_ DateTime<Utc>,
+) -> DelayedFormat<StrftimeItems<'_>> {
     time.with_timezone(&Local).format("%FT%TZ%Z")
 }

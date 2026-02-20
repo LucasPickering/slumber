@@ -17,7 +17,7 @@ use crate::{
         },
         context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, ToEmitter},
-        persistent::{PersistentKey, SessionKey},
+        persistent::SessionKey,
         util::{highlight, view_text},
     },
 };
@@ -28,7 +28,6 @@ use ratatui::{
     layout::{Constraint, Layout},
     text::Text,
 };
-use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
@@ -399,31 +398,6 @@ impl RecipeTableKind for FormTableKind {
     fn key_as_str(key: &Self::Key) -> &str {
         key.as_str()
     }
-}
-
-/// Persistence key for selected form field, per recipe. Value is the field name
-#[derive(Debug, Serialize)]
-pub struct SelectedFormRowKey(RecipeId);
-
-impl PersistentKey for SelectedFormRowKey {
-    type Value = String;
-}
-
-/// Persistence key for toggle state for a single form field in the table
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct FormRowKey {
-    recipe_id: RecipeId,
-    field: String,
-}
-
-// Toggle persistent
-impl PersistentKey for FormRowKey {
-    type Value = bool;
-}
-
-// Override template persistent
-impl SessionKey for FormRowKey {
-    type Value = Template;
 }
 
 /// Action menu items for a raw body

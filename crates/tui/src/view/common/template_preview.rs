@@ -250,11 +250,11 @@ impl TextStitcher {
         // The first line should extend the final line of the current text,
         // because there isn't necessarily a line break between chunks
         let mut lines = chunk_text.lines();
-        if let Some(first_line) = lines.next() {
-            if !first_line.is_empty() {
-                self.text
-                    .push_span(Span::styled(first_line.to_owned(), style));
-            }
+        if let Some(first_line) = lines.next()
+            && !first_line.is_empty()
+        {
+            self.text
+                .push_span(Span::styled(first_line.to_owned(), style));
         }
         self.text.extend(lines.map(|line| {
             // If the text is empty, push an empty line instead of a line with

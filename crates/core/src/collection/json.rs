@@ -65,11 +65,7 @@ impl JsonTemplate {
                 // (e.g. a number or array), use that value directly. This
                 // enables non-string values
                 serde_json::Value::try_from_value(
-                    template
-                        .render(&context.streaming(false))
-                        .await
-                        .try_collect_value()
-                        .await?,
+                    template.render(context).await.try_collect_value().await?,
                 )
                 .map_err(|error| RenderError::Value(error.error))?
             }
@@ -83,9 +79,7 @@ impl JsonTemplate {
             Self::Object(map) => {
                 let map = future::try_join_all(map.iter().map(
                     |(key, value)| async {
-                        let key = key
-                            .render_string(&context.streaming(false))
-                            .await?;
+                        let key = key.render_string(context).await?;
                         let value = value.render(context).await?;
                         Ok::<_, RenderError>((key, value))
                     },

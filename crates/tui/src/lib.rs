@@ -813,7 +813,11 @@ where
         let context = self.template_context(profile_id, None);
         self.messages_tx.spawn(async move {
             // Render chunks, then write them to the output destination
-            let chunks = template.render(&context.streaming(can_stream)).await;
+            let chunks = if can_stream {
+                template.render(&context.stream()).await
+            } else {
+                template.render(&context).await
+            };
             on_complete(chunks);
         });
     }

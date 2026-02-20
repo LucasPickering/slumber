@@ -2,7 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    render::{FunctionError, Prompt, SelectOption, SingleRenderContext},
+    render::{FunctionError, Prompt, SelectOption, TemplateContext},
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
@@ -124,7 +124,7 @@ pub fn boolean(value: Value) -> bool {
 /// ```
 #[template]
 pub fn command(
-    #[context] context: &SingleRenderContext<'_>,
+    #[context] context: &TemplateContext,
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
@@ -304,10 +304,7 @@ pub fn env(variable: String, #[kwarg] default: String) -> String {
 ///     output: Contents of config.json file
 /// ```
 #[template]
-pub fn file(
-    #[context] context: &SingleRenderContext<'_>,
-    path: String,
-) -> LazyValue {
+pub fn file(#[context] context: &TemplateContext, path: String) -> LazyValue {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
     let source = StreamSource::File { path: path.clone() };
     // Return the file as a stream. If streaming isn't available here, it will
@@ -870,7 +867,7 @@ pub fn lower(value: String) -> String {
 /// ```
 #[template]
 pub async fn prompt(
-    #[context] context: &SingleRenderContext<'_>,
+    #[context] context: &TemplateContext,
     #[kwarg] message: Option<String>,
     #[kwarg] default: Option<String>,
     #[kwarg] sensitive: bool,
@@ -979,7 +976,7 @@ pub fn replace(
 /// ```
 #[template]
 pub async fn response(
-    #[context] context: &SingleRenderContext<'_>,
+    #[context] context: &TemplateContext,
     recipe_id: RecipeId,
     #[kwarg] trigger: RequestTrigger,
 ) -> Result<Bytes, FunctionError> {
@@ -1015,7 +1012,7 @@ pub async fn response(
 /// ```
 #[template]
 pub async fn response_header(
-    #[context] context: &SingleRenderContext<'_>,
+    #[context] context: &TemplateContext,
     recipe_id: RecipeId,
     header: String,
     #[kwarg] trigger: RequestTrigger,
@@ -1055,7 +1052,7 @@ pub async fn response_header(
 /// ```
 #[template]
 pub async fn select(
-    #[context] context: &SingleRenderContext<'_>,
+    #[context] context: &TemplateContext,
     options: Vec<SelectOption>,
     #[kwarg] message: Option<String>,
 ) -> Result<Value, FunctionError> {
@@ -1107,7 +1104,7 @@ impl TryFromValue for SelectOption {
 /// ```
 #[template]
 pub fn sensitive(
-    #[context] context: &SingleRenderContext<'_>,
+    #[context] context: &TemplateContext,
     value: String,
 ) -> String {
     mask_sensitive(context, value)
@@ -1310,7 +1307,7 @@ pub fn upper(value: String) -> String {
     value.to_uppercase()
 }
 
-fn mask_sensitive(context: &SingleRenderContext<'_>, value: String) -> String {
+fn mask_sensitive(context: &TemplateContext, value: String) -> String {
     if context.show_sensitive {
         value
     } else {

@@ -22,7 +22,7 @@ license = "MIT"
 repository = "https://github.com/LucasPickering/slumber"
 version = "5.0.0"
 # Keep in sync w/ rust-toolchain.toml
-rust-version = "1.88.0"
+rust-version = "1.90.0"
 
 # Dependencies used in multiple crates get de-duplicated here
 [workspace.dependencies]

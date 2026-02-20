@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Upgrade to Rust 1.90
 - Sidebar now only closes with the toggle keybind (`s`)
   - Pressing `Enter`/`Esc` on the Profile/History sidebars will revert to the Recipe sidebar
 

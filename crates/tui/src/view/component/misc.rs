@@ -261,6 +261,6 @@ pub enum SidebarFormat {
 pub enum SidebarEvent {
     /// Sidebar should be expanded
     Open,
-    /// Sidebar should be collapsed
-    Close,
+    /// Sidebar should be reset to the default state
+    Reset,
 }

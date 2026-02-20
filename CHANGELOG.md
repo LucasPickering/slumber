@@ -12,8 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Tweak some pane manipulation behavior
-  - The layout now generally treats the Recipe sidebar as the default. After closing another sidebar (with `Enter`, *not* with `s`), it will default back to the Recipe sidebar the next time you open the sidebar with `s`.
+- Sidebar now only closes with the toggle keybind (`s`)
+  - Pressing `Enter`/`Esc` on the Profile/History sidebars will revert to the Recipe sidebar
 
 ### Fixed
 

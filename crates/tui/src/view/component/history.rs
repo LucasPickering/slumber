@@ -100,7 +100,7 @@ impl History {
         requests: Vec<RequestStateSummary>,
     ) -> Select<RequestStateSummary> {
         Select::builder(requests)
-            .subscribe([SelectEventKind::Select, SelectEventKind::Submit])
+            .subscribe([SelectEventKind::Select])
             .persisted(&SelectedRequestKey)
             .build()
     }
@@ -119,6 +119,9 @@ impl Component for History {
         event
             .m()
             .action(|action, propagate| match action {
+                Action::Submit | Action::Cancel => {
+                    self.emitter.emit(SidebarEvent::Reset);
+                }
                 Action::Delete => ViewContext::push_message(
                     Event::DeleteRequests(DeleteTarget::Request),
                 ),
@@ -145,11 +148,7 @@ impl Component for History {
                         Some(id),
                     ));
                 }
-                SelectEventKind::Submit => {
-                    // Close sidebar on Enter
-                    self.emitter.emit(SidebarEvent::Close);
-                }
-                SelectEventKind::Toggle => {}
+                SelectEventKind::Submit | SelectEventKind::Toggle => {}
             })
             .broadcast(|event| match event {
                 // When the profile or recipe select changes, rebuild our list

@@ -14,7 +14,7 @@ jobs:
     env:
       # Rustfmt requires a nightly toolchain because we use unstable rules. The
       # chosen version is fairly arbitrary
-      TOOLCHAIN: nightly-2025-02-25
+      TOOLCHAIN: nightly-2026-02-20
     steps:
       - uses: actions/checkout@v4
 

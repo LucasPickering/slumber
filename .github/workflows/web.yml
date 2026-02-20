@@ -35,14 +35,14 @@ jobs:
         run: mdbook build docs/
 
       - name: Check HTML for broken internal links
-        uses: untitaker/hyperlink@0.1.42
+        uses: untitaker/hyperlink@0.2.0
         with:
           args: ./docs/book --sources docs/src/ --check-anchors
 
       - name: Deploy to Github Pages
         uses: JamesIves/github-pages-deploy-action@v4.6.8
         # Deploy only on master or push event (tag releases). For tag pushes,
-        # the ref isn't set to master event though the tag is always on the
+        # the ref isn't set to master even though the tag is always on the
         # master branch
         if: ${{ github.ref == 'refs/heads/master' || github.event_name == 'push' }}
         with:

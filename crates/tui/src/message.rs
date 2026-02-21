@@ -331,6 +331,7 @@ impl MessageReceiver {
 #[cfg(test)]
 impl MessageReceiver {
     /// Assert that the message queue is empty
+    #[track_caller]
     pub fn assert_empty(&self) {
         if let Some(message) = self.0.pop() {
             panic!("Expected message queue to be empty, but got {message:?}");

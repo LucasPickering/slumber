@@ -405,7 +405,7 @@ mod tests {
             ..TemplateContext::factory(())
         };
 
-        let chunks = template.render(&context).await;
+        let chunks: RenderedOutput = template.render(&context).await.unwrap();
         let text = TextStitcher::stitch_chunks(chunks);
         assert_eq!(text, Text::from(expected));
     }

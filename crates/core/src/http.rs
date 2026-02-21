@@ -64,7 +64,9 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{Render, RenderError, StreamSource, Template};
+use slumber_template::{
+    Render, RenderError, RenderedOutput, StreamSource, Template,
+};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, hash::Hash};
 use tracing::{Instrument, error, info, info_span};
@@ -567,8 +569,8 @@ impl Recipe {
         context: &TemplateContext,
     ) -> Result<Url, RequestBuildErrorKind> {
         let template = options.url.as_ref().unwrap_or(&self.url);
-        let url = template
-            .render_string(context)
+        let url: String = template
+            .render(context)
             .await
             .map_err(RequestBuildErrorKind::UrlRender)?;
         url.parse::<Url>()
@@ -591,13 +593,12 @@ impl Recipe {
         );
 
         let iter = merged.into_iter().map(async |((param, _), template)| {
-            let value =
-                template.render_string(context).await.map_err(|error| {
-                    RequestBuildErrorKind::QueryRender {
-                        parameter: param.to_owned(),
-                        error,
-                    }
-                })?;
+            let value = template.render(context).await.map_err(|error| {
+                RequestBuildErrorKind::QueryRender {
+                    parameter: param.to_owned(),
+                    error,
+                }
+            })?;
             Ok((param.to_owned(), value))
         });
         future::try_join_all(iter).await
@@ -636,14 +637,14 @@ impl Recipe {
         header: &str,
         value_template: &Template,
     ) -> Result<(HeaderName, HeaderValue), RequestBuildErrorKind> {
-        let mut value: Vec<u8> = value_template
-            .render_bytes(context)
-            .await
-            .map_err(|error| RequestBuildErrorKind::HeaderRender {
-                header: header.to_owned(),
-                error,
-            })?
-            .into();
+        let value: Bytes =
+            value_template.render(context).await.map_err(|error| {
+                RequestBuildErrorKind::HeaderRender {
+                    header: header.to_owned(),
+                    error,
+                }
+            })?;
+        let mut value: Vec<u8> = value.into();
 
         // Strip leading/trailing line breaks because they're going to trigger a
         // validation error and are probably a mistake. We're trading
@@ -681,26 +682,27 @@ impl Recipe {
             .or(self.authentication.as_ref());
         match authentication {
             Some(Authentication::Basic { username, password }) => {
-                let (username, password) =
-                    try_join!(
-                        username
-                            .render_string(context)
-                            .map_err(RequestBuildErrorKind::AuthUsernameRender),
-                        async {
-                            OptionFuture::from(password.as_ref().map(
-                                |password| password.render_string(context),
-                            ))
-                            .await
-                            .transpose()
-                            .map_err(RequestBuildErrorKind::AuthPasswordRender)
-                        },
-                    )?;
+                let (username, password) = try_join!(
+                    username
+                        .render(context)
+                        .map_err(RequestBuildErrorKind::AuthUsernameRender),
+                    async {
+                        OptionFuture::from(
+                            password
+                                .as_ref()
+                                .map(|password| password.render(context)),
+                        )
+                        .await
+                        .transpose()
+                        .map_err(RequestBuildErrorKind::AuthPasswordRender)
+                    },
+                )?;
                 Ok(Some(Authentication::Basic { username, password }))
             }
 
             Some(Authentication::Bearer { token }) => {
                 let token = token
-                    .render_string(context)
+                    .render(context)
                     .await
                     .map_err(RequestBuildErrorKind::AuthTokenRender)?;
                 Ok(Some(Authentication::Bearer { token }))
@@ -734,7 +736,7 @@ impl Recipe {
                 Some(BodyOverride::Raw(template)),
             ) => {
                 let rendered = template
-                    .render_bytes(context)
+                    .render(context)
                     .await
                     .map_err(RequestBuildErrorKind::BodyRender)?;
                 Ok(Some(RenderedBody::Raw(rendered)))
@@ -747,7 +749,8 @@ impl Recipe {
                 Some(BodyOverride::Raw(template)),
             ) => {
                 // Stream body is rendered as a stream (!!)
-                let output = template.render(&context.stream()).await;
+                let output: RenderedOutput =
+                    template.render(&context.stream()).await.expect("TODO");
                 let source = output.stream_source().cloned();
                 let stream = output
                     .try_into_stream()
@@ -775,12 +778,13 @@ impl Recipe {
                 // handled above
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
-                    let value = template.render_string(context).await.map_err(
-                        |error| RequestBuildErrorKind::BodyFormFieldRender {
-                            field: field.clone(),
-                            error,
-                        },
-                    )?;
+                    let value =
+                        template.render(context).await.map_err(|error| {
+                            RequestBuildErrorKind::BodyFormFieldRender {
+                                field: field.clone(),
+                                error,
+                            }
+                        })?;
                     Ok::<_, RequestBuildErrorKind>((field.clone(), value))
                 });
                 let rendered = try_join_all(iter).await?;
@@ -789,7 +793,8 @@ impl Recipe {
             (Some(RecipeBody::FormMultipart(fields)), None) => {
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
-                    let output = template.render(&context.stream()).await;
+                    let output: RenderedOutput =
+                        template.render(&context.stream()).await.expect("TODO");
                     // If this is a single-chunk template, we might be able to
                     // load directly from the source, since we support file
                     // streams natively. In that case, the stream will be thrown

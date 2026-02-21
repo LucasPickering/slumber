@@ -45,7 +45,7 @@ async fn test_profile() {
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
     assert_eq!(
-        template.render_bytes(&context).await.unwrap(),
+        template.render(&context).await.unwrap(),
         "http://localhost/users/1"
     );
 }
@@ -70,7 +70,7 @@ async fn test_override() {
     };
 
     assert_eq!(
-        template.render_bytes(&context).await.unwrap(),
+        template.render(&context).await.unwrap(),
         "http://override/users/1"
     );
 }
@@ -94,7 +94,7 @@ async fn test_base64(
         [("decode", Some(decode.into()))],
     );
     assert_result(
-        template.render_bytes(&TemplateContext::factory(())).await,
+        template.render(&TemplateContext::factory(())).await,
         expected,
     );
 }
@@ -198,7 +198,7 @@ async fn test_command(
         }
     });
     assert_result(
-        template.render_bytes(&TemplateContext::factory(())).await,
+        template.render(&TemplateContext::factory(())).await,
         expected,
     );
 }
@@ -269,7 +269,7 @@ async fn test_env(
         [("default", default.map(Expression::from))],
     );
     assert_result(
-        template.render_bytes(&TemplateContext::factory(())).await,
+        template.render(&TemplateContext::factory(())).await,
         expected,
     );
 }
@@ -305,7 +305,7 @@ async fn test_file(
         ..TemplateContext::factory(())
     };
 
-    assert_result(template.render_bytes(&context).await, expected);
+    assert_result(template.render(&context).await, expected);
 }
 
 /// Bonus test case for ~ expansion in file(). Only test on Linux because
@@ -326,7 +326,7 @@ async fn test_file_tilde(temp_dir: TempDir) {
 
     let guard =
         env_lock::lock_env([("HOME", Some(temp_dir.to_str().unwrap()))]);
-    assert_result(template.render_string(&context).await, Ok("text"));
+    assert_result(template.render(&context).await, Ok("text"));
     drop(guard);
 }
 
@@ -654,7 +654,7 @@ async fn test_prompt(
         show_sensitive: false,
         ..TemplateContext::factory(())
     };
-    assert_result(template.render_bytes(&context).await, expected);
+    assert_result(template.render(&context).await, expected);
 }
 
 /// `replace()`
@@ -865,7 +865,7 @@ async fn test_response(
         ..TemplateContext::factory((IndexMap::new(), by_id(recipes)))
     };
 
-    assert_result(template.render_bytes(&context).await, expected);
+    assert_result(template.render(&context).await, expected);
 }
 
 /// `response_header()`. We're leaning on the `response()` tests for most of
@@ -931,7 +931,7 @@ async fn test_response_header(
         ..TemplateContext::factory((IndexMap::new(), by_id([recipe])))
     };
 
-    assert_result(template.render_bytes(&context).await, expected);
+    assert_result(template.render(&context).await, expected);
 }
 
 /// `select()`
@@ -979,7 +979,7 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
         show_sensitive: false,
         ..TemplateContext::factory(())
     };
-    assert_eq!(template.render_bytes(&context).await.unwrap(), expected);
+    assert_eq!(template.render(&context).await.unwrap(), expected);
 }
 
 /// `slice()`
@@ -1098,7 +1098,7 @@ async fn test_trim(
     );
     assert_eq!(
         template
-            .render_bytes(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .unwrap(),
         expected

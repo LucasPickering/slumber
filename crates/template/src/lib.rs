@@ -57,82 +57,16 @@ pub trait Context: Sized {
 /// This abstraction allows for more complex templates to be built on top of
 /// [Template].
 #[async_trait(?Send)] // Needed for dyn compatibility
-pub trait Render<Ctx: Context> {
+pub trait Render<Ctx: Context, Out> {
     /// Render the template, returning the individual rendered chunks
     ///
     /// If any individual chunk fails to render, its error will be returned
     /// inline as [RenderedChunk::Error] and the rest of the template will still
     /// be rendered. The returned output can be transformed into a variety of
     /// final output types.
-    async fn render(&self, context: &Ctx) -> RenderedOutput;
-
+    ///
     /// TODO
-    async fn render_to<O: RenderOutput>(
-        &self,
-        context: &Ctx,
-    ) -> Result<O, RenderError> {
-        let output = self.render(context).await;
-        O::from_chunks(output.0).await
-    }
-
-    /// Render this template to bytes
-    ///
-    /// This is a convenience method for rendering to [RenderedOutput] and
-    /// collecting the output into a byte string.
-    async fn render_bytes(&self, context: &Ctx) -> Result<Bytes, RenderError> {
-        self.render(context).await.try_collect_bytes().await
-    }
-
-    /// Render this template to a string
-    ///
-    /// This is a convenience method for rendering to [RenderedOutput] and
-    /// collecting the output into string. If the output is not valid UTF-8,
-    /// return an error.
-    async fn render_string(
-        &self,
-        context: &Ctx,
-    ) -> Result<String, RenderError> {
-        let bytes = self.render_bytes(context).await?;
-        String::from_utf8(bytes.into()).map_err(RenderError::other)
-    }
-}
-
-/// TODO
-pub trait RenderOutput: Sized {
-    async fn from_chunks(
-        chunks: Vec<RenderedChunk>,
-    ) -> Result<Self, RenderError>;
-}
-
-impl RenderOutput for Value {
-    async fn from_chunks(
-        chunks: Vec<RenderedChunk>,
-    ) -> Result<Self, RenderError> {
-        fn unpack(chunks: Vec<RenderedChunk>) -> LazyValue {
-            todo!()
-        }
-
-        // If we only have one chunk, unpack it into a value
-        let value = match unpack(chunks) {
-            LazyValue::Value(value) => value,
-            lazy @ LazyValue::Stream { .. } => lazy.resolve().await?,
-            LazyValue::Nested(output) => {
-                // Render to bytes
-                let bytes = output.try_collect_bytes().await?;
-                Value::Bytes(bytes)
-            }
-        };
-
-        // Try to convert bytes to string, because that's generally more
-        // useful to the consumer
-        match value {
-            Value::Bytes(bytes) => match String::from_utf8(bytes.into()) {
-                Ok(s) => Ok(Value::String(s)),
-                Err(error) => Ok(Value::Bytes(error.into_bytes().into())),
-            },
-            _ => Ok(value),
-        }
-    }
+    async fn render(&self, context: &Ctx) -> Result<Out, RenderError>;
 }
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -259,9 +193,15 @@ impl Template {
     }
 }
 
+/// Render to plain old chunks
+///
+/// TODO comment in infallibility
 #[async_trait(?Send)]
-impl<Ctx: Context> Render<Ctx> for Template {
-    async fn render(&self, context: &Ctx) -> RenderedOutput {
+impl<Ctx: Context> Render<Ctx, RenderedOutput> for Template {
+    async fn render(
+        &self,
+        context: &Ctx,
+    ) -> Result<RenderedOutput, RenderError> {
         // Map over each parsed chunk, and render the expressions into values.
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
@@ -281,7 +221,40 @@ impl<Ctx: Context> Render<Ctx> for Template {
 
         // Concurrency!
         let chunks = future::join_all(futures).await;
-        RenderedOutput(chunks)
+        Ok(RenderedOutput(chunks))
+    }
+}
+
+/// TODO
+///
+/// TODO explain failure cases
+#[async_trait(?Send)]
+impl<Ctx: Context> Render<Ctx, Value> for Template {
+    async fn render(&self, context: &Ctx) -> Result<Value, RenderError> {
+        let output: RenderedOutput = self.render(context).await?;
+        output.try_collect_value().await
+    }
+}
+
+/// Render to chunks and join them into bytes
+///
+/// TODO explain failure cases
+#[async_trait(?Send)]
+impl<Ctx: Context> Render<Ctx, Bytes> for Template {
+    async fn render(&self, context: &Ctx) -> Result<Bytes, RenderError> {
+        let output: RenderedOutput = self.render(context).await?;
+        output.try_collect_bytes().await
+    }
+}
+
+/// Render to chunks and join them into a string
+///
+/// TODO explain failure cases
+#[async_trait(?Send)]
+impl<Ctx: Context> Render<Ctx, String> for Template {
+    async fn render(&self, context: &Ctx) -> Result<String, RenderError> {
+        let bytes: Bytes = self.render(context).await?;
+        String::from_utf8(bytes.into()).map_err(RenderError::other)
     }
 }
 

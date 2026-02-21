@@ -27,7 +27,8 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
 use slumber_template::{
-    Arguments, Identifier, LazyValue, Render, RenderError, Template, Value,
+    Arguments, Identifier, LazyValue, Render, RenderError, RenderedOutput,
+    Template, Value,
 };
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -127,7 +128,7 @@ impl TemplateContext {
             })?;
 
         // Render the nested template
-        let output = template.render(self).await;
+        let output: RenderedOutput = template.render(self).await?;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no

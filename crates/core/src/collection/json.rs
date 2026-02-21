@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_template::{
-    Context, Render, RenderError, RenderedOutput, Template, TemplateParseError,
-    Value, ValueError,
+    Context, Render, RenderError, Template, TemplateParseError, Value,
+    ValueError,
 };
 use std::str::FromStr;
 use thiserror::Error;
@@ -53,58 +53,59 @@ impl JsonTemplate {
     }
 
     /// Render all templates to strings and return a static JSON value
+    ///
+    /// TODO implement this as a separate Render impl instead
     pub async fn render_json(
         &self,
         context: &TemplateContext,
     ) -> Result<serde_json::Value, RenderError> {
-        // Collect render output as a single value. The renderer should always
-        // output a single chunk, so it gets unpacked back to one value.
-        let value = self.render(context).await.try_collect_value().await?;
+        let value: Value = self.render(context).await?;
         // Convert the template value to a JSON value via serde
         let json = serde_json::to_value(value).map_err(ValueError::from)?;
         Ok(json)
     }
 }
 
+/// TODO
 #[async_trait(?Send)]
-impl<Ctx: Context> Render<Ctx> for JsonTemplate {
-    async fn render(&self, context: &Ctx) -> RenderedOutput {
+impl<Ctx: Context> Render<Ctx, Value> for JsonTemplate {
+    async fn render(&self, context: &Ctx) -> Result<Value, RenderError> {
         match self {
-            JsonTemplate::Null => Value::Null.into(),
-            JsonTemplate::Bool(b) => Value::Boolean(*b).into(),
+            JsonTemplate::Null => Ok(Value::Null),
+            JsonTemplate::Bool(b) => Ok(Value::Boolean(*b)),
             JsonTemplate::Number(n) => {
                 if let Some(i) = n.as_i64() {
-                    Value::Integer(i).into()
+                    Ok(Value::Integer(i))
                 } else if let Some(f) = n.as_f64() {
-                    Value::Float(f).into()
+                    Ok(Value::Float(f))
                 } else {
                     // Integer is out of i64 range. Template values really
                     // should be a superset of JSON values, but right now that's
                     // not the case.
-                    Err(RenderError::from(ValueError::other("TODO"))).into()
+                    Err(RenderError::from(ValueError::other("TODO")))
                 }
             }
+            // This renderer automatically unpacks the value
             JsonTemplate::String(template) => template.render(context).await,
             JsonTemplate::Array(array) => {
                 // Render each value and collection into an Array
-                future::try_join_all(array.iter().map(|value| async {
-                    value.render(context).await.try_collect_value().await
-                }))
+                future::try_join_all(
+                    array
+                        .iter()
+                        .map(|value| async { value.render(context).await }),
+                )
                 .await
                 .map(Value::from)
-                .into() // Wrap into RenderedOutput
             }
             JsonTemplate::Object(map) => {
                 // Render each key/value and collect into an Object
                 future::try_join_all(map.iter().map(|(key, value)| async {
-                    let key = key.render_string(context).await?;
-                    let value =
-                        value.render(context).await.try_collect_value().await?;
+                    let key: String = key.render(context).await?;
+                    let value: Value = value.render(context).await?;
                     Ok::<_, RenderError>((key, value))
                 }))
                 .await
                 .map(Value::from)
-                .into() // Wrap into RenderedOutput
             }
         }
     }

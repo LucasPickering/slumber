@@ -9,7 +9,7 @@ use crate::view::{
         Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
     },
     event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
-    persistent::SessionKey,
+    persistent::{PersistentStore, SessionKey},
 };
 use ratatui::text::Text;
 use slumber_config::Action;
@@ -31,8 +31,14 @@ pub struct EditableTemplate<PK> {
     /// Descriptor for the *type* of template being shown, e.g. "Header"
     noun: &'static str,
     actions_emitter: Emitter<EditableTemplateMenuAction>,
+    /// The template from the collection
+    original_template: Template,
+    /// Temporary override entered by the user
+    override_template: Option<Template>,
+    /// Session store key to persist the override template
+    persistent_key: PK,
     /// Container for both the original and override templates
-    preview: TemplatePreview<PK>,
+    preview: TemplatePreview,
     /// Rendered preview text
     text: Text<'static>,
     /// An inline text box for editing the override template. `Some` only when
@@ -68,15 +74,22 @@ impl<PK> EditableTemplate<PK> {
     where
         PK: SessionKey<Value = Template>,
     {
-        let preview =
-            TemplatePreview::new(persistent_key, template, can_stream);
-        let initial_text = preview.render_raw(); // Show raw while rendering
+        let override_template = PersistentStore::get_session(&persistent_key);
+        let (preview, text) = TemplatePreview::new(
+            override_template.as_ref().unwrap_or(&template).clone(),
+            can_stream,
+            override_template.is_some(),
+        );
+
         Self {
             id: ComponentId::default(),
             noun,
             actions_emitter: Emitter::default(),
+            original_template: template,
+            override_template,
+            persistent_key,
             preview,
-            text: initial_text,
+            text,
             edit_text_box: None,
             refresh_on_edit,
         }
@@ -85,7 +98,9 @@ impl<PK> EditableTemplate<PK> {
     /// Get the active template. If an override is present, return that.
     /// Otherwise return the original.
     pub fn template(&self) -> &Template {
-        self.preview.template()
+        self.override_template
+            .as_ref()
+            .unwrap_or(&self.original_template)
     }
 
     /// Get visible preview text
@@ -95,18 +110,36 @@ impl<PK> EditableTemplate<PK> {
 
     /// Override the recipe with a new template
     pub fn set_override(&mut self, template: Template) {
-        self.preview.set_override(template);
+        if template == self.original_template {
+            // If this matches the original template, it's not an override
+            self.set_override_opt(None);
+        } else if Some(&template) != self.override_template.as_ref() {
+            // Only rerender if the override changed
+            self.set_override_opt(Some(template));
+        }
     }
 
     /// Reset the template override to the default from the recipe, and
     /// recompute the template preview
     pub fn reset_override(&mut self) {
-        self.preview.reset_override();
+        self.set_override_opt(None);
+    }
+
+    /// Internal helper to set/reset the override template and refresh the
+    /// preview
+    fn set_override_opt(&mut self, override_template: Option<Template>) {
+        self.override_template = override_template;
+        // Re-render the preview
+        (self.preview, self.text) = TemplatePreview::new(
+            self.template().clone(),
+            false,
+            self.is_overridden(),
+        );
     }
 
     /// Is a override template set?
     pub fn is_overridden(&self) -> bool {
-        self.preview.is_overridden()
+        self.override_template.is_some()
     }
 
     /// Enter edit mode
@@ -190,6 +223,17 @@ where
                 .shortcut(Some(Action::Reset))
                 .into(),
         ]
+    }
+
+    fn persist(&self, store: &mut PersistentStore) {
+        // Persist to the session store. Overrides are meant to be temporary, so
+        // we don't want to encourage users to rely on them long-term. They
+        // should be making edits to their YAML file instead.
+        if let Some(template) = &self.override_template {
+            store.set_session(self.persistent_key.clone(), template.clone());
+        } else {
+            store.remove_session(&self.persistent_key);
+        }
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {

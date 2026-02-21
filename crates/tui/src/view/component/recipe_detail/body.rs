@@ -17,7 +17,7 @@ use crate::{
         },
         context::{UpdateContext, ViewContext},
         event::{Emitter, Event, EventMatch, ToEmitter},
-        persistent::SessionKey,
+        persistent::{PersistentStore, SessionKey},
         util::{highlight, view_text},
     },
 };
@@ -34,7 +34,7 @@ use slumber_core::{
     http::BodyOverride,
 };
 use slumber_template::{Template, TemplateParseError};
-use std::{error::Error as StdError, fs};
+use std::{borrow::Cow, error::Error as StdError, fs};
 use tracing::{debug, error};
 
 /// Render recipe body. The variant is based on the incoming body type, and
@@ -91,24 +91,25 @@ impl RecipeBodyDisplay {
     /// value. Return `None` to use the recipe's stock body.
     pub fn override_value(&self) -> Option<BodyOverride> {
         match self {
-            RecipeBodyDisplay::Raw(inner) if inner.preview.is_overridden() => {
-                Some(BodyOverride::Raw(inner.preview.template().clone()))
-            }
-            RecipeBodyDisplay::Json(inner) if inner.preview.is_overridden() => {
+            RecipeBodyDisplay::Raw(inner) => inner
+                .override_template()
+                .map(|template| BodyOverride::Raw(template.clone())),
+            RecipeBodyDisplay::Json(inner) => {
                 // For JSON bodies, we have to restringify the template. This
                 // needs to be fixed so it's stored as JSON instead
                 // https://github.com/LucasPickering/slumber/issues/627
-                let template = inner.preview.template();
-                let s = template.display();
-                // If the parse fails for some reason, fall back to a raw body
-                // https://github.com/LucasPickering/slumber/issues/646
-                match s.parse::<JsonTemplate>() {
-                    Ok(json) => Some(BodyOverride::Json(json)),
-                    Err(_) => Some(BodyOverride::Raw(template.clone())),
-                }
+                inner.override_template().map(|template| {
+                    let s = template.display();
+                    // If the parse fails for some reason, fall back to a raw
+                    // body https://github.com/LucasPickering/slumber/issues/646
+                    match s.parse::<JsonTemplate>() {
+                        Ok(json) => BodyOverride::Json(json),
+                        Err(_) => BodyOverride::Raw(template.clone()),
+                    }
+                })
             }
             // Form bodies override per-field so return None for them
-            _ => None,
+            RecipeBodyDisplay::Form(_) => None,
         }
     }
 }
@@ -162,54 +163,98 @@ pub struct TextBody {
     override_emitter: Emitter<SaveBodyOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RawBodyMenuAction>,
+    /// The template from the collection
+    original_template: Template,
+    /// Temporary override entered by the user
+    ///
+    /// Because the template is entered in an external editor, it's possible
+    /// for the input to be invalid. In that case, we'll store the error and
+    /// show it. We'll use the original template for request building while the
+    /// override is invalid.
+    override_result: Option<Result<Template, TemplateParseError>>,
+    /// Persistent store key for temporary overrides
+    persistent_key: BodyKey,
     /// Container for both the original and override templates
-    preview: TemplatePreview<BodyKey>,
+    preview: TemplatePreview,
     /// Body MIME type, used for syntax highlighting and pager selection. This
     /// has no impact on content of the rendered body
     mime: Option<Mime>,
-    /// Visible text. If the current template is valid, this will be `Ok` and
-    /// show a preview of the template. If it's invalid, it's `Err`. The
-    /// `TextWindow` will hold the invalid template, and the error is stored to
-    /// display the error message.
-    text_window: Result<TextWindow, (TextWindow, TemplateParseError)>,
+    /// Visible template text
+    ///
+    /// This will start as the raw template text, but will be replaced with the
+    /// rendered preview when available. If an *invalid* override is given, it
+    /// will be the input string.
+    text_window: TextWindow,
 }
 
 impl TextBody {
     fn new(template: Template, recipe: &Recipe) -> Self {
         let mime = recipe.mime();
 
+        let persistent_key = BodyKey(recipe.id.clone());
+        let override_source = PersistentStore::get_session(&persistent_key);
+        let override_result = override_source.as_deref().map(str::parse);
+
         // Start rendering the preview in the background
-        let preview =
-            TemplatePreview::new(BodyKey(recipe.id.clone()), template, true);
+        let (preview, initial_text) = TemplatePreview::new(
+            // Use the override if present and valid, otherwise default
+            override_result
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .unwrap_or(&template)
+                .clone(),
+            true,
+            override_source.is_some(),
+        );
 
-        // Display the raw template while the preview renders
-        let text = highlight(mime.as_ref(), preview.render_raw());
-        let text_window = TextWindow::new(text);
-
-        Self {
+        let mut slf = Self {
             id: ComponentId::default(),
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
+            original_template: template,
+            override_result,
+            persistent_key,
             preview,
             mime,
-            text_window: Ok(text_window),
-        }
+            text_window: TextWindow::default(),
+        };
+
+        // Start with the raw template text, until the preview loads
+        slf.set_text(initial_text);
+
+        slf
     }
 
     /// Open rendered body in the pager
     fn view_body(&self) {
-        let text_window = match &self.text_window {
-            Ok(text_window) | Err((text_window, _)) => text_window,
-        };
-        view_text(text_window.text(), self.mime.clone());
+        view_text(self.text_window.text(), self.mime.clone());
+    }
+
+    fn override_source(&self) -> Option<Cow<'_, str>> {
+        self.override_result.as_ref().map(|result| match result {
+            Ok(template) => template.display(),
+            Err(error) => error.input().into(),
+        })
+    }
+
+    /// If a *valid* override has been given, get it
+    fn override_template(&self) -> Option<&Template> {
+        self.override_result
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
     }
 
     /// Send a message to open the body in an external editor. We have to write
     /// the body to a temp file so the editor subprocess can access it. We'll
     /// read it back later.
     fn open_editor(&mut self) {
+        // If there's an existing override, use its source. Otherwise, start
+        // with the default template
+        let source = self
+            .override_source()
+            .unwrap_or_else(|| self.original_template.display());
         let Some(file) = TempFile::new(
-            self.preview.template().display().as_bytes(),
+            source.as_bytes(),
             self.mime.as_ref().and_then(|mime| {
                 SyntaxType::from_mime(
                     ViewContext::config().mime_overrides(),
@@ -253,25 +298,44 @@ impl TextBody {
         };
 
         // Parse the template. If parsing fails, set the error
-        match body.parse::<Template>() {
+        let result = body.parse::<Template>();
+        match result.as_ref() {
             Ok(template) => {
-                self.preview.set_override(template);
-                // Reset our text. The preview will immediately send an event
-                // with the raw template text, then once the preview is done
-                // we'll get another even with the rendered text
-                self.text_window = Ok(TextWindow::default());
+                // Show raw text until the preview loads
+                let (preview, text) =
+                    TemplatePreview::new(template.clone(), true, true);
+                self.preview = preview;
+                self.set_text(text);
             }
             Err(error) => {
-                // Override is invalid. We'll show the invalid text with the
-                // error, but if a request is built it'll use the stock template
-                self.preview.reset_override();
-                let raw_text = highlight(
-                    self.mime.as_ref(),
-                    error.input().to_owned().into(),
-                );
-                self.text_window = Err((TextWindow::new(raw_text), error));
+                // We'll draw the source text. Since the error is also stored,
+                // we'll show that outside the text window
+                //
+                // Since there's no valid template here, we're not touching
+                // the template preview at all. It won't emit any events until
+                // the next time we have a valid template.
+                self.set_text(error.input().to_owned().into());
             }
         }
+        self.override_result = Some(result);
+    }
+
+    /// Remove the override and reset the preview to the original template
+    fn reset_override(&mut self) {
+        self.override_result = None;
+        let (preview, text) =
+            TemplatePreview::new(self.original_template.clone(), true, false);
+        self.preview = preview;
+        self.set_text(text);
+    }
+
+    /// Apply syntax highlight and present the text
+    fn set_text(&mut self, text: Text<'static>) {
+        let syntax_type = self.mime.as_ref().and_then(|mime| {
+            SyntaxType::from_mime(ViewContext::config().mime_overrides(), mime)
+        });
+        let text = highlight::highlight_if(syntax_type, text);
+        self.text_window = TextWindow::new(text);
     }
 }
 
@@ -286,21 +350,14 @@ impl Component for TextBody {
             .action(|action, propagate| match action {
                 Action::View => self.view_body(),
                 Action::Edit => self.open_editor(),
-                Action::Reset => self.preview.reset_override(),
+                Action::Reset => self.reset_override(),
                 _ => propagate.set(),
             })
             .emitted(self.override_emitter, |SaveBodyOverride(file)| {
                 self.load_override(file);
             })
             .emitted(self.preview.to_emitter(), |TemplatePreviewEvent(text)| {
-                // If the template is valid, accept its preview renders. If not,
-                // the previews will not correspond to the invalid template
-                // we're holding, so ignore these events
-                if let Ok(text_window) = &mut self.text_window {
-                    // Apply syntax highlighting
-                    let text = highlight(self.mime.as_ref(), text);
-                    *text_window = TextWindow::new(text);
-                }
+                self.set_text(text);
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 RawBodyMenuAction::View => self.view_body(),
@@ -308,7 +365,7 @@ impl Component for TextBody {
                     Message::CopyRecipe(RecipeCopyTarget::Body),
                 ),
                 RawBodyMenuAction::Edit => self.open_editor(),
-                RawBodyMenuAction::Reset => self.preview.reset_override(),
+                RawBodyMenuAction::Reset => self.reset_override(),
             })
     }
 
@@ -326,57 +383,55 @@ impl Component for TextBody {
                 .into(),
             emitter
                 .menu(RawBodyMenuAction::Reset, "Reset Body")
-                .enable(self.preview.is_overridden())
+                .enable(self.override_result.is_some())
                 .shortcut(Some(Action::Reset))
                 .into(),
         ]
     }
 
+    fn persist(&self, store: &mut PersistentStore) {
+        if let Some(source) = self.override_source() {
+            // The override could be a template OR an error. Persist the source
+            // that the user entered, so we can restore in either case.
+            store.set_session(self.persistent_key.clone(), source.into_owned());
+        } else {
+            store.remove_session(&self.persistent_key);
+        }
+    }
+
     fn children(&mut self) -> Vec<Child<'_>> {
-        let text_window = match &mut self.text_window {
-            Ok(text_window) | Err((text_window, _)) => text_window,
-        };
-        vec![self.preview.to_child(), text_window.to_child()]
+        vec![self.preview.to_child(), self.text_window.to_child()]
     }
 }
 
 impl Draw for TextBody {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let area = metadata.area();
-        match &self.text_window {
-            Ok(text_window) => {
-                // Override is missing or valid - render normally
-                canvas.draw(
-                    text_window,
-                    TextWindowProps::default(),
-                    area,
-                    true,
-                );
-            }
-            Err((text_window, error)) => {
+        let text_area = match &self.override_result {
+            Some(Ok(_)) | None => metadata.area(),
+            Some(Err(error)) => {
                 // We have an override but it's invalid - show the source+error
-
                 let [text_area, _, error_area] = Layout::vertical([
-                    Constraint::Length(text_window.text().height() as u16),
+                    Constraint::Length(self.text_window.text().height() as u16),
                     Constraint::Length(1),
                     Constraint::Min(0),
                 ])
-                .areas(area);
-                canvas.draw(
-                    text_window,
-                    TextWindowProps::default(),
-                    text_area,
-                    true,
-                );
+                .areas(metadata.area());
 
-                // Draw the error down below
+                // Draw the error below the text
                 let styles = ViewContext::styles();
                 let error_text = (error as &dyn StdError)
                     .generate()
                     .style(styles.text.error);
                 canvas.render_widget(error_text, error_area);
+                text_area
             }
-        }
+        };
+        canvas.draw(
+            &self.text_window,
+            TextWindowProps::default(),
+            text_area,
+            true,
+        );
     }
 }
 
@@ -385,7 +440,9 @@ impl Draw for TextBody {
 struct BodyKey(RecipeId);
 
 impl SessionKey for BodyKey {
-    type Value = Template;
+    // Template is persisted as its source so invalid templates are also
+    // persisted
+    type Value = String;
 }
 
 /// [RecipeTableKind] for the form field table
@@ -413,14 +470,6 @@ enum RawBodyMenuAction {
 /// callback when the user closes the editor.
 #[derive(Debug)]
 struct SaveBodyOverride(TempFile);
-
-/// Apply syntax highlighting according to the body MIME type
-fn highlight(mime: Option<&Mime>, text: Text<'static>) -> Text<'static> {
-    let syntax_type = mime.and_then(|mime| {
-        SyntaxType::from_mime(ViewContext::config().mime_overrides(), mime)
-    });
-    highlight::highlight_if(syntax_type, text)
-}
 
 /// Convert a JSON object into a single template for preview in a TextBody
 fn preview_json_template(json: &JsonTemplate) -> Template {
@@ -527,13 +576,10 @@ mod tests {
             vec![error("invalid expression  ")],
         ]);
 
-        // Invalid template is *not* persisted. This is a little shitty but it's
-        // annoying to get it to be supported. We'd have to move the support for
-        // invalid templates from here into OverrideTemplate, or duplicate a
-        // bunch of persistence logic
+        // Invalid template is persisted
         let persisted =
             PersistentStore::get_session(&BodyKey(recipe.id.clone()));
-        assert_eq!(persisted, None);
+        assert_eq!(persisted.as_deref(), Some("{{"));
     }
 
     /// Test editing a JSON body, which should open a file for the user to edit,

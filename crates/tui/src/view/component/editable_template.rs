@@ -38,7 +38,7 @@ pub struct EditableTemplate<PK> {
     /// Session store key to persist the override template
     persistent_key: PK,
     /// Container for both the original and override templates
-    preview: TemplatePreview,
+    preview: TemplatePreview<Template>,
     /// Rendered preview text
     text: Text<'static>,
     /// An inline text box for editing the override template. `Some` only when

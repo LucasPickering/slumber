@@ -1,3 +1,4 @@
+pub mod preview;
 pub mod syntax;
 
 use crate::{

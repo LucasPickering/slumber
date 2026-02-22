@@ -1,6 +1,6 @@
 use crate::{
     message::{Message, RecipeCopyTarget},
-    util::{ResultReported, TempFile, syntax::SyntaxType},
+    util::{ResultReported, TempFile, preview::Preview, syntax::SyntaxType},
     view::{
         Component, Generate,
         common::{
@@ -33,20 +33,20 @@ use slumber_core::{
     collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
     http::BodyOverride,
 };
-use slumber_template::{Template, TemplateParseError};
-use std::{borrow::Cow, error::Error as StdError, fs};
-use tracing::{debug, error};
+use slumber_template::Template;
+use std::{borrow::Cow, error::Error as StdError, fs, str::FromStr};
+use tracing::debug;
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
 #[derive(Debug)]
 pub enum RecipeBodyDisplay {
     /// A raw text body with no known content type
-    Raw(TextBody),
+    Raw(TextBody<Template>),
     /// A body declared with the `json` type. This is presented as text so it
     /// uses the same internal type as `Raw`, but the distinction allows us to
     /// parse and generate an override body correctly
-    Json(TextBody),
+    Json(TextBody<JsonTemplate>),
     Form(RecipeTable<FormTableKind>),
 }
 
@@ -60,8 +60,7 @@ impl RecipeBodyDisplay {
                 Self::Raw(TextBody::new(body.clone(), recipe))
             }
             RecipeBody::Json(json) => {
-                let template = preview_json_template(json);
-                Self::Json(TextBody::new(template, recipe))
+                Self::Json(TextBody::new(json.clone(), recipe))
             }
             RecipeBody::FormUrlencoded(fields) => {
                 Self::Form(Self::form_table(&recipe.id, fields, false))
@@ -91,22 +90,11 @@ impl RecipeBodyDisplay {
     /// value. Return `None` to use the recipe's stock body.
     pub fn override_value(&self) -> Option<BodyOverride> {
         match self {
-            RecipeBodyDisplay::Raw(inner) => inner
-                .override_template()
-                .map(|template| BodyOverride::Raw(template.clone())),
+            RecipeBodyDisplay::Raw(inner) => {
+                Some(inner.template().to_override())
+            }
             RecipeBodyDisplay::Json(inner) => {
-                // For JSON bodies, we have to restringify the template. This
-                // needs to be fixed so it's stored as JSON instead
-                // https://github.com/LucasPickering/slumber/issues/627
-                inner.override_template().map(|template| {
-                    let s = template.display();
-                    // If the parse fails for some reason, fall back to a raw
-                    // body https://github.com/LucasPickering/slumber/issues/646
-                    match s.parse::<JsonTemplate>() {
-                        Ok(json) => BodyOverride::Json(json),
-                        Err(_) => BodyOverride::Raw(template.clone()),
-                    }
-                })
+                Some(inner.template().to_override())
             }
             // Form bodies override per-field so return None for them
             RecipeBodyDisplay::Form(_) => None,
@@ -117,19 +105,19 @@ impl RecipeBodyDisplay {
 impl Component for RecipeBodyDisplay {
     fn id(&self) -> ComponentId {
         match self {
-            RecipeBodyDisplay::Raw(text_body)
-            | RecipeBodyDisplay::Json(text_body) => text_body.id(),
+            RecipeBodyDisplay::Raw(text_body) => text_body.id(),
+            RecipeBodyDisplay::Json(text_body) => text_body.id(),
             RecipeBodyDisplay::Form(table) => table.id(),
         }
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        match self {
-            Self::Raw(text_body) | Self::Json(text_body) => {
-                vec![text_body.to_child()]
-            }
-            Self::Form(form) => vec![form.to_child()],
-        }
+        let child = match self {
+            Self::Raw(text_body) => text_body.to_child(),
+            Self::Json(text_body) => text_body.to_child(),
+            Self::Form(form) => form.to_child(),
+        };
+        vec![child]
     }
 }
 
@@ -156,26 +144,31 @@ impl Draw for RecipeBodyDisplay {
 }
 
 /// A body represented and editable as a single block of text
+///
+///
+/// TODO document body type differences (text vs json)
+///
+/// TODO make this un-private
 #[derive(Debug)]
-pub struct TextBody {
+pub struct TextBody<T: BodyPreview> {
     id: ComponentId,
     /// Emitter for the callback from editing the body
     override_emitter: Emitter<SaveBodyOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RawBodyMenuAction>,
     /// The template from the collection
-    original_template: Template,
+    original_template: T,
     /// Temporary override entered by the user
     ///
     /// Because the template is entered in an external editor, it's possible
     /// for the input to be invalid. In that case, we'll store the error and
     /// show it. We'll use the original template for request building while the
-    /// override is invalid.
-    override_result: Option<Result<Template, TemplateParseError>>,
+    /// override is invalid. TODO
+    override_result: Option<Result<T, (String, T::Err)>>,
     /// Persistent store key for temporary overrides
     persistent_key: BodyKey,
-    /// Container for both the original and override templates
-    preview: TemplatePreview,
+    /// TODO
+    preview: TemplatePreview<T>,
     /// Body MIME type, used for syntax highlighting and pager selection. This
     /// has no impact on content of the rendered body
     mime: Option<Mime>,
@@ -187,13 +180,16 @@ pub struct TextBody {
     text_window: TextWindow,
 }
 
-impl TextBody {
-    fn new(template: Template, recipe: &Recipe) -> Self {
+impl<T: BodyPreview> TextBody<T> {
+    fn new(template: T, recipe: &Recipe) -> Self {
         let mime = recipe.mime();
 
         let persistent_key = BodyKey(recipe.id.clone());
         let override_source = PersistentStore::get_session(&persistent_key);
-        let override_result = override_source.as_deref().map(str::parse);
+        let override_result = override_source.map(|source| {
+            // If it fails, store the error *and* the original text
+            source.parse::<T>().map_err(|error| (source, error))
+        });
 
         // Start rendering the preview in the background
         let (preview, initial_text) = TemplatePreview::new(
@@ -204,7 +200,7 @@ impl TextBody {
                 .unwrap_or(&template)
                 .clone(),
             true,
-            override_source.is_some(),
+            override_result.is_some(),
         );
 
         let mut slf = Self {
@@ -230,15 +226,21 @@ impl TextBody {
         view_text(self.text_window.text(), self.mime.clone());
     }
 
+    /// TODO
     fn override_source(&self) -> Option<Cow<'_, str>> {
         self.override_result.as_ref().map(|result| match result {
             Ok(template) => template.display(),
-            Err(error) => error.input().into(),
+            Err((source, _)) => source.into(),
         })
     }
 
+    /// TODO
+    fn template(&self) -> &T {
+        self.override_template().unwrap_or(&self.original_template)
+    }
+
     /// If a *valid* override has been given, get it
-    fn override_template(&self) -> Option<&Template> {
+    fn override_template(&self) -> Option<&T> {
         self.override_result
             .as_ref()
             .and_then(|result| result.as_ref().ok())
@@ -298,14 +300,14 @@ impl TextBody {
         };
 
         // Parse the template. If parsing fails, set the error
-        let result = body.parse::<Template>();
-        match result.as_ref() {
+        let result = match body.parse::<T>() {
             Ok(template) => {
                 // Show raw text until the preview loads
                 let (preview, text) =
                     TemplatePreview::new(template.clone(), true, true);
                 self.preview = preview;
                 self.set_text(text);
+                Ok(template)
             }
             Err(error) => {
                 // We'll draw the source text. Since the error is also stored,
@@ -314,9 +316,13 @@ impl TextBody {
                 // Since there's no valid template here, we're not touching
                 // the template preview at all. It won't emit any events until
                 // the next time we have a valid template.
-                self.set_text(error.input().to_owned().into());
+                self.set_text(body.clone().into());
+                // We have to store the input text separately from the display
+                // text, so we can retrieve it when persisting and re-opening
+                // the editor
+                Err((body, error))
             }
-        }
+        };
         self.override_result = Some(result);
     }
 
@@ -339,7 +345,7 @@ impl TextBody {
     }
 }
 
-impl Component for TextBody {
+impl<T: BodyPreview> Component for TextBody<T> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -404,11 +410,14 @@ impl Component for TextBody {
     }
 }
 
-impl Draw for TextBody {
+impl<T: BodyPreview> Draw for TextBody<T>
+where
+    T::Err: StdError,
+{
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let text_area = match &self.override_result {
             Some(Ok(_)) | None => metadata.area(),
-            Some(Err(error)) => {
+            Some(Err((_, error))) => {
                 // We have an override but it's invalid - show the source+error
                 let [text_area, _, error_area] = Layout::vertical([
                     Constraint::Length(self.text_window.text().height() as u16),
@@ -432,6 +441,27 @@ impl Draw for TextBody {
             text_area,
             true,
         );
+    }
+}
+
+/// TODO
+/// TODO make this private
+pub trait BodyPreview:
+    'static + Preview + Sized + Clone + FromStr + PartialEq
+{
+    /// TODO
+    fn to_override(&self) -> BodyOverride;
+}
+
+impl BodyPreview for Template {
+    fn to_override(&self) -> BodyOverride {
+        BodyOverride::Raw(self.clone())
+    }
+}
+
+impl BodyPreview for JsonTemplate {
+    fn to_override(&self) -> BodyOverride {
+        BodyOverride::Json(self.clone())
     }
 }
 
@@ -470,26 +500,6 @@ enum RawBodyMenuAction {
 /// callback when the user closes the editor.
 #[derive(Debug)]
 struct SaveBodyOverride(TempFile);
-
-/// Convert a JSON object into a single template for preview in a TextBody
-fn preview_json_template(json: &JsonTemplate) -> Template {
-    // Kill this in https://github.com/LucasPickering/slumber/issues/627
-
-    // Stringify all the individual templates in the JSON, pretty
-    // print that as JSON, then parse it back as one big template.
-    // This is clumsy but it's the easiest way to represent the body
-    // as a single template, and shouldn't be too expensive
-    let json_string = format!("{:#}", serde_json::Value::from(json));
-    // This unwrap *should* be safe because we know the body was originally
-    // parsed from a single string so all the individual strings are valid
-    // templates. JSON syntax can't create an invalid template string anywhere
-    // because the braces all get whitespace between them. To be safe though,
-    // we fall back to the raw string
-    json_string.parse().unwrap_or_else(|error| {
-        error!(?json, %error, "Failed to parse JSON preview template");
-        Template::raw(json_string)
-    })
-}
 
 #[cfg(test)]
 mod tests {
@@ -656,37 +666,6 @@ mod tests {
             edited("hello!"),
             "  ".into(),
         ]]);
-    }
-
-    /// Convert JSON templates into string templates for preview. This is a
-    /// shortcut to make previewing JSON templates easy. It's actually broken
-    /// and needs to be replaced.
-    /// https://github.com/LucasPickering/slumber/issues/627
-    #[rstest]
-    // Make sure two objects don't look like a template expression
-    #[case::object(
-        json!({"a": {"b": "my name is {{ name }}!"}}).try_into().unwrap(),
-        r#"{
-  "a": {
-    "b": "my name is {{ name }}!"
-  }
-}"#
-    )]
-    // https://github.com/LucasPickering/slumber/issues/646
-    #[case::escaped_quote(
-        JsonTemplate::String(r#"{{ jq('.name="Nemo"') }}"#.into()),
-        // JSON stringification escapes the inner double quotes, which isn't
-        // actually needed and interferes with the template parsing. This
-        // causes it to fall back to treating it as a raw template. Totally a
-        // bug, but not worth fixing before this is replaced.
-        r#""{_{ jq('.name=\"Nemo\"') }}""#
-    )]
-    fn test_preview_json_template(
-        #[case] json: JsonTemplate,
-        #[case] expected: Template,
-    ) {
-        let actual = preview_json_template(&json);
-        assert_eq!(actual, expected);
     }
 
     /// Style text to match the text window gutter

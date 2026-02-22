@@ -17,6 +17,7 @@ use winnow::error::{ContextError, ParseError};
 #[error("{error}")]
 pub struct TemplateParseError {
     /// The string that failed to parse
+    /// TODO need this?
     input: String,
     /// Error message, provided by winnow
     error: String,

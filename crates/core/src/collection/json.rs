@@ -1,19 +1,17 @@
 //! Utilities for working with templated JSON
 
 use crate::render::TemplateContext;
-use async_trait::async_trait;
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_template::{
-    Context, RenderError, RenderedOutput, Template, TemplateParseError, Value,
+    RenderError, RenderedOutput, Template, TemplateParseError, Value,
     ValueError,
 };
 use std::str::FromStr;
 use thiserror::Error;
 
 /// A JSON value like [serde_json::Value], but all strings are templates
-#[derive(Clone, Debug, Serialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum JsonTemplate {
@@ -110,38 +108,6 @@ impl JsonTemplate {
         // Convert the template value to a JSON value via serde
         let json = serde_json::to_value(value).map_err(ValueError::from)?;
         Ok(json)
-    }
-}
-
-// TODO get rid of this once JSON templates aren't previewed fuckily
-impl From<&JsonTemplate> for serde_json::Value {
-    /// Convert a [JsonTemplate] to a [serde_json::Value], stringifying
-    /// templates
-    fn from(template: &JsonTemplate) -> Self {
-        match template {
-            JsonTemplate::Null => serde_json::Value::Null,
-            JsonTemplate::Bool(b) => serde_json::Value::Bool(*b),
-            JsonTemplate::Number(number) => {
-                serde_json::Value::Number(number.clone())
-            }
-            JsonTemplate::String(template) => {
-                serde_json::Value::String(template.display().to_string())
-            }
-            JsonTemplate::Array(array) => serde_json::Value::Array(
-                array.iter().map(serde_json::Value::from).collect(),
-            ),
-            JsonTemplate::Object(object) => serde_json::Value::Object(
-                object
-                    .iter()
-                    .map(|(key, value)| {
-                        (
-                            key.display().to_string(),
-                            serde_json::Value::from(value),
-                        )
-                    })
-                    .collect(),
-            ),
-        }
     }
 }
 

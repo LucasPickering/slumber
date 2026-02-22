@@ -3,7 +3,7 @@
 
 use crate::{
     input::InputEvent,
-    util::{ResultReported, TempFile},
+    util::{ResultReported, TempFile, preview::Preview},
     view::{Event, Question},
 };
 use anyhow::Context;
@@ -17,7 +17,7 @@ use slumber_core::{
     },
     render::{Prompt, ReplyChannel},
 };
-use slumber_template::{RenderedOutput, Template};
+use slumber_template::RenderedOutput;
 use slumber_util::yaml::SourceLocation;
 use std::{
     cell::RefCell,
@@ -138,7 +138,12 @@ pub enum Message {
     /// By holding a callback here, we avoid having to plumb the result all the
     /// way back down the component tree.
     TemplatePreview {
-        template: Template,
+        /// Template to be rendered
+        ///
+        /// Typically this is a `Template`, but it can be anything else that
+        /// renders to `RenderedOutput`.
+        #[debug(skip)]
+        template: BoxRender,
         /// Does the consumer support streaming? If so, the output chunks may
         /// contain streams
         can_stream: bool,
@@ -221,6 +226,9 @@ pub enum RecipeCopyTarget {
 
 /// A static callback included in a message
 pub type Callback<T> = Box<dyn 'static + FnOnce(T)>;
+
+/// TODO
+pub type BoxRender = Box<dyn Preview>;
 
 /// Create a new [Message] queue, returning the `(sender, receiver)` pair
 ///

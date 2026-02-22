@@ -1,5 +1,6 @@
 use crate::{
     message::Message,
+    util::preview::Preview,
     view::{
         UpdateContext, ViewContext,
         component::{Component, ComponentId},
@@ -10,7 +11,7 @@ use ratatui::{
     style::{Style, Styled},
     text::{Line, Span, Text},
 };
-use slumber_template::{LazyValue, RenderedChunk, RenderedOutput, Template};
+use slumber_template::{LazyValue, RenderedChunk, RenderedOutput};
 use std::ops::Deref;
 
 /// Generate template preview text
@@ -25,14 +26,16 @@ use std::ops::Deref;
 /// emitted for the initial text. Instead, the initial text is returned from
 /// [Self::new]. Avoiding an emitted event on startup avoids some issues in
 /// tests with loose emitted events.
+///
+/// TODO explain `T`
 #[derive(Debug)]
-pub struct TemplatePreview {
+pub struct TemplatePreview<T> {
     id: ComponentId,
     /// Template being rendered
     ///
     /// We have to hang onto this so we can re-render if there's a refresh
     /// event
-    template: Template,
+    template: T,
     /// Emitter for events whenever new text is rendered
     emitter: Emitter<TemplatePreviewEvent>,
     /// Does this component of the recipe support streaming? If so, the
@@ -43,7 +46,10 @@ pub struct TemplatePreview {
     is_override: bool,
 }
 
-impl TemplatePreview {
+impl<T> TemplatePreview<T>
+where
+    T: 'static + Preview + Clone + PartialEq,
+{
     /// Create a new template preview
     ///
     /// If the template is dynamic, this will spawn a task to render the preview
@@ -63,7 +69,7 @@ impl TemplatePreview {
     ///   metadata. If `false`, streams will be resolved in the preview.
     /// - `is_override`: Is the template a single-session override? For styling
     pub fn new(
-        template: Template,
+        template: T,
         can_stream: bool,
         is_override: bool,
     ) -> (Self, Text<'static>) {
@@ -80,11 +86,10 @@ impl TemplatePreview {
         // is rendering
         let style = slf.style();
         let initial_text =
-            Text::styled(slf.template.display().to_string(), style);
+            Text::styled(slf.template.display().into_owned(), style);
 
         (slf, initial_text)
     }
-
     /// Send a message to render a preview of the template in the background
     ///
     /// If preview rendering is disabled or the template is static, this will
@@ -106,7 +111,7 @@ impl TemplatePreview {
             };
 
             ViewContext::push_message(Message::TemplatePreview {
-                template: self.template.clone(),
+                template: Box::new(self.template.clone()),
                 can_stream: self.can_stream,
                 on_complete: Box::new(on_complete),
             });
@@ -122,7 +127,10 @@ impl TemplatePreview {
     }
 }
 
-impl Component for TemplatePreview {
+impl<T> Component for TemplatePreview<T>
+where
+    T: 'static + Preview + Clone + PartialEq,
+{
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -137,7 +145,7 @@ impl Component for TemplatePreview {
     }
 }
 
-impl ToEmitter<TemplatePreviewEvent> for TemplatePreview {
+impl<T> ToEmitter<TemplatePreviewEvent> for TemplatePreview<T> {
     fn to_emitter(&self) -> Emitter<TemplatePreviewEvent> {
         self.emitter
     }
@@ -260,6 +268,7 @@ mod tests {
         render::TemplateContext,
         test_util::by_id,
     };
+    use slumber_template::Template;
     use slumber_util::{Factory, assert_matches};
 
     /// TemplatePreview message should only be sent for dynamic templates

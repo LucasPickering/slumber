@@ -16,8 +16,8 @@ use crate::{
     http::{RequestConfig, RequestState, TuiHttpProvider},
     input::{InputBindings, InputEvent},
     message::{
-        Callback, HttpMessage, Message, MessageReceiver, MessageSender,
-        RecipeCopyTarget,
+        BoxRender, Callback, HttpMessage, Message, MessageReceiver,
+        MessageSender, RecipeCopyTarget,
     },
     util::ResultReported,
     view::{Event, PreviewPrompter, RequestDisposition, TuiPrompter},
@@ -37,7 +37,7 @@ use slumber_core::{
     http::{HttpEngine, RequestId, RequestSeed, RequestTicket},
     render::{Prompter, TemplateContext},
 };
-use slumber_template::{RenderedOutput, Template};
+use slumber_template::RenderedOutput;
 use slumber_util::yaml::SourceLocation;
 use std::{
     io::{self, Stdout},
@@ -805,7 +805,7 @@ where
     /// input. A placeholder value will be used for any prompts.
     fn render_template_preview(
         &self,
-        template: Template,
+        template: BoxRender,
         profile_id: Option<ProfileId>,
         can_stream: bool,
         on_complete: Callback<RenderedOutput>,

@@ -1,6 +1,7 @@
 //! Miscellaneous utility constants/types/functions
 
 use dialoguer::Confirm;
+use slumber_template::Value;
 use std::fmt::{self, Display};
 
 /// Show the user a confirmation prompt
@@ -11,6 +12,26 @@ pub fn confirm(prompt: impl Into<String>) -> bool {
         .wait_for_newline(true)
         .interact()
         .unwrap_or(false)
+}
+
+/// Convert a template [Value] to a JSON value
+pub fn value_to_json(value: Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Boolean(b) => b.into(),
+        Value::Integer(i) => i.into(),
+        Value::Float(f) => f.into(),
+        Value::String(s) => s.into(),
+        Value::Array(array) => array.into_iter().map(value_to_json).collect(),
+        Value::Object(object) => object
+            .into_iter()
+            .map(|(key, value)| (key, value_to_json(value)))
+            .collect(),
+        // Convert bytes to an int array. This isn't really useful, but it
+        // keeps this method infallible which is really nice. And generally
+        // it will probably be less disruptive to the user than an error.
+        Value::Bytes(bytes) => bytes.to_vec().into(),
+    }
 }
 
 /// Helper to printing bytes. If the bytes aren't valid UTF-8, they'll be

@@ -15,9 +15,8 @@ use slumber_core::{
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
-    render::{Prompt, ReplyChannel},
+    render::{Prompt, ReplyChannel, TemplateContext},
 };
-use slumber_template::{RenderedOutput, Template};
 use slumber_util::yaml::SourceLocation;
 use std::{
     cell::RefCell,
@@ -130,20 +129,19 @@ pub enum Message {
     /// automatically cancelled when the TUI exits.
     Spawn(#[debug(skip)] LocalBoxFuture<'static, ()>),
 
-    /// Render a template string, to be previewed in the UI. Ideally this could
-    /// be launched directly by the component that needs it, but only the
-    /// controller has the data needed to build the template context. The given
-    /// callback will be called with the outcome (including inline errors).
+    /// Render a template string to be previewed in the UI.
     ///
-    /// By holding a callback here, we avoid having to plumb the result all the
-    /// way back down the component tree.
+    /// The callback returns a future that will be spawned onto a local task.
+    ///
+    /// Ideally this could be launched directly by the component that needs it,
+    /// but only the controller has the data needed to build the template
+    /// context. The caller will be given back a [TemplateContext] to render
+    /// the template as needed. This minimizes the amount of work that the
+    /// main loop has to do, so preview logic can be isolated as much as
+    /// possible.
     TemplatePreview {
-        template: Template,
-        /// Does the consumer support streaming? If so, the output chunks may
-        /// contain streams
-        can_stream: bool,
         #[debug(skip)]
-        on_complete: Callback<RenderedOutput>,
+        callback: FutureCallback<TemplateContext>,
     },
 
     /// Redraw the screen with no updates
@@ -221,6 +219,10 @@ pub enum RecipeCopyTarget {
 
 /// A static callback included in a message
 pub type Callback<T> = Box<dyn 'static + FnOnce(T)>;
+
+/// A static callback that returns a future to be spawned on a task
+pub type FutureCallback<T> =
+    Box<dyn 'static + FnOnce(T) -> LocalBoxFuture<'static, ()>>;
 
 /// Create a new [Message] queue, returning the `(sender, receiver)` pair
 ///

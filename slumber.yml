@@ -199,6 +199,28 @@ requests:
             "size": "HUGE"
           }
 
+      large_json:
+        $ref: "#/.base_request"
+        name: Big JSON
+        method: POST
+        url: "{{ host }}/anything"
+        body:
+          type: json
+          data:
+            "null": null
+            int: 3
+            float: 4.32
+            bool: false
+            string: "hello"
+            template: "{{ username }}"
+            unpacked_template: "{{ 3 }}"
+            object:
+              a: 1
+              nested:
+                b: 2
+                nested:
+                  c: [3, 4, 5]
+
       large_body:
         $ref: "#/.base_request"
         name: Large Body

@@ -406,6 +406,24 @@ impl RenderedOutput {
     }
 }
 
+/// Create render output of a single chunk with a value
+impl From<Value> for RenderedOutput {
+    fn from(value: Value) -> Self {
+        Self(vec![RenderedChunk::Rendered(value.into())])
+    }
+}
+
+/// Create render output of a single chunk that may have failed
+impl From<Result<Value, RenderError>> for RenderedOutput {
+    fn from(result: Result<Value, RenderError>) -> Self {
+        let chunk = match result {
+            Ok(value) => RenderedChunk::Rendered(value.into()),
+            Err(error) => RenderedChunk::Error(error),
+        };
+        Self(vec![chunk])
+    }
+}
+
 /// Get an iterator over the chunks of this output
 impl IntoIterator for RenderedOutput {
     type Item = RenderedChunk;

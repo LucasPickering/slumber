@@ -103,17 +103,12 @@ impl RecipeDisplay {
         let form_fields = self
             .body
             .as_ref()
-            .and_then(|body| match body {
-                RecipeBodyDisplay::Raw(_) | RecipeBodyDisplay::Json(_) => None,
-                RecipeBodyDisplay::Form(form) => {
-                    Some(form.to_build_overrides())
-                }
-            })
+            .and_then(RecipeBodyDisplay::form_override)
             .unwrap_or_default();
         let body = self
             .body
             .as_ref()
-            .and_then(RecipeBodyDisplay::override_value);
+            .and_then(RecipeBodyDisplay::body_override);
 
         BuildOptions {
             url,

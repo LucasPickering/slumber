@@ -16,8 +16,7 @@ use crate::{
     http::{RequestConfig, RequestState, TuiHttpProvider},
     input::{InputBindings, InputEvent},
     message::{
-        Callback, HttpMessage, Message, MessageReceiver, MessageSender,
-        RecipeCopyTarget,
+        HttpMessage, Message, MessageReceiver, MessageSender, RecipeCopyTarget,
     },
     util::ResultReported,
     view::{Event, PreviewPrompter, RequestDisposition, TuiPrompter},
@@ -37,7 +36,6 @@ use slumber_core::{
     http::{HttpEngine, RequestId, RequestSeed, RequestTicket},
     render::{Prompter, TemplateContext},
 };
-use slumber_template::{RenderedOutput, Template};
 use slumber_util::yaml::SourceLocation;
 use std::{
     io::{self, Stdout},
@@ -386,22 +384,14 @@ where
             Message::Spawn(future) => {
                 self.spawn(future);
             }
-            Message::TemplatePreview {
-                template,
-                can_stream,
-                on_complete,
-            } => {
+            Message::TemplatePreview { callback } => {
                 // Note: there's a potential bug here, if the selected profile
                 // changed since this message was queued. In practice is
                 // extremely unlikely (potentially impossible), and this
                 // shortcut saves us a lot of plumbing so it's worth it
                 let profile_id = self.state.view.selected_profile_id().cloned();
-                self.render_template_preview(
-                    template,
-                    profile_id,
-                    can_stream,
-                    on_complete,
-                );
+                let context = self.template_context(profile_id, None);
+                self.spawn(callback(context));
             }
             Message::Tick => {} // This just triggers a draw, no update needed
         }
@@ -798,28 +788,6 @@ where
             data,
         ));
         Ok(())
-    }
-
-    /// Spawn a task to render a template, storing the result in a pre-defined
-    /// lock. As this is a preview, the user will *not* be prompted for any
-    /// input. A placeholder value will be used for any prompts.
-    fn render_template_preview(
-        &self,
-        template: Template,
-        profile_id: Option<ProfileId>,
-        can_stream: bool,
-        on_complete: Callback<RenderedOutput>,
-    ) {
-        let context = self.template_context(profile_id, None);
-        self.messages_tx.spawn(async move {
-            // Render chunks, then write them to the output destination
-            let chunks = if can_stream {
-                template.render(&context.stream()).await
-            } else {
-                template.render(&context).await
-            };
-            on_complete(chunks);
-        });
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out

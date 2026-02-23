@@ -5,7 +5,9 @@ use crate::{
         Component, Generate,
         common::{
             actions::MenuItem,
-            template_preview::{TemplatePreview, TemplatePreviewEvent},
+            template_preview::{
+                Preview, TemplatePreview, TemplatePreviewEvent,
+            },
             text_window::{TextWindow, TextWindowProps},
         },
         component::{
@@ -31,24 +33,16 @@ use ratatui::{
 use slumber_config::Action;
 use slumber_core::{
     collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
-    http::BodyOverride,
+    http::{BodyOverride, BuildFieldOverride},
 };
-use slumber_template::{Template, TemplateParseError};
-use std::{borrow::Cow, error::Error as StdError, fs};
-use tracing::{debug, error};
+use slumber_template::Template;
+use std::{borrow::Cow, error::Error as StdError, fs, str::FromStr};
+use tracing::debug;
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
 #[derive(Debug)]
-pub enum RecipeBodyDisplay {
-    /// A raw text body with no known content type
-    Raw(TextBody),
-    /// A body declared with the `json` type. This is presented as text so it
-    /// uses the same internal type as `Raw`, but the distinction allows us to
-    /// parse and generate an override body correctly
-    Json(TextBody),
-    Form(RecipeTable<FormTableKind>),
-}
+pub struct RecipeBodyDisplay(Inner);
 
 impl RecipeBodyDisplay {
     /// Build a component to display the body, based on the body type. This
@@ -57,17 +51,16 @@ impl RecipeBodyDisplay {
     pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
         match body {
             RecipeBody::Raw(body) | RecipeBody::Stream(body) => {
-                Self::Raw(TextBody::new(body.clone(), recipe))
+                Self(Inner::Raw(TextBody::new(body.clone(), recipe)))
             }
             RecipeBody::Json(json) => {
-                let template = preview_json_template(json);
-                Self::Json(TextBody::new(template, recipe))
+                Self(Inner::Json(TextBody::new(json.clone(), recipe)))
             }
             RecipeBody::FormUrlencoded(fields) => {
-                Self::Form(Self::form_table(&recipe.id, fields, false))
+                Self(Inner::Form(Self::form_table(&recipe.id, fields, false)))
             }
             RecipeBody::FormMultipart(fields) => {
-                Self::Form(Self::form_table(&recipe.id, fields, true))
+                Self(Inner::Form(Self::form_table(&recipe.id, fields, true)))
             }
         }
     }
@@ -87,62 +80,68 @@ impl RecipeBodyDisplay {
         )
     }
 
-    /// If the user has applied a temporary edit to the body, get the override
-    /// value. Return `None` to use the recipe's stock body.
-    pub fn override_value(&self) -> Option<BodyOverride> {
-        match self {
-            RecipeBodyDisplay::Raw(inner) => inner
-                .override_template()
-                .map(|template| BodyOverride::Raw(template.clone())),
-            RecipeBodyDisplay::Json(inner) => {
-                // For JSON bodies, we have to restringify the template. This
-                // needs to be fixed so it's stored as JSON instead
-                // https://github.com/LucasPickering/slumber/issues/627
-                inner.override_template().map(|template| {
-                    let s = template.display();
-                    // If the parse fails for some reason, fall back to a raw
-                    // body https://github.com/LucasPickering/slumber/issues/646
-                    match s.parse::<JsonTemplate>() {
-                        Ok(json) => BodyOverride::Json(json),
-                        Err(_) => BodyOverride::Raw(template.clone()),
-                    }
-                })
+    /// Get the user's temporary text body override (raw or JSON)
+    ///
+    /// Return `None` if this is not a text body or there's no override
+    pub fn body_override(&self) -> Option<BodyOverride> {
+        /// If a *valid* override is present for the body, use it
+        fn template<T: BodyPreview>(body: &TextBody<T>) -> Option<&T> {
+            match &body.override_result {
+                Some(Ok(template)) => Some(template),
+                Some(Err(_)) | None => None,
             }
+        }
+
+        match &self.0 {
+            Inner::Raw(inner) => template(inner).map(BodyPreview::to_override),
+            Inner::Json(inner) => template(inner).map(BodyPreview::to_override),
             // Form bodies override per-field so return None for them
-            RecipeBodyDisplay::Form(_) => None,
+            Inner::Form(_) => None,
+        }
+    }
+
+    /// Get the user's temporary form field overrides
+    ///
+    /// Return `None` if this is not a form body or there are no overrides
+    pub fn form_override(
+        &self,
+    ) -> Option<IndexMap<String, BuildFieldOverride>> {
+        match &self.0 {
+            Inner::Raw(_) | Inner::Json(_) => None,
+            Inner::Form(form) => Some(form.to_build_overrides()),
         }
     }
 }
 
 impl Component for RecipeBodyDisplay {
     fn id(&self) -> ComponentId {
-        match self {
-            RecipeBodyDisplay::Raw(text_body)
-            | RecipeBodyDisplay::Json(text_body) => text_body.id(),
-            RecipeBodyDisplay::Form(table) => table.id(),
+        match &self.0 {
+            Inner::Raw(text_body) => text_body.id(),
+            Inner::Json(text_body) => text_body.id(),
+            Inner::Form(table) => table.id(),
         }
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        match self {
-            Self::Raw(text_body) | Self::Json(text_body) => {
-                vec![text_body.to_child()]
-            }
-            Self::Form(form) => vec![form.to_child()],
-        }
+        let child = match &mut self.0 {
+            Inner::Raw(text_body) => text_body.to_child(),
+            Inner::Json(text_body) => text_body.to_child(),
+            Inner::Form(form) => form.to_child(),
+        };
+        vec![child]
     }
 }
 
 impl Draw for RecipeBodyDisplay {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        match self {
-            RecipeBodyDisplay::Raw(inner) => {
+        match &self.0 {
+            Inner::Raw(inner) => {
                 canvas.draw(inner, (), metadata.area(), true);
             }
-            RecipeBodyDisplay::Json(inner) => {
+            Inner::Json(inner) => {
                 canvas.draw(inner, (), metadata.area(), true);
             }
-            RecipeBodyDisplay::Form(form) => canvas.draw(
+            Inner::Form(form) => canvas.draw(
                 form,
                 RecipeTableProps {
                     key_header: "Field",
@@ -155,27 +154,46 @@ impl Draw for RecipeBodyDisplay {
     }
 }
 
-/// A body represented and editable as a single block of text
+/// Inner state for [RecipeBodyDisplay]
+///
+/// This wrapper is needed so the contained types can be private
 #[derive(Debug)]
-pub struct TextBody {
+enum Inner {
+    /// A raw text body with no known content type
+    Raw(TextBody<Template>),
+    /// A body declared with the `json` type. This is presented as text so it
+    /// uses the same internal type as `Raw`, but the distinction allows us to
+    /// parse and generate an override body correctly
+    Json(TextBody<JsonTemplate>),
+    Form(RecipeTable<FormTableKind>),
+}
+
+/// A body represented and editable as a single block of text
+///
+/// The parameter `T` defines the template type of the body. Raw bodies use
+/// [Template], JSON bodies use [JsonTemplate].
+#[derive(Debug)]
+struct TextBody<T: BodyPreview> {
     id: ComponentId,
     /// Emitter for the callback from editing the body
     override_emitter: Emitter<SaveBodyOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RawBodyMenuAction>,
     /// The template from the collection
-    original_template: Template,
+    original_template: T,
     /// Temporary override entered by the user
     ///
     /// Because the template is entered in an external editor, it's possible
-    /// for the input to be invalid. In that case, we'll store the error and
-    /// show it. We'll use the original template for request building while the
-    /// override is invalid.
-    override_result: Option<Result<Template, TemplateParseError>>,
+    /// for the input to be invalid. In that case, we'll store the invalid
+    /// source and the error and show them. We'll use the original template
+    /// for request building while the override is invalid.
+    override_result: Option<Result<T, (String, T::Err)>>,
     /// Persistent store key for temporary overrides
     persistent_key: BodyKey,
-    /// Container for both the original and override templates
-    preview: TemplatePreview,
+    /// Helper to render previews for the current template
+    ///
+    /// While the override is invalid, this will remain unused
+    preview: TemplatePreview<T>,
     /// Body MIME type, used for syntax highlighting and pager selection. This
     /// has no impact on content of the rendered body
     mime: Option<Mime>,
@@ -187,13 +205,16 @@ pub struct TextBody {
     text_window: TextWindow,
 }
 
-impl TextBody {
-    fn new(template: Template, recipe: &Recipe) -> Self {
+impl<T: BodyPreview> TextBody<T> {
+    fn new(template: T, recipe: &Recipe) -> Self {
         let mime = recipe.mime();
 
         let persistent_key = BodyKey(recipe.id.clone());
         let override_source = PersistentStore::get_session(&persistent_key);
-        let override_result = override_source.as_deref().map(str::parse);
+        let override_result = override_source.map(|source| {
+            // If it fails, store the error *and* the original text
+            source.parse::<T>().map_err(|error| (source, error))
+        });
 
         // Start rendering the preview in the background
         let (preview, initial_text) = TemplatePreview::new(
@@ -204,7 +225,7 @@ impl TextBody {
                 .unwrap_or(&template)
                 .clone(),
             true,
-            override_source.is_some(),
+            override_result.is_some(),
         );
 
         let mut slf = Self {
@@ -230,18 +251,15 @@ impl TextBody {
         view_text(self.text_window.text(), self.mime.clone());
     }
 
+    /// Get the source the user inputted for the current override
+    ///
+    /// This is what we'll persist, as well as what we'll show when they re-open
+    /// the editor.
     fn override_source(&self) -> Option<Cow<'_, str>> {
         self.override_result.as_ref().map(|result| match result {
             Ok(template) => template.display(),
-            Err(error) => error.input().into(),
+            Err((source, _)) => source.into(),
         })
-    }
-
-    /// If a *valid* override has been given, get it
-    fn override_template(&self) -> Option<&Template> {
-        self.override_result
-            .as_ref()
-            .and_then(|result| result.as_ref().ok())
     }
 
     /// Send a message to open the body in an external editor. We have to write
@@ -298,15 +316,17 @@ impl TextBody {
         };
 
         // Parse the template. If parsing fails, set the error
-        let result = body.parse::<Template>();
-        match result.as_ref() {
-            Ok(template) => {
+        match body.parse::<T>() {
+            Ok(template) if template != self.original_template => {
                 // Show raw text until the preview loads
                 let (preview, text) =
                     TemplatePreview::new(template.clone(), true, true);
                 self.preview = preview;
                 self.set_text(text);
+                self.override_result = Some(Ok(template));
             }
+            // Override is equal to the original - delete the override
+            Ok(_) => self.reset_override(),
             Err(error) => {
                 // We'll draw the source text. Since the error is also stored,
                 // we'll show that outside the text window
@@ -314,10 +334,13 @@ impl TextBody {
                 // Since there's no valid template here, we're not touching
                 // the template preview at all. It won't emit any events until
                 // the next time we have a valid template.
-                self.set_text(error.input().to_owned().into());
+                self.set_text(body.clone().into());
+                // We have to store the input text separately from the display
+                // text, so we can retrieve it when persisting and re-opening
+                // the editor
+                self.override_result = Some(Err((body, error)));
             }
         }
-        self.override_result = Some(result);
     }
 
     /// Remove the override and reset the preview to the original template
@@ -339,7 +362,7 @@ impl TextBody {
     }
 }
 
-impl Component for TextBody {
+impl<T: BodyPreview> Component for TextBody<T> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -357,7 +380,12 @@ impl Component for TextBody {
                 self.load_override(file);
             })
             .emitted(self.preview.to_emitter(), |TemplatePreviewEvent(text)| {
-                self.set_text(text);
+                // Don't accept the preview if we're currently showing invalid
+                // text. This prevents delayed/refreshed previews from
+                // overwriting the invalid override source (it's a bit jank)
+                if matches!(&self.override_result, None | Some(Ok(_))) {
+                    self.set_text(text);
+                }
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 RawBodyMenuAction::View => self.view_body(),
@@ -404,11 +432,14 @@ impl Component for TextBody {
     }
 }
 
-impl Draw for TextBody {
+impl<T: BodyPreview> Draw for TextBody<T>
+where
+    T::Err: StdError,
+{
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let text_area = match &self.override_result {
             Some(Ok(_)) | None => metadata.area(),
-            Some(Err(error)) => {
+            Some(Err((_, error))) => {
                 // We have an override but it's invalid - show the source+error
                 let [text_area, _, error_area] = Layout::vertical([
                     Constraint::Length(self.text_window.text().height() as u16),
@@ -432,6 +463,23 @@ impl Draw for TextBody {
             text_area,
             true,
         );
+    }
+}
+
+/// A text body type that can be previewed and edited/overidden
+trait BodyPreview: 'static + Preview + Sized + Clone + FromStr + PartialEq {
+    fn to_override(&self) -> BodyOverride;
+}
+
+impl BodyPreview for Template {
+    fn to_override(&self) -> BodyOverride {
+        BodyOverride::Raw(self.clone())
+    }
+}
+
+impl BodyPreview for JsonTemplate {
+    fn to_override(&self) -> BodyOverride {
+        BodyOverride::Json(self.clone())
     }
 }
 
@@ -471,26 +519,6 @@ enum RawBodyMenuAction {
 #[derive(Debug)]
 struct SaveBodyOverride(TempFile);
 
-/// Convert a JSON object into a single template for preview in a TextBody
-fn preview_json_template(json: &JsonTemplate) -> Template {
-    // Kill this in https://github.com/LucasPickering/slumber/issues/627
-
-    // Stringify all the individual templates in the JSON, pretty
-    // print that as JSON, then parse it back as one big template.
-    // This is clumsy but it's the easiest way to represent the body
-    // as a single template, and shouldn't be too expensive
-    let json_string = format!("{:#}", serde_json::Value::from(json));
-    // This unwrap *should* be safe because we know the body was originally
-    // parsed from a single string so all the individual strings are valid
-    // templates. JSON syntax can't create an invalid template string anywhere
-    // because the braces all get whitespace between them. To be safe though,
-    // we fall back to the raw string
-    json_string.parse().unwrap_or_else(|error| {
-        error!(?json, %error, "Failed to parse JSON preview template");
-        Template::raw(json_string)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,13 +550,13 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.override_value(), None);
+        assert_eq!(component.body_override(), None);
         harness.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Edit the template
         edit(&mut component, &mut harness, "hello!", "goodbye!");
 
-        assert_eq!(component.override_value(), Some("goodbye!".into()));
+        assert_eq!(component.body_override(), Some("goodbye!".into()));
         harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
@@ -546,7 +574,7 @@ mod tests {
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
-        assert_eq!(component.override_value(), None);
+        assert_eq!(component.body_override(), None);
     }
 
     /// Test edit and provide an invalid template. It should show the template
@@ -567,7 +595,7 @@ mod tests {
 
         // We don't have a valid override, so we'll let the HTTP engine use the
         // original template
-        assert_eq!(component.override_value(), None);
+        assert_eq!(component.body_override(), None);
         harness.assert_buffer_lines([
             vec![gutter("1"), " ".into(), "{{".into()],
             vec![],
@@ -601,7 +629,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.override_value(), None);
+        assert_eq!(component.body_override(), None);
         harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
@@ -613,7 +641,7 @@ mod tests {
         // Open the editor
         edit(&mut component, &mut harness, &initial_text, &override_text);
 
-        assert_eq!(component.override_value(), Some(override_json.into()));
+        assert_eq!(component.body_override(), Some(override_json.into()));
         harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
@@ -632,7 +660,7 @@ mod tests {
             .send_key(KeyCode::Char('z'))
             .assert()
             .empty();
-        assert_eq!(component.override_value(), None);
+        assert_eq!(component.body_override(), None);
     }
 
     /// Override template should be loaded from the persistence store on init
@@ -649,44 +677,13 @@ mod tests {
             RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
-        assert_eq!(component.override_value(), Some("hello!".into()));
+        assert_eq!(component.body_override(), Some("hello!".into()));
         harness.assert_buffer_lines([vec![
             gutter("1"),
             " ".into(),
             edited("hello!"),
             "  ".into(),
         ]]);
-    }
-
-    /// Convert JSON templates into string templates for preview. This is a
-    /// shortcut to make previewing JSON templates easy. It's actually broken
-    /// and needs to be replaced.
-    /// https://github.com/LucasPickering/slumber/issues/627
-    #[rstest]
-    // Make sure two objects don't look like a template expression
-    #[case::object(
-        json!({"a": {"b": "my name is {{ name }}!"}}).try_into().unwrap(),
-        r#"{
-  "a": {
-    "b": "my name is {{ name }}!"
-  }
-}"#
-    )]
-    // https://github.com/LucasPickering/slumber/issues/646
-    #[case::escaped_quote(
-        JsonTemplate::String(r#"{{ jq('.name="Nemo"') }}"#.into()),
-        // JSON stringification escapes the inner double quotes, which isn't
-        // actually needed and interferes with the template parsing. This
-        // causes it to fall back to treating it as a raw template. Totally a
-        // bug, but not worth fixing before this is replaced.
-        r#""{_{ jq('.name=\"Nemo\"') }}""#
-    )]
-    fn test_preview_json_template(
-        #[case] json: JsonTemplate,
-        #[case] expected: Template,
-    ) {
-        let actual = preview_json_template(&json);
-        assert_eq!(actual, expected);
     }
 
     /// Style text to match the text window gutter
@@ -714,7 +711,7 @@ mod tests {
     fn edit(
         component: &mut TestComponent<RecipeBodyDisplay>,
         harness: &mut TestHarness,
-        initial_content: &str,
+        expected_initial_content: &str,
         content: &str,
     ) {
         harness.messages_rx().clear();
@@ -729,7 +726,10 @@ mod tests {
             }] => (file, on_complete),
         );
         // Make sure the initial content is present as expected
-        assert_eq!(fs::read_to_string(file.path()).unwrap(), initial_content);
+        assert_eq!(
+            fs::read_to_string(file.path()).unwrap(),
+            expected_initial_content
+        );
 
         // Simulate the editor modifying the file
         fs::write(file.path(), content).unwrap();

@@ -16,17 +16,8 @@ use winnow::error::{ContextError, ParseError};
 #[derive(Debug, Error)]
 #[error("{error}")]
 pub struct TemplateParseError {
-    /// The string that failed to parse
-    input: String,
     /// Error message, provided by winnow
     error: String,
-}
-
-impl TemplateParseError {
-    /// Get the invalid template
-    pub fn input(&self) -> &str {
-        &self.input
-    }
 }
 
 /// Convert winnow's error type into ours. This stringifies the error so we can
@@ -34,7 +25,6 @@ impl TemplateParseError {
 impl From<ParseError<&str, ContextError>> for TemplateParseError {
     fn from(error: ParseError<&str, ContextError>) -> Self {
         Self {
-            input: (*error.input()).to_string(),
             error: error.to_string(),
         }
     }

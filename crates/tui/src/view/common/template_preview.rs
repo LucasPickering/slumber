@@ -6,12 +6,19 @@ use crate::{
         event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
     },
 };
+use async_trait::async_trait;
+use futures::FutureExt;
 use ratatui::{
     style::{Style, Styled},
     text::{Line, Span, Text},
 };
-use slumber_template::{LazyValue, RenderedChunk, RenderedOutput, Template};
-use std::ops::Deref;
+use slumber_core::{
+    collection::JsonTemplate, render::TemplateContext, util::value_to_json,
+};
+use slumber_template::{
+    Context, LazyValue, RenderedChunk, RenderedOutput, Template,
+};
+use std::{borrow::Cow, ops::Deref};
 
 /// Generate template preview text
 ///
@@ -25,14 +32,18 @@ use std::ops::Deref;
 /// emitted for the initial text. Instead, the initial text is returned from
 /// [Self::new]. Avoiding an emitted event on startup avoids some issues in
 /// tests with loose emitted events.
+///
+/// `T` is the type of the template being previewed. In most cases, this is
+/// [Template], but for non-string values it can be other types. Anything that
+/// implements [Preview] is eligible.
 #[derive(Debug)]
-pub struct TemplatePreview {
+pub struct TemplatePreview<T> {
     id: ComponentId,
     /// Template being rendered
     ///
     /// We have to hang onto this so we can re-render if there's a refresh
     /// event
-    template: Template,
+    template: T,
     /// Emitter for events whenever new text is rendered
     emitter: Emitter<TemplatePreviewEvent>,
     /// Does this component of the recipe support streaming? If so, the
@@ -43,7 +54,10 @@ pub struct TemplatePreview {
     is_override: bool,
 }
 
-impl TemplatePreview {
+impl<T> TemplatePreview<T>
+where
+    T: 'static + Preview + Clone + PartialEq,
+{
     /// Create a new template preview
     ///
     /// If the template is dynamic, this will spawn a task to render the preview
@@ -63,7 +77,7 @@ impl TemplatePreview {
     ///   metadata. If `false`, streams will be resolved in the preview.
     /// - `is_override`: Is the template a single-session override? For styling
     pub fn new(
-        template: Template,
+        template: T,
         can_stream: bool,
         is_override: bool,
     ) -> (Self, Text<'static>) {
@@ -80,11 +94,10 @@ impl TemplatePreview {
         // is rendering
         let style = slf.style();
         let initial_text =
-            Text::styled(slf.template.display().to_string(), style);
+            Text::styled(slf.template.display().into_owned(), style);
 
         (slf, initial_text)
     }
-
     /// Send a message to render a preview of the template in the background
     ///
     /// If preview rendering is disabled or the template is static, this will
@@ -96,19 +109,32 @@ impl TemplatePreview {
         if config.tui.preview_templates && self.template.is_dynamic() {
             let style = self.style();
             let emitter = self.emitter;
-            let on_complete = move |output| {
-                // Stitch the output together into Text
-                let text = TextStitcher::stitch_chunks(output).set_style(style);
+            let template = self.template.clone();
+            let can_stream = self.can_stream;
 
-                // We can emit the event directly from the callback because
-                // the task is run on a local set
-                emitter.emit(TemplatePreviewEvent(text));
+            // Build a callback that gets the context and uses it to render.
+            // This will be spawned into a background task automatically.
+            let callback = move |context: TemplateContext| {
+                async move {
+                    // Render chunks to text
+                    let text = if can_stream {
+                        template.render_preview(&context.stream()).await
+                    } else {
+                        template.render_preview(&context).await
+                    };
+
+                    // Apply final styling based on override context
+                    let text = text.set_style(style);
+
+                    // We can emit the event directly from the callback because
+                    // the task is run on a local set
+                    emitter.emit(TemplatePreviewEvent(text));
+                }
+                .boxed_local()
             };
 
             ViewContext::push_message(Message::TemplatePreview {
-                template: self.template.clone(),
-                can_stream: self.can_stream,
-                on_complete: Box::new(on_complete),
+                callback: Box::new(callback),
             });
         }
     }
@@ -122,7 +148,10 @@ impl TemplatePreview {
     }
 }
 
-impl Component for TemplatePreview {
+impl<T> Component for TemplatePreview<T>
+where
+    T: 'static + Preview + Clone + PartialEq,
+{
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -137,7 +166,7 @@ impl Component for TemplatePreview {
     }
 }
 
-impl ToEmitter<TemplatePreviewEvent> for TemplatePreview {
+impl<T> ToEmitter<TemplatePreviewEvent> for TemplatePreview<T> {
     fn to_emitter(&self) -> Emitter<TemplatePreviewEvent> {
         self.emitter
     }
@@ -147,20 +176,224 @@ impl ToEmitter<TemplatePreviewEvent> for TemplatePreview {
 #[derive(Debug)]
 pub struct TemplatePreviewEvent(pub Text<'static>);
 
-/// A helper for stitching rendered template chunks into ratatui `Text`. This
-/// requires some effort because ratatui *loves* line breaks, so we have to
+/// A template that can be rendered to text for preview
+#[async_trait(?Send)]
+pub trait Preview {
+    /// Get the template's equivalent source code
+    ///
+    /// This is *functionally* equivalent to the template's input source, but
+    /// may not match exactly. For example, insignicant whitespace within a
+    /// template expression may be added/lost.
+    fn display(&self) -> Cow<'_, str>;
+
+    /// Does the template contain *any* dynamic expressions?
+    fn is_dynamic(&self) -> bool;
+
+    /// Render the template as preview text, including styling
+    async fn render_preview<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Text<'static>;
+}
+
+#[async_trait(?Send)]
+impl Preview for Template {
+    fn display(&self) -> Cow<'_, str> {
+        self.display()
+    }
+
+    fn is_dynamic(&self) -> bool {
+        self.is_dynamic()
+    }
+
+    async fn render_preview<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Text<'static> {
+        let output = self.render(context).await;
+        // Stitch the output together into Text
+        let mut builder = TextBuilder::new();
+        builder.add_chunks(output);
+        builder.build()
+    }
+}
+
+#[async_trait(?Send)]
+impl Preview for JsonTemplate {
+    fn display(&self) -> Cow<'_, str> {
+        fn to_json(template: &JsonTemplate) -> serde_json::Value {
+            match template {
+                JsonTemplate::Null => serde_json::Value::Null,
+                JsonTemplate::Bool(b) => serde_json::Value::Bool(*b),
+                JsonTemplate::Number(number) => {
+                    serde_json::Value::Number(number.clone())
+                }
+                JsonTemplate::String(template) => {
+                    serde_json::Value::String(template.display().to_string())
+                }
+                JsonTemplate::Array(array) => serde_json::Value::Array(
+                    array.iter().map(to_json).collect(),
+                ),
+                JsonTemplate::Object(object) => serde_json::Value::Object(
+                    object
+                        .iter()
+                        .map(|(key, value)| {
+                            (key.display().to_string(), to_json(value))
+                        })
+                        .collect(),
+                ),
+            }
+        }
+
+        // Convert to serde_json so we can offload formatting
+        let json: serde_json::Value = to_json(self);
+        format!("{json:#}").into()
+    }
+
+    fn is_dynamic(&self) -> bool {
+        match self {
+            Self::Null | Self::Bool(_) | Self::Number(_) => false,
+            Self::String(template) => template.is_dynamic(),
+            Self::Array(array) => array.iter().any(Self::is_dynamic),
+            Self::Object(object) => object
+                .iter()
+                .any(|(key, value)| key.is_dynamic() || value.is_dynamic()),
+        }
+    }
+
+    async fn render_preview<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Text<'static> {
+        /// Recursive helper
+        async fn inner<Ctx: Context>(
+            context: &Ctx,
+            builder: &mut TextBuilder,
+            template: &JsonTemplate,
+        ) {
+            match template {
+                JsonTemplate::Null => builder.add_text("null"),
+                JsonTemplate::Bool(false) => builder.add_text("false"),
+                JsonTemplate::Bool(true) => builder.add_text("true"),
+                JsonTemplate::Number(number) => {
+                    builder.add_text(&number.to_string());
+                }
+                JsonTemplate::String(template) => {
+                    render_string(context, builder, template).await;
+                }
+                JsonTemplate::Array(array) => {
+                    render_collection(
+                        builder,
+                        array,
+                        async |builder, el| {
+                            inner(context, builder, el).boxed_local().await;
+                        },
+                        ("[", "]"),
+                    )
+                    .await;
+                }
+                JsonTemplate::Object(object) => {
+                    render_collection(
+                        builder,
+                        object,
+                        async |builder, (key, value)| {
+                            // Render key. Keys have to be strings, can't unpack
+                            builder.add_json_string(key.render(context).await);
+                            builder.add_text(": ");
+                            // Add the value
+                            inner(context, builder, value).boxed_local().await;
+                        },
+                        ("{", "}"),
+                    )
+                    .await;
+                }
+            }
+        }
+
+        async fn render_collection<T>(
+            builder: &mut TextBuilder,
+            collection: &[T],
+            render_fn: impl AsyncFn(&mut TextBuilder, &T),
+            (open, close): (&'static str, &'static str),
+        ) {
+            // Doing this as a hundred little spans seems wasteful, but most of
+            // these will get broken apart by the syntax highlighter anyway so
+            // it should be minimal cost
+            builder.add_text(open);
+            builder.new_line();
+            builder.indent();
+            for (i, element) in collection.iter().enumerate() {
+                render_fn(builder, element).await;
+
+                if i < collection.len() - 1 {
+                    builder.add_text(",");
+                }
+                builder.new_line();
+            }
+            builder.outdent();
+            builder.add_text(close);
+        }
+
+        /// Render a string literal. Strings *may* unpack to values
+        async fn render_string<Ctx: Context>(
+            context: &Ctx,
+            builder: &mut TextBuilder,
+            template: &Template,
+        ) {
+            let chunks = template.render(context).await;
+            match chunks.unpack() {
+                // If this unpacks into a value, *don't* include quotes
+                LazyValue::Value(value) => {
+                    let json = value_to_json(value);
+                    builder.add_text(&format!("{json:#}"));
+                }
+
+                LazyValue::Nested(chunks) => {
+                    // The value can't be unpacked, so it has to be
+                    // represented as a string
+                    builder.add_json_string(chunks);
+                }
+                // I'd love to make this impossible in the type system
+                LazyValue::Stream { .. } => {
+                    unreachable!("JSON bodies don't support streaming")
+                }
+            }
+        }
+
+        let mut builder = TextBuilder::new();
+        inner(context, &mut builder, self).await;
+        builder.build()
+    }
+}
+
+/// A helper to build `Text` from template render output
+///
+/// This requires some effort because ratatui *loves* line breaks, so we have to
 /// very manually construct the text to make sure the structure reflects the
 /// line breaks in the input.
 ///
 /// See ratatui docs: <https://docs.rs/ratatui/latest/ratatui/text/index.html>
-#[derive(Debug, Default)]
-struct TextStitcher {
-    text: Text<'static>,
+#[derive(Debug)]
+struct TextBuilder {
+    lines: Vec<Line<'static>>,
+    indent: usize,
 }
 
-impl TextStitcher {
-    /// Convert chunks into a series of spans, which can be turned into a line
-    fn stitch_chunks(chunks: RenderedOutput) -> Text<'static> {
+impl TextBuilder {
+    /// Width of an indent, in spaces
+    const INDENT_SIZE: usize = 2;
+
+    fn new() -> Self {
+        Self {
+            lines: vec![Line::default()],
+            indent: 0,
+        }
+    }
+
+    /// Add rendered chunks to the text
+    ///
+    /// For [Template], this is the only thing required to build the preview.
+    fn add_chunks(&mut self, chunks: RenderedOutput) {
         let styles = ViewContext::styles();
 
         // Each chunk will get its own styling, but we can't just make each
@@ -168,7 +401,6 @@ impl TextStitcher {
         // can't make each chunk a Line, because multiple chunks might be
         // together on the same line. So we need to walk down each line and
         // manually split the lines
-        let mut stitcher = Self::default();
         for chunk in chunks {
             let style = match chunk {
                 RenderedChunk::Raw(_) => Style::default(),
@@ -177,43 +409,62 @@ impl TextStitcher {
             };
             let chunk_text = Self::get_chunk_text(chunk);
 
-            stitcher.add_chunk(chunk_text, style);
+            self.add_text_styled(&chunk_text, style);
         }
-        stitcher.text
     }
 
-    /// Add one chunk to the text. This will recursively split on any line
-    /// breaks in the text until it reaches the end.
-    fn add_chunk(&mut self, chunk_text: String, style: Style) {
-        let ends_in_newline = chunk_text.ends_with('\n');
+    /// Append some plain text to the builder
+    ///
+    /// The text will be split on newline as appropriate, but *no* additional
+    /// line breaks will be added.
+    fn add_text(&mut self, text: &str) {
+        self.add_text_styled(text, Style::default());
+    }
 
+    /// Append some plain text to the builder with some style
+    ///
+    /// The text will be split on newline as appropriate, but *no* additional
+    /// line breaks will be added.
+    fn add_text_styled(&mut self, text: &str, style: Style) {
         // The first line should extend the final line of the current text,
         // because there isn't necessarily a line break between chunks
-        let mut lines = chunk_text.lines();
+        let mut lines = text.lines();
         if let Some(first_line) = lines.next()
             && !first_line.is_empty()
         {
-            self.text
-                .push_span(Span::styled(first_line.to_owned(), style));
+            self.add_span(Span::styled(first_line.to_owned(), style));
         }
-        self.text.extend(lines.map(|line| {
-            // If the text is empty, push an empty line instead of a line with
-            // a single empty chunk
-            if line.is_empty() {
-                Line::default()
-            } else {
-                // Push a span instead of a whole line, because if this is the
-                // last line, the next chunk may extend it
-                Span::styled(line.to_owned(), style).into()
+
+        // Add remaining lines
+        for line in lines {
+            self.new_line();
+            // Don't add empty spans
+            if !line.is_empty() {
+                self.add_span(Span::styled(line.to_owned(), style));
             }
-        }));
+        }
 
         // std::lines throws away trailing newlines, but we care about them
         // because the next chunk needs to go on a new line. We also care about
         // keeping trailing newlines at the end of HTTP bodies, for correctness
-        if ends_in_newline {
-            self.text.push_line(Line::default());
+        if text.ends_with('\n') {
+            self.new_line();
         }
+    }
+
+    fn add_span(&mut self, span: Span<'static>) {
+        let line = self.lines.last_mut().expect("Lines cannot be empty");
+
+        // Add indentation
+        if line.spans.is_empty() && self.indent > 0 {
+            line.push_span(str::repeat(" ", self.indent * Self::INDENT_SIZE));
+        }
+
+        line.push_span(span);
+    }
+
+    fn new_line(&mut self) {
+        self.lines.push(Line::default());
     }
 
     /// Get the renderable text for a chunk of a template. This will clone the
@@ -246,20 +497,43 @@ impl TextStitcher {
             RenderedChunk::Error(_) => "Error".into(),
         }
     }
+
+    /// Add a JSON string with quotes to the text
+    fn add_json_string(&mut self, chunks: RenderedOutput) {
+        self.add_text("\"");
+        self.add_chunks(chunks);
+        self.add_text("\"");
+    }
+
+    /// Increment the indentation level
+    fn indent(&mut self) {
+        self.indent += 1;
+    }
+
+    /// Decrement the indentation level
+    fn outdent(&mut self) {
+        self.indent -= 1;
+    }
+
+    fn build(self) -> Text<'static> {
+        Text::from_iter(self.lines)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::view::test_util::{TestHarness, harness};
-    use indexmap::indexmap;
+    use indexmap::{IndexMap, indexmap};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
+    use serde_json::json;
     use slumber_core::{
         collection::{Collection, Profile},
         render::TemplateContext,
         test_util::by_id,
     };
+    use slumber_template::Template;
     use slumber_util::{Factory, assert_matches};
 
     /// TemplatePreview message should only be sent for dynamic templates
@@ -313,7 +587,7 @@ mod tests {
         vec![Line::from(vec![Span::raw("binary data: "), rendered("<binary>")])]
     )]
     #[tokio::test]
-    async fn test_template_stitch(
+    async fn test_build_text(
         _harness: TestHarness,
         #[case] template: Template,
         #[case] expected: Vec<Line<'static>>,
@@ -338,8 +612,145 @@ mod tests {
         };
 
         let chunks = template.render(&context).await;
-        let text = TextStitcher::stitch_chunks(chunks);
-        assert_eq!(text, Text::from(expected));
+        let mut builder = TextBuilder::new();
+        builder.add_chunks(chunks);
+        assert_eq!(builder.build(), Text::from(expected));
+    }
+
+    /// Preview raw bodies. This tests:
+    /// - Plain text
+    /// - Dynamic chunks
+    /// - Streams
+    /// - Streams via profile fields (ensure context is forwarded)
+    #[rstest]
+    #[case::plain("hello", vec!["hello".into()])]
+    #[case::dynamic(
+        "hello {{ name }}",
+        vec!["hello ".into(), rendered("bob")],
+    )]
+    #[case::stream(
+        "data: {{ command(['echo', 'test']) }}",
+        vec!["data: ".into(), rendered("<command `echo test`>")])]
+    #[case::stream_profile(
+        "data: {{ stream }}",
+        vec!["data: ".into(), rendered("<command `echo test`>")],
+    )]
+    #[tokio::test]
+    async fn test_preview_raw(
+        _harness: TestHarness,
+        #[case] template: Template,
+        #[case] expected: Vec<Span<'static>>,
+    ) {
+        let profile_data = indexmap! {
+            "name".into() => "bob".into(),
+            "stream".into() => "{{ command(['echo', 'test']) }}".into(),
+        };
+        let profile = Profile {
+            data: profile_data,
+            ..Profile::factory(())
+        };
+        let context = TemplateContext {
+            ..TemplateContext::factory((by_id([profile]), IndexMap::default()))
+        };
+
+        let text = template.render_preview(&context.stream()).await;
+        let expected = Text::from(Line::from(expected));
+        assert_eq!(text, expected);
+    }
+
+    /// Preview JSON templates as text. This tests:
+    /// - Primitive values
+    /// - Template strings: unpacked where possible, nested chunks where not
+    /// - Collections: newlines, separators, and indentation
+    /// - Error chunks
+    #[rstest]
+    #[tokio::test]
+    async fn test_preview_json(_harness: TestHarness) {
+        let json = json!({
+            "null": null,
+            "int": 3,
+            "float": 4.32,
+            "bool": false,
+            "string": "hello",
+            "template": "my name is {{ 'Ted' }}!",
+            "unpacked_template": "{{ 3 }}",
+            "error": "{{ w }}",
+            "multi_chunk_error": "error? {{ w }} error!",
+            "object": {
+                "a": 1,
+                "nested": {
+                    "b": 2,
+                    "nested": {"c": [3, 4, 5]}
+                }
+            }
+        });
+        let json_template: JsonTemplate = json.try_into().unwrap();
+        let context = TemplateContext::factory(());
+        let text = json_template.render_preview(&context).await;
+
+        // Syntax highlighting is applied outside this component, so we don't
+        // have to worry about it here
+        let expected = vec![
+            "{".into(),
+            field(1, "null", vec!["null".into()], true),
+            field(1, "int", vec!["3".into()], true),
+            field(1, "float", vec!["4.32".into()], true),
+            field(1, "bool", vec!["false".into()], true),
+            field(
+                1,
+                "string",
+                vec!["\"".into(), "hello".into(), "\"".into()],
+                true,
+            ),
+            field(
+                1,
+                "template",
+                // Just the dynamic part is styled colorly like
+                vec![
+                    "\"".into(),
+                    "my name is ".into(),
+                    rendered("Ted"),
+                    "!".into(),
+                    "\"".into(),
+                ],
+                true,
+            ),
+            field(1, "unpacked_template", vec!["3".into()], true),
+            field(
+                1,
+                "error",
+                vec!["\"".into(), error("Error"), "\"".into()],
+                true,
+            ),
+            field(
+                1,
+                "multi_chunk_error",
+                vec![
+                    "\"".into(),
+                    "error? ".into(),
+                    error("Error"),
+                    " error!".into(),
+                    "\"".into(),
+                ],
+                true,
+            ),
+            field(1, "object", vec!["{".into()], false),
+            field(2, "a", vec!["1".into()], true),
+            field(2, "nested", vec!["{".into()], false),
+            field(3, "b", vec!["2".into()], true),
+            field(3, "nested", vec!["{".into()], false),
+            field(4, "c", vec!["[".into()], false),
+            vec![indent(5), "3".into(), ",".into()].into(),
+            vec![indent(5), "4".into(), ",".into()].into(),
+            vec![indent(5), "5".into()].into(),
+            vec![indent(4), "]".into()].into(),
+            vec![indent(3), "}".into()].into(),
+            vec![indent(2), "}".into()].into(),
+            vec![indent(1), "}".into()].into(),
+            "}".into(),
+        ]
+        .into();
+        assert_eq!(text, expected);
     }
 
     /// Style some text as rendered
@@ -350,5 +761,30 @@ mod tests {
     /// Style some text as an error
     fn error(text: &str) -> Span<'_> {
         Span::styled(text, ViewContext::styles().template_preview.error)
+    }
+
+    /// Build a text line for a JSON object field
+    fn field(
+        num_indent: usize,
+        name: &'static str,
+        value: Vec<Span<'static>>,
+        trailing_comma: bool,
+    ) -> Line<'static> {
+        let mut spans: Vec<Span<'static>> = vec![
+            indent(num_indent),
+            "\"".into(),
+            name.into(),
+            "\"".into(),
+            ": ".into(),
+        ];
+        spans.extend(value);
+        if trailing_comma {
+            spans.push(",".into());
+        }
+        spans.into()
+    }
+
+    fn indent(n: usize) -> Span<'static> {
+        str::repeat(" ", n * 2).into()
     }
 }

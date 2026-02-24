@@ -113,7 +113,7 @@ impl Template {
     /// Create a new template from a raw string, without parsing it at all.
     /// Useful when importing from external formats where the string isn't
     /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Template {
+    pub fn raw(template: String) -> Self {
         let chunks = if template.is_empty() {
             vec![]
         } else {

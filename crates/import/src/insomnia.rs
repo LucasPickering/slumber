@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, de::Error as _};
 use slumber_core::{
     collection::{
         self, Collection, Folder, HasId, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId, RecipeNode, RecipeTree,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree, ValueTemplate,
     },
     http::HttpMethod,
 };
@@ -471,6 +471,7 @@ fn build_profiles(
                 .clone()
                 .into_iter()
                 .chain(convert_data(environment.data))
+                .map(|(key, template)| (key, ValueTemplate::from(template)))
                 .collect();
             (
                 id.clone(),

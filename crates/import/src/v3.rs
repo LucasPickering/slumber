@@ -16,7 +16,7 @@ use crate::{
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use models as v3;
-use slumber_core::collection as v4;
+use slumber_core::collection::{self as v4, ValueTemplate};
 use slumber_template::{
     Expression, Template as TemplateV4, TemplateChunk as TemplateChunkV4,
 };
@@ -115,7 +115,13 @@ impl IntoV4 for v3::Profile {
         self,
         chains: &IndexMap<ChainId, Chain>,
     ) -> anyhow::Result<Self::Output> {
-        let data = self.data.into_v4(chains)?;
+        // v3 only supported strings as profile values
+        let data = self
+            .data
+            .into_v4(chains)?
+            .into_iter()
+            .map(|(key, value)| (key, ValueTemplate::from(value)))
+            .collect();
         Ok(v4::Profile {
             id: self.id,
             location: SourceLocation::default(),
@@ -222,21 +228,23 @@ impl IntoV4 for v3::RecipeBody {
 }
 
 impl IntoV4 for v3::JsonTemplate {
-    type Output = v4::JsonTemplate;
+    type Output = v4::ValueTemplate;
 
     fn into_v4(
         self,
         chains: &IndexMap<ChainId, Chain>,
     ) -> anyhow::Result<Self::Output> {
         match self {
-            Self::Null => Ok(v4::JsonTemplate::Null),
-            Self::Bool(b) => Ok(v4::JsonTemplate::Bool(b)),
-            Self::Number(number) => Ok(v4::JsonTemplate::Number(number)),
+            Self::Null => Ok(v4::ValueTemplate::Null),
+            Self::Bool(b) => Ok(v4::ValueTemplate::Boolean(b)),
+            Self::Number(number) => {
+                Ok(v4::ValueTemplate::from_json_number(number))
+            }
             Self::String(template) => {
-                template.into_v4(chains).map(v4::JsonTemplate::String)
+                template.into_v4(chains).map(v4::ValueTemplate::String)
             }
             Self::Array(array) => {
-                array.into_v4(chains).map(v4::JsonTemplate::Array)
+                array.into_v4(chains).map(v4::ValueTemplate::Array)
             }
             Self::Object(object) => {
                 let entries = object
@@ -246,7 +254,7 @@ impl IntoV4 for v3::JsonTemplate {
                     // the keys instead of parsing to retain the same behavior
                     .map(|(k, v)| (slumber_template::Template::raw(k), v))
                     .collect();
-                Ok(v4::JsonTemplate::Object(entries))
+                Ok(v4::ValueTemplate::Object(entries))
             }
         }
     }

@@ -1,17 +1,18 @@
 //! Utilities for working with templated JSON
+//!
+//! TODO rename this file and update comment^^
 
 use crate::util::value_to_json;
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
+use serde_json::Number;
 use slumber_template::{
     Context, RenderError, RenderedOutput, Template, TemplateParseError, Value,
 };
 use thiserror::Error;
 
 /// TODO comment
-/// TODO move this
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[cfg_attr(any(test, feature = "test"), derive(derive_more::From))]
+#[derive(Clone, Debug, derive_more::From, PartialEq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ValueTemplate {
@@ -20,11 +21,12 @@ pub enum ValueTemplate {
     Integer(i64),
     Float(f64),
     String(Template),
-    #[cfg_attr(any(test, feature = "test"), from(ignore))]
+    #[from(ignore)]
     Array(Vec<Self>),
     // A key-value mapping. Stored as a `Vec` instead of `IndexMap` because
     // the keys are templates, which aren't hashable. We never do key lookups
     // on this so there's no need for a map anyway.
+    #[from(ignore)]
     #[serde(serialize_with = "serialize_object")]
     #[cfg_attr(
         feature = "schema",
@@ -34,20 +36,21 @@ pub enum ValueTemplate {
 }
 
 impl ValueTemplate {
+    /// Create a new string template from a raw string, without parsing it at
+    /// all
+    ///
+    /// Useful when importing from external formats where the string isn't
+    /// expected to be a valid Slumber template
+    pub fn raw(template: String) -> Self {
+        Self::String(Template::raw(template))
+    }
+
     /// Build a JSON value without parsing strings as templates
     pub fn from_raw_json(json: serde_json::Value) -> Self {
         match json {
             serde_json::Value::Null => Self::Null,
             serde_json::Value::Bool(b) => Self::Boolean(b),
-            serde_json::Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    Self::Integer(i)
-                } else if let Some(f) = n.as_f64() {
-                    Self::Float(f)
-                } else {
-                    todo!("integer out of range")
-                }
-            }
+            serde_json::Value::Number(n) => Self::from_json_number(n),
             serde_json::Value::String(s) => Self::String(Template::raw(s)),
             serde_json::Value::Array(values) => Self::Array(
                 values.into_iter().map(Self::from_raw_json).collect(),
@@ -63,6 +66,17 @@ impl ValueTemplate {
     }
 
     /// TODO
+    pub fn from_json_number(n: Number) -> Self {
+        if let Some(i) = n.as_i64() {
+            Self::Integer(i)
+        } else if let Some(f) = n.as_f64() {
+            Self::Float(f)
+        } else {
+            todo!("integer out of range")
+        }
+    }
+
+    /// TODO
     pub fn parse_json(s: &str) -> Result<Self, JsonTemplateError> {
         // First, parse it as regular JSON
         let json: serde_json::Value = serde_json::from_str(s)?;
@@ -71,6 +85,45 @@ impl ValueTemplate {
         Ok(mapped)
     }
 
+    /// TODO
+    pub fn to_raw_json(&self) -> serde_json::Value {
+        match self {
+            ValueTemplate::Null => serde_json::Value::Null,
+            ValueTemplate::Boolean(b) => (*b).into(),
+            ValueTemplate::Integer(i) => (*i).into(),
+            ValueTemplate::Float(f) => (*f).into(),
+            ValueTemplate::String(template) => {
+                serde_json::Value::String(template.display().to_string())
+            }
+            ValueTemplate::Array(array) => serde_json::Value::Array(
+                array.iter().map(Self::to_raw_json).collect(),
+            ),
+            ValueTemplate::Object(object) => serde_json::Value::Object(
+                object
+                    .iter()
+                    .map(|(key, value)| {
+                        (key.display().to_string(), Self::to_raw_json(value))
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Does the template have at least one dynamic chunk? If this returns
+    /// `false`, the template will always render to its source text
+    pub fn is_dynamic(&self) -> bool {
+        match self {
+            Self::Null
+            | Self::Boolean(_)
+            | Self::Integer(_)
+            | Self::Float(_) => false,
+            Self::String(template) => template.is_dynamic(),
+            Self::Array(array) => array.iter().any(Self::is_dynamic),
+            Self::Object(object) => object
+                .iter()
+                .any(|(key, value)| key.is_dynamic() || value.is_dynamic()),
+        }
+    }
     /// Render to previewable chunks
     ///
     /// The return value is *usually* a single chunk, but if the JSON value is
@@ -227,6 +280,10 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
     use slumber_util::{Factory, assert_result};
+
+    // TODO add JSON number conversion test cases
+    // - Slumber -> JSON: Inf, -Inf, NaN
+    // - JSON -> Slumber: i64 out of range
 
     /// Render JSON templates to JSON values
     #[rstest]

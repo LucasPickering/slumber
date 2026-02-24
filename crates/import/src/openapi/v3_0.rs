@@ -14,6 +14,7 @@ use slumber_core::{
     collection::{
         Authentication, Collection, DuplicateRecipeIdError, Folder, Profile,
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
+        ValueTemplate,
     },
     http::HttpMethod,
 };
@@ -54,14 +55,14 @@ fn build_profiles(servers: Vec<Server>) -> IndexMap<ProfileId, Profile> {
             let id: ProfileId = url.clone().into();
             // Include a "host" variable for each server, but allow the
             // user-defined variables to override that
-            let data =
-                iter::once(("host".to_owned(), Template::raw(url.clone())))
-                    .chain(variables.into_iter().flatten().map(
-                        |(name, variable)| {
-                            (name, Template::raw(variable.default))
-                        },
-                    ))
-                    .collect();
+            let data = iter::once((
+                "host".to_owned(),
+                ValueTemplate::raw(url.clone()),
+            ))
+            .chain(variables.into_iter().flatten().map(|(name, variable)| {
+                (name, ValueTemplate::raw(variable.default))
+            }))
+            .collect();
             (
                 id.clone(),
                 Profile {

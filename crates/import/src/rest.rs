@@ -6,9 +6,8 @@ use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use slumber_core::{
     collection::{
-        Authentication, Collection, JsonTemplate, Profile, ProfileId,
-        QueryParameterValue, Recipe, RecipeBody, RecipeId, RecipeNode,
-        RecipeTree,
+        Authentication, Collection, Profile, ProfileId, QueryParameterValue,
+        Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree, ValueTemplate,
     },
     http::HttpMethod,
 };
@@ -111,9 +110,7 @@ fn build_body(
                     // Parse the body as JSON. REST templates are compatible
                     // with Slumber templates so we don't need to transform
                     // the string at all
-                    let json: JsonTemplate = text
-                        .raw
-                        .parse()
+                    let json = ValueTemplate::parse_json(&text.raw)
                         .context("Error parsing body as JSON")?;
                     Ok(RecipeBody::Json(json))
                 }
@@ -211,7 +208,10 @@ fn build_profile_map(
         location: SourceLocation::default(),
         name: Some(flavor_name),
         default: true,
-        data: build_slumber_templates(variables),
+        data: build_slumber_templates(variables)
+            .into_iter()
+            .map(|(key, value)| (key, ValueTemplate::from(value)))
+            .collect(),
     };
 
     IndexMap::from([(profile_id, default_profile)])

@@ -261,7 +261,8 @@ fn offset(
         .iter()
         .position(|v| v == &current)
         .expect("Pane not in list");
-    let index = (current as isize + offset) as usize % all.len();
+    let index =
+        ((current as isize + offset).rem_euclid(all.len() as isize)) as usize;
     all[index]
 }
 
@@ -380,7 +381,7 @@ mod tests {
             ..Default::default()
         },
     )]
-    // Pane cycline
+    // Pane cycling
     #[case::cycle_exits_fullscreen(
         ViewState {
             selected_pane: SelectedPane::Top,
@@ -396,13 +397,13 @@ mod tests {
     )]
     #[case::sidebar_open_prev(
         ViewState {
-            selected_pane: SelectedPane::Top,
+            selected_pane: SelectedPane::Sidebar,
             sidebar_open: true,
             ..Default::default()
         },
         ViewState::previous_pane,
         ViewState {
-            selected_pane: SelectedPane::Sidebar,
+            selected_pane: SelectedPane::Bottom,
             sidebar_open: true,
             ..Default::default()
         },

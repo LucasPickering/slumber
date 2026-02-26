@@ -14,7 +14,7 @@ use crate::view::{
 use ratatui::text::Text;
 use slumber_config::Action;
 use slumber_template::Template;
-use std::{fmt::Debug, str::FromStr};
+use std::fmt::Debug;
 
 /// A component for a template that can be edited in the UI
 ///
@@ -53,8 +53,7 @@ pub struct EditableTemplate<PK, T = Template> {
     refresh_on_edit: bool,
 }
 
-// TODO move FromStr bound into Preview
-impl<PK, T: Preview + FromStr> EditableTemplate<PK, T> {
+impl<PK, T: Preview> EditableTemplate<PK, T> {
     /// Construct a new template that can be edited inline.
     ///
     /// ## Params
@@ -180,7 +179,7 @@ impl<PK, T: Preview + FromStr> EditableTemplate<PK, T> {
 impl<PK, T> Component for EditableTemplate<PK, T>
 where
     PK: Clone + SessionKey<Value = T>,
-    T: Preview + FromStr,
+    T: Preview,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -249,7 +248,7 @@ where
 impl<PK, T> Draw for EditableTemplate<PK, T>
 where
     PK: Clone + SessionKey<Value = T>,
-    T: Preview + FromStr,
+    T: Preview,
 {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if let Some(edit_text_box) = &self.edit_text_box {

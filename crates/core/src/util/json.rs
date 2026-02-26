@@ -1,50 +1,13 @@
 //! Utilities for working with templated JSON
-//!
-//! TODO rename this file and update comment^^
 
-use crate::util::value_to_json;
-use futures::future;
-use serde::{Serialize, Serializer, ser::SerializeMap};
+use crate::collection::ValueTemplate;
 use serde_json::Number;
 use slumber_template::{
-    Context, RenderError, RenderedOutput, Template, TemplateParseError, Value,
+    Context, RenderError, Template, TemplateParseError, Value,
 };
 use thiserror::Error;
 
-/// TODO comment
-#[derive(Clone, Debug, derive_more::From, PartialEq, Serialize)]
-#[serde(untagged)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub enum ValueTemplate {
-    Null,
-    Boolean(bool),
-    Integer(i64),
-    Float(f64),
-    String(Template),
-    #[from(ignore)]
-    Array(Vec<Self>),
-    // A key-value mapping. Stored as a `Vec` instead of `IndexMap` because
-    // the keys are templates, which aren't hashable. We never do key lookups
-    // on this so there's no need for a map anyway.
-    #[from(ignore)]
-    #[serde(serialize_with = "serialize_object")]
-    #[cfg_attr(
-        feature = "schema",
-        schemars(with = "std::collections::HashMap<Template, Self>")
-    )]
-    Object(Vec<(Template, Self)>),
-}
-
 impl ValueTemplate {
-    /// Create a new string template from a raw string, without parsing it at
-    /// all
-    ///
-    /// Useful when importing from external formats where the string isn't
-    /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Self {
-        Self::String(Template::raw(template))
-    }
-
     /// Build a JSON value without parsing strings as templates
     pub fn from_raw_json(json: serde_json::Value) -> Self {
         match json {
@@ -65,27 +28,8 @@ impl ValueTemplate {
         }
     }
 
-    /// TODO
-    pub fn from_json_number(n: Number) -> Self {
-        if let Some(i) = n.as_i64() {
-            Self::Integer(i)
-        } else if let Some(f) = n.as_f64() {
-            Self::Float(f)
-        } else {
-            todo!("integer out of range")
-        }
-    }
-
-    /// TODO
-    pub fn parse_json(s: &str) -> Result<Self, JsonTemplateError> {
-        // First, parse it as regular JSON
-        let json: serde_json::Value = serde_json::from_str(s)?;
-        // Then map all the strings as templates
-        let mapped = json.try_into()?;
-        Ok(mapped)
-    }
-
-    /// TODO
+    /// Convert this template to a JSON value with unrendered (raw) template
+    /// strings
     pub fn to_raw_json(&self) -> serde_json::Value {
         match self {
             ValueTemplate::Null => serde_json::Value::Null,
@@ -109,57 +53,31 @@ impl ValueTemplate {
         }
     }
 
-    /// Does the template have at least one dynamic chunk? If this returns
-    /// `false`, the template will always render to its source text
-    pub fn is_dynamic(&self) -> bool {
-        match self {
-            Self::Null
-            | Self::Boolean(_)
-            | Self::Integer(_)
-            | Self::Float(_) => false,
-            Self::String(template) => template.is_dynamic(),
-            Self::Array(array) => array.iter().any(Self::is_dynamic),
-            Self::Object(object) => object
-                .iter()
-                .any(|(key, value)| key.is_dynamic() || value.is_dynamic()),
+    /// Get a [ValueTemplate::Number] from a JSON [Number]
+    pub fn from_json_number(n: Number) -> Self {
+        if let Some(i) = n.as_i64() {
+            Self::Integer(i)
+        } else if let Some(f) = n.as_f64() {
+            Self::Float(f)
+        } else {
+            unreachable!(
+                "serde_json doesn't support >64-bit numbers with \
+                arbitrary_precision disabled"
+            );
         }
     }
-    /// Render to previewable chunks
+
+    /// Parse JSON to a [ValueTemplate]
     ///
-    /// The return value is *usually* a single chunk, but if the JSON value is
-    /// a multi-chunk template string, then its multi-chunk output will be the
-    /// output for this.
-    ///
-    /// TODO update comment
-    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedOutput {
-        match self {
-            Self::Null => Value::Null.into(),
-            Self::Boolean(b) => Value::Boolean(*b).into(),
-            Self::Integer(i) => Value::Integer(*i).into(),
-            Self::Float(f) => Value::Float(*f).into(),
-            Self::String(template) => template.render(context).await,
-            Self::Array(array) => {
-                // Render each value and collection into an Array
-                future::try_join_all(array.iter().map(|value| async {
-                    value.render(context).await.try_collect_value().await
-                }))
-                .await
-                .map(Value::from)
-                .into() // Wrap into RenderedOutput
-            }
-            Self::Object(map) => {
-                // Render each key/value and collect into an Object
-                future::try_join_all(map.iter().map(|(key, value)| async {
-                    let key = key.render_string(context).await?;
-                    let value =
-                        value.render(context).await.try_collect_value().await?;
-                    Ok::<_, RenderError>((key, value))
-                }))
-                .await
-                .map(Value::from)
-                .into() // Wrap into RenderedOutput
-            }
-        }
+    /// The string is parsed to JSON first, then the strings are parsed to
+    /// [Template]s. Everything else is mapped 1:1 to its [ValueTemplate]
+    /// counterpart variant.
+    pub fn parse_json(s: &str) -> Result<Self, JsonTemplateError> {
+        // First, parse it as regular JSON
+        let json: serde_json::Value = serde_json::from_str(s)?;
+        // Then map all the strings as templates
+        let mapped = json.try_into()?;
+        Ok(mapped)
     }
 
     /// Render all templates to strings and return a static JSON value
@@ -208,54 +126,6 @@ impl TryFrom<serde_json::Value> for ValueTemplate {
     }
 }
 
-/// Parse template from a string literal. Panic if invalid
-#[cfg(any(test, feature = "test"))]
-impl From<&str> for ValueTemplate {
-    fn from(value: &str) -> Self {
-        let template = value.parse().unwrap();
-        Self::String(template)
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl<T: Into<ValueTemplate>> From<Vec<T>> for ValueTemplate {
-    fn from(value: Vec<T>) -> Self {
-        Self::Array(value.into_iter().map(T::into).collect())
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl<T: Into<ValueTemplate>> From<Vec<(&str, T)>> for ValueTemplate {
-    fn from(value: Vec<(&str, T)>) -> Self {
-        Self::Object(
-            value
-                .into_iter()
-                .map(|(k, v)| (k.parse().unwrap(), v.into()))
-                .collect(),
-        )
-    }
-}
-
-/// Serialize a JSON object as a mapping. The derived impl serializes as a
-/// sequence
-///
-/// TODO make this static instead of generic once JsonTemplate and ValueTemplate
-/// are merged
-fn serialize_object<S, T>(
-    object: &Vec<(Template, T)>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-    T: Serialize,
-{
-    let mut map = serializer.serialize_map(Some(object.len()))?;
-    for (k, v) in object {
-        map.serialize_entry(k, v)?;
-    }
-    map.end()
-}
-
 /// Error that can occur when parsing to [JsonTemplate]
 #[derive(Debug, Error)]
 pub enum JsonTemplateError {
@@ -266,6 +136,26 @@ pub enum JsonTemplateError {
     /// template
     #[error(transparent)]
     TemplateParse(#[from] TemplateParseError),
+}
+
+/// Convert a template [Value] to a JSON value
+pub fn value_to_json(value: Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Boolean(b) => b.into(),
+        Value::Integer(i) => i.into(),
+        Value::Float(f) => f.into(),
+        Value::String(s) => s.into(),
+        Value::Array(array) => array.into_iter().map(value_to_json).collect(),
+        Value::Object(object) => object
+            .into_iter()
+            .map(|(key, value)| (key, value_to_json(value)))
+            .collect(),
+        // Convert bytes to an int array. This isn't really useful, but it
+        // keeps this method infallible which is really nice. And generally
+        // it will probably be less disruptive to the user than an error.
+        Value::Bytes(bytes) => bytes.to_vec().into(),
+    }
 }
 
 #[cfg(test)]
@@ -281,9 +171,94 @@ mod tests {
     use serde_json::json;
     use slumber_util::{Factory, assert_result};
 
-    // TODO add JSON number conversion test cases
-    // - Slumber -> JSON: Inf, -Inf, NaN
-    // - JSON -> Slumber: i64 out of range
+    #[rstest]
+    #[case::null(serde_json::Value::Null, ValueTemplate::Null)]
+    // Templates aren't parsed
+    #[case::valid_template(json!("{{valid}}"), "{_{valid}}".into())]
+    #[case::invalid_template(json!("{{invalid"), "{_{invalid".into())]
+    fn test_from_raw_json(
+        #[case] json: serde_json::Value,
+        #[case] expected: ValueTemplate,
+    ) {
+        assert_eq!(ValueTemplate::from_raw_json(json), expected);
+    }
+
+    #[rstest]
+    #[case::null(ValueTemplate::Null, json!(null))]
+    #[case::bool(true.into(), true.into())]
+    #[case::int((-300).into(), (-300).into())]
+    #[case::float((-17.3).into(), json!(-17.3))]
+    // JSON doesn't support inf/NaN so these map to null
+    #[case::float_inf(f64::INFINITY.into(), json!(null))]
+    #[case::float_nan(f64::NAN.into(), json!(null))]
+    // Template is parsed and re-stringified
+    #[case::template("{{www}}".into(), json!("{{ www }}"))]
+    #[case::array(vec!["{{w}}", "raw"].into(), json!(["{{ w }}", "raw"]))]
+    #[case::object(
+        vec![("{{w}}", "{{x}}")].into(), json!({"{{ w }}": "{{ x }}"})
+    )]
+    fn test_to_raw_json(
+        #[case] template: ValueTemplate,
+        #[case] expected: serde_json::Value,
+    ) {
+        assert_eq!(template.to_raw_json(), expected);
+    }
+
+    #[rstest]
+    #[case::int(3.into(), 3.into())]
+    // Template values use i64, so anything between (i64::MAX, u64::MAX] is
+    // converted to a float instead
+    #[case::int_too_big(Number::from(u64::MAX), (u64::MAX as f64).into())]
+    #[case::float(Number::from_f64(42.9).unwrap(), 42.9.into())]
+    fn test_from_json_num(
+        #[case] number: Number,
+        #[case] expected: ValueTemplate,
+    ) {
+        assert_eq!(ValueTemplate::from_json_number(number), expected);
+    }
+
+    /// Parse a string as JSON, then convert to [ValueTemplate]. This uses the
+    /// TryFrom impl tested below, so we don't need many cases here
+    #[rstest]
+    #[case::null("null", Ok(ValueTemplate::Null))]
+    #[case::object(r#"{"{{w}}": 3}"#, Ok(vec![("{{ w }}", 3)].into()))]
+    #[case::error_invalid_template_key(
+        r#"{"{{invalid": 3}"#,
+        Err("invalid expression")
+    )]
+    fn test_parse_json(
+        #[case] s: &str,
+        #[case] expected: Result<ValueTemplate, &str>,
+    ) {
+        assert_result(ValueTemplate::parse_json(s), expected);
+    }
+
+    /// Test the JSON -> ValueTemplate TryFrom impl
+    #[rstest]
+    #[case::null(json!(null), Ok(ValueTemplate::Null))]
+    #[case::template_string(json!("{{ w }}"), Ok("{{w}}".into()))]
+    #[case::template_key(json!({"{{ w }}": 3}), Ok(vec![("{{w}}", 3)].into()))]
+    #[case::error_invalid_template_key(
+        json!({"{{ invalid_key": {"name": "{{ username }}"}}),
+        Err("invalid expression")
+    )]
+    #[case::error_invalid_template_value(
+        json!({"key": "{{ invalid"}), Err("invalid expression")
+    )]
+    fn test_from_json(
+        #[case] json: serde_json::Value,
+        #[case] expected: Result<ValueTemplate, &str>,
+    ) {
+        assert_result(ValueTemplate::try_from(json), expected);
+    }
+
+    /// serde_json's `arbitrary_precision` feature is disabled, meaning any int
+    /// larger than 64 bits is not supported. This is important because template
+    /// values use `i64`/`f64`, so we can't fit all large values.
+    #[test]
+    fn test_arbitrary_precision_disabled() {
+        assert_eq!(Number::from_i128(i128::from(u64::MAX) + 1), None);
+    }
 
     /// Render JSON templates to JSON values
     #[rstest]
@@ -326,12 +301,5 @@ mod tests {
             ValueTemplate::try_from(input).expect("Invalid template");
         let result = template.render_json(&context).await;
         assert_result(result, expected);
-    }
-
-    /// Parsing a JSON value with a key that isn't a valid template is an error
-    #[test]
-    fn test_invalid_key_template() {
-        let json = json!({"{{ invalid_key": {"name": "{{ username }}"}});
-        assert_result(ValueTemplate::try_from(json), Err("invalid expression"));
     }
 }

@@ -47,7 +47,7 @@ use crate::{
     database::CollectionDatabase,
     http::curl::CurlBuilder,
     render::TemplateContext,
-    util,
+    util::json::value_to_json,
 };
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
@@ -770,7 +770,7 @@ impl Recipe {
                 }
                 .await
                 .map_err(RequestBuildErrorKind::BodyRender)?;
-                let json = util::value_to_json(rendered_value);
+                let json = value_to_json(rendered_value);
                 Ok(Some(RenderedBody::Json(json)))
             }
 

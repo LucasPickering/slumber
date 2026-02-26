@@ -110,7 +110,7 @@
           "type": "boolean"
         },
         "data": {
-          "description": "TODO",
+          "description": "Arbitrary data that can be used in templates",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/ValueTemplate"
@@ -131,7 +131,7 @@
       ]
     },
     "ValueTemplate": {
-      "description": "TODO comment\nTODO move this",
+      "description": "A templated [Value]\n\nThis is a [Value], except the strings are templates. That means this can be\ndynamically rendered to a [Value]. This is used for structured bodies (e.g.\nJSON) as well as profile fields.",
       "anyOf": [
         {
           "type": "null"
@@ -367,7 +367,7 @@
               "const": "json"
             },
             "data": {
-              "$ref": "#/$defs/JsonTemplate"
+              "$ref": "#/$defs/ValueTemplate"
             }
           },
           "required": [
@@ -435,35 +435,6 @@
         {
           "description": "Plain string/bytes body. Must be the last variant to support untagged.\nThis captures any value that doesn't fit one of the above variants.",
           "$ref": "#/$defs/Template"
-        }
-      ]
-    },
-    "JsonTemplate": {
-      "description": "A JSON value like [serde_json::Value], but all strings are templates",
-      "anyOf": [
-        {
-          "type": "null"
-        },
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "number"
-        },
-        {
-          "$ref": "#/$defs/Template"
-        },
-        {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/JsonTemplate"
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/JsonTemplate"
-          }
         }
       ]
     },

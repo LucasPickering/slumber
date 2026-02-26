@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Added
+
+- Support all YAML values in profile fields [#647](https://github.com/LucasPickering/slumber/issues/647)
+
 ### Changed
 
 - Remove underline from table selected row style

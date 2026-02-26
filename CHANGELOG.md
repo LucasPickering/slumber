@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Changed
+
+- Remove underline from table selected row style
+
 ## [5.1.1] - 2026-02-26
 
 <!-- ANCHOR: changelog -->

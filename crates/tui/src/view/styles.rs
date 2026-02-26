@@ -256,8 +256,7 @@ impl Styles {
                 highlight: Style::default()
                     .bg(theme.primary_color.into())
                     .fg(theme.primary_text_color.into())
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
+                    .add_modifier(Modifier::BOLD),
                 title: Style::default()
                     .fg(theme.text_color.into())
                     .add_modifier(Modifier::BOLD),

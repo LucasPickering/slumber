@@ -34,6 +34,7 @@ schemars = {workspace = true, features = ["indexmap2"], optional = true}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 serde_json_path = {workspace = true}
+serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_macros = {workspace = true}
 slumber_template = {workspace = true}
@@ -54,7 +55,6 @@ proptest = {workspace = true}
 proptest-derive = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
-serde_yaml = {workspace = true}
 slumber_template = {workspace = true, features = ["test"]}
 slumber_util = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}

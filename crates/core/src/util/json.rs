@@ -1,7 +1,6 @@
 //! Utilities for working with templated JSON
 
 use crate::collection::ValueTemplate;
-use serde_json::Number;
 use slumber_template::{
     Context, RenderError, Template, TemplateParseError, Value,
 };
@@ -28,8 +27,8 @@ impl ValueTemplate {
         }
     }
 
-    /// Get a [ValueTemplate::Number] from a JSON [Number]
-    pub fn from_json_number(n: Number) -> Self {
+    /// Get a [ValueTemplate::Number] from a [serde_json::Number]
+    pub fn from_json_number(n: serde_json::Number) -> Self {
         if let Some(i) = n.as_i64() {
             Self::Integer(i)
         } else if let Some(f) = n.as_f64() {
@@ -101,16 +100,76 @@ impl TryFrom<serde_json::Value> for ValueTemplate {
     }
 }
 
-/// Error that can occur when parsing to [JsonTemplate]
+// YAML isn't *exactly* JSON, but it's close so I'm putting YAML stuff here too
+impl TryFrom<serde_yaml::Value> for ValueTemplate {
+    type Error = YamlTemplateError;
+
+    /// Convert static JSON to templated JSON, parsing each string as a template
+    fn try_from(yaml: serde_yaml::Value) -> Result<Self, Self::Error> {
+        let mapped = match yaml {
+            serde_yaml::Value::Null => Self::Null,
+            serde_yaml::Value::Bool(b) => Self::Boolean(b),
+            serde_yaml::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Self::Integer(i)
+                } else if let Some(f) = n.as_f64() {
+                    Self::Float(f)
+                } else {
+                    unreachable!("serde_yaml doesn't support >64-bit numbers");
+                }
+            }
+            serde_yaml::Value::String(s) => Self::String(s.parse()?),
+            serde_yaml::Value::Sequence(values) => Self::Array(
+                values
+                    .into_iter()
+                    .map(Self::try_from)
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+            serde_yaml::Value::Mapping(map) => Self::Object(
+                map.into_iter()
+                    .map(|(key, value)| {
+                        let key = key
+                            .as_str()
+                            .ok_or_else(|| {
+                                YamlTemplateError::InvalidKey(key.clone())
+                            })?
+                            .parse()?;
+                        let value = value.try_into()?;
+                        Ok::<_, YamlTemplateError>((key, value))
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
+            serde_yaml::Value::Tagged(value) => value.value.try_into()?,
+        };
+        Ok(mapped)
+    }
+}
+
+/// Error that can occur when parsing to from JSON to [ValueTemplate]
 #[derive(Debug, Error)]
 pub enum JsonTemplateError {
     /// Content was invalid JSON
     #[error(transparent)]
     JsonParse(#[from] serde_json::Error),
     /// Content was valid JSON but one of the contained strings was an invalid
-    /// template
+    /// Slumber template
     #[error(transparent)]
     TemplateParse(#[from] TemplateParseError),
+}
+
+/// Error that can occur when parsing to YAML to [ProfileTemplate]
+#[derive(Debug, Error)]
+pub enum YamlTemplateError {
+    /// Content was invalid YAML
+    #[error(transparent)]
+    YamlParse(#[from] serde_yaml::Error),
+    /// Content was valid YAML but one of the contained strings was an invalid
+    /// Slumber template
+    #[error(transparent)]
+    TemplateParse(#[from] TemplateParseError),
+    /// Mapping had a non-string key, which isn't allowed in Slumber values
+    #[error("Mapping keys must be strings, but received: {0:?}")]
+    InvalidKey(serde_yaml::Value),
 }
 
 /// Convert a template [Value] to a JSON value
@@ -144,6 +203,10 @@ mod tests {
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
+    use serde_yaml::{
+        Mapping,
+        value::{Tag, TaggedValue},
+    };
     use slumber_util::{Factory, assert_result};
 
     #[rstest]
@@ -162,10 +225,12 @@ mod tests {
     #[case::int(3.into(), 3.into())]
     // Template values use i64, so anything between (i64::MAX, u64::MAX] is
     // converted to a float instead
-    #[case::int_too_big(Number::from(u64::MAX), (u64::MAX as f64).into())]
-    #[case::float(Number::from_f64(42.9).unwrap(), 42.9.into())]
+    #[case::int_too_big(
+        serde_json::Number::from(u64::MAX), (u64::MAX as f64).into()
+    )]
+    #[case::float(serde_json::Number::from_f64(42.9).unwrap(), 42.9.into())]
     fn test_from_json_num(
-        #[case] number: Number,
+        #[case] number: serde_json::Number,
         #[case] expected: ValueTemplate,
     ) {
         assert_eq!(ValueTemplate::from_json_number(number), expected);
@@ -211,7 +276,51 @@ mod tests {
     /// values use `i64`/`f64`, so we can't fit all large values.
     #[test]
     fn test_arbitrary_precision_disabled() {
-        assert_eq!(Number::from_i128(i128::from(u64::MAX) + 1), None);
+        assert_eq!(
+            serde_json::Number::from_i128(i128::from(u64::MAX) + 1),
+            None
+        );
+    }
+
+    /// Test the YAML -> ValueTemplate TryFrom impl
+    ///
+    /// I'm taking some shortcuts on this because the implementation is very
+    /// similar to the JSON one. YAML values are more annoying to construct
+    /// because there's no macro, and I don't feel like doing it.
+    #[rstest]
+    #[case::null(serde_yaml::Value::Null, Ok(ValueTemplate::Null))]
+    // Template values use i64, so anything between (i64::MAX, u64::MAX] is
+    // converted to a float instead
+    #[case::int_too_big(u64::MAX.into(), Ok((u64::MAX as f64).into()))]
+    #[case::float(42.9.into(), Ok(42.9.into()))]
+    #[case::float_inf(f64::INFINITY.into(), Ok(f64::INFINITY.into()))]
+    #[case::float_nan(f64::NAN.into(), Ok(f64::NAN.into()))]
+    #[case::template_string("{{ w }}".into(), Ok("{{w}}".into()))]
+    #[case::template_key(
+        Mapping::from_iter([("{{w}}".into(), 3.into())]).into(),
+        Ok(vec![("{{w}}", 3)].into()),
+    )]
+    #[case::error_invalid_template_key(
+        Mapping::from_iter([("{{invalid".into(), 3.into())]).into(),
+        Err("invalid expression"),
+    )]
+    #[case::error_invalid_template_value(
+        Mapping::from_iter([(3.into(), "{{invalid".into())]).into(),
+        Err("invalid expression"),
+    )]
+    #[case::tagged(
+        // Tags are thrown out, but the inner value is used
+        serde_yaml::Value::Tagged(TaggedValue {
+            tag: Tag::new("test"),
+            value: "{{w}}".into(),
+        }.into()),
+        Ok("{{ w }}".into()),
+    )]
+    fn test_from_yaml(
+        #[case] yaml: serde_yaml::Value,
+        #[case] expected: Result<ValueTemplate, &str>,
+    ) {
+        assert_result(ValueTemplate::try_from(yaml), expected);
     }
 
     /// Render JSON templates to JSON values

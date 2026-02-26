@@ -30,7 +30,7 @@ use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{ProfileId, ValueTemplate},
-    util::json::JsonTemplateError,
+    util::json::YamlTemplateError,
 };
 use slumber_template::Context;
 use std::{borrow::Cow, iter, str::FromStr};
@@ -181,24 +181,37 @@ impl Draw for ProfileDetail {
 }
 
 /// A previewable wrapper of [ValueTemplate] for profile fields
+///
+/// This displays/edits values as YAML, because that's how they're written in
+/// the collection file. Technically we could use any format here, as these
+/// fields are never directly serialized into requests, they're only used to
+/// build other values.
 #[derive(Clone, Debug, PartialEq)]
 struct ProfileTemplate(ValueTemplate);
 
 impl FromStr for ProfileTemplate {
-    type Err = JsonTemplateError;
+    type Err = YamlTemplateError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ValueTemplate::parse_json(s).map(Self)
+        // First, parse it as regular YAML
+        let yaml: serde_yaml::Value = serde_yaml::from_str(s)?;
+        // Then map all the strings as templates
+        let mapped = yaml.try_into()?;
+        Ok(Self(mapped))
     }
 }
 
 #[async_trait(?Send)]
 impl Preview for ProfileTemplate {
     fn display(&self) -> Cow<'_, str> {
-        // Convert to serde_json so we can offload formatting
-        // TODO YAML
-        let json: serde_json::Value = self.0.to_raw_json();
-        format!("{json:#}").into()
+        // Serialize with serde_yaml so we can offload formatting
+        let mut s = serde_yaml::to_string(&self.0)
+            // There are no ValueTemplate values that fail to serialize
+            .expect("Template to YAML conversion cannot fail");
+        // YAML includes a trailing newline that is not helpful
+        debug_assert_eq!(&s[s.len() - 1..], "\n");
+        s.truncate(s.len() - 1);
+        s.into()
     }
 
     fn is_dynamic(&self) -> bool {
@@ -334,8 +347,8 @@ mod tests {
             profiles: by_id([Profile {
                 id: profile_id.clone(),
                 data: indexmap! {
-                    "field1".into() => 12.into(),
-                    "field2".into() => 34.into(),
+                    "field1".into() => "abc".into(),
+                    "field2".into() => "def".into(),
                 },
                 ..Profile::factory(())
             }]),
@@ -350,12 +363,15 @@ mod tests {
         component
             .int(&mut harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
-            .send_text("56")
+            .send_text("123")
             .send_key(KeyCode::Enter)
             // Tell all other previews to re-render
             .assert()
             .broadcast([BroadcastEvent::RefreshPreviews]);
         let field = &component.select[1];
-        assert_eq!(field.template.template().0, 3456.into());
+        assert_eq!(
+            field.template.template(),
+            &ProfileTemplate("def123".into())
+        );
     }
 }

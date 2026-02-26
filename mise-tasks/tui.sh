@@ -1,6 +1,6 @@
 #!/bin/sh
 #MISE description="Run the TUI and watch for changes"
-#MISE tools=["watchexec"]
+#MISE tools.watchexec="2.3.3"
 
 FEATURES="tui"
 RUSTFLAGS=""
@@ -10,7 +10,7 @@ if [ "$TRACING" = "true" ]; then
 fi
 
 RUSTFLAGS="$RUSTFLAGS" \
-    exec watchexec --restart --no-process-group \
-    --watch Cargo.toml --watch Cargo.lock --watch src/ --watch crates/ \
+    watchexec --on-busy-update=restart --shell=none --wrap-process=none \
+    --watch=Cargo.toml --watch=Cargo.lock --watch=src/ --watch=crates/ \
     -- \
     cargo run --no-default-features --features "$FEATURES" -- $@

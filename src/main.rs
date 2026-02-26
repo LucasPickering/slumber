@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     // Parse log level from the LOG variable
     let level = env::var("LOG")
         .map(|value| value.parse().unwrap())
-        .unwrap_or(LevelFilter::OFF);
+        .unwrap_or(LevelFilter::INFO);
     initialize_tracing(level, false);
     let collection_file = env::args().nth(1).map(String::into);
     slumber_tui::Tui::start(collection_file).await

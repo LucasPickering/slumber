@@ -188,7 +188,13 @@ pub enum LazyValue {
         stream: BoxStream<'static, Result<Bytes, RenderError>>,
     },
     /// A template chunk that rendered a nested template with multiple chunks
-    /// TODO explain more (where is it used? do a search)
+    ///
+    /// This is built when a multi-chunk render output is unpacked into a
+    /// single [LazyValue]. For applications that need that singular value,
+    /// this allows multiple chunks to be wrapped into one value.
+    ///
+    /// To be honest I'm not sure this is really necessary, but it's how I built
+    /// it. I'd really love to refactor this whole spaghetti.
     Nested(RenderedOutput),
 }
 
@@ -208,7 +214,7 @@ impl LazyValue {
         }
     }
 
-    /// TODO
+    /// Is this a [LazyValue::Stream] or a nested value with a stream in it?
     pub fn has_stream(&self) -> bool {
         match self {
             LazyValue::Value(_) => false,

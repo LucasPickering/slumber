@@ -405,8 +405,6 @@ impl RenderedOutput {
 /// Create render output of a single chunk with a value
 impl From<Value> for RenderedOutput {
     fn from(value: Value) -> Self {
-        // TODO should there be a first-class type for single-values so we don't
-        // have to do the unpack heuristic?
         Self(vec![RenderedChunk::Rendered(LazyValue::Value(value))])
     }
 }

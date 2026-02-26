@@ -28,7 +28,10 @@ use ratatui::{
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::collection::{JsonTemplateError, ProfileId, ValueTemplate};
+use slumber_core::{
+    collection::{ProfileId, ValueTemplate},
+    util::json::JsonTemplateError,
+};
 use slumber_template::Context;
 use std::{borrow::Cow, iter, str::FromStr};
 use unicode_width::UnicodeWidthStr;
@@ -328,8 +331,8 @@ mod tests {
             profiles: by_id([Profile {
                 id: profile_id.clone(),
                 data: indexmap! {
-                    "field1".into() => "abc".into(),
-                    "field2".into() => "def".into(),
+                    "field1".into() => 12.into(),
+                    "field2".into() => 34.into(),
                 },
                 ..Profile::factory(())
             }]),
@@ -344,12 +347,12 @@ mod tests {
         component
             .int(&mut harness)
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
-            .send_text("123")
+            .send_text("56")
             .send_key(KeyCode::Enter)
             // Tell all other previews to re-render
             .assert()
             .broadcast([BroadcastEvent::RefreshPreviews]);
         let field = &component.select[1];
-        assert_eq!(field.template.template().0, "def123".into());
+        assert_eq!(field.template.template().0, 3456.into());
     }
 }

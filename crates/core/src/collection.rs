@@ -2,16 +2,16 @@
 //! possible
 
 mod cereal;
-mod json;
 mod models;
 mod recipe_tree;
 #[cfg(feature = "schema")]
 mod schema;
+mod value_template;
 
 pub use cereal::HasId;
-pub use json::{JsonTemplateError, ValueTemplate};
 pub use models::*;
 pub use recipe_tree::*;
+pub use value_template::ValueTemplate;
 
 use itertools::Itertools;
 use std::{

@@ -34,10 +34,9 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
-    collection::{
-        JsonTemplateError, Recipe, RecipeBody, RecipeId, ValueTemplate,
-    },
+    collection::{Recipe, RecipeBody, RecipeId, ValueTemplate},
     http::{BodyOverride, BuildFieldOverride},
+    util::json::JsonTemplateError,
 };
 use slumber_template::{Context, Template};
 use std::{borrow::Cow, error::Error as StdError, fs, str::FromStr};
@@ -175,7 +174,7 @@ enum Inner {
 /// The parameter `T` defines the template type of the body. Raw bodies use
 /// [Template], JSON bodies use [JsonTemplate].
 #[derive(Debug)]
-struct TextBody<T: BodyTemplate> {
+struct TextBody<T: Preview> {
     id: ComponentId,
     /// Emitter for the callback from editing the body
     override_emitter: Emitter<SaveBodyOverride>,
@@ -207,7 +206,7 @@ struct TextBody<T: BodyTemplate> {
     text_window: TextWindow,
 }
 
-impl<T: BodyTemplate> TextBody<T> {
+impl<T: Preview> TextBody<T> {
     fn new(template: T, recipe: &Recipe) -> Self {
         let mime = recipe.mime();
 
@@ -372,7 +371,7 @@ impl<T: BodyTemplate> TextBody<T> {
     }
 }
 
-impl<T: BodyTemplate> Component for TextBody<T> {
+impl<T: Preview> Component for TextBody<T> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -442,7 +441,7 @@ impl<T: BodyTemplate> Component for TextBody<T> {
     }
 }
 
-impl<T: BodyTemplate> Draw for TextBody<T>
+impl<T: Preview> Draw for TextBody<T>
 where
     T::Err: StdError,
 {
@@ -475,13 +474,6 @@ where
         );
     }
 }
-
-/// Container for all the traits required for the type param of [TextBody]
-trait BodyTemplate: Preview + FromStr {}
-
-impl BodyTemplate for Template {}
-
-impl BodyTemplate for JsonTemplate {}
 
 /// A previewable wrapper of [ValueTemplate] for JSON bodies
 #[derive(Clone, Debug, PartialEq)]

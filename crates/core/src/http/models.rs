@@ -3,9 +3,11 @@
 //! stages, meaning the request or response may not actually be present, if the
 //! exchange is incomplete or failed.
 
-use crate::collection::{
-    Authentication, JsonTemplateError, ProfileId, RecipeId, UnknownRecipeError,
-    ValueTemplate,
+use crate::{
+    collection::{
+        Authentication, ProfileId, RecipeId, UnknownRecipeError, ValueTemplate,
+    },
+    util::json::JsonTemplateError,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};

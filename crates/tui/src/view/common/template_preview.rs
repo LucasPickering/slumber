@@ -13,12 +13,13 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 use slumber_core::{
-    collection::ValueTemplate, render::TemplateContext, util::value_to_json,
+    collection::ValueTemplate, render::TemplateContext,
+    util::json::value_to_json,
 };
 use slumber_template::{
     Context, LazyValue, RenderedChunk, RenderedOutput, Template,
 };
-use std::{borrow::Cow, ops::Deref};
+use std::{borrow::Cow, ops::Deref, str::FromStr};
 
 /// Generate template preview text
 ///
@@ -174,8 +175,13 @@ impl<T> ToEmitter<TemplatePreviewEvent> for TemplatePreview<T> {
 pub struct TemplatePreviewEvent(pub Text<'static>);
 
 /// A template that can be rendered to text for preview
+///
+/// Bounds:
+/// - `Clone`: Required to send the template out for preview and retain a copy
+/// - `FromStr`: Parse overrides from strings
+/// - `PartialEq`: Compare override to original to see if it's changed
 #[async_trait(?Send)]
-pub trait Preview: 'static + Clone + PartialEq {
+pub trait Preview: 'static + Clone + FromStr + PartialEq {
     /// Get the template's equivalent source code
     ///
     /// This is *functionally* equivalent to the template's input source, but
@@ -270,7 +276,8 @@ pub async fn render_json_preview<Ctx: Context>(
     inner(context, &mut builder, template).await;
     builder.build()
 }
-/// TODO
+
+/// Generate text for an array/object
 async fn render_collection<T>(
     builder: &mut TextBuilder,
     collection: &[T],

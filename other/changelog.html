@@ -1,0 +1,1730 @@
+<!DOCTYPE HTML>
+<html lang="en" class="dark sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Changelog - Slumber</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="shortcut icon" href="../favicon-5759397d.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "dark";
+            const default_dark_theme = "coal";
+            window.path_to_searchindex_js = "../searchindex-dadf1f83.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-99dd559a.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('dark')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Slumber</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber/edit/master/docs/src/other/changelog.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
+<p>You can also browse release history via the <a href="https://github.com/LucasPickering/slumber/releases">GitHub Releases page</a>.</p>
+<!-- Changelog uses an anchor to identify its content -->
+<h2 id="511---2026-02-26"><a class="header" href="#511---2026-02-26">[5.1.1] - 2026-02-26</a></h2>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li>Fix JSON template previews not rendering unpacked values correctly <a href="https://github.com/LucasPickering/slumber/issues/627">#627</a></li>
+<li>Fix cycling backward (shift-tab) from the sidebar to the bottom pane</li>
+</ul>
+<h2 id="510---2026-02-20"><a class="header" href="#510---2026-02-20">[5.1.0] - 2026-02-20</a></h2>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li>Add <code>mime_overrides</code> config field to modify response <code>Content-Type</code> <a href="https://github.com/LucasPickering/slumber/issues/721">#721</a></li>
+</ul>
+<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<ul>
+<li>Upgrade to Rust 1.90</li>
+<li>Sidebar now only closes with the toggle keybind (<code>s</code>)
+<ul>
+<li>Pressing <code>Enter</code>/<code>Esc</code> on the Profile/History sidebars will revert to the Recipe sidebar</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<ul>
+<li>Fix request being persisted incorrectly when changing collections while in-flight</li>
+<li>Fix Exchange pane fullscreening as the Profile pane if the Profile list was the last opened sidebar</li>
+</ul>
+<h2 id="500---2026-02-14"><a class="header" href="#500---2026-02-14">[5.0.0] - 2026-02-14</a></h2>
+<p>5.0 is a huge release that focuses on two main areas:</p>
+<ul>
+<li>A major refactor of the TUI includes:
+<ul>
+<li>A new layout with a collapsible sidebar to speed up navigation</li>
+<li>Query/export command history navigation (similar to shell history)</li>
+<li>QoL improvements such as selecting list items by click</li>
+</ul>
+</li>
+<li>CLI commands have been reorganized to be more consistent and discoverable</li>
+</ul>
+<p>While is is a major release with breaking changes, the breakages are fairly limited. It’s unlikely you’ll need to make any changes to upgrade, other than getting used to the new TUI layout.</p>
+<h3 id="breaking"><a class="header" href="#breaking">Breaking</a></h3>
+<p>The breaking changes in this release are mostly limited to CLI commands. The only change to the collection format is that JSON keys are now treated as templates. This will only impact you if you have any JSON <strong>keys</strong> containing <code>{{</code>. If you want these to be treated literally, you’ll need to <a href="https://slumber.lucaspickering.me/user_guide/templates/index.html#escape-sequences">escape them</a>: <code>{_{</code></p>
+<ul>
+<li>JSON body object keys are now parsed as templates and can be dynamically modified <a href="https://github.com/LucasPickering/slumber/issues/698">#698</a> (@SignalWhisperer)</li>
+<li><code>slumber show</code> command has been removed; its functionality has be split up across a set of more discoverable subcommands:
+<ul>
+<li><code>slumber show config</code> -&gt; <code>slumber config</code></li>
+<li><code>slumber show collection</code> -&gt; <code>slumber collection</code></li>
+<li><code>slumber show paths</code> removed</li>
+<li><code>slumber show paths config</code> -&gt; <code>slumber config --path</code></li>
+<li><code>slumber show paths collection</code> -&gt; <code>slumber collection --path</code></li>
+<li><code>slumber show paths db</code> -&gt; <code>slumber db --path</code></li>
+<li><code>slumber show paths log</code> -&gt; <code>slumber --print-log-path</code></li>
+</ul>
+</li>
+<li><code>slumber collections</code> and <code>slumber history</code> have been moved under <code>slumber db</code>
+<ul>
+<li><code>slumber collections ...</code> -&gt; <code>slumber db collection ...</code></li>
+<li><code>slumber history ...</code> -&gt; <code>slumber db request ...</code></li>
+<li>The goal is to group all commands related to direct DB access together. These are advanced/niche commands that are often used together.</li>
+</ul>
+</li>
+<li>Logs are now written to temporary files. Each Slumber session uses a different log file. To find the log file:
+<ul>
+<li>In the TUI, open the help menu with <code>?</code></li>
+<li>CLI commands that fail will automatically print the log path. You can also pass <code>--print-log-path</code> to have it always print</li>
+</ul>
+</li>
+<li>Remove <code>left_click</code> and <code>right_click</code> mappable actions
+<ul>
+<li>Mouse clicks can no longer be mapped to keys</li>
+</ul>
+</li>
+<li>Replace the <code>RUST_LOG</code> environment variable with a <code>--log-level</code> argument
+<ul>
+<li>ERROR/WARN log output is not longer shown by default in stderr for CLI commands</li>
+</ul>
+</li>
+</ul>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<ul>
+<li>Add <code>Copy as CLI</code> action to generate a <code>slumber request</code> CLI command for the selected recipe/profile</li>
+<li>Add <code>Copy as Python</code> action to generate Python code that uses the <a href="https://pypi.org/project/slumber-python/">slumber-python</a> API to make a request with the selected recipe/profile</li>
+<li>Add flags to override various parts of a recipe from the CLI
+<ul>
+<li><code>--url &lt;url&gt;</code> overrides the entire URL</li>
+<li><code>--query &lt;param=value&gt;</code> overrides a single query parameter</li>
+<li><code>--header &lt;header=value&gt;</code> (<code>-H</code>) overrides a header</li>
+<li><code>--basic &lt;username:password&gt;</code> sets basic authentication</li>
+<li><code>--bearer &lt;token&gt;</code> sets bearer authentication</li>
+<li><code>--body &lt;body&gt;</code> sets the request body</li>
+<li><code>--form &lt;field=value&gt;</code> (<code>-F</code>) overrides a form field</li>
+</ul>
+</li>
+<li>Add <code>slumber config</code> command (replaces <code>slumber show config</code>)</li>
+<li>Add <code>slumber collection</code> command (replaces <code>slumber show collection</code>)</li>
+<li>Add <code>slumber db --path</code> flag (replaces <code>slumber show paths db</code>)</li>
+<li>You can now search command history in the query/export command text box
+<ul>
+<li>Up/down to cycle through past commands</li>
+<li>Ctrl-r to search</li>
+<li>Command history is specific to each collection and capped at 100 commands per collection</li>
+</ul>
+</li>
+<li>You can now further customize the theme colors <a href="https://github.com/LucasPickering/slumber/issues/699">#699</a> (@SignalWhisperer)
+<ul>
+<li><a href="https://slumber.lucaspickering.me/api/configuration/theme.html">See docs for more</a></li>
+</ul>
+</li>
+<li>Add action to resend a previous request <a href="https://github.com/LucasPickering/slumber/issues/702">#702</a>
+<ul>
+<li>Request/Response pane &gt; Actions menu (x) &gt; Resend Request</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
+<ul>
+<li>Reconfigured the TUI layout. The main change is that the recipe, profile, and history lists open in an expandable sidebar now
+<ul>
+<li>Switching between recipes and profiles should feel faster and more intuitive</li>
+</ul>
+</li>
+<li><code>prompt()</code> and <code>select()</code> calls are now grouped into a single form modal in the TUI
+<ul>
+<li>Previously, you’d be fed a series of modals one-by-one to fill out</li>
+</ul>
+</li>
+<li>Some menu actions have been moved into nested sections for better organization</li>
+<li>Refactor significant portions of the TUI logic. There should be no user-facing changes, but if you notice any bugs <a href="https://github.com/LucasPickering/slumber/issues/new/choose">please report them!</a></li>
+<li>List items can now be selected by click</li>
+<li>Recipe templates are now edited inline instead of in a pop-up modal</li>
+<li>Help modal has been moved to a fullscreen page a better layout</li>
+<li>Make <code>slumber request</code> aliases <code>rq</code> and <code>req</code> visible</li>
+<li><code>slumber db collection delete</code> now accepts more than 1 collection at a time</li>
+<li>Distinguish between different request body types in the history DB better
+<ul>
+<li>Past requests that didn’t have a body persisted because the body was streamed or too large will now look like there was no body at all. Future requests will not have this issue.</li>
+</ul>
+</li>
+<li>Added default keybindings for vim-style (h/j/k/l) navigation</li>
+<li>Use native terminal cursor in text box
+<ul>
+<li>That means the style of the cursor will match your terminal theme, instead of using Slumber’s primary color</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<ul>
+<li>Invalid body override template is displayed instead of being thrown away <a href="https://github.com/LucasPickering/slumber/issues/531">#531</a></li>
+<li>Fix panic when SIGTERM is sent to a TUI process that failed to start and is displaying a collection error</li>
+<li>Fix indentation in TUI display of multi-line errors</li>
+<li>Fix collection file watching for vim, helix, and other editors that swap instead of writing <a href="https://github.com/LucasPickering/slumber/issues/706">#706</a>
+<ul>
+<li>Previously, the file watching would break after the first write because these editors replace the edited file (specifically, the inode) instead of just writing to it</li>
+</ul>
+</li>
+</ul>
+<h2 id="431---2026-01-02"><a class="header" href="#431---2026-01-02">[4.3.1] - 2026-01-02</a></h2>
+<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
+<ul>
+<li>Add line breaks to cURL command output if length is &gt;100 characters (@fgebhart, <a href="https://github.com/LucasPickering/slumber/issues/678">#678</a>)</li>
+</ul>
+<h2 id="430---2025-12-12"><a class="header" href="#430---2025-12-12">[4.3.0] - 2025-12-12</a></h2>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<ul>
+<li>Add <code>default</code> keyword arg to <code>env()</code> <a href="https://github.com/LucasPickering/slumber/issues/652">#652</a></li>
+<li>Add string maniuplation functions <a href="https://github.com/LucasPickering/slumber/issues/655">#655</a>
+<ul>
+<li><code>split()</code> splits a string on a separator</li>
+<li><code>join()</code> joins an array on a separator</li>
+<li><code>index()</code> gets a single element from a string or array</li>
+<li><code>slice()</code> slices a portion out of a string or array</li>
+<li><code>upper()</code> and <code>lower()</code> convert strings to upper/lower case respectively</li>
+<li><code>replace()</code> replaces occurrences of one string (or regex) with another</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-3"><a class="header" href="#changed-3">Changed</a></h3>
+<ul>
+<li>Default config file no longer contains all known configuration fields
+<ul>
+<li>Instead it’s just a single example field and a link to the docs now</li>
+<li>If you have an old default file, it will be replaced by the new one. Any file that’s been modified from the default in any way (including just whitespace/comments) will <strong>not</strong> be modified</li>
+<li>See <a href="https://github.com/LucasPickering/slumber/pull/670">#670</a> for more</li>
+</ul>
+</li>
+</ul>
+<h2 id="421---2025-11-26"><a class="header" href="#421---2025-11-26">[4.2.1] - 2025-11-26</a></h2>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<ul>
+<li>Fix crash when previewing a JSON body that contains an escaped quote <a href="https://github.com/LucasPickering/slumber/issues/646">#646</a></li>
+</ul>
+<h2 id="420---2025-10-14"><a class="header" href="#420---2025-10-14">[4.2.0] - 2025-10-14</a></h2>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<ul>
+<li>Add <a href="https://slumber.lucaspickering.me/integration/python.html">Python bindings</a>, allowing you to use your Slumber collection from Python scripts without having to invoke the CLI</li>
+<li>Add <a href="https://slumber.lucaspickering.me/api/template_functions.html#jq"><code>jq</code></a> function to the template language, to query and transform JSON with <a href="https://jqlang.org/manual/">jq</a></li>
+<li><code>select()</code> now accepts a list of objects <code>{"label": "Label", "value": "Value"}</code> in addition to a list of strings <a href="https://github.com/LucasPickering/slumber/issues/609">#609</a>
+<ul>
+<li>This allows you to pass a list of values where the returned value is different from the string you see in the select list.</li>
+<li>For example, to select a user from a list where you select users by name but the returned value is their ID: <code>select([{"label": "User 1", "value": 1}, {"label": "User 2", "value": 2}])</code></li>
+<li><a href="https://slumber.lucaspickering.me/api/template_functions.html#select">See docs for more</a></li>
+</ul>
+</li>
+<li>Add URL tab to the recipe pane, allowing the URL to be temporarily overridden</li>
+</ul>
+<h3 id="changed-4"><a class="header" href="#changed-4">Changed</a></h3>
+<ul>
+<li><code>Edit Collection</code> TUI has been replaced by <code>Edit Recipe</code>, which opens the file to the selected recipe
+<ul>
+<li>This will make it much easier to make tweaks to a recipe</li>
+</ul>
+</li>
+<li>The <code>Body</code> and <code>Authentication</code> tabs of the <code>Recipe</code> pane are now disabled if the recipe doesn’t have a body/authentication (respectively)</li>
+<li>Disabled actions can no longer be selected in the action menu</li>
+<li><code>slumber show config --edit</code> and <code>slumber show collection --edit</code> now display the error if the file is invalid after editing</li>
+</ul>
+<h2 id="410---2025-09-30"><a class="header" href="#410---2025-09-30">[4.1.0] - 2025-09-30</a></h2>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
+<ul>
+<li>Add support for streaming large HTTP bodies with the new <code>stream</code> body type <a href="https://github.com/LucasPickering/slumber/issues/256">#256</a>
+<ul>
+<li><a href="https://slumber.lucaspickering.me/user_guide/streaming.html">See docs</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-5"><a class="header" href="#changed-5">Changed</a></h3>
+<ul>
+<li><code>form_multipart</code> fields that consist of a single call to <code>file()</code> will now include the correct <code>Content-Type</code> header and <code>filename</code> field of the <code>Content-Disposition</code> header <a href="https://github.com/LucasPickering/slumber/issues/582">#582</a>
+<ul>
+<li><a href="https://slumber.lucaspickering.me/user_guide/streaming.html">See docs</a></li>
+</ul>
+</li>
+<li>Previews of <code>prompt()</code> will now show the default value if possible</li>
+<li>Recipe ID is now shown in the top-right of the Recipe pane header</li>
+</ul>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<ul>
+<li>Fix <code>slumber generate curl</code> output for multipart forms with file fields</li>
+<li><code>slumber import insomnia</code> now imports some dynamic expressions. Values chained from other responses now properly import as <code>response()</code>/<code>response_header()</code> calls <a href="https://github.com/LucasPickering/slumber/issues/164">#164</a></li>
+<li>Improve TUI performance when handling lots of input events</li>
+</ul>
+<h2 id="401---2025-09-14"><a class="header" href="#401---2025-09-14">[4.0.1] - 2025-09-14</a></h2>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
+<ul>
+<li>Remove <code>output</code> argument for <code>command()</code>
+<ul>
+<li>This wasn’t intended to be released and didn’t actually work</li>
+</ul>
+</li>
+</ul>
+<h2 id="400---2025-09-12"><a class="header" href="#400---2025-09-12">[4.0.0] - 2025-09-12</a></h2>
+<p><a href="https://slumber.lucaspickering.me/other/v4_migration.html">Migration guide</a></p>
+<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<p>4.0 is Slumber’s largest release to date, with a number of exciting improvements to the collection format. The overall goal of this release is to make collection files:</p>
+<ul>
+<li>Easier to read</li>
+<li>Easier to write</li>
+<li>Easier to share</li>
+</ul>
+<p>This required a number of breaking changes. For upgrade instructions, see the <code>Breaking</code> section.</p>
+<h4 id="goodbye-chains-we-wont-miss-you"><a class="header" href="#goodbye-chains-we-wont-miss-you">Goodbye chains, we won’t miss you</a></h4>
+<p>Previously, templates could source dynamic data (such as data from other responses, files, commands, etc.) via <em>chains</em>. While powerful, they were annoying to use because you had to define your chain in one part of the collection file, then use it in another. This led to a lot of jumping around, which was especially annoying for a simple chain that only got used once. Additionally, chains were clunky and unintuitive to compose together. You could combine multiple chains together (hence the name), but it wasn’t obvious how.</p>
+<p>4.0 eliminates chains entirely, replacing them with functions directly in your templates, inspired by <a href="https://jinja.palletsprojects.com/en/stable/">Jinja</a> (but dramatically simplified). Here’s a side-by-side comparison:</p>
+<p><strong>Before</strong></p>
+<pre><code class="language-yaml">chains:
+  fish_ids:
+    source: !request
+      recipe: list_fish
+      trigger: !expire 1d
+    selector: $[0].id
+    selector_mode: array
+  fish_id:
+    source: !select
+      options: "{{fish_ids}}"
+
+requests:
+  list_fish:
+    method: GET
+    url: "{{host}}/fishes"
+  get_fish:
+    method: GET
+    url: "{{host}}/fishes/{{fish_id}}"
+</code></pre>
+<p><strong>After</strong></p>
+<pre><code class="language-yaml">requests:
+  list_fish:
+    method: GET
+    url: "{{ host }}/fishes"
+  get_fish:
+    method: GET
+    url: "{{ host }}/fishes/{{ response('fish_list', trigger='1d') | jsonpath('$[*].id', mode='array') | select() }}"
+</code></pre>
+<p>So much easier to follow!</p>
+<p><a href="https://slumber.lucaspickering.me/user_guide/templates/functions.html">See docs for more</a>.</p>
+<h4 id="share-configuration-between-collection-files-with-ref"><a class="header" href="#share-configuration-between-collection-files-with-ref">Share configuration between collection files with <code>$ref</code></a></h4>
+<p>YAML merge syntax (<code>&lt;&lt;: *alias</code>) is no longer supported. Instead, the more flexible JSON reference (<code>$ref</code>) format is supported. This allows you to reuse any portion of the current collection <em>without having to declare it as an alias</em>. Even better though, <strong>you can import components from other files:</strong></p>
+<pre><code class="language-yaml"># slumber.yml
+requests:
+  login:
+    $ref: "./common.yml#/requests/login"
+</code></pre>
+<p><a href="https://slumber.lucaspickering.me/user_guide/composition.html">See docs for more</a>.</p>
+<h4 id="json-schema"><a class="header" href="#json-schema">JSON Schema</a></h4>
+<p>Slumber now exports a <a href="https://jsonschema.com">JSON Schema</a> for both its global config and request collection formats. This makes it possible to get validation and completion in your IDE. To make this possible we’ve ditched the YAML <code>!tag</code> syntax in favor of <code>type</code> fields within each block.</p>
+<p><a href="https://slumber.lucaspickering.me/user_guide/json_schema.md">See docs for more</a>.</p>
+<p><a href="https://github.com/LucasPickering/slumber/issues/374">Thanks to @anussell5559 for this suggestion</a>.</p>
+<h3 id="breaking-1"><a class="header" href="#breaking-1">Breaking</a></h3>
+<p>This release contains a number of breaking changes to the collection format. The major one is a change in the template format, but there are a few other quality of life improvements as well.</p>
+<p>You can automatically migrate your collection to the new v4 format with:</p>
+<pre><code class="language-sh">slumber import v3 &lt;old file&gt; &lt;new file&gt;
+</code></pre>
+<p>The new collection <em>should</em> be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please <a href="https://github.com/LucasPickering/slumber/issues/new">file a bug!</a>.</p>
+<p><a href="https://slumber.lucaspickering.me/other/v4_migration.html"><strong>See the migration guide for more details</strong></a></p>
+<ul>
+<li>Replace template chains with a more intuitive function syntax
+<ul>
+<li>Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: <code>{{ response('login') | jsonpath('$.token') }}</code></li>
+<li><a href="https://slumber.lucaspickering.me/user_guide/templates/functions.html">See docs for more</a></li>
+</ul>
+</li>
+<li>Remove YAML <code>!tags</code> in favor of an inner <code>type</code> field
+<ul>
+<li>This change makes the format compatible with JSON Schema</li>
+<li>Impacts these collection nodes:
+<ul>
+<li>Authentication</li>
+<li>Body</li>
+<li>Folder/request nodes (<code>type</code> field not required at all; node type is inferred from the object structure)</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Represent query parameters as a map of <code>{parameter: value}</code> instead of a list of strings like <code>parameter=value</code>
+<ul>
+<li>The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format</li>
+<li>To define multiple values for the same value, you can now use a list associated to the parameter: <code>{parameter: [value1, value2]}</code></li>
+<li><a href="https://slumber.lucaspickering.me/api/request_collection/query_parameters.html">See docs</a> for examples of the new format</li>
+</ul>
+</li>
+<li>YAML anchor/alias/merge syntax has been replaced with <code>$ref</code> references, similar to OpenAPI <a href="https://github.com/LucasPickering/slumber/issues/290">#290</a>
+<ul>
+<li>These references are much more flexible, including the ability to import from other files</li>
+<li><a href="https://slumber.lucaspickering.me/user_guide/composition.html">See docs</a> for examples</li>
+</ul>
+</li>
+<li>Commands in templates (previously <code>!command</code>, now <code>command()</code>) now fail if the command exits with a non-zero status code</li>
+<li>Templates in a JSON body with a single dynamic chunk (such as <code>{{ username }}</code>) will now be unpacked into their inner value rather than always being stringified
+<ul>
+<li>This means you can now create dynamic non-string values within a JSON body</li>
+<li><a href="https://slumber.lucaspickering.me/user_guide/recipes.html#body">See docs</a> for more</li>
+</ul>
+</li>
+</ul>
+<h2 id="added-5"><a class="header" href="#added-5">Added</a></h2>
+<ul>
+<li>Generate JSON Schema for both the collection and config formats <a href="https://github.com/LucasPickering/slumber/issues/374">#374</a>
+<ul>
+<li>This enables better validation and completion in your IDE; <a href="https://slumber.lucaspickering.me/user_guide/json_schema.md">see docs for more</a></li>
+</ul>
+</li>
+</ul>
+<h2 id="340---2025-08-17"><a class="header" href="#340---2025-08-17">[3.4.0] - 2025-08-17</a></h2>
+<p>This release focuses on improving collection history management. The <code>slumber collections</code> subcommand is fairly niche, but is now a bit more powerful and user friendly.</p>
+<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
+<ul>
+<li>Add <code>slumber collections delete</code> subcommand to remove collections from history</li>
+<li>Add <code>slumber history rm</code> as an alias for <code>slumber history delete</code></li>
+<li>Add filter box to collection select dialog. Less scrolling, more typing!</li>
+</ul>
+<h3 id="changed-6"><a class="header" href="#changed-6">Changed</a></h3>
+<ul>
+<li><code>slumber collections migrate</code> now accepts collection IDs in addition to paths</li>
+<li><code>slumber collections list</code> now includes an ID column in its output</li>
+</ul>
+<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
+<ul>
+<li>Shell completion for the global <code>--file</code>/<code>-f</code> flag will now only <code>.yml</code>/<code>.yaml</code> files</li>
+<li><code>slumber collections migrate</code> now accepts paths for files that don’t exist on disk (as long as they existed as collections at some point)</li>
+</ul>
+<h2 id="330---2025-07-23"><a class="header" href="#330---2025-07-23">[3.3.0] - 2025-07-23</a></h2>
+<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
+<ul>
+<li>Add collection switcher modal <a href="https://github.com/LucasPickering/slumber/issues/536">#536</a>
+<ul>
+<li>You can now switch between any collection that you’ve opened in the past without having to close Slumber</li>
+</ul>
+</li>
+<li>Add optional root-level <code>name</code> field to collections
+<ul>
+<li>This allows you to provide a descriptive name for the collection to show in the new switcher modal</li>
+<li>The name is purely descriptive and does not need to be unique</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-7"><a class="header" href="#changed-7">Changed</a></h3>
+<ul>
+<li>Update to Rust 1.88</li>
+</ul>
+<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
+<ul>
+<li>Fix empty actions modal queuing when opening actions while another modal is already open</li>
+<li>Fix crash when a select modal is opened with a very long option</li>
+</ul>
+<h2 id="320---2025-06-20"><a class="header" href="#320---2025-06-20">[3.2.0] - 2025-06-20</a></h2>
+<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
+<ul>
+<li>Add config field <code>follow_redirects</code> to enable/disable following 3xx redirects (enabled by default)
+<ul>
+<li>The behavior has always been to follow redirects, so this adds the ability to disable that globally</li>
+<li><strong>Reminder:</strong> Global configuration is not automatically reloaded. After making changes to your <code>config.yml</code>, you’ll need to restart Slumber for changes to take effect</li>
+<li><a href="https://slumber.lucaspickering.me/book/api/configuration/index.html#follow_redirects">See docs for more</a></li>
+</ul>
+</li>
+<li>Add optional <code>target</code> argument to <code>slumber show paths</code> to show just a single path
+<ul>
+<li>E.g. <code>slumber show paths config</code> prints just the config path</li>
+</ul>
+</li>
+<li>Add <code>--edit</code> flag to <code>slumber show config</code> and <code>slumber show collection</code>
+<ul>
+<li>This will open the global config/collection file in your configured editor, similar to <code>git config --edit</code></li>
+</ul>
+</li>
+<li><code>slumber import</code> now supports importing from stdin or a URL
+<ul>
+<li>If no input argument is given, it will read from stdin, e.g. <code>slumber import openapi &lt; openapi.json</code></li>
+<li>If a URL is given, the file will be downloaded and imported, e.g. <code>slumber import openapi https://example.com/openapi.json</code></li>
+</ul>
+</li>
+<li>Add OpenAPI v3.1 importer <a href="https://github.com/LucasPickering/slumber/issues/513">#513</a></li>
+</ul>
+<h3 id="changed-8"><a class="header" href="#changed-8">Changed</a></h3>
+<ul>
+<li>Any top-level fields in the config or collection file beginning with <code>.</code> will now be ignored
+<ul>
+<li>The goal is to support “hidden” fields to store reusable components. YAML aliases can be used to pull those components into various parts of your collection</li>
+<li>Previously the field <code>.ignore</code> was specially supported in the collection format for this purpose; this is a generalization of that special case.</li>
+</ul>
+</li>
+</ul>
+<h2 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h2>
+<ul>
+<li>Import JSON bodies from OpenAPI spec operations that don’t have an <code>example</code> field
+<ul>
+<li>Now it will infer a body from the schema definition if no examples are provided</li>
+</ul>
+</li>
+<li>Fix occasional hang when opening <code>fx</code> as a pager <a href="https://github.com/LucasPickering/slumber/issues/506">#506</a></li>
+</ul>
+<h2 id="313---2025-06-07"><a class="header" href="#313---2025-06-07">[3.1.3] - 2025-06-07</a></h2>
+<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
+<ul>
+<li>Fix pager view action (regression in 3.1.2)</li>
+<li>Fully restore terminal before exiting to editor/pager
+<ul>
+<li>This means any stdout/stderr that the external process writes will be properly formatted in the terminal</li>
+</ul>
+</li>
+</ul>
+<h2 id="312---2025-05-30"><a class="header" href="#312---2025-05-30">[3.1.2] - 2025-05-30</a></h2>
+<h3 id="changed-9"><a class="header" href="#changed-9">Changed</a></h3>
+<ul>
+<li>Use a dedicated error state if collection fails to load on TUI launch</li>
+<li>Update dependency <code>persisted</code> to 1.0
+<ul>
+<li>A few pieces of your UI state, such as selected tabs, will be lost during the upgrade due to this</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
+<ul>
+<li>Fix TUI crash when using an empty select list</li>
+<li>Fix automatic collection reloading in Windows
+<ul>
+<li>I don’t use Windows so I’m not sure exactly what scenarios it may have been broken in, but new unit tests indicate it’s working now</li>
+</ul>
+</li>
+<li>Fix config loading failing for read-only config files (<a href="https://github.com/LucasPickering/slumber/issues/504">#504</a>)</li>
+</ul>
+<h2 id="311---2025-04-23"><a class="header" href="#311---2025-04-23">[3.1.1] - 2025-04-23</a></h2>
+<h3 id="fixed-11"><a class="header" href="#fixed-11">Fixed</a></h3>
+<ul>
+<li>Persist response query commands separately for each content type
+<ul>
+<li>This prevents commands from running on the incorrect content type when the response type changes</li>
+</ul>
+</li>
+</ul>
+<h2 id="310---2025-04-04"><a class="header" href="#310---2025-04-04">[3.1.0] - 2025-04-04</a></h2>
+<p>This releases focuses on history and data management. A suite of new features and improvements make it easy to disable request persistence and delete past requests from history.</p>
+<h3 id="added-9"><a class="header" href="#added-9">Added</a></h3>
+<ul>
+<li>Add <code>--persist</code> flag to <code>slumber request</code>
+<ul>
+<li>By default, CLI-based requests are not stored in the history database. Use this flag to enable persistence for the sent request.</li>
+</ul>
+</li>
+<li>Add <code>slumber history delete</code> subcommand for deleting request history</li>
+<li>Add <code>slumber db</code> subcommand to open a shell to the local SQLite database</li>
+<li>Add <code>persist</code> field to the global config and individual recipes
+<ul>
+<li>Both default to <code>true</code>, but you can now set them to <code>false</code> to disable data persistence a single recipe, or all instances of the app. <a href="https://slumber.lucaspickering.me/book/user_guide/database.html#controlling-persistence">See here for more</a></li>
+</ul>
+</li>
+<li>Add actions to delete requests from the TUI
+<ul>
+<li>Delete a single request from the history modal or the Request/Response pane</li>
+<li>Delete all requests for a recipe from the Recipe List/Recipe panes</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-10"><a class="header" href="#changed-10">Changed</a></h3>
+<ul>
+<li>Upgrade to Rust 1.86 (2024 edition!)</li>
+<li>Improve functionality of <code>slumber history list</code>
+<ul>
+<li><code>recipe</code> argument is optional now. Omit it to show requests for all recipes in the current collection</li>
+<li>Add <code>--all</code> argument to show requests for all collections</li>
+<li>Add <code>--id-only</code> flag to print only IDs with no headers. Combine with <code>slumber history delete</code> for great success!</li>
+</ul>
+</li>
+<li>Improve format of <code>slumber history list</code> table output</li>
+</ul>
+<h3 id="fixed-12"><a class="header" href="#fixed-12">Fixed</a></h3>
+<ul>
+<li>Fix output format of <code>slumber request --dry-run ...</code> to match <code>slumber request --verbose</code></li>
+<li>Fix <code>curl</code> output for URL-encoded and multipart forms</li>
+<li>Fix selected request not changing when profile changes</li>
+</ul>
+<h2 id="301---2025-02-19"><a class="header" href="#301---2025-02-19">[3.0.1] - 2025-02-19</a></h2>
+<h3 id="fixed-13"><a class="header" href="#fixed-13">Fixed</a></h3>
+<ul>
+<li>Text box now scrolls to the cursor when it’s off screen</li>
+<li>Fix panics when the screen gets very small <a href="https://github.com/LucasPickering/slumber/issues/469">#469</a></li>
+</ul>
+<h2 id="300---2025-02-15"><a class="header" href="#300---2025-02-15">[3.0.0] - 2025-02-15</a></h2>
+<p>A major release! The main focus of this release is the introduction of shell commands for data querying and export. Previously, you could query response bodies within the TUI only using JSONPath. This limited querying only to JSON responses, and the limited amount of operators supported by JSON. Now, you can use whatever shell commands you want (such as <code>head</code>, <code>grep</code>, and <code>jq</code>) to filter your reponses bodies, right in the TUI! <a href="https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md">Check out the docs</a> for more examples.</p>
+<p>In addition to the querying change, this release includes a handful of breaking changes, none of which are likely to cause issues for existing users.</p>
+<h3 id="breaking-2"><a class="header" href="#breaking-2">Breaking</a></h3>
+<ul>
+<li>Don’t store CLI requests in history</li>
+<li>Simplify display for <code>slumber request</code>
+<ul>
+<li>The flags <code>--status</code>, <code>--headers</code> and <code>--no-body</code> have been removed in favor of a single <code>--verbose</code> flag</li>
+</ul>
+</li>
+<li>Remove DB migration to upgrade from the pre-1.8.0 DB format
+<ul>
+<li>This only impacts users upgrading to 3.0.0 from versions <em>before</em> 1.8.0. You’ll need to upgrade to an intermediate version first. If you install 3.0.0 and try to start it, you’ll see an error message explaining how to fix it.</li>
+<li>See <a href="https://github.com/LucasPickering/slumber/issues/306">#306</a> for more info</li>
+</ul>
+</li>
+</ul>
+<h3 id="added-10"><a class="header" href="#added-10">Added</a></h3>
+<ul>
+<li>Replace JSONPath querying with general purpose shell commands for querying response bodies. <a href="https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md">See docs</a>
+<ul>
+<li>Now you can access any CLI tools you want for transforming response bodies, such as <code>jq</code> or <code>grep</code></li>
+<li>By default, commands are executed via <code>sh</code> (or <code>cmd</code> on Windows), but this is configured via the <a href="https://slumber.lucaspickering.me/book/api/configuration/index.html"><code>commands.shell</code> field</a></li>
+</ul>
+</li>
+<li>Add keybind (<code>:</code> by default) to run an “export” command with a response body, allowing you to run arbitrary shell commands to save a response body to a file, copy it to the clipboard, etc. <a href="https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md#exporting-data">See docs</a></li>
+<li>Add <code>slumber history</code> subcommand. Currently it has two operations:
+<ul>
+<li><code>slumber history list</code> lists all stored requests for a recipe</li>
+<li><code>slumber history get</code> prints a specific request/response</li>
+</ul>
+</li>
+<li>Add <code>--output</code> flag to <code>slumber request</code> to control where the response body is written to</li>
+<li>Support MIME type mapping for <code>pager</code> config field, so you can set different pagers based on media type. <a href="https://slumber.lucaspickering.me/book/api/configuration/mime.html">See docs</a></li>
+<li>Several changes related to keybinds and action menus to make the two feel more cohesive
+<ul>
+<li>Add “Edit” and “Reset” actions to menus on the recipe pane
+<ul>
+<li>These don’t provide any new functionality, as the <code>e</code> and <code>z</code> keys are already bound to those actions, but it should make them more discoverable</li>
+</ul>
+</li>
+<li>Add keybind (<code>v</code> by defualt) to open a recipe/request/response body in your pager
+<ul>
+<li>Previously this was available only through the actions menu</li>
+</ul>
+</li>
+<li>“View Body” and “Copy Body” actions for a <strong>recipe</strong> are now only available within the Body tab of the Recipe pane
+<ul>
+<li>Previously they were available anywhere in the Recipe List or Recipe panes. With the addition of other actions to the menu it was started to feel cluttered</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-11"><a class="header" href="#changed-11">Changed</a></h3>
+<ul>
+<li>Denote templates that have been edited during the current session with italics instead of a faint “(edited)” note</li>
+<li>Header names in recipes are now lowercased in the UI
+<ul>
+<li>They have always been lowercased when the request is actually sent, so now the UI is just more representative of what will be sent</li>
+</ul>
+</li>
+<li>Accept a directory for the <code>--file</code>/<code>-f</code> CLI argument
+<ul>
+<li>If a directory is given, the <a href="https://slumber.lucaspickering.me/book/api/request_collection/index.html#format--loading">standard rules for detecting a collection file</a> will be applied from that directory</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-14"><a class="header" href="#fixed-14">Fixed</a></h3>
+<ul>
+<li>Fix certain recipe-related menu actions being enabled when they shouldn’t be</li>
+</ul>
+<h2 id="250---2025-01-06"><a class="header" href="#250---2025-01-06">[2.5.0] - 2025-01-06</a></h2>
+<h3 id="added-11"><a class="header" href="#added-11">Added</a></h3>
+<ul>
+<li>Add REST Importer for VSCode and Jetbrains <a href="https://github.com/LucasPickering/slumber/issues/122">#122</a> (thanks @benfaerber)</li>
+</ul>
+<h3 id="changed-12"><a class="header" href="#changed-12">Changed</a></h3>
+<ul>
+<li>Update <a href="https://crates.io/crates/editor-command">editor-command</a>, which replaces <a href="https://crates.io/crates/shellish_parse">shellish_parse</a> with <a href="https://crates.io/crates/shell-words">shell-words</a> for editor and pager command parsing
+<ul>
+<li>There should be no impact to users</li>
+</ul>
+</li>
+<li>Don’t show “Loaded collection from …” notification on initial load</li>
+</ul>
+<h2 id="240---2024-12-27"><a class="header" href="#240---2024-12-27">[2.4.0] - 2024-12-27</a></h2>
+<h3 id="added-12"><a class="header" href="#added-12">Added</a></h3>
+<ul>
+<li>Add filter box to the recipe list
+<ul>
+<li>This behavior is not necessarily final. Please leave feedback if you think it could be improved.</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-13"><a class="header" href="#changed-13">Changed</a></h3>
+<ul>
+<li>Wrap long error messages in response pane</li>
+<li>Include data path in config/collection deserialization errors
+<ul>
+<li>This should make errors much less cryptic and frustrating</li>
+</ul>
+</li>
+<li>Improve UX of query text box
+<ul>
+<li>The query is now auto-applied when changed (with a 500ms debounce), and drops focus on the text box when Enter is pressed</li>
+</ul>
+</li>
+<li>Refactor UI event handling logic
+<ul>
+<li>This shouldn’t have any noticable impact on the user, but if you notice any bugs please open an issue</li>
+</ul>
+</li>
+<li>Include request duration in History modal</li>
+<li>Rename <code>viewer</code> config field to <code>pager</code>
+<ul>
+<li>The old field name <code>viewer</code> is still supported for backward compatibility, but the docs have been updated to suggest the newer name instead</li>
+</ul>
+</li>
+<li>Load pager command from the <code>PAGER</code> environment variable if available, similar to the <code>EDITOR</code> environment variable</li>
+</ul>
+<h3 id="fixed-15"><a class="header" href="#fixed-15">Fixed</a></h3>
+<ul>
+<li>Don’t show request cancellation dialog if the selected request isn’t building/loading</li>
+</ul>
+<h2 id="230---2024-11-11"><a class="header" href="#230---2024-11-11">[2.3.0] - 2024-11-11</a></h2>
+<h3 id="added-13"><a class="header" href="#added-13">Added</a></h3>
+<ul>
+<li>Add “View Body” action to response bodies, to open a body in an external viewer such as <code>less</code> or <code>fx</code> <a href="https://github.com/LucasPickering/slumber/issues/404">#404</a>
+<ul>
+<li>By default <code>less</code> is used. You can customize this with the <a href="https://slumber.lucaspickering.me/book/api/configuration/editor.html"><code>viewer</code> config field</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-14"><a class="header" href="#changed-14">Changed</a></h3>
+<ul>
+<li>Preserve key order of objects in JSON responses <a href="https://github.com/LucasPickering/slumber/issues/405">#405</a></li>
+</ul>
+<h3 id="fixed-16"><a class="header" href="#fixed-16">Fixed</a></h3>
+<ul>
+<li>Fixed <code>ignore_certificate_hosts</code> and <code>large_body_size</code> fields not being loaded from config</li>
+<li>Improve performance of large response bodies <a href="https://github.com/LucasPickering/slumber/issues/356">#356</a>
+<ul>
+<li>This includes disabling prettyification and syntax highlighting on bodies over 1 MB (this size is configurable, via the <code>large_body_size</code> <a href="https://slumber.lucaspickering.me/book/api/configuration/index.html">config field</a>)</li>
+<li>Loading a large response body should no longer cause the UI to freeze or low framerate</li>
+</ul>
+</li>
+</ul>
+<h2 id="220---2024-10-22"><a class="header" href="#220---2024-10-22">[2.2.0] - 2024-10-22</a></h2>
+<h3 id="added-14"><a class="header" href="#added-14">Added</a></h3>
+<ul>
+<li>Add shell completions, accessed by enabling the <code>COMPLETE</code> environment variable
+<ul>
+<li>For example, adding <code>COMPLETE=fish slumber | source</code> to your <code>fish.config</code> will enable completions for fish</li>
+<li><a href="https://slumber.lucaspickering.me/book/troubleshooting/shell_completions.html">See docs</a> for more info and a list of supported shells</li>
+</ul>
+</li>
+<li>Add <code>slumber gen</code> alias to <code>--help</code> documentation</li>
+</ul>
+<h3 id="fixed-17"><a class="header" href="#fixed-17">Fixed</a></h3>
+<ul>
+<li>Fix error loading requests with empty header values from history <a href="https://github.com/LucasPickering/slumber/issues/400">#400</a></li>
+<li>Fix input bindings involving <code>shift</code> and a character (e.g. <code>shift g</code>) <a href="https://github.com/LucasPickering/slumber/issues/401">#401</a></li>
+</ul>
+<h2 id="210---2024-09-27"><a class="header" href="#210---2024-09-27">[2.1.0] - 2024-09-27</a></h2>
+<h3 id="added-15"><a class="header" href="#added-15">Added</a></h3>
+<ul>
+<li>Use <code>SLUMBER_CONFIG_PATH</code> to customize configuration (<em>not</em> collection) file path <a href="https://github.com/LucasPickering/slumber/issues/370">#370</a></li>
+<li>Add a dynamic variant to <code>!select</code> chain type, allowing your collection to present a list of values driven from the output of another chain. (thanks @anussel5559)
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select">See docs for more</a></li>
+</ul>
+</li>
+<li>Cancel in-flight requests with the <code>cancel</code> action (bound to escape by default)</li>
+<li>Add <code>slumber new</code> subcommand to generate new collection files <a href="https://github.com/LucasPickering/slumber/issues/376">#376</a></li>
+<li>Add <code>default</code> field to profiles
+<ul>
+<li>When using the CLI, the <code>--profile</code> argument can be omitted to use the default profile</li>
+</ul>
+</li>
+<li>Reset edited recipe values to their default using <code>z</code>
+<ul>
+<li>You can <a href="https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html">customize the key</a> to whatever you want</li>
+</ul>
+</li>
+<li>Add <code>selector_mode</code> field to chains, to control how single vs multiple results from a JSONPath selector are handled
+<ul>
+<li>Previously, if a selector returned multiple results, an error was returned. Now, the result list will be rendered as a JSON array. To return to the previous behavior, set <code>selector_mode: single</code> in your chain.</li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain.html#selector-mode">See docs for more</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-15"><a class="header" href="#changed-15">Changed</a></h3>
+<ul>
+<li>Update file locations to adhere to XDG spec on Linux <a href="https://github.com/LucasPickering/slumber/issues/371">#371</a>
+<ul>
+<li>Move config file to <a href="https://docs.rs/dirs/latest/dirs/fn.config_dir.html">config dir</a>, which remains the same on MacOS/Windows but changes on Linux. For backward compatibility, the previous path (<a href="https://docs.rs/dirs/latest/dirs/fn.data_dir.html">data dir</a>) will be checked and used if present</li>
+<li>Move log files to <a href="https://docs.rs/dirs/latest/dirs/fn.state_dir.html">state dir</a> on Linux and <a href="https://docs.rs/dirs/latest/dirs/fn.cache_dir.html">cache dir</a> on MacOS/Windows</li>
+<li>Database file remains in <a href="https://docs.rs/dirs/latest/dirs/fn.data_dir.html">data dir</a> on all platforms</li>
+</ul>
+</li>
+<li>Create config file on startup if it doesn’t exist</li>
+<li>If config file fails to load during TUI startup, display an error and fall back to the default, rather than crashing</li>
+<li>De-deprecate <code>{{env.VARIABLE}}</code> template sources
+<ul>
+<li>They’ll remain as a simpler alternative to <code>!env</code> chains</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-18"><a class="header" href="#fixed-18">Fixed</a></h3>
+<ul>
+<li>Updated the Configuration docs to remove the non-existent <code>slumber show dir</code> command (thanks @SVendittelli)</li>
+<li>Retain all request history when collection file is reloaded
+<ul>
+<li>Previously, pending and failed requests were lost on reload within a single session. These will still be lost when a session is exited.</li>
+</ul>
+</li>
+<li>Fix serialization of query parameter lists</li>
+<li>Don’t update UI for useless events (e.g. cursor moves)</li>
+</ul>
+<h2 id="200---2024-09-06"><a class="header" href="#200---2024-09-06">[2.0.0] - 2024-09-06</a></h2>
+<p>2.0 is headlined by a highly requested feature: one-off edits to recipes! If you need to tweak a query parameter or edit a body, but don’t want to modify your collection file, you can now highlight the value in question and hit <code>e</code> to modify it. The override will be retained until you modify the collection file or exit Slumber, at which point it will revert to its original value.</p>
+<p>Aside from the major new feature, there is one breaking change to the escape syntax of templates. The old backslash-based syntax was fraught with edge cases and unpredictable behavior. This new syntax is simpler to use, simpler to implement, and much more bulletproof. This syntax was rare to use to begin with, so <strong>most people will be unimpacted by this change.</strong></p>
+<p>Here’s the full list of changes:</p>
+<h3 id="breaking-3"><a class="header" href="#breaking-3">Breaking</a></h3>
+<ul>
+<li>Replace backslash escape sequence with a simpler scheme based on <code>_</code>
+<ul>
+<li>For example, previously a key would be escaped as <code>\{{</code>. This introduced complexities around how to handle additional backslashes, and also required doubling up backslashes in YAML</li>
+<li>The new equivalent would be <code>{_{</code>, which parses as <code>{{</code></li>
+<li>The goal of this change is to make escaping behavior simpler and more consistent</li>
+<li>For more info on the new behavior, <a href="https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences">see the docs</a></li>
+</ul>
+</li>
+<li>Remove <code>--log</code> CLI argument
+<ul>
+<li>See note on log files in Changed section for why this is no longer necessary</li>
+</ul>
+</li>
+</ul>
+<h3 id="added-16"><a class="header" href="#added-16">Added</a></h3>
+<ul>
+<li>Edit recipe values (query params, headers, etc.) in the TUI to provide one-off values
+<ul>
+<li>Press <code>e</code> on any value you want to edit (you can <a href="https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html">customize the key</a>)</li>
+</ul>
+</li>
+<li>Add <code>editor</code> field to the config, allowing you to customize what editor Slumber opens for in-app editing
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/configuration/editor.html">See docs for more</a></li>
+</ul>
+</li>
+<li>Add <code>!select</code> chain type, allowing your collection to prompt the user to select a value from a static list (thanks @anussel5559)
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select">See docs for more</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-16"><a class="header" href="#changed-16">Changed</a></h3>
+<ul>
+<li><code>!json</code> bodies are now prettified when sent to the server</li>
+<li>Use <code>vim</code> as default editor if none is configured</li>
+<li>Move logs back to a shared file
+<ul>
+<li>They had been split into one file per session, which made them hard to find</li>
+<li>The file is now eventually deleted once it exceeds a certain size</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-19"><a class="header" href="#fixed-19">Fixed</a></h3>
+<ul>
+<li>Fix basic auth being label as bearer auth in Recipe Authentication pane</li>
+<li>Use correct binding for <code>search</code> action in the placeholder of the response filter textbox
+<ul>
+<li>Previously it was hardcoded to display the default of <code>/</code></li>
+</ul>
+</li>
+<li>Fix response body filter not applying on new responses</li>
+<li>Support quoted arguments in editor commands</li>
+<li>Fix certain UI values not persisting correctly</li>
+<li>Propagate unconsumed key events from text boxes
+<ul>
+<li>E.g. F5 will now refresh the collection while a text box is in focus</li>
+</ul>
+</li>
+<li>Redraw TUI when terminal is resized</li>
+<li>Clamp text window scroll state when window is resized or text changes</li>
+<li>Fix extraneous input events when exiting Vim <a href="https://github.com/LucasPickering/slumber/issues/351">#351</a></li>
+<li>Improve performance and fix crashes when handling large request/response bodies <a href="https://github.com/LucasPickering/slumber/issues/356">#356</a>
+<ul>
+<li>Further improvements for large bodies will be coming in the future</li>
+</ul>
+</li>
+</ul>
+<h2 id="181---2024-08-11"><a class="header" href="#181---2024-08-11">[1.8.1] - 2024-08-11</a></h2>
+<p>This release is focused on improving rendering performance. The TUI should generally feel more polished and responsive when working with large bodies, and CPU usage will be much lower.</p>
+<h3 id="added-17"><a class="header" href="#added-17">Added</a></h3>
+<ul>
+<li>Add <code>debug</code> configuration field, to enable developer information</li>
+</ul>
+<h3 id="fixed-20"><a class="header" href="#fixed-20">Fixed</a></h3>
+<ul>
+<li>Reduce CPU usage while idling
+<ul>
+<li>Previously, Slumber would re-render every 250ms while idling, which could lead to high CPU usage, depending on what’s on the screen. Now it will only update when changes occur, meaning idle CPU usage will be nearly 0</li>
+</ul>
+</li>
+<li>Fix backlogged events when renders are slow
+<ul>
+<li>If renders are being particular slow, it was previously possible for input events (e.g. repeated scrolling events) to occur faster than the UI could keep up. This would lead to “lock out” behavior, where you’d stop scrolling and it’d take a while for the UI to catch up.</li>
+<li>Now, the TUI will skip draws as necessary to keep up with the input queue. In practice the skipping should be hard to notice as it only occurs during rapid TUI movements anyway.</li>
+</ul>
+</li>
+<li>Improve rendering performance for large bodies and syntax highlighting</li>
+<li>Fix incorrect decoration in folder tree visualization</li>
+</ul>
+<h2 id="180---2024-08-09"><a class="header" href="#180---2024-08-09">[1.8.0] - 2024-08-09</a></h2>
+<p>The highlight (no pun intended) of this release is syntax highlighting. Beyond that, the release contains a variety of small fixes and improvements.</p>
+<h3 id="added-18"><a class="header" href="#added-18">Added</a></h3>
+<ul>
+<li>Add syntax highlighting to recipe, request, and response display <a href="https://github.com/LucasPickering/slumber/issues/264">#264</a></li>
+</ul>
+<h3 id="changed-17"><a class="header" href="#changed-17">Changed</a></h3>
+<ul>
+<li>Change layout of internal database for request and UI state storage
+<ul>
+<li>This <em>shouldn’t</em> have any user impact, it’s just a technical improvement. If you notice any issues such as missing or incorrect request history, please <a href="https://github.com/LucasPickering/slumber/issues/new?assignees=&amp;labels=bug&amp;projects=&amp;template=bug_report.md">let me know</a></li>
+</ul>
+</li>
+<li>Upgrade to Rust 1.80</li>
+<li>Disable unavailable menu actions <a href="https://github.com/LucasPickering/slumber/issues/222">#222</a></li>
+<li>Support template for header names in the <code>section</code> field of <code>!request</code> chains</li>
+<li>Expand <code>~</code> to the home directory in <code>!file</code> chain sources and when saving response body as a file</li>
+<li>Ignore key events with additional key modifiers
+<ul>
+<li>For example, an action bound to <code>w</code> will no longer match <code>ctrl w</code></li>
+</ul>
+</li>
+<li>Actions can now be unbound by specifying an empty binding
+<ul>
+<li>For example, binding <code>submit: []</code> will make the submit action inaccessible</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-21"><a class="header" href="#fixed-21">Fixed</a></h3>
+<ul>
+<li>Fix <code>cargo install slumber</code> when not using <code>--locked</code></li>
+<li>Don’t type in text boxes when modifiers keys (other than shift) are enabled
+<ul>
+<li>Should mitigate some potential confusing behavior when using terminal key sequences</li>
+</ul>
+</li>
+<li>Query parameter and header toggle rows no longer lose their state when switching profiles</li>
+</ul>
+<h2 id="170---2024-07-22"><a class="header" href="#170---2024-07-22">[1.7.0] - 2024-07-22</a></h2>
+<p>This release focuses on minor fixes and improvements. There are no new major features or added functionality.</p>
+<h3 id="added-19"><a class="header" href="#added-19">Added</a></h3>
+<ul>
+<li>Add global <code>--log</code> argument to CLI, to print the log file being used for that invocation</li>
+</ul>
+<h3 id="changed-18"><a class="header" href="#changed-18">Changed</a></h3>
+<ul>
+<li>Checkbox row state and folder expand/collapse state are now toggled via the spacebar instead of enter
+<ul>
+<li>Enter now sends a request from anywhere. While this change may be annoying, it will hopefully be more intuitive in the long run.</li>
+<li>This can be rebound (<a href="https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html">see docs</a>)</li>
+</ul>
+</li>
+<li>Show folder tree in recipe pane when a folder is selected</li>
+<li>Don’t exit body filter text box on Enter <a href="https://github.com/LucasPickering/slumber/issues/270">#270</a></li>
+<li>Show elapsed time for failed requests (e.g. in case of network error)</li>
+</ul>
+<h3 id="fixes"><a class="header" href="#fixes">Fixes</a></h3>
+<ul>
+<li>Fix latest request not being pre-selected correctly if it’s not a successful response</li>
+<li>Detect infinite loops in chain configuration templates</li>
+<li>Duplicated chains in a recipe will only be rendered once <a href="https://github.com/LucasPickering/slumber/issues/118">#118</a></li>
+<li>Never trigger chained requests when rendering template previews in the TUI</li>
+<li>Use a different log file for each session <a href="https://github.com/LucasPickering/slumber/issues/61">#61</a></li>
+</ul>
+<h2 id="160---2024-07-07"><a class="header" href="#160---2024-07-07">[1.6.0] - 2024-07-07</a></h2>
+<h3 id="added-20"><a class="header" href="#added-20">Added</a></h3>
+<ul>
+<li>Initial support for importing collections from an OpenAPIv3 specification <a href="https://github.com/LucasPickering/slumber/issues/106">#106</a>
+<ul>
+<li>Currently only OpenAPI 3.0 (not 3.1) is supported. Please try this out and give feedback if anything doesn’t work.</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-19"><a class="header" href="#changed-19">Changed</a></h3>
+<ul>
+<li>Allow escaping keys in templates <a href="https://github.com/LucasPickering/slumber/issues/149">#149</a>
+<ul>
+<li>While this is technically a breaking change, this is not a major version bump because it’s extremely unlikely that this will break anything in practice for a user</li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences">See docs</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-22"><a class="header" href="#fixed-22">Fixed</a></h3>
+<ul>
+<li>Support TLS certificates in native certificate store <a href="https://github.com/LucasPickering/slumber/issues/275">#275</a></li>
+</ul>
+<h2 id="150---2024-06-17"><a class="header" href="#150---2024-06-17">[1.5.0] - 2024-06-17</a></h2>
+<h3 id="added-21"><a class="header" href="#added-21">Added</a></h3>
+<ul>
+<li>Add <code>!env</code> chain source, for loading environment variables
+<ul>
+<li>This is intended to replace the existing <code>{{env.VARIABLE}}</code> syntax, which is now deprecated and will be removed in the future</li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-20"><a class="header" href="#changed-20">Changed</a></h3>
+<ul>
+<li>“Edit Collection” action now uses the editor set in <code>$VISUAL</code>/<code>$EDITOR</code> instead of whatever editor you have set as default for <code>.yaml</code>/<code>.yml</code> files <a href="https://github.com/LucasPickering/slumber/issues/262">#262</a>
+<ul>
+<li>In most cases this means you’ll now get <code>vim</code> instead of VSCode or another GUI editor</li>
+<li>Closing the editor will return you to Slumber, meaning you can stay in the terminal the entire time</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-23"><a class="header" href="#fixed-23">Fixed</a></h3>
+<ul>
+<li>Environment variables in <code>{{env.VARIABLE}}</code> templates are now loaded as strings according to the OS encoding, as opposed to always being decoded as UTF-8</li>
+</ul>
+<h2 id="140---2024-06-11"><a class="header" href="#140---2024-06-11">[1.4.0] - 2024-06-11</a></h2>
+<h3 id="added-22"><a class="header" href="#added-22">Added</a></h3>
+<ul>
+<li>Structured bodies can now be defined with tags on the <code>body</code> field of a recipe, making it more convenient to construct bodies of common types. Supported types are:
+<ul>
+<li><code>!json</code> <a href="https://github.com/LucasPickering/slumber/issues/242">#242</a></li>
+<li><code>!form_urlencoded</code> <a href="https://github.com/LucasPickering/slumber/issues/244">#244</a></li>
+<li><code>!form_multipart</code> <a href="https://github.com/LucasPickering/slumber/issues/243">#243</a></li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/recipe_body.html">See docs</a> for usage instructions</li>
+</ul>
+</li>
+<li>Support multiple instances of the same query param <a href="https://github.com/LucasPickering/slumber/issues/245">#245</a> (@maksimowiczm)
+<ul>
+<li>Query params can now be defined as a list of <code>&lt;param&gt;=&lt;value&gt;</code> entries</li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html">See docs</a></li>
+</ul>
+</li>
+<li>Templates can now render binary values in certain contexts
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/user_guide/templates.html#binary-templates">See docs</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-21"><a class="header" href="#changed-21">Changed</a></h3>
+<ul>
+<li>When a modal/dialog is open <code>q</code> now exits the dialog instead of the entire app</li>
+<li>Upgrade to Rust 1.76</li>
+</ul>
+<h3 id="fixed-24"><a class="header" href="#fixed-24">Fixed</a></h3>
+<ul>
+<li>Fix “Unknown request ID” error showing on startup <a href="https://github.com/LucasPickering/slumber/issues/238">#238</a></li>
+</ul>
+<h2 id="132---2024-05-27"><a class="header" href="#132---2024-05-27">[1.3.2] - 2024-05-27</a></h2>
+<h3 id="changed-22"><a class="header" href="#changed-22">Changed</a></h3>
+<ul>
+<li>Show “Copy URL”, “Copy Body” and “Copy as cURL” actions from the Recipe list <a href="https://github.com/LucasPickering/slumber/issues/224">#224</a>
+<ul>
+<li>Previously this was only available in the Recipe detail pane</li>
+</ul>
+</li>
+<li>Fix Edit Collection action in menu</li>
+<li>Persist response body query text box contents
+<ul>
+<li>Previously it would reset whenever you made a new request or changed recipes</li>
+</ul>
+</li>
+</ul>
+<h2 id="131---2024-05-21"><a class="header" href="#131---2024-05-21">[1.3.1] - 2024-05-21</a></h2>
+<h3 id="fixed-25"><a class="header" href="#fixed-25">Fixed</a></h3>
+<ul>
+<li>Fix double key events on Windows <a href="https://github.com/LucasPickering/slumber/issues/226">#226</a></li>
+</ul>
+<h2 id="130---2024-05-17"><a class="header" href="#130---2024-05-17">[1.3.0] - 2024-05-17</a></h2>
+<p>The biggest feature in this release is the ability to browse request history. Slumber has already had the ability to <em>track</em> history, meaning all your history since you started using it will already be there! In addition, this release contains some UI improvements, as well as some pretty major internal refactors to enable these UI changes. These will also make future UI improvements easier and faster to implement.</p>
+<h3 id="added-23"><a class="header" href="#added-23">Added</a></h3>
+<ul>
+<li>Request history is now browsable! <a href="https://github.com/LucasPickering/slumber/issues/55">#55</a></li>
+<li>Add scrollbars to lists and text windows <a href="https://github.com/LucasPickering/slumber/issues/220">#220</a></li>
+</ul>
+<h3 id="changed-23"><a class="header" href="#changed-23">Changed</a></h3>
+<ul>
+<li>Merge request &amp; response panes
+<ul>
+<li>The request pane often isn’t needed, so it doesn’t deserve top-level space</li>
+</ul>
+</li>
+<li>Mouse events (e.g. scrolling) are now sent to unfocused elements</li>
+</ul>
+<h2 id="121---2024-05-11"><a class="header" href="#121---2024-05-11">[1.2.1] - 2024-05-11</a></h2>
+<h3 id="fixed-26"><a class="header" href="#fixed-26">Fixed</a></h3>
+<ul>
+<li>Fix profile not being selected on initial startup</li>
+</ul>
+<h2 id="120---2024-05-10"><a class="header" href="#120---2024-05-10">[1.2.0] - 2024-05-10</a></h2>
+<h3 id="added-24"><a class="header" href="#added-24">Added</a></h3>
+<ul>
+<li>Add <code>trim</code> option to chains, to trim leading/trailing whitespace <a href="https://github.com/LucasPickering/slumber/issues/153">#153</a>
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain.html#chain-output-trim">See docs</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="changed-24"><a class="header" href="#changed-24">Changed</a></h3>
+<ul>
+<li>Use colored background for status codes
+<ul>
+<li>This includes a new theme field, <code>success_color</code></li>
+</ul>
+</li>
+<li>Improve hierarchy presentation of errors</li>
+<li>Convert profile list into a popup modal</li>
+</ul>
+<h3 id="fixed-27"><a class="header" href="#fixed-27">Fixed</a></h3>
+<ul>
+<li>Exit fullscreen mode when changing panes</li>
+<li>Support scrolling on more lists/tables</li>
+</ul>
+<h2 id="110---2024-05-05"><a class="header" href="#110---2024-05-05">[1.1.0] - 2024-05-05</a></h2>
+<h3 id="added-25"><a class="header" href="#added-25">Added</a></h3>
+<ul>
+<li>Add <code>section</code> field to <code>!request</code> chain values, to allow chaining response headers rather than body (<a href="https://github.com/LucasPickering/slumber/issues/184">#184</a>)</li>
+<li>Add action to save response body to file (<a href="https://github.com/LucasPickering/slumber/issues/183">#183</a>)</li>
+<li>Add <code>theme</code> field to the config, to configure colors (<a href="https://github.com/LucasPickering/slumber/issues/193">#193</a>)
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/configuration/theme.html">See docs</a> for more info</li>
+</ul>
+</li>
+<li>Add <code>stdin</code> option to command chains (<a href="https://github.com/LucasPickering/slumber/issues/190">#190</a>)</li>
+</ul>
+<h3 id="changed-25"><a class="header" href="#changed-25">Changed</a></h3>
+<ul>
+<li>Reduce UI latency under certain scenarios
+<ul>
+<li>Previously some actions would feel laggy because of an inherent 250ms delay in processing some events</li>
+</ul>
+</li>
+<li>Search parent directories for collection file (<a href="https://github.com/LucasPickering/slumber/issues/194">#194</a>)</li>
+<li>Use thicker borders for selected pane and modals</li>
+<li>Change default TUI colors to blue and yellow</li>
+</ul>
+<h3 id="fixed-28"><a class="header" href="#fixed-28">Fixed</a></h3>
+<ul>
+<li>Fix Slumber going into zombie mode and CPU spiking to 100% under certain closure scenarios (<a href="https://github.com/LucasPickering/slumber/issues/136">#136</a>)</li>
+<li>Fix historical request/response no loading on first render (<a href="https://github.com/LucasPickering/slumber/issues/199">#199</a>)</li>
+</ul>
+<h2 id="101---2024-04-27"><a class="header" href="#101---2024-04-27">[1.0.1] - 2024-04-27</a></h2>
+<h3 id="added-26"><a class="header" href="#added-26">Added</a></h3>
+<ul>
+<li>Add two new build targets to releases: <code>x86_64-pc-windows-msvc</code> and <code>x86_64-unknown-linux-musl</code></li>
+</ul>
+<h3 id="fixed-29"><a class="header" href="#fixed-29">Fixed</a></h3>
+<ul>
+<li>Fix build on Windows (<a href="https://github.com/LucasPickering/slumber/issues/180">#180</a>)
+<ul>
+<li>I can’t guarantee it <em>works</em> on Windows since I don’t have a machine to test on, but it at least compiles now</li>
+</ul>
+</li>
+</ul>
+<h2 id="100---2024-04-25"><a class="header" href="#100---2024-04-25">[1.0.0] - 2024-04-25</a></h2>
+<h3 id="breaking-4"><a class="header" href="#breaking-4">Breaking</a></h3>
+<ul>
+<li>Rename collection file parameter on all CLI commands from <code>--collection</code>/<code>-c</code> to <code>--file</code>/<code>-f</code>
+<ul>
+<li>The goal here is to be more intuitive/predictable, since <code>-f</code> is much more common in similar programs (e.g. docker-compose)</li>
+</ul>
+</li>
+</ul>
+<h3 id="added-27"><a class="header" href="#added-27">Added</a></h3>
+<ul>
+<li>Support booleans and numbers for query values (<a href="https://github.com/LucasPickering/slumber/issues/141">#141</a>)</li>
+<li>Add <code>default</code> field to <code>!prompt</code> chains, which allows setting a pre-populated value for the prompt textbox</li>
+</ul>
+<h3 id="changed-26"><a class="header" href="#changed-26">Changed</a></h3>
+<ul>
+<li>Folders can now be collapsed in the recipe list (<a href="https://github.com/LucasPickering/slumber/issues/155">#155</a>)</li>
+<li>Improvements to Insomnia import (<a href="https://github.com/LucasPickering/slumber/issues/12">#12</a>)</li>
+<li>Rename <code>import-experimental</code> command to <code>import</code>
+<ul>
+<li>It’s official now! It’s still going to get continued improvement though</li>
+</ul>
+</li>
+<li>Show <code>WARN</code>/<code>ERROR</code> log output for CLI commands</li>
+<li>Validate recipe <code>method</code> field during deserialization instead of on request init
+<ul>
+<li>This means you’ll get an error on startup if your method is invalid, instead of when you go to run the request</li>
+<li>This is not a breaking change because if you had an incorrect HTTP method, the request still didn’t <em>work</em> before, it just broke later</li>
+</ul>
+</li>
+<li>Arguments to chains are now treated as templates (<a href="https://github.com/LucasPickering/slumber/issues/151">#151</a>)
+<ul>
+<li>Support fields are <code>path</code> for <code>!file</code> chains, <code>command</code> for <code>!command</code> chains, and <code>message</code> for <code>!prompt</code> chains</li>
+<li>This means you can now <em>really</em> chain chains together!</li>
+</ul>
+</li>
+</ul>
+<h2 id="0180---2024-04-18"><a class="header" href="#0180---2024-04-18">[0.18.0] - 2024-04-18</a></h2>
+<h3 id="breaking-5"><a class="header" href="#breaking-5">Breaking</a></h3>
+<ul>
+<li>All existing recipes must be tagged with <code>!request</code> in the collection file
+<ul>
+<li>This is necessary to differentiate from the new <code>!folder</code> type</li>
+</ul>
+</li>
+<li>Profile values are always treated as templates now
+<ul>
+<li>Any profile values that were previously the “raw” variant (the default) that contain template syntax (e.g. <code>{{user_id}}</code>) will now be rendered as templates. In reality this is very unlikely, so this probably isn’t going to break your setup</li>
+<li>If you have an existing profile value tagged with <code>!template</code> it <strong>won’t</strong> break, but it will no longer do anything</li>
+</ul>
+</li>
+<li>Unknown fields in config/collection files will now be rejected (<a href="https://github.com/LucasPickering/slumber/issues/154">#154</a>)
+<ul>
+<li>In most cases this field is a mistake, so this is meant to make debugging easier</li>
+<li>If you have an intentional unknown field, you can now nest it under <code>.ignore</code> to ignore it</li>
+</ul>
+</li>
+<li>Replace <code>slumber show dir</code> with <code>slumber show paths</code></li>
+</ul>
+<h3 id="added-28"><a class="header" href="#added-28">Added</a></h3>
+<ul>
+<li>Request recipes can now be organized into folders (<a href="https://github.com/LucasPickering/slumber/issues/60">#60</a>)
+<ul>
+<li>See <a href="https://slumber.lucaspickering.me/book/api/request_collection/request_recipe.html#folder-fields">the docs</a> for usage examples</li>
+</ul>
+</li>
+<li>Add <code>slumber show config</code> and <code>slumber show collection</code> subcommands</li>
+</ul>
+<h3 id="changed-27"><a class="header" href="#changed-27">Changed</a></h3>
+<ul>
+<li>Prevent infinite recursion in templates
+<ul>
+<li>It now triggers a helpful error instead of a panic</li>
+</ul>
+</li>
+<li>Support additional key codes for input mapping, including media keys</li>
+</ul>
+<h3 id="fixed-30"><a class="header" href="#fixed-30">Fixed</a></h3>
+<ul>
+<li>Multiple spaces between modifiers/key codes in a key combination are now ignored</li>
+</ul>
+<h2 id="0170---2024-04-08"><a class="header" href="#0170---2024-04-08">[0.17.0] - 2024-04-08</a></h2>
+<h3 id="breaking-6"><a class="header" href="#breaking-6">Breaking</a></h3>
+<ul>
+<li>All variants of the <code>Chain.source</code> field are now maps
+<ul>
+<li>This is to support the next request auto-execution feature, as well as future proofing for additional chain configuration</li>
+</ul>
+</li>
+<li>Remove <code>send_request</code> keybinding
+<ul>
+<li>The <code>submit</code> keybinding is now used to send requests from all panes (except the profile pane)</li>
+<li>This is only a breaking change if you have <code>send_request</code> remapped in your config file</li>
+</ul>
+</li>
+</ul>
+<p>Follow this mapping to update:</p>
+<pre><code class="language-yaml"># Before
+chains:
+  auth_token:
+    source: !request login
+  username:
+    source: !command ["echo", "-n", "hello"]
+  username:
+    source: !file ./username.txt
+  password:
+    source: !prompt Enter Password
+---
+# After
+chains:
+  auth_token:
+    source: !request
+      recipe: login
+  username:
+    source: !command
+      command: ["echo", "-n", "hello"]
+  username:
+    source: !file
+      path: ./username.txt
+  password:
+    source: !prompt
+      message: Enter Password
+</code></pre>
+<h3 id="added-29"><a class="header" href="#added-29">Added</a></h3>
+<ul>
+<li>Chained requests can now be auto-executed according to various criteria (<a href="https://github.com/LucasPickering/slumber/issues/140">#140</a>)
+<ul>
+<li>See <a href="https://slumber.lucaspickering.me/book/user_guide/chaining_requests.html">the docs</a> for more</li>
+</ul>
+</li>
+<li>Add Authentication tab to recipe pane (<a href="https://github.com/LucasPickering/slumber/issues/144">#144</a>)</li>
+</ul>
+<h3 id="changed-28"><a class="header" href="#changed-28">Changed</a></h3>
+<ul>
+<li>Don’t print full stack trace for failed CLI commands</li>
+<li>Disable formatting and highlighting for response bodies over 1MB (size threshold customizable <a href="https://slumber.lucaspickering.me/book/api/configuration/index.html">in the config</a>)</li>
+</ul>
+<h3 id="fixes-1"><a class="header" href="#fixes-1">Fixes</a></h3>
+<ul>
+<li>Improve performance of handling large response bodies</li>
+</ul>
+<h2 id="0160---2024-04-01"><a class="header" href="#0160---2024-04-01">[0.16.0] - 2024-04-01</a></h2>
+<h3 id="added-30"><a class="header" href="#added-30">Added</a></h3>
+<ul>
+<li>Add support for custom keybindings (<a href="https://github.com/LucasPickering/slumber/issues/137">#137</a>)</li>
+</ul>
+<h3 id="fixed-31"><a class="header" href="#fixed-31">Fixed</a></h3>
+<ul>
+<li>Fix request body not updating in UI when changing recipe</li>
+</ul>
+<h2 id="0150---2024-03-24"><a class="header" href="#0150---2024-03-24">[0.15.0] - 2024-03-24</a></h2>
+<h3 id="added-31"><a class="header" href="#added-31">Added</a></h3>
+<ul>
+<li>Add horizontal scrolling to response body (<a href="https://github.com/LucasPickering/slumber/issues/111">#111</a>)
+<ul>
+<li>Use shift+left and shift+right</li>
+</ul>
+</li>
+<li>Add app version to help modal</li>
+<li>Add “Copy as cURL” action to recipe menu (<a href="https://github.com/LucasPickering/slumber/issues/123">#123</a>)</li>
+<li>Add hotkeys to select different panes</li>
+<li>Add pane for rendered request</li>
+<li>Show response size in Response pane (<a href="https://github.com/LucasPickering/slumber/issues/129">#129</a>)</li>
+</ul>
+<h3 id="changed-29"><a class="header" href="#changed-29">Changed</a></h3>
+<ul>
+<li>Run prompts while rendering request URL/body to be copied</li>
+<li>Improve UI design of profile pane</li>
+<li>Show raw bytes for binary responses</li>
+</ul>
+<h3 id="fixed-32"><a class="header" href="#fixed-32">Fixed</a></h3>
+<ul>
+<li>Reset response body query when changing recipes (<a href="https://github.com/LucasPickering/slumber/issues/133">#133</a>)</li>
+</ul>
+<h2 id="0140---2024-03-18"><a class="header" href="#0140---2024-03-18">[0.14.0] - 2024-03-18</a></h2>
+<h3 id="added-32"><a class="header" href="#added-32">Added</a></h3>
+<ul>
+<li>Add config option <code>ignore_certificate_hosts</code> (<a href="https://github.com/LucasPickering/slumber/issues/109">#109</a>)</li>
+<li>Add menu action to open collection file in editor (<a href="https://github.com/LucasPickering/slumber/issues/105">#105</a>)</li>
+<li>Add <code>authentication</code> field to request recipe (<a href="https://github.com/LucasPickering/slumber/issues/110">#110</a>)</li>
+</ul>
+<h3 id="fixed-33"><a class="header" href="#fixed-33">Fixed</a></h3>
+<ul>
+<li>Fix prompt in TUI always rendering as sensitive (<a href="https://github.com/LucasPickering/slumber/issues/108">#108</a>)</li>
+<li>Fix content type identification for extended JSON MIME types (<a href="https://github.com/LucasPickering/slumber/issues/103">#103</a>)</li>
+<li>Use named records in binary blobs in the local DB
+<ul>
+<li>This required wiping out existing binary blobs, meaning <strong>all request history and UI state will be lost on upgrade</strong></li>
+</ul>
+</li>
+<li>Fix basic auth in Insomnia import</li>
+</ul>
+<h2 id="0131---2024-03-07"><a class="header" href="#0131---2024-03-07">[0.13.1] - 2024-03-07</a></h2>
+<h3 id="changed-30"><a class="header" href="#changed-30">Changed</a></h3>
+<ul>
+<li>Move checkbox to left side of toggle tables</li>
+</ul>
+<h3 id="fixed-34"><a class="header" href="#fixed-34">Fixed</a></h3>
+<ul>
+<li>Fix scrolling on response body pane</li>
+</ul>
+<h2 id="0130---2024-02-21"><a class="header" href="#0130---2024-02-21">[0.13.0] - 2024-02-21</a></h2>
+<h3 id="added-33"><a class="header" href="#added-33">Added</a></h3>
+<ul>
+<li>New informational flags to <code>slumber request</code>
+<ul>
+<li><code>--exit-status</code> to set exit code based on response status (<a href="https://github.com/LucasPickering/slumber/issues/97">#97</a>)</li>
+<li><code>--status</code>, <code>--headers</code>, and <code>--no-body</code> to control printed output</li>
+</ul>
+</li>
+<li>Filter response via JSONPath (<a href="https://github.com/LucasPickering/slumber/issues/78">#78</a>)</li>
+</ul>
+<h2 id="0121---2024-01-22"><a class="header" href="#0121---2024-01-22">[0.12.1] - 2024-01-22</a></h2>
+<h3 id="changed-31"><a class="header" href="#changed-31">Changed</a></h3>
+<ul>
+<li>Improved styling of toggled table rows</li>
+</ul>
+<h2 id="0120---2024-01-07"><a class="header" href="#0120---2024-01-07">[0.12.0] - 2024-01-07</a></h2>
+<h3 id="added-34"><a class="header" href="#added-34">Added</a></h3>
+<ul>
+<li>Move app-level configuration into a file (<a href="https://github.com/LucasPickering/slumber/issues/89">#89</a>)
+<ul>
+<li>Right now the only supported field is <code>preview_templates</code></li>
+</ul>
+</li>
+<li>Toggle query parameters and headers in recipe pane (<a href="https://github.com/LucasPickering/slumber/issues/30">#30</a>)
+<ul>
+<li>You can easily enable/disable parameters and headers without having to modify the collection file now</li>
+</ul>
+</li>
+<li>Add Copy URL action, to get the full URL that a request will generate (<a href="https://github.com/LucasPickering/slumber/issues/93">#93</a>)</li>
+</ul>
+<h3 id="changed-32"><a class="header" href="#changed-32">Changed</a></h3>
+<ul>
+<li>Show profile contents while in the profile list (<a href="https://github.com/LucasPickering/slumber/issues/26">#26</a>)</li>
+<li>Remove settings modal in favor of the settings file
+<ul>
+<li>Supporting changing configuration values during a session adds a lot of complexity</li>
+</ul>
+</li>
+</ul>
+<h2 id="0110---2023-12-20"><a class="header" href="#0110---2023-12-20">[0.11.0] - 2023-12-20</a></h2>
+<h3 id="added-35"><a class="header" href="#added-35">Added</a></h3>
+<ul>
+<li>Add action to copy entire request/response body (<a href="https://github.com/LucasPickering/slumber/issues/45">#74</a>)</li>
+<li>Persist UI state between sessions (<a href="https://github.com/LucasPickering/slumber/issues/39">#39</a>)</li>
+<li>Text window can be controlled with PgUp/PgDown/Home/End (<a href="https://github.com/LucasPickering/slumber/issues/77">#77</a>)</li>
+<li>Add back manual reload keybinding (R)
+<ul>
+<li>Mostly for development purposes</li>
+</ul>
+</li>
+<li>Add collection ID/path to help modal (<a href="https://github.com/LucasPickering/slumber/issues/59">#59</a>)
+<ul>
+<li>Also add collection ID to terminal title</li>
+</ul>
+</li>
+<li>Add new docs for templates and collection reuse (<a href="https://github.com/LucasPickering/slumber/issues/67">#67</a>)</li>
+</ul>
+<h3 id="changed-33"><a class="header" href="#changed-33">Changed</a></h3>
+<ul>
+<li>[BREAKING] Key profiles/chains/requests by ID in collection file</li>
+<li>[BREAKING] Merge request history into a single DB file
+<ul>
+<li>Request history (and UI state) will be lost</li>
+</ul>
+</li>
+<li>[BREAKING] <code>show</code> subcommand now takes a <code>target</code> argument
+<ul>
+<li>Right now the only option is <code>slumber show dir</code>, which has the same behavior as the old <code>slumber show</code> (except now it prints the bare directory)</li>
+</ul>
+</li>
+<li>[BREAKING] Remove option to toggle cursor capture
+<ul>
+<li>Turns out it’s not that useful, since most terminals provide override behavior</li>
+</ul>
+</li>
+<li>Filter request history by profile (<a href="https://github.com/LucasPickering/slumber/issues/74">#74</a>)</li>
+<li>Hide sensitive chain values in preview</li>
+<li>Change fullscreen keybinding from F11 to F
+<ul>
+<li>F11 in some cases is eaten by the IDE or OS, which is annoying</li>
+</ul>
+</li>
+</ul>
+<h3 id="fixed-35"><a class="header" href="#fixed-35">Fixed</a></h3>
+<ul>
+<li>Don’t require collection file to be present for <code>show</code> subcommand (<a href="https://github.com/LucasPickering/slumber/issues/62">#62</a>)</li>
+<li>Fix state file being created in root Slumber directory if collection file is invalid (<a href="https://github.com/LucasPickering/slumber/issues/71">#71</a>)</li>
+<li>Fix pane cycling while in fullscreen (<a href="https://github.com/LucasPickering/slumber/issues/76">#76</a>)</li>
+</ul>
+<h2 id="090---2023-11-28"><a class="header" href="#090---2023-11-28">[0.9.0] - 2023-11-28</a></h2>
+<h3 id="added-36"><a class="header" href="#added-36">Added</a></h3>
+<ul>
+<li>Add setting to toggle cursor capture</li>
+<li>Add help modal</li>
+<li>Add cursor navigation</li>
+</ul>
+<h3 id="changed-34"><a class="header" href="#changed-34">Changed</a></h3>
+<ul>
+<li>Always show help text in footer, regardless of notification state</li>
+<li>Add highlight border to fullscreened pane</li>
+<li>Allow exiting fullscreen mode with ESC</li>
+</ul>
+<h2 id="080---2023-11-21"><a class="header" href="#080---2023-11-21">[0.8.0] - 2023-11-21</a></h2>
+<h3 id="added-37"><a class="header" href="#added-37">Added</a></h3>
+<ul>
+<li>Add <code>slumber show</code> subcommand</li>
+</ul>
+<h3 id="changed-35"><a class="header" href="#changed-35">Changed</a></h3>
+<ul>
+<li>Remove keybinding to reload collection
+<ul>
+<li>Not useful now that the TUI has automatic reloading</li>
+</ul>
+</li>
+<li>Move to stable Rust channel and add MSRV of 1.74</li>
+</ul>
+<h3 id="fixed-36"><a class="header" href="#fixed-36">Fixed</a></h3>
+<ul>
+<li>Don’t panic if the collection file is invalid on first startup <a href="https://github.com/LucasPickering/slumber/issues/34">#34</a>
+<ul>
+<li>The TUI will now show an empty screen, and watch the collection file for changes</li>
+</ul>
+</li>
+<li>Fix long status code reasons getting cut off in response header <a href="https://github.com/LucasPickering/slumber/issues/40">#40</a></li>
+<li>Trim leading/trailing newlines from header values to prevent validation error</li>
+</ul>
+<h2 id="070---2023-11-16"><a class="header" href="#070---2023-11-16">[0.7.0] - 2023-11-16</a></h2>
+<h3 id="added-38"><a class="header" href="#added-38">Added</a></h3>
+<ul>
+<li>Added recursive templates for profile values, using the <code>!template</code> tag before a value</li>
+</ul>
+<h3 id="changed-36"><a class="header" href="#changed-36">Changed</a></h3>
+<ul>
+<li>Parse templates up front instead of during render</li>
+<li>Switch to nom for template parsing
+<ul>
+<li>Parse errors should be better now</li>
+</ul>
+</li>
+</ul>
+<h2 id="060---2023-11-11"><a class="header" href="#060---2023-11-11">[0.6.0] - 2023-11-11</a></h2>
+<h3 id="added-39"><a class="header" href="#added-39">Added</a></h3>
+<ul>
+<li>Add ability to preview template values. This will show the rendered value under current settings <a href="https://github.com/LucasPickering/slumber/issues/29">#29</a>
+<ul>
+<li>This includes a new modal to toggle the setting on/off, via the <code>X</code> key</li>
+</ul>
+</li>
+<li>Add <code>command</code> source type for chained values, which uses stdout from an executed subprocess command <a href="https://github.com/LucasPickering/slumber/issues/31">#31</a></li>
+</ul>
+<h3 id="changed-37"><a class="header" href="#changed-37">Changed</a></h3>
+<ul>
+<li>HTTP method is now a plain string, not a template string. This simplifies some internal logic, and I don’t think there was a compelling reason to make a template in the first place.</li>
+</ul>
+<h2 id="050---2023-11-07"><a class="header" href="#050---2023-11-07">[0.5.0] - 2023-11-07</a></h2>
+<h3 id="added-40"><a class="header" href="#added-40">Added</a></h3>
+<ul>
+<li>Add top-level collection <code>id</code> field
+<ul>
+<li>Needed in order to give each collection its own history file</li>
+</ul>
+</li>
+<li>Disable mouse capture to allow text highlighting <a href="https://github.com/LucasPickering/slumber/issues/17">#17</a></li>
+<li>Add keybinding (F2) to send request from any view</li>
+</ul>
+<h3 id="fixed-37"><a class="header" href="#fixed-37">Fixed</a></h3>
+<ul>
+<li>Differentiate history between different collections <a href="https://github.com/LucasPickering/slumber/issues/10">#10</a></li>
+<li>Ensure ctrl-c can’t get eaten by text boxes (it guarantees exit now) <a href="https://github.com/LucasPickering/slumber/issues/18">#18</a></li>
+</ul>
+<h3 id="changed-38"><a class="header" href="#changed-38">Changed</a></h3>
+<ul>
+<li>Adjust size of profile list dynamically based on number of profiles</li>
+<li>Use structured table display format for query parameters and headers</li>
+<li>Tweak list and tab styling</li>
+</ul>
+<h2 id="040---2023-11-02"><a class="header" href="#040---2023-11-02">[0.4.0] - 2023-11-02</a></h2>
+<h3 id="added-41"><a class="header" href="#added-41">Added</a></h3>
+<ul>
+<li>Request and response panes can now be fullscreened and scrolled <a href="https://github.com/LucasPickering/slumber/issues/14">#14</a></li>
+</ul>
+<h3 id="removed"><a class="header" href="#removed">Removed</a></h3>
+<ul>
+<li>Removed <code>Chain.name</code> field in config</li>
+</ul>
+<h3 id="changed-39"><a class="header" href="#changed-39">Changed</a></h3>
+<ul>
+<li>All modals now use a shared queue</li>
+</ul>
+<h3 id="fixed-38"><a class="header" href="#fixed-38">Fixed</a></h3>
+<ul>
+<li>Initially selected recipe loads most recent response <a href="https://github.com/LucasPickering/slumber/issues/13">#13</a></li>
+</ul>
+<h2 id="031---2023-10-22"><a class="header" href="#031---2023-10-22">[0.3.1] - 2023-10-22</a></h2>
+<p>Initial distributed release!</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../other/v4_migration.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../other/v4_migration.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

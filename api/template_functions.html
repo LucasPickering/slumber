@@ -1,0 +1,867 @@
+<!DOCTYPE HTML>
+<html lang="en" class="dark sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Template Functions - Slumber</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="shortcut icon" href="../favicon-5759397d.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "dark";
+            const default_dark_theme = "coal";
+            window.path_to_searchindex_js = "../searchindex-dadf1f83.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-99dd559a.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('dark')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Slumber</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber/edit/master/docs/src/api/template_functions.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="template-functions"><a class="header" href="#template-functions">Template Functions</a></h1>
+<h2 id="reading-function-signatures"><a class="header" href="#reading-function-signatures">Reading Function Signatures</a></h2>
+<p>The function signatures below borrow from TypeScript to describe the arguments a function accepts and the value it returns:</p>
+<pre><code class="language-typescript">f(arg1: boolean, arg2: string[], arg3?: string): bytes
+</code></pre>
+<p>The function <code>f</code> accepts two required positional arguments (<code>arg1</code> and <code>arg2</code>) and one optional keyword argument (<code>arg3</code>), and returns a <code>bytes</code>.</p>
+<h3 id="types"><a class="header" href="#types">Types</a></h3>
+<p><code>value</code> is the top-level type. It represents any <a href="../user_guide/templates/values.html">template value</a>.</p>
+<p>The following types are scalar (i.e. not collections):</p>
+<ul>
+<li><code>boolean</code></li>
+<li><code>float</code></li>
+<li><code>integer</code></li>
+<li><code>string</code></li>
+<li><code>bytes</code></li>
+</ul>
+<p>Array types accept an array of a single type: <code>string[]</code> accepts <code>["a", "b", "c"]</code> but not <code>["a", 1, false]</code>.</p>
+<p>Type unions allow values that match <em>any</em> of the members: <code>"a" | "b"</code> accepts the string <code>"a"</code> or the string <code>"b"</code>.</p>
+<p>Some functions define custom types such as <code>JsonPath</code>, which are generally a narrowing of the <code>string</code> type. These will be described on a case-by-case basis in the function descriptions.</p>
+<h3 id="arguments"><a class="header" href="#arguments">Arguments</a></h3>
+<p>Arguments with a <code>?</code> are optional keyword arguments. Those without <code>?</code> are required positional arguments. See <a href="../user_guide/templates/functions.html#arguments">Arguments</a> for more.</p>
+<!-- Function docs are autogenerated. See crates/core/src/render/functions.rs -->
+<h2 id="tags"><a class="header" href="#tags">Tags</a></h2>
+<p>Functions grouped by their application.</p>
+<h3 id="array"><a class="header" href="#array">array</a></h3>
+<ul>
+<li><a href="#concat"><code>concat</code></a></li>
+<li><a href="#index"><code>index</code></a></li>
+<li><a href="#join"><code>join</code></a></li>
+<li><a href="#slice"><code>slice</code></a></li>
+</ul>
+<h3 id="input"><a class="header" href="#input">input</a></h3>
+<ul>
+<li><a href="#command"><code>command</code></a></li>
+<li><a href="#env"><code>env</code></a></li>
+<li><a href="#file"><code>file</code></a></li>
+<li><a href="#prompt"><code>prompt</code></a></li>
+<li><a href="#response"><code>response</code></a></li>
+<li><a href="#response_header"><code>response_header</code></a></li>
+<li><a href="#select"><code>select</code></a></li>
+</ul>
+<h3 id="json"><a class="header" href="#json">json</a></h3>
+<ul>
+<li><a href="#jq"><code>jq</code></a></li>
+<li><a href="#json_parse"><code>json_parse</code></a></li>
+<li><a href="#jsonpath"><code>jsonpath</code></a></li>
+</ul>
+<h3 id="number"><a class="header" href="#number">number</a></h3>
+<ul>
+<li><a href="#float"><code>float</code></a></li>
+<li><a href="#integer"><code>integer</code></a></li>
+</ul>
+<h3 id="string"><a class="header" href="#string">string</a></h3>
+<ul>
+<li><a href="#base64"><code>base64</code></a></li>
+<li><a href="#concat"><code>concat</code></a></li>
+<li><a href="#index"><code>index</code></a></li>
+<li><a href="#join"><code>join</code></a></li>
+<li><a href="#lower"><code>lower</code></a></li>
+<li><a href="#replace"><code>replace</code></a></li>
+<li><a href="#sensitive"><code>sensitive</code></a></li>
+<li><a href="#slice"><code>slice</code></a></li>
+<li><a href="#split"><code>split</code></a></li>
+<li><a href="#string"><code>string</code></a></li>
+<li><a href="#trim"><code>trim</code></a></li>
+<li><a href="#upper"><code>upper</code></a></li>
+</ul>
+<h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
+<h3 id="base64"><a class="header" href="#base64">base64</a></h3>
+<pre><code class="language-typescript">base64(value: bytes, decode?: boolean): bytes
+</code></pre>
+<p>Encode or decode content to/from base64</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: bytes</code> (required): Value to encode or decode</li>
+<li><code>decode: boolean</code> (default = <code>false</code>): Decode the input from base64 to its original value instead of encoding it <em>to</em> base64</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>bytes</code></p>
+<p>The encoded value (if <code>decode=false</code>) or decoded value (if <code>decode=true</code>)</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>decode=true</code> and <code>value</code> is not a valid base64 string</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">base64("test") =&gt; "dGVzdA=="
+base64("dGVzdA==", decode=true) =&gt; "test"
+</code></pre>
+<h3 id="boolean"><a class="header" href="#boolean">boolean</a></h3>
+<pre><code class="language-typescript">boolean(value: value): boolean
+</code></pre>
+<p>Convert a value to a boolean. Empty values such as <code>0</code>, <code>""</code> or <code>[]</code> convert to <code>false</code>. Anything else converts to <code>true</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: value</code> (required): Value to convert</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>boolean</code></p>
+<p>Boolean representation of the input</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">boolean(null) =&gt; false
+boolean(0) =&gt; false
+boolean(1) =&gt; true
+boolean('') =&gt; false
+boolean('0') =&gt; true
+boolean([]) =&gt; false
+boolean([0]) =&gt; true
+</code></pre>
+<h3 id="command"><a class="header" href="#command">command</a></h3>
+<pre><code class="language-typescript">command(command: string[], cwd?: string, stdin?: bytes): bytes
+</code></pre>
+<p>Run a command in a subprocess and return its stdout output. Supports streaming of stdout.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>command: string[]</code> (required): Command to run, in the form [program, arg1, arg2, …]</li>
+<li><code>cwd: string</code> (default = <code>.</code>): Directory to execute the subprocess in. The given path will be resolved relative to the directory containing the collection file.</li>
+<li><code>stdin: bytes</code> (default = <code>b''</code>): Data to pipe to the subprocess’s stdin</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>bytes</code></p>
+<p>Stdout output as bytes. May be returned as a stream (LazyValue).</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If the command fails to initialize (e.g. program unknown)</li>
+<li>If the subprocess exits with a non-zero status code</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">command(["echo", "hello"]) =&gt; hello
+
+command(["grep","1"], stdin="line 1\nline2") =&gt; line 1
+
+</code></pre>
+<h3 id="concat"><a class="header" href="#concat">concat</a></h3>
+<pre><code class="language-typescript">concat(elements: string[]): string
+</code></pre>
+<p>Concatenate any number of strings together</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>elements: string[]</code> (required): Strings to concatenate together. Any non-string values will be stringified</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Concatenated string</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">concat(['My name is ', name, ' and I am ', age]) =&gt; My name is Ted and I am 37
+file("data.json") | jsonpath("$.users[*].name") | concat() =&gt; TedSteveSarah
+</code></pre>
+<h3 id="debug"><a class="header" href="#debug">debug</a></h3>
+<pre><code class="language-typescript">debug(value: value): value
+</code></pre>
+<p>Print a value to stdout, returning the same value. Useful for debugging templates.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: value</code> (required): The value to print and return</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>value</code></p>
+<p>The same value that was passed in</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh"># Prints "hello"
+debug("hello") =&gt; 'hello'
+# Contents of data.json will be printed
+file("data.json") | debug() | jsonpath("$.data") =&gt; 123
+</code></pre>
+<h3 id="env"><a class="header" href="#env">env</a></h3>
+<pre><code class="language-typescript">env(variable: string, default?: string): string
+</code></pre>
+<p>Get the value of an environment variable, or <code>""</code> if not set</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>variable: string</code> (required): Name of the environment variable to read</li>
+<li><code>default: string</code> (default = ``): Value to return when the environment variable is not present</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Value of the environment variable or the provided default</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">env("HOME") =&gt; /home/username
+env("NONEXISTENT") =&gt; 
+env("NONEXISTENT", default="default") =&gt; default
+</code></pre>
+<h3 id="file"><a class="header" href="#file">file</a></h3>
+<pre><code class="language-typescript">file(path: string): bytes
+</code></pre>
+<p>Load contents of a file. Output is bytes but can be used as a string in most cases. Supports streaming for large/binary files.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>path: string</code> (required): Path to the file to read, relative to the collection file (<code>slumber.yml</code>). A leading <code>~</code> will be expanded to $HOME.</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>bytes</code></p>
+<p>File contents as bytes (may be a stream)</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If an I/O error occurs while opening the file (e.g. file missing)</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">file("config.json") =&gt; Contents of config.json file
+</code></pre>
+<h3 id="float"><a class="header" href="#float">float</a></h3>
+<pre><code class="language-typescript">float(value: value): float
+</code></pre>
+<p>Convert a value to a float</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: value</code> (required): Value to convert</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>float</code></p>
+<p>Floating point representation (f64)</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a string or byte string that doesn’t parse to a float</li>
+<li>If <code>value</code> is an inconvertible type such as an array or object</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">float('3.5') =&gt; 3.5
+float(b'3.5') =&gt; 3.5
+float(3) =&gt; 3.0
+float(null) =&gt; 0.0
+float(false) =&gt; 0.0
+float(true) =&gt; 1.0
+</code></pre>
+<h3 id="index"><a class="header" href="#index">index</a></h3>
+<pre><code class="language-typescript">index(index: integer, sequence: string | bytes | value[]): value
+</code></pre>
+<p>Get one element from a string, bytes, or array
+For strings, the index is in terms of <em>characters</em>, not bytes.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>index: integer</code> (required): Index of the element to return, starting at 0. Negative values count backwards from the end.</li>
+<li><code>sequence: string | bytes | value[]</code> (required): String, bytes, or array to index into</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>value</code></p>
+<p>Value at <code>index</code>. If <code>index &gt;= length</code>, return <code>null</code></p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">[0, 1, 2] | index(1) =&gt; 1
+'abc' | index(1) =&gt; 'b'
+# Negative indexes count back from the end
+'abc' | index(-1) =&gt; 'c'
+'abc' | index(3) =&gt; null
+# String indexes are in terms of characters. Multi-byte UTF-8 characters count as a single element
+'nägemist' | index(1) =&gt; 'ä'
+# Bytes indexes are in terms of bytes, not UTF-8 characters
+b'nägemist' | index(1) =&gt; b'Ã'
+</code></pre>
+<h3 id="integer"><a class="header" href="#integer">integer</a></h3>
+<pre><code class="language-typescript">integer(value: value): integer
+</code></pre>
+<p>Convert a value to an int</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: value</code> (required): Value to convert</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>integer</code></p>
+<p>Integer representation (i64)</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a string or byte string that doesn’t parse to an integer</li>
+<li>If <code>value</code> is an inconvertible type such as an array or object</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">integer('3') =&gt; 3
+integer(b'3') =&gt; 3
+integer(3.5) =&gt; 3
+integer(null) =&gt; 0
+integer(false) =&gt; 0
+integer(true) =&gt; 1
+</code></pre>
+<h3 id="join"><a class="header" href="#join">join</a></h3>
+<pre><code class="language-typescript">join(separator: string, values: string[]): string
+</code></pre>
+<p>Join a list of strings with a separator
+<code>join</code> is the inverse of <a href="#split"><code>split</code></a>. <code>join(sep, split(sep, value))</code> always yields <code>value</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>separator: string</code> (required): String to join with</li>
+<li><code>values: string[]</code> (required): Array to join</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Joined string</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">['a', 'b', 'c'] | join(',') =&gt; 'a,b,c'
+# Non-string values are coerced to strings
+[1, 2, 3] | join(',') =&gt; '1,2,3'
+</code></pre>
+<h3 id="jq"><a class="header" href="#jq">jq</a></h3>
+<pre><code class="language-typescript">jq(
+  query: string,
+  value: value,
+  mode?: "auto" | "single" | "array",
+): value
+</code></pre>
+<p>Transform a JSON value using a <code>jq</code> query. Uses the <code>jaq</code> Rust implementation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>query: string</code> (required): <code>jq</code> query string</li>
+<li><code>value: value</code> (required): JSON value to query. Strings/bytes will be parsed as JSON first.</li>
+<li><code>mode: "auto" | "single" | "array"</code> (default = <code>auto</code>): How to handle multiple results (auto/single/array)</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>value</code></p>
+<p>Resulting template <code>Value</code></p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a string with invalid JSON</li>
+<li>If the query returns no results and <code>mode='auto'</code> or <code>mode='single'</code></li>
+<li>If the query returns 2+ results and <code>mode='single'</code></li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">response('get_user') | jq(".first_name") =&gt; Alice
+</code></pre>
+<h3 id="json_parse"><a class="header" href="#json_parse">json_parse</a></h3>
+<pre><code class="language-typescript">json_parse(value: string): value
+</code></pre>
+<p>Parse a JSON string to a template value</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: string</code> (required): JSON string</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>value</code></p>
+<p>Parsed JSON as <code>serde_json::Value</code></p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is not valid JSON</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">json_parse('{"name": "Alice"}') =&gt; {"name": "Alice"}
+file('body.json') | json_parse() =&gt; {"name": "Alice"}
+</code></pre>
+<h3 id="jsonpath"><a class="header" href="#jsonpath">jsonpath</a></h3>
+<pre><code class="language-typescript">jsonpath(
+  query: string,
+  value: value,
+  mode?: "auto" | "single" | "array",
+): value
+</code></pre>
+<p>Transform a JSON value using a JSONPath query</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: value</code> (required): JSON value to query. Strings/bytes will be parsed as JSON before querying.</li>
+<li><code>query: string</code> (required): JSONPath query string</li>
+<li><code>mode: "auto" | "single" | "array"</code> (default = <code>auto</code>): How to handle multiple results (auto/single/array)</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>value</code></p>
+<p>Resulting template <code>Value</code></p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a string with invalid JSON</li>
+<li>If the query returns no results and <code>mode='auto'</code> or <code>mode='single'</code></li>
+<li>If the query returns 2+ results and <code>mode='single'</code></li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">response('get_user') | jsonpath("$.first_name") =&gt; Alice
+</code></pre>
+<h3 id="lower"><a class="header" href="#lower">lower</a></h3>
+<pre><code class="language-typescript">lower(value: string): string
+</code></pre>
+<p>Convert a string to lowercase</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: string</code> (required): String to convert</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Lowercased string</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">lower("HELLO") =&gt; hello
+# UTF-8 characters are converted as well
+lower("NÄGEMIST") =&gt; nägemist
+</code></pre>
+<h3 id="prompt"><a class="header" href="#prompt">prompt</a></h3>
+<pre><code class="language-typescript">prompt(message?: string, default?: string, sensitive?: boolean): string
+</code></pre>
+<p>Prompt the user to enter a text value</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>message: string</code> (default = <code>''</code>): Optional prompt message to display to the user</li>
+<li><code>default: string</code> (default = <code>''</code>): Optional default value to pre-fill the input</li>
+<li><code>sensitive: boolean</code> (default = <code>false</code>): Mask the input while typing. Also masks output in previews.</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Entered string</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If the user doesn’t give a response</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">prompt() =&gt; What do I put here? Help!!
+prompt(message="Enter your name") =&gt; Barry Barracuda
+prompt(message="Password", sensitive=true) =&gt; hunter2
+</code></pre>
+<h3 id="replace"><a class="header" href="#replace">replace</a></h3>
+<pre><code class="language-typescript">replace(
+  from: string,
+  to: string,
+  value: string,
+  regex?: boolean,
+  n?: integer,
+): string
+</code></pre>
+<p>Replace all occurrences of <code>from</code> in <code>value</code> with <code>to</code></p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>from: string</code> (required): Pattern to be replaced</li>
+<li><code>to: string</code> (required): String to replace each occurrence of <code>from</code> with</li>
+<li><code>value: string</code> (required): String to split</li>
+<li><code>regex: boolean</code> (default = <code>false</code>): If <code>true</code>, <code>from</code> will be parsed as a <a href="https://en.wikipedia.org/wiki/Regular_expression">regular expression</a> instead of a plain string.</li>
+<li><code>n: integer</code> (default = <code>null</code>): Maximum number of replacements to make, starting from the start of the string. If <code>null</code>, make all possible replacements</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Array of separated string segments</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>regex=true</code> but <code>from</code> is not a valid regex</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">'banana' | replace('na', 'ma') =&gt; 'bamama'
+# Replace a or b with x
+'banana' | replace('[ab]', 'x', regex=true) =&gt; 'xxnxnx'
+'banana' | replace('na', 'ma', n=1) =&gt; 'bamana'
+# Overlapping instances of `to` are NOT all replaced
+'bananan' | replace('nan', 'mam') =&gt; 'bamaman'
+</code></pre>
+<h3 id="response"><a class="header" href="#response">response</a></h3>
+<pre><code class="language-typescript">response(
+  recipe_id: string,
+  trigger?: "never" | "no_history" | "always" | Duration,
+): bytes
+</code></pre>
+<p>Load the most recent response body for the given recipe and current profile</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>recipe_id: string</code> (required): ID (not name) of the recipe to load the response from</li>
+<li><code>trigger: "never" | "no_history" | "always" | Duration</code> (default = <code>never</code>): When to execute the upstream request (never/no_history/always/Duration)</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>bytes</code></p>
+<p>Most recent response body as bytes</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>recipe</code> isn’t in the collection</li>
+<li>If there is no request in history and <code>trigger='never'</code></li>
+<li>If a request is triggered and failed</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">response("login") =&gt; {"token": "abc123"}
+response("login", trigger="1h") =&gt; {"token": "abc123"}
+</code></pre>
+<h3 id="response_header"><a class="header" href="#response_header">response_header</a></h3>
+<pre><code class="language-typescript">response_header(
+  recipe_id: string,
+  header: string,
+  trigger?: "never" | "no_history" | "always" | Duration,
+): bytes
+</code></pre>
+<p>Load a header value from the most recent response for a recipe and the current profile</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>recipe_id: string</code> (required): ID (not name) of the recipe to load the response from</li>
+<li><code>header: string</code> (required): Name of the header to extract (case-insensitive)</li>
+<li><code>trigger: "never" | "no_history" | "always" | Duration</code> (default = <code>never</code>): When to execute the upstream request vs using cached response</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>bytes</code></p>
+<p>Header value as bytes</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>recipe</code> isn’t in the collection</li>
+<li>If there is no request in history and <code>trigger='never'</code></li>
+<li>If a request is triggered and failed</li>
+<li>If the header is missing</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">response_header("get_rate_limit", "X-Rate-Limit", trigger="5m") =&gt; 100
+</code></pre>
+<h3 id="select"><a class="header" href="#select">select</a></h3>
+<pre><code class="language-typescript">select(
+  options: (string | { "label": string, "value": value })[],
+  message?: string,
+): value
+</code></pre>
+<p>Ask the user to select a value from a list</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>options: (string | { "label": string, "value": value })[]</code> (required): List of options to choose from. Each option can be either a string or an object with “label” and “value”.</li>
+<li><code>message: string</code> (default = ``): Descriptive message to display to the user</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>value</code></p>
+<p>The selected value</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>options</code> is empty</li>
+<li>If the user doesn’t give a response</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">select(["dev", "staging", "prod"]) =&gt; dev
+select(["GET", "POST","PUT"], message="HTTP method") =&gt; POST
+select([{"label":"Sam","value":1},{"label":"Mike","value":2}]) =&gt; 2
+</code></pre>
+<h3 id="sensitive"><a class="header" href="#sensitive">sensitive</a></h3>
+<pre><code class="language-typescript">sensitive(value: string): string
+</code></pre>
+<p>Mark a value as sensitive, masking it in template previews. No impact on requests sent.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: string</code> (required): String to mask</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Masked string in preview, input string when building requests</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">sensitive("hunter2") =&gt; •••••••
+</code></pre>
+<h3 id="slice"><a class="header" href="#slice">slice</a></h3>
+<pre><code class="language-typescript">slice(
+  start: integer,
+  stop: integer,
+  sequence: string | bytes | value[],
+): string | bytes | value[]
+</code></pre>
+<p>Extract a portion of a string, bytes, or array
+Indexes are zero-based and [inclusive, exclusive)</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>start: integer</code> (required): Index of the first element to include, starting at 0. Negative values count backward from the end.</li>
+<li><code>stop: integer</code> (required): Index <em>after</em> the last element to include, starting at 0. <code>null</code> will slice to the end. Negative values count backwards from the end.</li>
+<li><code>sequence: string | bytes | value[]</code> (required): String, bytes, or array to slice</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string | bytes | value[]</code></p>
+<p>Subslice of the input string/array. If <code>stop &lt; start</code>, return an empty slice. If either index outside the range <code>[0, length]</code>, it will be clamped to that range.</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">[0, 1, 2] | slice(1, 2) =&gt; [1]
+[0, 1, 2] | slice(1, 3) =&gt; [1, 2]
+'abc' | slice(0, 2) =&gt; 'ab'
+'abc' | slice(0, 0) =&gt; ''
+# Use `null` for `stop` to slice to the end
+'abc' | slice(1, null) =&gt; 'bc'
+# Negative indexes count back from the end
+'abc' | slice(1, -1) =&gt; 'b'
+# Combine the two to get the last n elements
+'abc' | slice(-2, null) =&gt; 'bc'
+# Indexes are in terms of characters. Multi-byte UTF-8 characters count as a single element
+'nägemist' | slice(1, 3) =&gt; 'äg'
+# Bytes indexes are in terms of bytes, not UTF-8 characters
+b'nägemist' | slice(1, 3) =&gt; b'Ã¤'
+</code></pre>
+<h3 id="split"><a class="header" href="#split">split</a></h3>
+<pre><code class="language-typescript">split(separator: string, value: string, n?: integer): string[]
+</code></pre>
+<p>Split a string on a separator</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>separator: string</code> (required): String to split on</li>
+<li><code>value: string</code> (required): String to split</li>
+<li><code>n: integer</code> (default = <code>null</code>): Maximum number of times to split. If <code>null</code>, split as many times as possible</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string[]</code></p>
+<p>Array of separated string segments</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">'a,b,c' | split(',') =&gt; ['a', 'b', 'c']
+'a,b,c' | split(',', n=1) =&gt; ['a', 'b,c']
+'a,b,c' | split('') =&gt; ['', 'a', ',', 'b', ',', 'c', '']
+'' | split(',') =&gt; ['']
+</code></pre>
+<h3 id="string-1"><a class="header" href="#string-1">string</a></h3>
+<pre><code class="language-typescript">string(value: value): string
+</code></pre>
+<p>Stringify a value. Any value can be converted to a string except for non-UTF-8 bytes</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: value</code> (required): Value to stringify</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>String representation</p>
+<p><strong>Errors</strong></p>
+<ul>
+<li>If <code>value</code> is a byte string that isn’t valid UTF-8</li>
+</ul>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">string('hello') =&gt; hello
+string(b'hello') =&gt; hello
+string([1, 2, 3]) =&gt; [1, 2, 3]
+</code></pre>
+<h3 id="trim"><a class="header" href="#trim">trim</a></h3>
+<pre><code class="language-typescript">trim(value: string, mode?: "start" | "end" | "both"): string
+</code></pre>
+<p>Trim whitespace from the beginning and/or end of a string</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: string</code> (required): String to trim (typically piped in)</li>
+<li><code>mode: "start" | "end" | "both"</code> (default = <code>both</code>): Section of the string to trim (start/end/both)</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Trimmed string</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">trim("  hello  ") =&gt; hello
+trim("  hello  ", mode="start") =&gt; hello  
+command(["echo", "hello"]) | trim() =&gt; hello
+</code></pre>
+<h3 id="upper"><a class="header" href="#upper">upper</a></h3>
+<pre><code class="language-typescript">upper(value: string): string
+</code></pre>
+<p>Convert a string to uppercase</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>value: string</code> (required): String to convert</li>
+</ul>
+<p><strong>Return</strong></p>
+<p><code>string</code></p>
+<p>Uppercased string</p>
+<p><strong>Examples</strong></p>
+<pre><code class="language-sh">upper("hello") =&gt; HELLO
+# UTF-8 characters are converted as well
+lower("nägemist") =&gt; NÄGEMIST
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../api/configuration/theme.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../integration/python.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../api/configuration/theme.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../integration/python.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

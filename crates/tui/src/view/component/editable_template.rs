@@ -147,6 +147,7 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
 
     /// Enter edit mode
     pub fn edit(&mut self) {
+        // TODO open in external editor if multiple lines
         let template = self.template().display().into_owned();
         self.edit_text_box = Some(
             TextBox::default()

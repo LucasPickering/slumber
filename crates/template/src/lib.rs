@@ -310,16 +310,14 @@ impl RenderedOutput {
     /// Unpack this output into a single lazy value. If the output is a single
     /// dynamic chunk, unpack it into a scalar value. Otherwise return a
     /// [LazyValue::Nested].
-    pub fn unpack(mut self) -> LazyValue {
-        if let &[RenderedChunk::Rendered(_)] = self.0.as_slice() {
+    pub fn unpack(self) -> LazyValue {
+        match <[_; 1]>::try_from(self.0) {
             // If we have a single dynamic chunk, return its value directly
-            let Some(RenderedChunk::Rendered(lazy)) = self.0.pop() else {
-                // Checked pattern above
-                unreachable!()
-            };
-            lazy
-        } else {
-            LazyValue::Nested(self)
+            Ok([RenderedChunk::Rendered(lazy)]) => lazy,
+            Ok([chunk @ (RenderedChunk::Raw(_) | RenderedChunk::Error(_))]) => {
+                LazyValue::Nested(Self(vec![chunk]))
+            }
+            Err(chunks) => LazyValue::Nested(Self(chunks)),
         }
     }
 

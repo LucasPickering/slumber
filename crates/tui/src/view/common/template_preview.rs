@@ -272,6 +272,36 @@ pub async fn render_json_preview<Ctx: Context>(
         }
     }
 
+    /// Render a string literal preview, which *may* unpack to another value
+    async fn render_string<Ctx: Context>(
+        context: &Ctx,
+        builder: &mut TextBuilder,
+        template: &Template,
+    ) {
+        let output = template.render(context).await;
+        match output.unpack() {
+            // If this unpacks into a value, *don't* include quotes
+            LazyValue::Value(value) => {
+                let styles = ViewContext::styles();
+                let json = value_to_json(value);
+                builder.add_text_styled(
+                    &format!("{json:#}"),
+                    styles.template_preview.text,
+                );
+            }
+
+            LazyValue::Nested(output) => {
+                // The value can't be unpacked, so it has to be
+                // represented as a string
+                builder.add_json_string(output);
+            }
+            // I'd love to make this impossible in the type system
+            LazyValue::Stream { .. } => {
+                unreachable!("JSON bodies don't support streaming")
+            }
+        }
+    }
+
     let mut builder = TextBuilder::new();
     inner(context, &mut builder, template).await;
     builder.build()
@@ -303,32 +333,6 @@ async fn render_collection<T>(
     builder.add_text(close);
 }
 
-/// Render a string literal preview. Strings *may* unpack to values
-async fn render_string<Ctx: Context>(
-    context: &Ctx,
-    builder: &mut TextBuilder,
-    template: &Template,
-) {
-    let chunks = template.render(context).await;
-    match chunks.unpack() {
-        // If this unpacks into a value, *don't* include quotes
-        LazyValue::Value(value) => {
-            let json = value_to_json(value);
-            builder.add_text(&format!("{json:#}"));
-        }
-
-        LazyValue::Nested(chunks) => {
-            // The value can't be unpacked, so it has to be
-            // represented as a string
-            builder.add_json_string(chunks);
-        }
-        // I'd love to make this impossible in the type system
-        LazyValue::Stream { .. } => {
-            unreachable!("JSON bodies don't support streaming")
-        }
-    }
-}
-
 /// A helper to build `Text` from template render output
 ///
 /// This requires some effort because ratatui *loves* line breaks, so we have to
@@ -356,7 +360,7 @@ impl TextBuilder {
     /// Add rendered chunks to the text
     ///
     /// For [Template], this is the only thing required to build the preview.
-    fn add_chunks(&mut self, chunks: RenderedOutput) {
+    fn add_chunks(&mut self, output: RenderedOutput) {
         let styles = ViewContext::styles();
 
         // Each chunk will get its own styling, but we can't just make each
@@ -364,7 +368,7 @@ impl TextBuilder {
         // can't make each chunk a Line, because multiple chunks might be
         // together on the same line. So we need to walk down each line and
         // manually split the lines
-        for chunk in chunks {
+        for chunk in output {
             let style = match chunk {
                 RenderedChunk::Raw(_) => Style::default(),
                 RenderedChunk::Rendered { .. } => styles.template_preview.text,
@@ -462,9 +466,9 @@ impl TextBuilder {
     }
 
     /// Add a JSON string with quotes to the text
-    fn add_json_string(&mut self, chunks: RenderedOutput) {
+    fn add_json_string(&mut self, output: RenderedOutput) {
         self.add_text("\"");
-        self.add_chunks(chunks);
+        self.add_chunks(output);
         self.add_text("\"");
     }
 
@@ -574,9 +578,9 @@ mod tests {
             ..TemplateContext::factory(())
         };
 
-        let chunks = template.render(&context).await;
+        let output = template.render(&context).await;
         let mut builder = TextBuilder::new();
-        builder.add_chunks(chunks);
+        builder.add_chunks(output);
         assert_eq!(builder.build(), Text::from(expected));
     }
 
@@ -678,7 +682,7 @@ mod tests {
                 ],
                 true,
             ),
-            field(1, "unpacked_template", vec!["3".into()], true),
+            field(1, "unpacked_template", vec![rendered("3")], true),
             field(
                 1,
                 "error",

@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [5.1.1] - 2026-02-26
+
+<!-- ANCHOR: changelog -->
+
 ### Fixed
 
 - Fix JSON template previews not rendering unpacked values correctly [#627](https://github.com/LucasPickering/slumber/issues/627)

@@ -2,7 +2,7 @@ use crate::view::{
     UpdateContext, ViewContext,
     common::{
         actions::MenuItem,
-        template_preview::{TemplatePreview, TemplatePreviewEvent},
+        template_preview::{Preview, TemplatePreview, TemplatePreviewEvent},
         text_box::{TextBox, TextBoxEvent, TextBoxProps},
     },
     component::{
@@ -14,7 +14,7 @@ use crate::view::{
 use ratatui::text::Text;
 use slumber_config::Action;
 use slumber_template::Template;
-use std::fmt::Debug;
+use std::{fmt::Debug, str::FromStr};
 
 /// A component for a template that can be edited in the UI
 ///
@@ -24,21 +24,24 @@ use std::fmt::Debug;
 /// - Override can be edited with a hotkeyaction. Edit text box is shown inline
 /// - Override can be reset with a hotkey/action
 ///
-/// `PK` is the persistent key used to store override state in the session store
+/// - `PK` is the persistent key used to store override state in the session
+///   store
+/// - `T` is the template type. Typically [Template] but could be anything
+///   implementing [Preview]
 #[derive(Debug)]
-pub struct EditableTemplate<PK> {
+pub struct EditableTemplate<PK, T = Template> {
     id: ComponentId,
     /// Descriptor for the *type* of template being shown, e.g. "Header"
     noun: &'static str,
     actions_emitter: Emitter<EditableTemplateMenuAction>,
     /// The template from the collection
-    original_template: Template,
+    original_template: T,
     /// Temporary override entered by the user
-    override_template: Option<Template>,
+    override_template: Option<T>,
     /// Session store key to persist the override template
     persistent_key: PK,
     /// Container for both the original and override templates
-    preview: TemplatePreview<Template>,
+    preview: TemplatePreview<T>,
     /// Rendered preview text
     text: Text<'static>,
     /// An inline text box for editing the override template. `Some` only when
@@ -50,7 +53,8 @@ pub struct EditableTemplate<PK> {
     refresh_on_edit: bool,
 }
 
-impl<PK> EditableTemplate<PK> {
+// TODO move FromStr bound into Preview
+impl<PK, T: Preview + FromStr> EditableTemplate<PK, T> {
     /// Construct a new template that can be edited inline.
     ///
     /// ## Params
@@ -67,12 +71,12 @@ impl<PK> EditableTemplate<PK> {
     pub fn new(
         noun: &'static str,
         persistent_key: PK,
-        template: Template,
+        template: T,
         can_stream: bool,
         refresh_on_edit: bool,
     ) -> Self
     where
-        PK: SessionKey<Value = Template>,
+        PK: SessionKey<Value = T>,
     {
         let override_template = PersistentStore::get_session(&persistent_key);
         let (preview, text) = TemplatePreview::new(
@@ -97,7 +101,7 @@ impl<PK> EditableTemplate<PK> {
 
     /// Get the active template. If an override is present, return that.
     /// Otherwise return the original.
-    pub fn template(&self) -> &Template {
+    pub fn template(&self) -> &T {
         self.override_template
             .as_ref()
             .unwrap_or(&self.original_template)
@@ -109,7 +113,7 @@ impl<PK> EditableTemplate<PK> {
     }
 
     /// Override the recipe with a new template
-    pub fn set_override(&mut self, template: Template) {
+    pub fn set_override(&mut self, template: T) {
         if template == self.original_template {
             // If this matches the original template, it's not an override
             self.set_override_opt(None);
@@ -127,7 +131,7 @@ impl<PK> EditableTemplate<PK> {
 
     /// Internal helper to set/reset the override template and refresh the
     /// preview
-    fn set_override_opt(&mut self, override_template: Option<Template>) {
+    fn set_override_opt(&mut self, override_template: Option<T>) {
         self.override_template = override_template;
         // Re-render the preview
         (self.preview, self.text) = TemplatePreview::new(
@@ -149,7 +153,7 @@ impl<PK> EditableTemplate<PK> {
             TextBox::default()
                 .default_value(template)
                 .subscribe([TextBoxEvent::Cancel, TextBoxEvent::Submit])
-                .validator(|value| value.parse::<Template>().is_ok()),
+                .validator(|value| value.parse::<T>().is_ok()),
         );
     }
 
@@ -164,7 +168,7 @@ impl<PK> EditableTemplate<PK> {
         // It's possible to attempt a submit while the current template is
         // invalid (if the user de-selects this template). In this case, we
         // toss the edits
-        if let Ok(template) = text_box.into_text().parse::<Template>() {
+        if let Ok(template) = text_box.into_text().parse::<T>() {
             self.set_override(template);
             if self.refresh_on_edit {
                 ViewContext::push_message(BroadcastEvent::RefreshPreviews);
@@ -173,9 +177,10 @@ impl<PK> EditableTemplate<PK> {
     }
 }
 
-impl<PK> Component for EditableTemplate<PK>
+impl<PK, T> Component for EditableTemplate<PK, T>
 where
-    PK: Clone + SessionKey<Value = Template>,
+    PK: Clone + SessionKey<Value = T>,
+    T: Preview + FromStr,
 {
     fn id(&self) -> ComponentId {
         self.id
@@ -241,9 +246,10 @@ where
     }
 }
 
-impl<PK> Draw for EditableTemplate<PK>
+impl<PK, T> Draw for EditableTemplate<PK, T>
 where
-    PK: Clone + SessionKey<Value = Template>,
+    PK: Clone + SessionKey<Value = T>,
+    T: Preview + FromStr,
 {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         if let Some(edit_text_box) = &self.edit_text_box {

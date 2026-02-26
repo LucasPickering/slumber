@@ -490,9 +490,11 @@ impl FromStr for JsonTemplate {
 #[async_trait(?Send)]
 impl Preview for JsonTemplate {
     fn display(&self) -> Cow<'_, str> {
-        // Convert to serde_json so we can offload formatting
-        let json: serde_json::Value = self.0.to_raw_json();
-        format!("{json:#}").into()
+        // Serialize with serde_json so we can offload formatting
+        serde_json::to_string_pretty(&self.0)
+            // There are no ValueTemplate values that fail to serialize
+            .expect("Template to JSON conversion cannot fail")
+            .into()
     }
 
     fn is_dynamic(&self) -> bool {
@@ -708,6 +710,33 @@ mod tests {
             edited("hello!"),
             "  ".into(),
         ]]);
+    }
+
+    /// Stringify JSON body to a raw template string, for editing
+    #[rstest]
+    #[case::null(ValueTemplate::Null, "null")]
+    #[case::bool(true.into(), "true")]
+    #[case::int((-300).into(), "-300")]
+    #[case::float((-17.3).into(), "-17.3")]
+    // JSON doesn't support inf/NaN so these map to null
+    #[case::float_inf(f64::INFINITY.into(), "null")]
+    #[case::float_nan(f64::NAN.into(), "null")]
+    // Template is parsed and re-stringified
+    #[case::template("{{www}}".into(), r#""{{ www }}""#)]
+    #[case::array(vec!["{{w}}", "raw"].into(), r#"[
+  "{{ w }}",
+  "raw"
+]"#)]
+    #[case::object(
+        vec![("{{w}}", "{{x}}")].into(), r#"{
+  "{{ w }}": "{{ x }}"
+}"#
+    )]
+    fn test_json_display(
+        #[case] template: ValueTemplate,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(JsonTemplate(template).display(), expected);
     }
 
     /// Style text to match the text window gutter

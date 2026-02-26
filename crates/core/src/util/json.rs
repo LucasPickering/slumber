@@ -28,31 +28,6 @@ impl ValueTemplate {
         }
     }
 
-    /// Convert this template to a JSON value with unrendered (raw) template
-    /// strings
-    pub fn to_raw_json(&self) -> serde_json::Value {
-        match self {
-            ValueTemplate::Null => serde_json::Value::Null,
-            ValueTemplate::Boolean(b) => (*b).into(),
-            ValueTemplate::Integer(i) => (*i).into(),
-            ValueTemplate::Float(f) => (*f).into(),
-            ValueTemplate::String(template) => {
-                serde_json::Value::String(template.display().to_string())
-            }
-            ValueTemplate::Array(array) => serde_json::Value::Array(
-                array.iter().map(Self::to_raw_json).collect(),
-            ),
-            ValueTemplate::Object(object) => serde_json::Value::Object(
-                object
-                    .iter()
-                    .map(|(key, value)| {
-                        (key.display().to_string(), Self::to_raw_json(value))
-                    })
-                    .collect(),
-            ),
-        }
-    }
-
     /// Get a [ValueTemplate::Number] from a JSON [Number]
     pub fn from_json_number(n: Number) -> Self {
         if let Some(i) = n.as_i64() {
@@ -181,27 +156,6 @@ mod tests {
         #[case] expected: ValueTemplate,
     ) {
         assert_eq!(ValueTemplate::from_raw_json(json), expected);
-    }
-
-    #[rstest]
-    #[case::null(ValueTemplate::Null, json!(null))]
-    #[case::bool(true.into(), true.into())]
-    #[case::int((-300).into(), (-300).into())]
-    #[case::float((-17.3).into(), json!(-17.3))]
-    // JSON doesn't support inf/NaN so these map to null
-    #[case::float_inf(f64::INFINITY.into(), json!(null))]
-    #[case::float_nan(f64::NAN.into(), json!(null))]
-    // Template is parsed and re-stringified
-    #[case::template("{{www}}".into(), json!("{{ www }}"))]
-    #[case::array(vec!["{{w}}", "raw"].into(), json!(["{{ w }}", "raw"]))]
-    #[case::object(
-        vec![("{{w}}", "{{x}}")].into(), json!({"{{ w }}": "{{ x }}"})
-    )]
-    fn test_to_raw_json(
-        #[case] template: ValueTemplate,
-        #[case] expected: serde_json::Value,
-    ) {
-        assert_eq!(template.to_raw_json(), expected);
     }
 
     #[rstest]

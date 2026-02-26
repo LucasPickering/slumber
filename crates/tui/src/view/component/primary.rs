@@ -37,10 +37,11 @@ use ratatui::{
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{ProfileId, RecipeId, RecipeNode, RecipeNodeType},
+    collection::{
+        ProfileId, RecipeId, RecipeNode, RecipeNodeType, ValueTemplate,
+    },
     http::RequestId,
 };
-use slumber_template::Template;
 use slumber_util::yaml::SourceLocation;
 use std::iter;
 
@@ -148,7 +149,7 @@ impl PrimaryView {
     }
 
     /// Get a map of overridden profile fields
-    pub fn profile_overrides(&self) -> IndexMap<String, Template> {
+    pub fn profile_overrides(&self) -> IndexMap<String, ValueTemplate> {
         self.profile_detail.overrides()
     }
 

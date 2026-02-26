@@ -8,6 +8,7 @@ use crate::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
             select::Select,
+            template_preview::{Preview, render_json_preview},
         },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
@@ -17,17 +18,19 @@ use crate::{
     },
 };
 use anyhow::anyhow;
+use async_trait::async_trait;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
     style::Styled,
+    text::Text,
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::collection::{ProfileId, ValueTemplate};
-use slumber_template::Template;
-use std::iter;
+use slumber_core::collection::{JsonTemplateError, ProfileId, ValueTemplate};
+use slumber_template::Context;
+use std::{borrow::Cow, iter, str::FromStr};
 use unicode_width::UnicodeWidthStr;
 
 /// Preview the fields of a profile
@@ -69,7 +72,7 @@ impl ProfileDetail {
                 ProfileField::new(
                     profile_id.clone(),
                     field.clone(),
-                    template.clone(),
+                    ProfileTemplate(template.clone()),
                 )
             })
             .collect_vec();
@@ -85,7 +88,7 @@ impl ProfileDetail {
     }
 
     /// Get a map of overridden profile fields
-    pub fn overrides(&self) -> IndexMap<String, Template> {
+    pub fn overrides(&self) -> IndexMap<String, ValueTemplate> {
         self.select
             .items()
             .filter_map(|field| {
@@ -93,7 +96,7 @@ impl ProfileDetail {
                 if field.template.is_overridden() {
                     Some((
                         field.field.clone(),
-                        field.template.template().clone(),
+                        field.template.template().0.clone(),
                     ))
                 } else {
                     None
@@ -171,6 +174,40 @@ impl Draw for ProfileDetail {
     }
 }
 
+/// A previewable wrapper of [ValueTemplate] for profile fields
+#[derive(Clone, Debug, PartialEq)]
+struct ProfileTemplate(ValueTemplate);
+
+impl FromStr for ProfileTemplate {
+    type Err = JsonTemplateError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        ValueTemplate::parse_json(s).map(Self)
+    }
+}
+
+#[async_trait(?Send)]
+impl Preview for ProfileTemplate {
+    fn display(&self) -> Cow<'_, str> {
+        // Convert to serde_json so we can offload formatting
+        // TODO YAML
+        let json: serde_json::Value = self.0.to_raw_json();
+        format!("{json:#}").into()
+    }
+
+    fn is_dynamic(&self) -> bool {
+        self.0.is_dynamic()
+    }
+
+    async fn render_preview<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Text<'static> {
+        // TODO YAML
+        render_json_preview(context, &self.0).await
+    }
+}
+
 /// Persistence key for selected row in the [ProfileDetail] table
 #[derive(Debug, Serialize)]
 struct SelectedProfileFieldKey;
@@ -188,7 +225,7 @@ struct ProfileFieldOverrideKey {
 }
 
 impl SessionKey for ProfileFieldOverrideKey {
-    type Value = Template;
+    type Value = ProfileTemplate;
 }
 
 /// A single field in the Profile detail table
@@ -196,11 +233,15 @@ impl SessionKey for ProfileFieldOverrideKey {
 struct ProfileField {
     id: ComponentId,
     field: String,
-    template: EditableTemplate<ProfileFieldOverrideKey>,
+    template: EditableTemplate<ProfileFieldOverrideKey, ProfileTemplate>,
 }
 
 impl ProfileField {
-    fn new(profile_id: ProfileId, field: String, template: Template) -> Self {
+    fn new(
+        profile_id: ProfileId,
+        field: String,
+        template: ProfileTemplate,
+    ) -> Self {
         let template = EditableTemplate::new(
             "Field",
             ProfileFieldOverrideKey {
@@ -309,6 +350,6 @@ mod tests {
             .assert()
             .broadcast([BroadcastEvent::RefreshPreviews]);
         let field = &component.select[1];
-        assert_eq!(field.template.template(), &"def123".into());
+        assert_eq!(field.template.template().0, "def123".into());
     }
 }

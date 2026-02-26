@@ -13,7 +13,7 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 use slumber_core::{
-    collection::JsonTemplate, render::TemplateContext, util::value_to_json,
+    collection::ValueTemplate, render::TemplateContext, util::value_to_json,
 };
 use slumber_template::{
     Context, LazyValue, RenderedChunk, RenderedOutput, Template,
@@ -54,10 +54,7 @@ pub struct TemplatePreview<T> {
     is_override: bool,
 }
 
-impl<T> TemplatePreview<T>
-where
-    T: 'static + Preview + Clone + PartialEq,
-{
+impl<T: Preview> TemplatePreview<T> {
     /// Create a new template preview
     ///
     /// If the template is dynamic, this will spawn a task to render the preview
@@ -178,7 +175,7 @@ pub struct TemplatePreviewEvent(pub Text<'static>);
 
 /// A template that can be rendered to text for preview
 #[async_trait(?Send)]
-pub trait Preview {
+pub trait Preview: 'static + Clone + PartialEq {
     /// Get the template's equivalent source code
     ///
     /// This is *functionally* equivalent to the template's input source, but
@@ -218,151 +215,110 @@ impl Preview for Template {
     }
 }
 
-#[async_trait(?Send)]
-impl Preview for JsonTemplate {
-    fn display(&self) -> Cow<'_, str> {
-        fn to_json(template: &JsonTemplate) -> serde_json::Value {
-            match template {
-                JsonTemplate::Null => serde_json::Value::Null,
-                JsonTemplate::Bool(b) => serde_json::Value::Bool(*b),
-                JsonTemplate::Number(number) => {
-                    serde_json::Value::Number(number.clone())
-                }
-                JsonTemplate::String(template) => {
-                    serde_json::Value::String(template.display().to_string())
-                }
-                JsonTemplate::Array(array) => serde_json::Value::Array(
-                    array.iter().map(to_json).collect(),
-                ),
-                JsonTemplate::Object(object) => serde_json::Value::Object(
-                    object
-                        .iter()
-                        .map(|(key, value)| {
-                            (key.display().to_string(), to_json(value))
-                        })
-                        .collect(),
-                ),
-            }
-        }
-
-        // Convert to serde_json so we can offload formatting
-        let json: serde_json::Value = to_json(self);
-        format!("{json:#}").into()
-    }
-
-    fn is_dynamic(&self) -> bool {
-        match self {
-            Self::Null | Self::Bool(_) | Self::Number(_) => false,
-            Self::String(template) => template.is_dynamic(),
-            Self::Array(array) => array.iter().any(Self::is_dynamic),
-            Self::Object(object) => object
-                .iter()
-                .any(|(key, value)| key.is_dynamic() || value.is_dynamic()),
-        }
-    }
-
-    async fn render_preview<Ctx: Context>(
-        &self,
+/// Preview a [ValueTemplate] as JSON
+pub async fn render_json_preview<Ctx: Context>(
+    context: &Ctx,
+    template: &ValueTemplate,
+) -> Text<'static> {
+    /// Recursive helper
+    async fn inner<Ctx: Context>(
         context: &Ctx,
-    ) -> Text<'static> {
-        /// Recursive helper
-        async fn inner<Ctx: Context>(
-            context: &Ctx,
-            builder: &mut TextBuilder,
-            template: &JsonTemplate,
-        ) {
-            match template {
-                JsonTemplate::Null => builder.add_text("null"),
-                JsonTemplate::Bool(false) => builder.add_text("false"),
-                JsonTemplate::Bool(true) => builder.add_text("true"),
-                JsonTemplate::Number(number) => {
-                    builder.add_text(&number.to_string());
-                }
-                JsonTemplate::String(template) => {
-                    render_string(context, builder, template).await;
-                }
-                JsonTemplate::Array(array) => {
-                    render_collection(
-                        builder,
-                        array,
-                        async |builder, el| {
-                            inner(context, builder, el).boxed_local().await;
-                        },
-                        ("[", "]"),
-                    )
-                    .await;
-                }
-                JsonTemplate::Object(object) => {
-                    render_collection(
-                        builder,
-                        object,
-                        async |builder, (key, value)| {
-                            // Render key. Keys have to be strings, can't unpack
-                            builder.add_json_string(key.render(context).await);
-                            builder.add_text(": ");
-                            // Add the value
-                            inner(context, builder, value).boxed_local().await;
-                        },
-                        ("{", "}"),
-                    )
-                    .await;
-                }
+        builder: &mut TextBuilder,
+        template: &ValueTemplate,
+    ) {
+        match template {
+            ValueTemplate::Null => builder.add_text("null"),
+            ValueTemplate::Boolean(false) => builder.add_text("false"),
+            ValueTemplate::Boolean(true) => builder.add_text("true"),
+            ValueTemplate::Integer(i) => builder.add_text(&i.to_string()),
+            ValueTemplate::Float(f) => builder.add_text(&f.to_string()),
+            ValueTemplate::String(template) => {
+                render_string(context, builder, template).await;
+            }
+            ValueTemplate::Array(array) => {
+                render_collection(
+                    builder,
+                    array,
+                    async |builder, el| {
+                        inner(context, builder, el).boxed_local().await;
+                    },
+                    ("[", "]"),
+                    ",",
+                )
+                .await;
+            }
+            ValueTemplate::Object(object) => {
+                render_collection(
+                    builder,
+                    object,
+                    async |builder, (key, value)| {
+                        // Render key. Keys have to be strings, can't unpack
+                        builder.add_json_string(key.render(context).await);
+                        builder.add_text(": ");
+                        // Add the value
+                        inner(context, builder, value).boxed_local().await;
+                    },
+                    ("{", "}"),
+                    ",",
+                )
+                .await;
             }
         }
+    }
 
-        async fn render_collection<T>(
-            builder: &mut TextBuilder,
-            collection: &[T],
-            render_fn: impl AsyncFn(&mut TextBuilder, &T),
-            (open, close): (&'static str, &'static str),
-        ) {
-            // Doing this as a hundred little spans seems wasteful, but most of
-            // these will get broken apart by the syntax highlighter anyway so
-            // it should be minimal cost
-            builder.add_text(open);
-            builder.new_line();
-            builder.indent();
-            for (i, element) in collection.iter().enumerate() {
-                render_fn(builder, element).await;
+    let mut builder = TextBuilder::new();
+    inner(context, &mut builder, template).await;
+    builder.build()
+}
+/// TODO
+async fn render_collection<T>(
+    builder: &mut TextBuilder,
+    collection: &[T],
+    render_fn: impl AsyncFn(&mut TextBuilder, &T),
+    (open, close): (&'static str, &'static str),
+    separator: &str,
+) {
+    // Doing this as a hundred little spans seems wasteful, but most of
+    // these will get broken apart by the syntax highlighter anyway so
+    // it should be minimal cost
+    builder.add_text(open);
+    builder.new_line();
+    builder.indent();
+    for (i, element) in collection.iter().enumerate() {
+        render_fn(builder, element).await;
 
-                if i < collection.len() - 1 {
-                    builder.add_text(",");
-                }
-                builder.new_line();
-            }
-            builder.outdent();
-            builder.add_text(close);
+        if i < collection.len() - 1 {
+            builder.add_text(separator);
+        }
+        builder.new_line();
+    }
+    builder.outdent();
+    builder.add_text(close);
+}
+
+/// Render a string literal preview. Strings *may* unpack to values
+async fn render_string<Ctx: Context>(
+    context: &Ctx,
+    builder: &mut TextBuilder,
+    template: &Template,
+) {
+    let chunks = template.render(context).await;
+    match chunks.unpack() {
+        // If this unpacks into a value, *don't* include quotes
+        LazyValue::Value(value) => {
+            let json = value_to_json(value);
+            builder.add_text(&format!("{json:#}"));
         }
 
-        /// Render a string literal. Strings *may* unpack to values
-        async fn render_string<Ctx: Context>(
-            context: &Ctx,
-            builder: &mut TextBuilder,
-            template: &Template,
-        ) {
-            let chunks = template.render(context).await;
-            match chunks.unpack() {
-                // If this unpacks into a value, *don't* include quotes
-                LazyValue::Value(value) => {
-                    let json = value_to_json(value);
-                    builder.add_text(&format!("{json:#}"));
-                }
-
-                LazyValue::Nested(chunks) => {
-                    // The value can't be unpacked, so it has to be
-                    // represented as a string
-                    builder.add_json_string(chunks);
-                }
-                // I'd love to make this impossible in the type system
-                LazyValue::Stream { .. } => {
-                    unreachable!("JSON bodies don't support streaming")
-                }
-            }
+        LazyValue::Nested(chunks) => {
+            // The value can't be unpacked, so it has to be
+            // represented as a string
+            builder.add_json_string(chunks);
         }
-
-        let mut builder = TextBuilder::new();
-        inner(context, &mut builder, self).await;
-        builder.build()
+        // I'd love to make this impossible in the type system
+        LazyValue::Stream { .. } => {
+            unreachable!("JSON bodies don't support streaming")
+        }
     }
 }
 
@@ -684,9 +640,9 @@ mod tests {
                 }
             }
         });
-        let json_template: JsonTemplate = json.try_into().unwrap();
+        let json_template: ValueTemplate = json.try_into().unwrap();
         let context = TemplateContext::factory(());
-        let text = json_template.render_preview(&context).await;
+        let text = render_json_preview(&context, &json_template).await;
 
         // Syntax highlighting is applied outside this component, so we don't
         // have to worry about it here

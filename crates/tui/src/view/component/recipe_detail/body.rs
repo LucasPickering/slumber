@@ -7,6 +7,7 @@ use crate::{
             actions::MenuItem,
             template_preview::{
                 Preview, TemplatePreview, TemplatePreviewEvent,
+                render_json_preview,
             },
             text_window::{TextWindow, TextWindowProps},
         },
@@ -23,7 +24,8 @@ use crate::{
         util::{highlight, view_text},
     },
 };
-use anyhow::Context;
+use anyhow::Context as _;
+use async_trait::async_trait;
 use indexmap::IndexMap;
 use mime::Mime;
 use ratatui::{
@@ -32,10 +34,12 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
-    collection::{JsonTemplate, Recipe, RecipeBody, RecipeId},
+    collection::{
+        JsonTemplateError, Recipe, RecipeBody, RecipeId, ValueTemplate,
+    },
     http::{BodyOverride, BuildFieldOverride},
 };
-use slumber_template::Template;
+use slumber_template::{Context, Template};
 use std::{borrow::Cow, error::Error as StdError, fs, str::FromStr};
 use tracing::debug;
 
@@ -53,9 +57,10 @@ impl RecipeBodyDisplay {
             RecipeBody::Raw(body) | RecipeBody::Stream(body) => {
                 Self(Inner::Raw(TextBody::new(body.clone(), recipe)))
             }
-            RecipeBody::Json(json) => {
-                Self(Inner::Json(TextBody::new(json.clone(), recipe)))
-            }
+            RecipeBody::Json(json) => Self(Inner::Json(TextBody::new(
+                JsonTemplate(json.clone()),
+                recipe,
+            ))),
             RecipeBody::FormUrlencoded(fields) => {
                 Self(Inner::Form(Self::form_table(&recipe.id, fields, false)))
             }
@@ -84,17 +89,14 @@ impl RecipeBodyDisplay {
     ///
     /// Return `None` if this is not a text body or there's no override
     pub fn body_override(&self) -> Option<BodyOverride> {
-        /// If a *valid* override is present for the body, use it
-        fn template<T: BodyPreview>(body: &TextBody<T>) -> Option<&T> {
-            match &body.override_result {
-                Some(Ok(template)) => Some(template),
-                Some(Err(_)) | None => None,
-            }
-        }
-
         match &self.0 {
-            Inner::Raw(inner) => template(inner).map(BodyPreview::to_override),
-            Inner::Json(inner) => template(inner).map(BodyPreview::to_override),
+            Inner::Raw(inner) => {
+                inner.override_template().cloned().map(BodyOverride::Raw)
+            }
+            Inner::Json(inner) => inner
+                .override_template()
+                .cloned()
+                .map(|template| BodyOverride::Json(template.0)),
             // Form bodies override per-field so return None for them
             Inner::Form(_) => None,
         }
@@ -173,7 +175,7 @@ enum Inner {
 /// The parameter `T` defines the template type of the body. Raw bodies use
 /// [Template], JSON bodies use [JsonTemplate].
 #[derive(Debug)]
-struct TextBody<T: BodyPreview> {
+struct TextBody<T: BodyTemplate> {
     id: ComponentId,
     /// Emitter for the callback from editing the body
     override_emitter: Emitter<SaveBodyOverride>,
@@ -205,7 +207,7 @@ struct TextBody<T: BodyPreview> {
     text_window: TextWindow,
 }
 
-impl<T: BodyPreview> TextBody<T> {
+impl<T: BodyTemplate> TextBody<T> {
     fn new(template: T, recipe: &Recipe) -> Self {
         let mime = recipe.mime();
 
@@ -249,6 +251,14 @@ impl<T: BodyPreview> TextBody<T> {
     /// Open rendered body in the pager
     fn view_body(&self) {
         view_text(self.text_window.text(), self.mime.clone());
+    }
+
+    /// If a *valid* override is present for the body, return it
+    fn override_template(&self) -> Option<&T> {
+        match &self.override_result {
+            Some(Ok(template)) => Some(template),
+            Some(Err(_)) | None => None,
+        }
     }
 
     /// Get the source the user inputted for the current override
@@ -362,7 +372,7 @@ impl<T: BodyPreview> TextBody<T> {
     }
 }
 
-impl<T: BodyPreview> Component for TextBody<T> {
+impl<T: BodyTemplate> Component for TextBody<T> {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -432,7 +442,7 @@ impl<T: BodyPreview> Component for TextBody<T> {
     }
 }
 
-impl<T: BodyPreview> Draw for TextBody<T>
+impl<T: BodyTemplate> Draw for TextBody<T>
 where
     T::Err: StdError,
 {
@@ -466,20 +476,42 @@ where
     }
 }
 
-/// A text body type that can be previewed and edited/overidden
-trait BodyPreview: 'static + Preview + Sized + Clone + FromStr + PartialEq {
-    fn to_override(&self) -> BodyOverride;
-}
+/// Container for all the traits required for the type param of [TextBody]
+trait BodyTemplate: Preview + FromStr {}
 
-impl BodyPreview for Template {
-    fn to_override(&self) -> BodyOverride {
-        BodyOverride::Raw(self.clone())
+impl BodyTemplate for Template {}
+
+impl BodyTemplate for JsonTemplate {}
+
+/// A previewable wrapper of [ValueTemplate] for JSON bodies
+#[derive(Clone, Debug, PartialEq)]
+struct JsonTemplate(ValueTemplate);
+
+impl FromStr for JsonTemplate {
+    type Err = JsonTemplateError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        ValueTemplate::parse_json(s).map(Self)
     }
 }
 
-impl BodyPreview for JsonTemplate {
-    fn to_override(&self) -> BodyOverride {
-        BodyOverride::Json(self.clone())
+#[async_trait(?Send)]
+impl Preview for JsonTemplate {
+    fn display(&self) -> Cow<'_, str> {
+        // Convert to serde_json so we can offload formatting
+        let json: serde_json::Value = self.0.to_raw_json();
+        format!("{json:#}").into()
+    }
+
+    fn is_dynamic(&self) -> bool {
+        self.0.is_dynamic()
+    }
+
+    async fn render_preview<Ctx: Context>(
+        &self,
+        context: &Ctx,
+    ) -> Text<'static> {
+        render_json_preview(context, &self.0).await
     }
 }
 

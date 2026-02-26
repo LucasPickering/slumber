@@ -167,8 +167,11 @@ impl Draw for ProfileDetail {
             ComponentSelectProps {
                 styles: SelectStyles::table(),
                 spacing: Spacing::default(),
-                item_props: Box::new(move |_, _| {
-                    (ProfileFieldProps { field_column_width }, 1)
+                item_props: Box::new(move |item, _| {
+                    (
+                        ProfileFieldProps { field_column_width },
+                        item.template.text().height() as u16,
+                    )
                 }),
             },
             rows_area,

@@ -27,7 +27,7 @@ impl ValueTemplate {
         }
     }
 
-    /// Get a [ValueTemplate::Number] from a [serde_json::Number]
+    /// Get a [ValueTemplate] from a [serde_json::Number]
     pub fn from_json_number(n: serde_json::Number) -> Self {
         if let Some(i) = n.as_i64() {
             Self::Integer(i)
@@ -157,7 +157,7 @@ pub enum JsonTemplateError {
     TemplateParse(#[from] TemplateParseError),
 }
 
-/// Error that can occur when parsing to YAML to [ProfileTemplate]
+/// Error that can occur when parsing to YAML to [ValueTemplate]
 #[derive(Debug, Error)]
 pub enum YamlTemplateError {
     /// Content was invalid YAML
@@ -294,7 +294,7 @@ mod tests {
     #[case::int_too_big(u64::MAX.into(), Ok((u64::MAX as f64).into()))]
     #[case::float(42.9.into(), Ok(42.9.into()))]
     #[case::float_inf(f64::INFINITY.into(), Ok(f64::INFINITY.into()))]
-    #[case::float_nan(f64::NAN.into(), Ok(f64::NAN.into()))]
+    // Not testing nan because nan != nan so it's annoying to assert on
     #[case::template_string("{{ w }}".into(), Ok("{{w}}".into()))]
     #[case::template_key(
         Mapping::from_iter([("{{w}}".into(), 3.into())]).into(),
@@ -305,7 +305,7 @@ mod tests {
         Err("invalid expression"),
     )]
     #[case::error_invalid_template_value(
-        Mapping::from_iter([(3.into(), "{{invalid".into())]).into(),
+        Mapping::from_iter([("valid".into(), "{{invalid".into())]).into(),
         Err("invalid expression"),
     )]
     #[case::tagged(

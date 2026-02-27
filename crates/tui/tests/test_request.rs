@@ -91,7 +91,7 @@ async fn test_resend(backend: TestBackend, data_dir: DataDir) {
     let mock_guard = mock_text_body().mount_as_scoped(&server).await;
     let tui = Runner::new(tui)
         .send_key(KeyCode::Char('2')) // Select Request/Response pane
-        .action(4) // Resend Request action
+        .action(&[4]) // Resend Request action
         .wait_for_request(mock_guard)
         .await
         .done()

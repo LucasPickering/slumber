@@ -50,9 +50,9 @@ async fn test_request() {
 #[case::overwrite(
     &["--override", "a=1", "--override", "b=2"], r#"{"a":"1","b":"2"}"#
 )]
-#[case::alias(&["-o", "a=1"], r#"{"a":"1","b":"0"}"#)]
+#[case::alias(&["-o", "a=1"], r#"{"a":"1","b":0}"#)]
 // Second replaces first
-#[case::duplicate(&["-o", "a=1", "-o", "a=2"], r#"{"a":"2","b":"0"}"#)]
+#[case::duplicate(&["-o", "a=1", "-o", "a=2"], r#"{"a":"2","b":0}"#)]
 #[tokio::test]
 async fn test_request_override_profile(
     #[case] args: &[&str],
@@ -205,8 +205,8 @@ async fn test_request_override_header(
 
 /// Override body with `--body`
 #[rstest]
-#[case::overwrite(&["--body", r#"{"a":"{{ a }}"}"#], r#"{"a":"0"}"#)]
-#[case::alias(&["--data", r#"{"a":"{{ a }}"}"#], r#"{"a":"0"}"#)] // curl alias
+#[case::overwrite(&["--body", r#"{"a":"{{ a }}"}"#], r#"{"a":0}"#)]
+#[case::alias(&["--data", r#"{"a":"{{ a }}"}"#], r#"{"a":0}"#)] // curl alias
 #[tokio::test]
 async fn test_request_override_body(
     #[case] args: &[&str],

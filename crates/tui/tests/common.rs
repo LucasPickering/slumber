@@ -130,14 +130,18 @@ impl Runner {
 
     /// Open the action menu, select an action by index, and execute it
     ///
-    /// The index is the number from the top (starting at 0), *excluding*
-    /// disabled items.
-    pub fn action(self, index: usize) -> Self {
+    /// The path is one or more indices, one per layer. Each index is the number
+    /// from the top (starting at 0), *excluding* disabled items.
+    pub fn action(self, path: &[usize]) -> Self {
         // Theoretically this could take an action by name and examine the
         // screen to find its index, but that's way more work
         self.send_key(KeyCode::Char('x'))
-            .send_keys(iter::repeat_n(KeyCode::Down, index))
-            .send_key(KeyCode::Enter)
+            // For each layer, go down n times, then submit. For parents this
+            // will open the next layer, for leaves it will send the action
+            .send_keys(path.iter().flat_map(|index| {
+                iter::repeat_n(KeyCode::Down, *index)
+                    .chain(iter::once(KeyCode::Enter))
+            }))
     }
 
     /// Open the recipe list, select a recipe by index, and send it

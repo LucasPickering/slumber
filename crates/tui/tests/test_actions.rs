@@ -36,7 +36,7 @@ async fn test_copy_body(backend: TestBackend, data_dir: DataDir) {
 
     let tui = Runner::new(tui)
         .send_keys([KeyCode::Char('1'), KeyCode::Right]) // Recipe > Body
-        .action(4) // "Copy Body" action
+        .action(&[3, 1]) // "Copy Body" action
         .wait_for_content("Body?", (12, 4).into()) // Wait for form to open
         .await
         .send_text("body!") // Fill out prompt form

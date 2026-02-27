@@ -66,7 +66,7 @@ impl<Kind: RecipeTableKind> RecipeTable<Kind> {
         let selected_row_key = SelectedRowKey::new(recipe_id);
         let select = Select::builder(rows)
             .persisted(&selected_row_key)
-            .subscribe([SelectEventKind::Select, SelectEventKind::Toggle])
+            .subscribe([SelectEventKind::Toggle])
             .build();
 
         Self {
@@ -99,16 +99,8 @@ impl<Kind: RecipeTableKind> Component for RecipeTable<Kind> {
         event
             .m()
             .emitted(self.select.to_emitter(), |event| match event.kind {
-                SelectEventKind::Select => {
-                    // When changing selection, stop editing the previous item
-                    for row in self.select.items_mut() {
-                        row.value.submit_edit();
-                    }
-                }
-                SelectEventKind::Toggle => {
-                    self.select[event].toggle();
-                }
-                SelectEventKind::Submit => {}
+                SelectEventKind::Toggle => self.select[event].toggle(),
+                SelectEventKind::Select | SelectEventKind::Submit => {}
             })
     }
 
@@ -221,13 +213,13 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
         can_stream: bool,
     ) -> Self {
         let persistent_key = RowPersistentKey::new(recipe_id, key.clone());
-        let value = EditableTemplate::new(
+        let value = EditableTemplate::builder(
             noun,
             persistent_key.clone(),
             template.clone(),
-            can_stream,
-            false,
-        );
+        )
+        .can_stream(can_stream)
+        .build();
         Self {
             id: ComponentId::default(),
             key,
@@ -243,12 +235,12 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
 
     /// Get the disabled/override state of this row
     fn to_build_override(&self) -> Option<BuildFieldOverride> {
-        if !self.enabled {
-            Some(BuildFieldOverride::Omit)
-        } else if self.value.is_overridden() {
-            Some(BuildFieldOverride::Override(self.value.template().clone()))
+        if self.enabled {
+            self.value
+                .override_template()
+                .map(|template| BuildFieldOverride::Override(template.clone()))
         } else {
-            None
+            Some(BuildFieldOverride::Omit)
         }
     }
 }
@@ -409,7 +401,7 @@ impl<Kind: RecipeTableKind> PersistentKey for RowPersistentKey<Kind> {
 }
 
 impl<Kind: RecipeTableKind> SessionKey for RowPersistentKey<Kind> {
-    type Value = Template;
+    type Value = String;
 }
 
 /// Serialize `T` as just its fully qualified path. Allows the type to make a
@@ -532,8 +524,11 @@ mod tests {
 
         let selected_row = component.select.selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
-        assert!(selected_row.value.is_overridden());
-        assert_eq!(selected_row.value.template().display(), "value1!!!");
+        assert_eq!(
+            selected_row.value.override_template(),
+            Some(&"value1!!!".into())
+        );
+
         assert_eq!(
             component.to_build_overrides(),
             IndexMap::<_, _>::from_iter([(
@@ -549,7 +544,7 @@ mod tests {
             .assert()
             .empty();
         let selected_row = component.select.selected().unwrap();
-        assert!(!selected_row.value.is_overridden());
+        assert_eq!(selected_row.value.override_template(), None);
     }
 
     /// Test Edit menu action
@@ -567,13 +562,16 @@ mod tests {
 
         component
             .int_props(&mut harness, props_factory)
-            .action(&["Edit Row"])
+            .action(&["Row", "Edit"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert()
             .empty();
 
         let selected_row = component.select.selected().unwrap();
-        assert_eq!(selected_row.value.template().display(), "value0!");
+        assert_eq!(
+            selected_row.value.override_template(),
+            Some(&"value0!".into())
+        );
     }
 
     /// Override templates should be loaded from the store on init

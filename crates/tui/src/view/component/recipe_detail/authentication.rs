@@ -3,14 +3,13 @@ use crate::view::{
         component_select::{
             ComponentSelect, ComponentSelectProps, SelectStyles,
         },
-        select::{Select, SelectEventKind},
+        select::Select,
     },
     component::{
         Canvas, Component, ComponentId, Draw, DrawMetadata, ToChild,
         editable_template::EditableTemplate, internal::Child,
     },
-    context::{UpdateContext, ViewContext},
-    event::{Event, EventMatch, ToEmitter},
+    context::ViewContext,
     persistent::SessionKey,
 };
 use ratatui::{layout::Layout, prelude::Constraint, text::Span};
@@ -39,8 +38,6 @@ impl AuthenticationDisplay {
                     "Token",
                     AuthenticationKey::Token(recipe_id.clone()),
                     token,
-                    false,
-                    false,
                 ),
             },
         };
@@ -53,20 +50,32 @@ impl AuthenticationDisplay {
     /// If the user has applied a temporary edit to the auth settings, get the
     /// override value. Return `None` to use the recipe's stock auth.
     pub fn override_value(&self) -> Option<Authentication> {
-        if self.state.is_overridden() {
-            Some(match &self.state {
-                State::Basic(basic) => Authentication::Basic {
-                    username: basic.username().clone(),
-                    // We don't use an option internally because an empty
-                    // password is equivalent to no password
-                    password: Some(basic.password().clone()),
-                },
-                State::Bearer { token, .. } => Authentication::Bearer {
-                    token: token.template().clone(),
-                },
-            })
-        } else {
-            None
+        match &self.state {
+            State::Basic(basic) => {
+                // If either field is overridden, we have to override both
+                if basic
+                    .select
+                    .items()
+                    .any(|item| item.value.override_template().is_some())
+                {
+                    Some(Authentication::Basic {
+                        username: basic.username().clone(),
+                        // We don't use an option on password internally because
+                        // an empty password is
+                        // equivalent to no password
+                        password: Some(basic.password().clone()),
+                    })
+                } else {
+                    None
+                }
+            }
+            State::Bearer { token, .. } => {
+                token.override_template().map(|template| {
+                    Authentication::Bearer {
+                        token: template.clone(),
+                    }
+                })
+            }
         }
     }
 }
@@ -123,18 +132,6 @@ enum State {
     },
 }
 
-impl State {
-    /// Have *any* fields been overridden?
-    fn is_overridden(&self) -> bool {
-        match self {
-            Self::Basic(basic) => {
-                basic.select.items().any(|item| item.value.is_overridden())
-            }
-            Self::Bearer { token } => token.is_overridden(),
-        }
-    }
-}
-
 /// Wrapper for basic authentication state. This needs to be a separate
 /// component because it has its own event handling for the contained Select
 #[derive(Debug)]
@@ -156,21 +153,16 @@ impl BasicAuthentication {
             "Username",
             AuthenticationKey::Username(recipe_id.clone()),
             username,
-            false,
-            false,
         );
         let password = EditableTemplate::new(
             "Password",
             AuthenticationKey::Password(recipe_id.clone()),
             password,
-            false,
-            false,
         );
         let select = Select::builder(vec![
             BasicField::new("Username", username),
             BasicField::new("Password", password),
         ])
-        .subscribe([SelectEventKind::Select])
         .build();
         Self {
             id: ComponentId::default(),
@@ -190,20 +182,6 @@ impl BasicAuthentication {
 impl Component for BasicAuthentication {
     fn id(&self) -> ComponentId {
         self.id
-    }
-
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
-        event
-            .m()
-            .emitted(self.select.to_emitter(), |event| match event.kind {
-                SelectEventKind::Select => {
-                    // When changing selection, stop editing the previous item
-                    for row in self.select.items_mut() {
-                        row.value.submit_edit();
-                    }
-                }
-                SelectEventKind::Submit | SelectEventKind::Toggle => {}
-            })
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
@@ -277,7 +255,7 @@ enum AuthenticationKey {
 }
 
 impl SessionKey for AuthenticationKey {
-    type Value = Template;
+    type Value = String;
 }
 
 #[cfg(test)]
@@ -425,7 +403,7 @@ mod tests {
 
         component
             .int(&mut harness)
-            .action(&["Edit Token"])
+            .action(&["Token", "Edit"])
             .send_keys([KeyCode::Char('!'), KeyCode::Enter])
             .assert()
             .empty();
@@ -438,7 +416,7 @@ mod tests {
 
         component
             .int(&mut harness)
-            .action(&["Reset Token"])
+            .action(&["Token", "Reset"])
             .assert()
             .empty();
         assert_eq!(component.override_value(), None);

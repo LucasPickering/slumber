@@ -35,6 +35,11 @@ pub struct TextWindow {
     /// `(horizontal, vertical)` scroll. In a `Cell` because it may be clamped
     /// if the window size changes
     offset: Cell<Offset>,
+    /// Which *arrow keys* can scroll?
+    ///
+    /// Some use cases want to disable arrow key scrolling because our friends
+    /// need those keys (e.g. in a list).
+    scroll_mode: ScrollMode,
 }
 
 impl TextWindow {
@@ -47,7 +52,14 @@ impl TextWindow {
             text_size,
             window_size: Default::default(),
             offset: Default::default(),
+            scroll_mode: Default::default(),
         }
+    }
+
+    /// Set the [ScrollMode]
+    pub fn scroll_mode(mut self, scroll_mode: ScrollMode) -> Self {
+        self.scroll_mode = scroll_mode;
+        self
     }
 
     /// Get the full text
@@ -165,11 +177,23 @@ impl Component for TextWindow {
                 ScrollDirection::Right => self.scroll_right(1),
             })
             .action(|action, propagate| match action {
-                // Accept regular OR scroll directional actions
-                Action::Up | Action::ScrollUp => self.scroll_up(1),
-                Action::Down | Action::ScrollDown => self.scroll_down(1),
-                // Don't eat Left/Right arrows because those control tabs
+                // Always accept scroll actions, but only scroll on regular
+                // actions if enabled
+                Action::Up if self.scroll_mode.vertical() => {
+                    self.scroll_up(1);
+                }
+                Action::ScrollUp => self.scroll_up(1),
+                Action::Down if self.scroll_mode.vertical() => {
+                    self.scroll_down(1);
+                }
+                Action::ScrollDown => self.scroll_down(1),
+                Action::Left if self.scroll_mode.horizontal() => {
+                    self.scroll_left(1);
+                }
                 Action::ScrollLeft => self.scroll_left(1),
+                Action::Right if self.scroll_mode.horizontal() => {
+                    self.scroll_right(1);
+                }
                 Action::ScrollRight => self.scroll_right(1),
                 Action::PageUp => {
                     self.scroll_up(self.window_size.get().height.into());
@@ -194,7 +218,7 @@ impl Draw<TextWindowProps> for TextWindow {
         metadata: DrawMetadata,
     ) {
         // Draw gutter if enabled
-        let text_area = if props.line_numbers {
+        let text_area = if props.gutter {
             let gutter = Gutter {
                 text_size: self.text_size,
                 offset: self.offset.get(),
@@ -226,7 +250,7 @@ impl Draw<TextWindowProps> for TextWindow {
         let has_vertical_scroll =
             self.text_size.height > window_size.height.into();
         let offset = self.offset.get();
-        if has_vertical_scroll {
+        if props.scrollbar && has_vertical_scroll {
             canvas.render_widget(
                 Scrollbar {
                     content_length: self.text_size.height,
@@ -237,7 +261,7 @@ impl Draw<TextWindowProps> for TextWindow {
                 text_area,
             );
         }
-        if has_horizontal_scroll {
+        if props.scrollbar && has_horizontal_scroll {
             canvas.render_widget(
                 Scrollbar {
                     content_length: self.text_size.width,
@@ -256,7 +280,14 @@ impl Draw<TextWindowProps> for TextWindow {
 #[derive(Clone, Debug)]
 pub struct TextWindowProps {
     /// Show line numbers in gutter?
-    pub line_numbers: bool,
+    ///
+    /// `true` by default.
+    pub gutter: bool,
+    /// Show/hide scrollbars
+    ///
+    /// This does not control scrolling behavior, it just controls whether
+    /// scrollbars are shown. `true` by default.
+    pub scrollbar: bool,
     /// See [ScrollbarMargins]
     pub margins: ScrollbarMargins,
 }
@@ -264,7 +295,8 @@ pub struct TextWindowProps {
 impl Default for TextWindowProps {
     fn default() -> Self {
         Self {
-            line_numbers: true,
+            gutter: true,
+            scrollbar: true,
             margins: ScrollbarMargins::default(),
         }
     }
@@ -285,6 +317,56 @@ impl Default for ScrollbarMargins {
         Self {
             right: 1,
             bottom: 1,
+        }
+    }
+}
+
+/// Which *arrow keys* can scroll on a text window?
+///
+/// This only controls the behavior of [Action::Up], [Action::Down],
+/// [Action::Left], and [Action::Right]. It makes it easy to control arrow key
+/// behavior in views with multiple containers, such as a tab header, select
+/// list, and embedded text window.
+///
+/// [Action::ScrollUp], [Action::ScrollDown], [Action::ScrollLeft],
+/// [Action::ScrollRight], and the scroll wheel will always control scrolling
+/// regardless of this setting.
+#[derive(Debug, Default)]
+pub enum ScrollMode {
+    /// Do not accept any directional actions
+    None,
+    /// Accept [Action::Up] and [Action::Down], but not [Action::Left] or
+    /// [Action::Right]
+    ///
+    /// This is the default because most text windows live inside a tab
+    /// container, where the arrow keys are needed to switch tabs.
+    #[default]
+    Vertical,
+    /// Accept [Action::Left] and [Action::Right], but not [Action::Up] or
+    /// [Action::Down]
+    #[expect(dead_code)]
+    // This isn't used, but it feels right for completeness
+    Horizontal,
+    /// Accept all four directional actions
+    #[expect(dead_code)]
+    // This isn't used, but it feels right for completeness
+    Both,
+}
+
+impl ScrollMode {
+    /// Is vertical scrolling enabled?
+    fn vertical(&self) -> bool {
+        match self {
+            Self::None | Self::Horizontal => false,
+            Self::Vertical | Self::Both => true,
+        }
+    }
+
+    /// Is horizontal scrolling enabled?
+    fn horizontal(&self) -> bool {
+        match self {
+            Self::None | Self::Vertical => false,
+            Self::Horizontal | Self::Both => true,
         }
     }
 }

@@ -96,14 +96,10 @@ impl ProfileDetail {
             .items()
             .filter_map(|field| {
                 // Only include modified templates
-                if field.template.is_overridden() {
-                    Some((
-                        field.field.clone(),
-                        field.template.template().0.clone(),
-                    ))
-                } else {
-                    None
-                }
+                field
+                    .template
+                    .override_template()
+                    .map(|template| (field.field.clone(), template.0.clone()))
             })
             .collect()
     }
@@ -244,7 +240,7 @@ struct ProfileFieldOverrideKey {
 }
 
 impl SessionKey for ProfileFieldOverrideKey {
-    type Value = ProfileTemplate;
+    type Value = String;
 }
 
 /// A single field in the Profile detail table
@@ -261,19 +257,20 @@ impl ProfileField {
         field: String,
         template: ProfileTemplate,
     ) -> Self {
-        let template = EditableTemplate::new(
+        let template = EditableTemplate::builder(
             "Field",
             ProfileFieldOverrideKey {
                 profile_id,
                 field: field.clone(),
             },
             template,
-            // We don't know how this value will be used, so let's say we *do*
-            // support streaming to prevent loading some huge streams
-            true,
-            // This edit could have downstream changes, so refresh after edit
-            true,
-        );
+        )
+        // We don't know how this value will be used, so let's say we *do*
+        // support streaming to prevent loading some huge streams
+        .can_stream(true)
+        // This edit could have downstream changes, so refresh after edit
+        .refresh_on_edit(true)
+        .build();
         Self {
             id: ComponentId::new(),
             field,
@@ -370,8 +367,8 @@ mod tests {
             .broadcast([BroadcastEvent::RefreshPreviews]);
         let field = &component.select[1];
         assert_eq!(
-            field.template.template(),
-            &ProfileTemplate("def123".into())
+            field.template.override_template(),
+            Some(&ProfileTemplate("def123".into()))
         );
     }
 }

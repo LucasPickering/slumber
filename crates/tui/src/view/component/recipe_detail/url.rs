@@ -19,8 +19,7 @@ pub struct UrlDisplay {
 
 impl UrlDisplay {
     pub fn new(recipe_id: RecipeId, url: Template) -> Self {
-        let url =
-            EditableTemplate::new("URL", UrlKey(recipe_id), url, false, false);
+        let url = EditableTemplate::new("URL", UrlKey(recipe_id), url);
         Self {
             id: ComponentId::default(),
             url,
@@ -35,9 +34,7 @@ impl UrlDisplay {
 
     /// If the template has been overridden, get the new template
     pub fn override_value(&self) -> Option<Template> {
-        self.url
-            .is_overridden()
-            .then(|| self.url.template().clone())
+        self.url.override_template().cloned()
     }
 }
 
@@ -62,7 +59,7 @@ impl Draw for UrlDisplay {
 struct UrlKey(RecipeId);
 
 impl SessionKey for UrlKey {
-    type Value = Template;
+    type Value = String;
 }
 
 #[cfg(test)]
@@ -142,7 +139,7 @@ mod tests {
         assert_matches!(
             component
                 .int(&mut harness)
-                .action(&["Edit URL"])
+                .action(&["URL", "Edit"])
                 .send_keys([KeyCode::Char('!'), KeyCode::Enter])
                 .into_propagated(),
             [Message::TemplatePreview { .. }]
@@ -156,7 +153,7 @@ mod tests {
         assert_matches!(
             component
                 .int(&mut harness)
-                .action(&["Reset URL"])
+                .action(&["URL", "Reset"])
                 .into_propagated(),
             [Message::TemplatePreview { .. }]
         );

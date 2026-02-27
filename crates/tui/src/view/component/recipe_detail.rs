@@ -189,7 +189,6 @@ enum RecipeNodeState {
 #[derive(Debug)]
 #[expect(clippy::enum_variant_names)]
 pub enum RecipeMenuAction {
-    CopyUrl,
     CopyAsCli,
     CopyAsCurl,
     CopyAsPython,
@@ -199,19 +198,18 @@ impl RecipeMenuAction {
     /// Build a list of these actions
     pub fn menu(emitter: Emitter<Self>, has_recipe: bool) -> Vec<MenuItem> {
         vec![MenuItem::Group {
-            name: "Copy".into(),
+            name: "Export as".into(),
             children: vec![
-                emitter.menu(Self::CopyUrl, "URL").enable(has_recipe).into(),
                 emitter
-                    .menu(Self::CopyAsCli, "as CLI")
+                    .menu(Self::CopyAsCli, "CLI")
                     .enable(has_recipe)
                     .into(),
                 emitter
-                    .menu(Self::CopyAsCurl, "as cURL")
+                    .menu(Self::CopyAsCurl, "cURL")
                     .enable(has_recipe)
                     .into(),
                 emitter
-                    .menu(Self::CopyAsPython, "as Python")
+                    .menu(Self::CopyAsPython, "Python")
                     .enable(has_recipe)
                     .into(),
             ],
@@ -225,7 +223,6 @@ impl RecipeMenuAction {
         }
 
         match self {
-            Self::CopyUrl => copy(RecipeCopyTarget::Url),
             Self::CopyAsCli => copy(RecipeCopyTarget::Cli),
             Self::CopyAsCurl => copy(RecipeCopyTarget::Curl),
             Self::CopyAsPython => copy(RecipeCopyTarget::Python),

@@ -1,9 +1,12 @@
-use crate::view::{
-    component::{
-        Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
-        editable_template::EditableTemplate,
+use crate::{
+    message::RecipeCopyTarget,
+    view::{
+        component::{
+            Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
+            editable_template::EditableTemplate,
+        },
+        persistent::SessionKey,
     },
-    persistent::SessionKey,
 };
 use ratatui::text::Text;
 use slumber_core::collection::RecipeId;
@@ -19,7 +22,9 @@ pub struct UrlDisplay {
 
 impl UrlDisplay {
     pub fn new(recipe_id: RecipeId, url: Template) -> Self {
-        let url = EditableTemplate::new("URL", UrlKey(recipe_id), url);
+        let url = EditableTemplate::builder("URL", UrlKey(recipe_id), url)
+            .copy_target(RecipeCopyTarget::Url)
+            .build();
         Self {
             id: ComponentId::default(),
             url,

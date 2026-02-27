@@ -11,10 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Support all YAML values in profile fields [#647](https://github.com/LucasPickering/slumber/issues/647)
+  - This required some major refactoring of the TUI code, particularly around template previews. If you notice any bugs, please [report them](https://github.com/LucasPickering/slumber/issues/new/choose).
 
 ### Changed
 
 - Remove underline from table selected row style
+- Rename `Copy as ...` actions to `Export as ...`
+- Move component-specific recipe actions (URL, query params, etc.) into their own submenus
 
 ## [5.1.1] - 2026-02-26
 

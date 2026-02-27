@@ -77,7 +77,7 @@ impl Draw for Help {
         canvas.draw(
             &self.text_window,
             TextWindowProps {
-                line_numbers: false,
+                gutter: false,
                 ..TextWindowProps::default()
             },
             block.inner(area),

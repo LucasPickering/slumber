@@ -298,9 +298,11 @@ mod tests {
             .send_keys([KeyCode::Down, KeyCode::Char(' ')]) // Disable (p1,v0)
             .send_keys([KeyCode::Down, KeyCode::Char('e')]) // Override (p1,v1)
             .send_text("www")
+            .send_key(KeyCode::Enter)
             // Disable+override (p1,v2)
             .send_keys([KeyCode::Down, KeyCode::Char(' '), KeyCode::Char('e')])
             .send_text("xxx")
+            .send_key(KeyCode::Enter)
             .assert()
             .empty();
 

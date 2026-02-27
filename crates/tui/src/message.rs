@@ -202,7 +202,7 @@ pub enum HttpMessage {
 }
 
 /// Component/format of a recipe to copy to the clipboard
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RecipeCopyTarget {
     /// Render request URL from the selected recipe, then copy rendered URL
     Url,

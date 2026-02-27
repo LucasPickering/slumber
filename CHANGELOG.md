@@ -15,7 +15,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Remove underline from table selected row style
-- Add View/Copy actions for URL, query params, headers, and authentication
 
 ## [5.1.1] - 2026-02-26
 

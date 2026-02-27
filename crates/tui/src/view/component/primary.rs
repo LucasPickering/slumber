@@ -739,14 +739,13 @@ mod tests {
         assert_eq!(location, expected_location);
     }
 
-    /// Test actions under the "Copy" submenu. This should be available in
+    /// Test actions under the "Export as" submenu. This should be available in
     /// both the recipe list and recipe detail pane
     #[rstest]
-    #[case::url("URL", RecipeCopyTarget::Url)]
-    #[case::cli("as CLI", RecipeCopyTarget::Cli)]
-    #[case::curl("as cURL", RecipeCopyTarget::Curl)]
-    #[case::python("as Python", RecipeCopyTarget::Python)]
-    fn test_copy_action(
+    #[case::cli("CLI", RecipeCopyTarget::Cli)]
+    #[case::curl("cURL", RecipeCopyTarget::Curl)]
+    #[case::python("Python", RecipeCopyTarget::Python)]
+    fn test_export_action(
         mut harness: TestHarness,
         #[case] label: &str,
         #[case] expected_target: RecipeCopyTarget,
@@ -757,7 +756,7 @@ mod tests {
             component
                 .int(&mut harness)
                 .send_key(KeyCode::Char('1')) // Select recipe detail
-                .action(&["Copy", label])
+                .action(&["Export as", label])
                 .into_propagated(),
             [Message::CopyRecipe(target)] => target
         );
@@ -767,7 +766,7 @@ mod tests {
             component
                 .int(&mut harness)
                 .send_key(KeyCode::Char('r')) // Select recipe list
-                .action(&["Copy", label])
+                .action(&["Export as", label])
                 .into_propagated(),
             [Message::CopyRecipe(target)] => target
         );

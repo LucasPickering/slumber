@@ -1,15 +1,18 @@
-use crate::view::{
-    Component,
-    common::template_preview::{Preview, render_json_preview},
-    component::{
-        Canvas, ComponentId, Draw, DrawMetadata,
-        editable_template::EditableTemplate,
-        internal::{Child, ToChild},
-        recipe_detail::table::{
-            RecipeTable, RecipeTableKind, RecipeTableProps,
+use crate::{
+    message::RecipeCopyTarget,
+    view::{
+        Component,
+        common::template_preview::{Preview, render_json_preview},
+        component::{
+            Canvas, ComponentId, Draw, DrawMetadata,
+            editable_template::EditableTemplate,
+            internal::{Child, ToChild},
+            recipe_detail::table::{
+                RecipeTable, RecipeTableKind, RecipeTableProps,
+            },
         },
+        persistent::SessionKey,
     },
-    persistent::SessionKey,
 };
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -41,6 +44,7 @@ impl RecipeBodyDisplay {
                         body.clone(),
                     )
                     .can_stream(true)
+                    .copy_target(RecipeCopyTarget::Body)
                     .mime(recipe.mime())
                     .window_mode(true)
                     .build(),
@@ -52,6 +56,7 @@ impl RecipeBodyDisplay {
                     BodyKey(recipe.id.clone()),
                     JsonTemplate(json.clone()),
                 )
+                .copy_target(RecipeCopyTarget::Body)
                 .mime(recipe.mime())
                 .window_mode(true)
                 // JSON doesn't support streaming

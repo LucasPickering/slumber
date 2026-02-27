@@ -1,5 +1,5 @@
 use crate::{
-    message::Message,
+    message::{Message, RecipeCopyTarget},
     util::{ResultReported, TempFile, syntax::SyntaxType},
     view::{
         Generate, UpdateContext, ViewContext,
@@ -74,12 +74,15 @@ pub struct EditableTemplate<PK, T: Preview = Template> {
     // Component customization settings
     /// Descriptor for the *type* of template being shown, e.g. "Header"
     noun: &'static str,
-    /// Content MIME type, used for syntax highlighting and pager selection of
-    /// request bodies. This has no impact on content of the rendered template.
-    mime: Option<Mime>,
     /// Is streaming possible for the output destination? If `false`, streams
     /// will be eagerly evaluated
     can_stream: bool,
+    /// If `Some`, the Copy menu action will be shown and it will trigger a
+    /// render+copy of the specified recipe component.
+    copy_target: Option<RecipeCopyTarget>,
+    /// Content MIME type, used for syntax highlighting and pager selection of
+    /// request bodies. This has no impact on content of the rendered template.
+    mime: Option<Mime>,
     /// After a new valid template is submitted, should we send
     /// [BroadcastEvent::RefreshPreviews]? Enable for profile fields, because
     /// those can affect other templates
@@ -117,8 +120,9 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
             noun,
             persistent_key,
             original_template: template,
-            mime: None,
             can_stream: false,
+            copy_target: None,
+            mime: None,
             refresh_on_edit: false,
             window_mode: false,
         }
@@ -343,7 +347,11 @@ where
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 EditableTemplateMenuAction::View => self.view(),
-                EditableTemplateMenuAction::Copy => todo!(),
+                EditableTemplateMenuAction::Copy(target) => {
+                    // Copy requires a message because the template needs to be
+                    // re-rendered in normal mode instead of preview mode
+                    ViewContext::push_message(Message::CopyRecipe(target));
+                }
                 EditableTemplateMenuAction::Edit => self.edit(),
                 EditableTemplateMenuAction::Reset => self.reset_override(),
             })
@@ -363,26 +371,36 @@ where
 
     fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
-        vec![MenuItem::Group {
-            name: self.noun.to_owned(),
-            children: vec![
+        let actions = [
+            Some(
                 emitter
                     .menu(EditableTemplateMenuAction::View, "View")
                     .shortcut(Some(Action::View))
                     .into(),
+            ),
+            self.copy_target.map(|target| {
                 emitter
-                    .menu(EditableTemplateMenuAction::Copy, "Copy")
-                    .into(),
+                    .menu(EditableTemplateMenuAction::Copy(target), "Copy")
+                    .into()
+            }),
+            Some(
                 emitter
                     .menu(EditableTemplateMenuAction::Edit, "Edit")
                     .shortcut(Some(Action::Edit))
                     .into(),
+            ),
+            Some(
                 emitter
                     .menu(EditableTemplateMenuAction::Reset, "Reset")
                     .enable(self.override_result.is_some())
                     .shortcut(Some(Action::Reset))
                     .into(),
-            ],
+            ),
+        ];
+        vec![MenuItem::Group {
+            name: self.noun.to_owned(),
+            // Remove None entries
+            children: actions.into_iter().flatten().collect(),
         }]
     }
 
@@ -466,8 +484,9 @@ pub struct EditableTemplateBuilder<PK, T> {
     noun: &'static str,
     persistent_key: PK,
     original_template: T,
-    mime: Option<Mime>,
     can_stream: bool,
+    copy_target: Option<RecipeCopyTarget>,
+    mime: Option<Mime>,
     refresh_on_edit: bool,
     window_mode: bool,
 }
@@ -476,6 +495,13 @@ impl<PK, T> EditableTemplateBuilder<PK, T> {
     /// Enable/disable streaming output for the template
     pub fn can_stream(mut self, can_stream: bool) -> Self {
         self.can_stream = can_stream;
+        self
+    }
+
+    /// Set the [RecipeCopyTarget], which will enable the `Copy` menu action and
+    /// determine which component of the recipe to render and copy.
+    pub fn copy_target(mut self, copy_target: RecipeCopyTarget) -> Self {
+        self.copy_target = Some(copy_target);
         self
     }
 
@@ -535,10 +561,11 @@ impl<PK, T> EditableTemplateBuilder<PK, T> {
             override_result,
             persistent_key: self.persistent_key,
             preview,
-            mime: self.mime,
             text_window: TextWindow::default(),
             edit_text_box: None,
             can_stream: self.can_stream,
+            copy_target: self.copy_target,
+            mime: self.mime,
             refresh_on_edit: self.refresh_on_edit,
             window_mode: self.window_mode,
         };
@@ -557,12 +584,16 @@ impl<PK, T> EditableTemplateBuilder<PK, T> {
 struct SaveTemplateOverride(TempFile);
 
 /// Menu action for [EditableTemplate]
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 enum EditableTemplateMenuAction {
     /// Open the preview text in the external pager
     View,
-    /// Copy the preview text to the clipboard
-    Copy,
+    /// Spawn a job to render the preview and copy it
+    ///
+    /// Not all editable templates are copyable. If
+    /// [EditableTemplate::copy_target] is `None`, this action won't be
+    /// presented.
+    Copy(RecipeCopyTarget),
     /// Edit the override
     Edit,
     /// Wipe out the current override

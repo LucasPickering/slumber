@@ -55,6 +55,7 @@ impl ValueTemplate {
     }
 
     /// Render all templates to strings and return a static JSON value
+    /// TODO delete this
     pub async fn render_json<Ctx: Context>(
         &self,
         context: &Ctx,
@@ -66,6 +67,7 @@ impl ValueTemplate {
     }
 }
 
+// TODO can we remove this and the YAML impl?
 impl TryFrom<serde_json::Value> for ValueTemplate {
     type Error = TemplateParseError;
 

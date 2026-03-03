@@ -8,7 +8,7 @@ use crate::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
             select::Select,
-            template_preview::{Preview, render_json_preview},
+            template_preview::{Preview, PreviewString},
         },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
@@ -24,7 +24,6 @@ use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
     style::Styled,
-    text::Text,
 };
 use serde::Serialize;
 use slumber_config::Action;
@@ -217,9 +216,11 @@ impl Preview for ProfileTemplate {
     async fn render_preview<Ctx: Context>(
         &self,
         context: &Ctx,
-    ) -> Text<'static> {
-        // TODO YAML
-        render_json_preview(context, &self.0).await
+    ) -> PreviewString {
+        PreviewString::render_value_template(context, &self.0, |value| {
+            serde_yaml::to_string(&value).expect("TODO")
+        })
+        .await
     }
 }
 

@@ -12,14 +12,20 @@ use ratatui::{
     style::{Style, Styled},
     text::{Line, Span, Text},
 };
-use slumber_core::{
-    collection::ValueTemplate, render::TemplateContext,
-    util::json::value_to_json,
-};
+use slumber_core::{collection::ValueTemplate, render::TemplateContext};
 use slumber_template::{
-    Context, LazyValue, RenderedChunk, RenderedOutput, Template,
+    Context, LazyValue, RenderedChunk, RenderedOutput, Template, Value,
 };
-use std::{borrow::Cow, ops::Deref, str::FromStr};
+use std::{
+    borrow::Cow, convert::Infallible, fmt::Write as _, ops::Deref, str::FromStr,
+};
+use winnow::{
+    ModalResult, Parser,
+    ascii::{dec_uint, digit1},
+    combinator::{alt, eof, repeat_till},
+    stream::Accumulate,
+    token::{any, take, take_until},
+};
 
 /// Generate template preview text
 ///
@@ -115,11 +121,12 @@ impl<T: Preview> TemplatePreview<T> {
             let callback = move |context: TemplateContext| {
                 async move {
                     // Render chunks to text
-                    let text = if can_stream {
+                    let preview_string = if can_stream {
                         template.render_preview(&context.stream()).await
                     } else {
                         template.render_preview(&context).await
                     };
+                    let text = preview_string.into_text();
 
                     // Apply final styling based on override context
                     let text = text.set_style(style);
@@ -192,11 +199,11 @@ pub trait Preview: 'static + Clone + FromStr + PartialEq {
     /// Does the template contain *any* dynamic expressions?
     fn is_dynamic(&self) -> bool;
 
-    /// Render the template as preview text, including styling
+    /// TODO move this into a different trait?
     async fn render_preview<Ctx: Context>(
         &self,
         context: &Ctx,
-    ) -> Text<'static>;
+    ) -> PreviewString;
 }
 
 #[async_trait(?Send)]
@@ -212,125 +219,137 @@ impl Preview for Template {
     async fn render_preview<Ctx: Context>(
         &self,
         context: &Ctx,
-    ) -> Text<'static> {
+    ) -> PreviewString {
         let output = self.render(context).await;
-        // Stitch the output together into Text
-        let mut builder = TextBuilder::new();
-        builder.add_chunks(output);
-        builder.build()
+        let mut rendered = PreviewString::new();
+        for chunk in output {
+            rendered.push_chunk(chunk);
+        }
+        rendered
     }
 }
 
-/// Preview a [ValueTemplate] as JSON
-pub async fn render_json_preview<Ctx: Context>(
-    context: &Ctx,
-    template: &ValueTemplate,
-) -> Text<'static> {
-    /// Recursive helper
-    async fn inner<Ctx: Context>(
+/// TODO
+pub struct PreviewString(String);
+
+impl PreviewString {
+    // TODO
+    const SENTINEL: &str = "__slumber";
+    const SEPARATOR: &str = ":";
+    const RENDERED_VARIANT: &str = "result";
+    const ERROR_VARIANT: &str = "error";
+
+    /// TODO
+    pub async fn render_value_template<Ctx: Context>(
         context: &Ctx,
-        builder: &mut TextBuilder,
         template: &ValueTemplate,
-    ) {
-        match template {
-            ValueTemplate::Null => builder.add_text("null"),
-            ValueTemplate::Boolean(false) => builder.add_text("false"),
-            ValueTemplate::Boolean(true) => builder.add_text("true"),
-            ValueTemplate::Integer(i) => builder.add_text(&i.to_string()),
-            ValueTemplate::Float(f) => builder.add_text(&f.to_string()),
-            ValueTemplate::String(template) => {
-                render_string(context, builder, template).await;
-            }
-            ValueTemplate::Array(array) => {
-                render_collection(
-                    builder,
-                    array,
-                    async |builder, el| {
-                        inner(context, builder, el).boxed_local().await;
-                    },
-                    ("[", "]"),
-                    ",",
-                )
-                .await;
-            }
-            ValueTemplate::Object(object) => {
-                render_collection(
-                    builder,
-                    object,
-                    async |builder, (key, value)| {
-                        // Render key. Keys have to be strings, can't unpack
-                        builder.add_json_string(key.render(context).await);
-                        builder.add_text(": ");
-                        // Add the value
-                        inner(context, builder, value).boxed_local().await;
-                    },
-                    ("{", "}"),
-                    ",",
-                )
-                .await;
-            }
-        }
-    }
-
-    /// Render a string literal preview, which *may* unpack to another value
-    async fn render_string<Ctx: Context>(
-        context: &Ctx,
-        builder: &mut TextBuilder,
-        template: &Template,
-    ) {
+        encoder: impl FnOnce(Value) -> String,
+    ) -> Self {
         let output = template.render(context).await;
-        match output.unpack() {
-            // If this unpacks into a value, *don't* include quotes
-            LazyValue::Value(value) => {
-                let styles = ViewContext::styles();
-                let json = value_to_json(value);
-                builder.add_text_styled(
-                    &format!("{json:#}"),
-                    styles.template_preview.text,
-                );
-            }
+        // TODO add in-band tags
+        let value = match output.unpack() {
+            LazyValue::Value(value) => value,
+            LazyValue::Stream { source, stream } => todo!(),
+            LazyValue::Nested(output) => todo!(),
+        };
+        // Use the given encoding (e.g. JSON) to convert the value to a string
+        Self(encoder(value))
+    }
 
-            LazyValue::Nested(output) => {
-                // The value can't be unpacked, so it has to be
-                // represented as a string
-                builder.add_json_string(output);
+    fn new() -> Self {
+        Self(String::new())
+    }
+
+    /// TODO
+    fn push_chunk(&mut self, chunk: RenderedChunk) {
+        match chunk {
+            RenderedChunk::Raw(s) => self.0.push_str(&s),
+            RenderedChunk::Rendered(lazy) => {
+                let chunk_text = match lazy {
+                    LazyValue::Value(value) => {
+                        // We could potentially use MaybeStr to show binary
+                        // data as hex, but that could get weird if there's
+                        // text data in the template as well. This is
+                        // simpler and prevents giant binary blobs from
+                        // getting rendered in.
+                        value
+                            .try_into_string()
+                            .unwrap_or_else(|_| "<binary>".into())
+                    }
+                    LazyValue::Stream { source, .. } => {
+                        format!("<{source}>")
+                    }
+                    // Stringify all the nested chunks and concat them
+                    // together. Nested chunks can
+                    // be generated by a profile field. This
+                    // whole thing will get styled as dynamic, even if it
+                    // contains raw chunks within.
+                    LazyValue::Nested(output) => {
+                        todo!()
+                    }
+                };
+                self.push_sentinel(Self::RENDERED_VARIANT, &chunk_text);
             }
-            // I'd love to make this impossible in the type system
-            LazyValue::Stream { .. } => {
-                unreachable!("JSON bodies don't support streaming")
+            RenderedChunk::Error(error) => {
+                self.push_sentinel(Self::ERROR_VARIANT, &error.to_string());
             }
         }
     }
 
-    let mut builder = TextBuilder::new();
-    inner(context, &mut builder, template).await;
-    builder.build()
-}
-
-/// Generate text for an array/object
-async fn render_collection<T>(
-    builder: &mut TextBuilder,
-    collection: &[T],
-    render_fn: impl AsyncFn(&mut TextBuilder, &T),
-    (open, close): (&'static str, &'static str),
-    separator: &str,
-) {
-    // Doing this as a hundred little spans seems wasteful, but most of
-    // these will get broken apart by the syntax highlighter anyway so
-    // it should be minimal cost
-    builder.add_text(open);
-    builder.new_line();
-    builder.indent();
-    for (i, element) in collection.iter().enumerate() {
-        render_fn(builder, element).await;
-
-        if i < collection.len() - 1 {
-            builder.add_text(separator);
-        }
-        builder.new_line();
+    /// TODO
+    fn push_sentinel(&mut self, variant: &str, content: &str) {
+        write!(
+            &mut self.0,
+            "{sentinel}:{variant}:{len}:{content}",
+            sentinel = Self::SENTINEL,
+            len = content.len(),
+        )
+        .unwrap();
     }
-    builder.outdent();
-    builder.add_text(close);
+
+    /// TODO
+    fn into_text(self) -> Text<'static> {
+        fn parse_chunk<'a>(
+            input: &mut &'a str,
+        ) -> Result<(ChunkKind, &'a str), winnow::error::ErrMode<()>> {
+            let (_, _, variant, _, size, _) = (
+                PreviewString::SENTINEL,
+                PreviewString::SEPARATOR,
+                take_until(1.., PreviewString::SEPARATOR).parse_to(),
+                PreviewString::SEPARATOR,
+                dec_uint::<_, usize, _>,
+                PreviewString::SEPARATOR,
+            )
+                .parse_next(input)?;
+            // TODO take bytes, not chars
+            let content = take(size).parse_next(input)?;
+            Ok((variant, content))
+        }
+
+        let styles = ViewContext::styles().template_preview;
+        let mut parse_styles =
+            |input: &mut &str| -> ModalResult<TextBuilder, ()> {
+                repeat_till(
+                    0..,
+                    alt((
+                        take_until(0.., Self::SENTINEL)
+                            .map(|s| (s, Style::default())),
+                        parse_chunk.map(|(variant, content)| {
+                            let style = match variant {
+                                ChunkKind::Rendered => styles.text,
+                                ChunkKind::Error => styles.error,
+                            };
+                            (content, style)
+                        }),
+                    )),
+                    eof,
+                )
+                .map(|(builder, _)| builder)
+                .parse_next(input)
+            };
+
+        parse_styles.parse(self.0.as_str()).expect("TODO").build()
+    }
 }
 
 /// A helper to build `Text` from template render output
@@ -343,17 +362,12 @@ async fn render_collection<T>(
 #[derive(Debug)]
 struct TextBuilder {
     lines: Vec<Line<'static>>,
-    indent: usize,
 }
 
 impl TextBuilder {
-    /// Width of an indent, in spaces
-    const INDENT_SIZE: usize = 2;
-
     fn new() -> Self {
         Self {
             lines: vec![Line::default()],
-            indent: 0,
         }
     }
 
@@ -421,12 +435,6 @@ impl TextBuilder {
 
     fn add_span(&mut self, span: Span<'static>) {
         let line = self.lines.last_mut().expect("Lines cannot be empty");
-
-        // Add indentation
-        if line.spans.is_empty() && self.indent > 0 {
-            line.push_span(str::repeat(" ", self.indent * Self::INDENT_SIZE));
-        }
-
         line.push_span(span);
     }
 
@@ -465,25 +473,37 @@ impl TextBuilder {
         }
     }
 
-    /// Add a JSON string with quotes to the text
-    fn add_json_string(&mut self, output: RenderedOutput) {
-        self.add_text("\"");
-        self.add_chunks(output);
-        self.add_text("\"");
-    }
-
-    /// Increment the indentation level
-    fn indent(&mut self) {
-        self.indent += 1;
-    }
-
-    /// Decrement the indentation level
-    fn outdent(&mut self) {
-        self.indent -= 1;
-    }
-
     fn build(self) -> Text<'static> {
         Text::from_iter(self.lines)
+    }
+}
+
+/// TODO
+impl Accumulate<(&str, Style)> for TextBuilder {
+    fn initial(_capacity: Option<usize>) -> Self {
+        Self::new()
+    }
+
+    fn accumulate(&mut self, (text, style): (&str, Style)) {
+        self.add_text_styled(text, style);
+    }
+}
+
+// TODO move string literals down here
+enum ChunkKind {
+    Rendered,
+    Error,
+}
+
+impl FromStr for ChunkKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            PreviewString::RENDERED_VARIANT => Ok(Self::Rendered),
+            PreviewString::ERROR_VARIANT => Ok(Self::Error),
+            _ => Err(()),
+        }
     }
 }
 
@@ -536,10 +556,10 @@ mod tests {
         "intro\n{{simple}}\n{{emoji}} 💚💙💜 {{unknown}}\n\noutro\r\nmore outro\n",
         vec![
             Line::from("intro"),
-            Line::from(rendered("ww")),
-            Line::from(rendered("🧡")),
+            Line::from(dynamic("ww")),
+            Line::from(dynamic("🧡")),
             Line::from(vec![
-                rendered("💛"),
+                dynamic("💛"),
                 Span::raw(" 💚💙💜 "),
                 error("Error"),
             ]),
@@ -551,7 +571,7 @@ mod tests {
     )]
     #[case::binary(
         r"binary data: {{ b'\xc3\x28' }}",
-        vec![Line::from(vec![Span::raw("binary data: "), rendered("<binary>")])]
+        vec![Line::from(vec![Span::raw("binary data: "), dynamic("<binary>")])]
     )]
     #[tokio::test]
     async fn test_build_text(
@@ -593,14 +613,14 @@ mod tests {
     #[case::plain("hello", vec!["hello".into()])]
     #[case::dynamic(
         "hello {{ name }}",
-        vec!["hello ".into(), rendered("bob")],
+        vec!["hello ".into(), dynamic("bob")],
     )]
     #[case::stream(
         "data: {{ command(['echo', 'test']) }}",
-        vec!["data: ".into(), rendered("<command `echo test`>")])]
+        vec!["data: ".into(), dynamic("<command `echo test`>")])]
     #[case::stream_profile(
         "data: {{ stream }}",
-        vec!["data: ".into(), rendered("<command `echo test`>")],
+        vec!["data: ".into(), dynamic("<command `echo test`>")],
     )]
     #[tokio::test]
     async fn test_preview_raw(
@@ -620,7 +640,7 @@ mod tests {
             ..TemplateContext::factory((by_id([profile]), IndexMap::default()))
         };
 
-        let text = template.render_preview(&context.stream()).await;
+        let text = template.render_preview(&context.stream()).await.into_text();
         let expected = Text::from(Line::from(expected));
         assert_eq!(text, expected);
     }
@@ -630,6 +650,7 @@ mod tests {
     /// - Template strings: unpacked where possible, nested chunks where not
     /// - Collections: newlines, separators, and indentation
     /// - Error chunks
+    /// - Dynamic chunks are styled as such
     #[rstest]
     #[tokio::test]
     async fn test_preview_json(_harness: TestHarness) {
@@ -653,7 +674,13 @@ mod tests {
         });
         let json_template: ValueTemplate = json.try_into().unwrap();
         let context = TemplateContext::factory(());
-        let text = render_json_preview(&context, &json_template).await;
+        let text = PreviewString::render_value_template(
+            &context,
+            &json_template,
+            |value| serde_json::to_string_pretty(&value).unwrap(),
+        )
+        .await
+        .into_text();
 
         // Syntax highlighting is applied outside this component, so we don't
         // have to worry about it here
@@ -676,13 +703,13 @@ mod tests {
                 vec![
                     "\"".into(),
                     "my name is ".into(),
-                    rendered("Ted"),
+                    dynamic("Ted"),
                     "!".into(),
                     "\"".into(),
                 ],
                 true,
             ),
-            field(1, "unpacked_template", vec![rendered("3")], true),
+            field(1, "unpacked_template", vec![dynamic("3")], true),
             field(
                 1,
                 "error",
@@ -721,7 +748,7 @@ mod tests {
     }
 
     /// Style some text as rendered
-    fn rendered(text: &str) -> Span<'_> {
+    fn dynamic(text: &str) -> Span<'_> {
         Span::styled(text, ViewContext::styles().template_preview.text)
     }
 

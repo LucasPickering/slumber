@@ -2,7 +2,7 @@ use crate::{
     message::RecipeCopyTarget,
     view::{
         Component,
-        common::template_preview::{Preview, render_json_preview},
+        common::template_preview::{Preview, PreviewString},
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             editable_template::EditableTemplate,
@@ -16,7 +16,6 @@ use crate::{
 };
 use async_trait::async_trait;
 use indexmap::IndexMap;
-use ratatui::text::Text;
 use slumber_core::{
     collection::{Recipe, RecipeBody, RecipeId, ValueTemplate},
     http::{BodyOverride, BuildFieldOverride},
@@ -200,8 +199,11 @@ impl Preview for JsonTemplate {
     async fn render_preview<Ctx: Context>(
         &self,
         context: &Ctx,
-    ) -> Text<'static> {
-        render_json_preview(context, &self.0).await
+    ) -> PreviewString {
+        PreviewString::render_value_template(context, &self.0, |value| {
+            serde_json::to_string_pretty(&value).expect("TODO")
+        })
+        .await
     }
 }
 

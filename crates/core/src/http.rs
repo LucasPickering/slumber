@@ -748,9 +748,9 @@ impl Recipe {
                 Some(BodyOverride::Raw(template)),
             ) => {
                 // Stream body is rendered as a stream (!!)
-                let output = template.render(&context.stream()).await;
-                let source = output.stream_source().cloned();
-                let stream = output
+                let chunks = template.render(&context.stream()).await;
+                let source = chunks.stream_source().cloned();
+                let stream = chunks
                     .try_into_stream()
                     .map_err(RequestBuildErrorKind::BodyRender)?
                     .boxed();
@@ -794,13 +794,13 @@ impl Recipe {
             (Some(RecipeBody::FormMultipart(fields)), None) => {
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
-                    let output = template.render(&context.stream()).await;
+                    let chunks = template.render(&context.stream()).await;
                     // If this is a single-chunk template, we might be able to
                     // load directly from the source, since we support file
                     // streams natively. In that case, the stream will be thrown
                     // away
-                    let source = output.stream_source().cloned();
-                    let stream = output
+                    let source = chunks.stream_source().cloned();
+                    let stream = chunks
                         .try_into_stream()
                         .map_err(|error| {
                             RequestBuildErrorKind::BodyFormFieldRender {

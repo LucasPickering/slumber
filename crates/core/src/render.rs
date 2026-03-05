@@ -125,21 +125,21 @@ impl TemplateContext {
             })?;
 
         // Render the nested template
-        let output = template.render(self).await;
+        let chunks = template.render(self).await;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no
         // reason to include the same stream field twice in a single body, but
         // if that happens we'll have to compute it twice. This saves us a lot
         // of annoying machinery though.
-        if can_stream && output.has_stream() {
+        if can_stream && chunks.has_stream() {
             // If the nested template rendered to a single chunk, we can unpack
             // it out of its chunk list. If it had multiple chunks, we need to
             // keep all of them to provide both a correct preview and the final
             // stream
-            Ok(output.unpack())
+            Ok(chunks.unpack())
         } else {
-            let value = output.try_collect_value().await.map_err(
+            let value = chunks.try_collect_value().await.map_err(
                 // We *could* just return the error, but wrap it to give
                 // additional context
                 |error| {

@@ -1,6 +1,6 @@
 use futures::future;
 use serde::{Serialize, Serializer, ser::SerializeMap};
-use slumber_template::{Context, RenderError, RenderedOutput, Template, Value};
+use slumber_template::{Context, RenderError, RenderedChunks, Template, Value};
 
 /// A templated [Value]
 ///
@@ -61,7 +61,7 @@ impl ValueTemplate {
     /// The return value is *usually* a single chunk, but if `self` is a
     /// multi-chunk template string, then its multi-chunk output will be the
     /// output for this.
-    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedOutput {
+    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedChunks {
         match self {
             Self::Null => Value::Null.into(),
             Self::Boolean(b) => Value::Boolean(*b).into(),

@@ -180,7 +180,7 @@ impl Template {
     /// [RenderedChunk::Error] and the rest of the template will still be
     /// rendered. The returned output can be transformed into a variety of final
     /// output types.
-    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedOutput {
+    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedChunks {
         // Map over each parsed chunk, and render the expressions into values.
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
@@ -200,7 +200,7 @@ impl Template {
 
         // Concurrency!
         let chunks = future::join_all(futures).await;
-        RenderedOutput(chunks)
+        RenderedChunks(chunks)
     }
 
     /// Convenience method for rendering a template and collecting the output
@@ -282,9 +282,9 @@ impl From<Expression> for TemplateChunk {
 /// intermediate output type that can be resolved into a variety of final
 /// output types.
 #[derive(Debug)]
-pub struct RenderedOutput(Vec<RenderedChunk>);
+pub struct RenderedChunks(Vec<RenderedChunk>);
 
-impl RenderedOutput {
+impl RenderedChunks {
     /// If this output is a single chunk and that chunk is a stream, get the
     /// source of the stream
     pub fn stream_source(&self) -> Option<&StreamSource> {
@@ -345,8 +345,8 @@ impl RenderedOutput {
                 RenderedChunk::Rendered(lazy) => match lazy {
                     LazyValue::Value(value) => stream_value(value.into_bytes()),
                     LazyValue::Stream { stream, .. } => Ok(stream.boxed()),
-                    LazyValue::Nested(output) => {
-                        Ok(output.try_into_stream()?.boxed())
+                    LazyValue::Nested(chunks) => {
+                        Ok(chunks.try_into_stream()?.boxed())
                     }
                 },
 
@@ -370,9 +370,9 @@ impl RenderedOutput {
         let value = match self.unpack() {
             LazyValue::Value(value) => value,
             lazy @ LazyValue::Stream { .. } => lazy.resolve().await?,
-            LazyValue::Nested(output) => {
+            LazyValue::Nested(chunks) => {
                 // Render to bytes
-                let bytes = output.try_collect_bytes().await?;
+                let bytes = chunks.try_collect_bytes().await?;
                 Value::Bytes(bytes)
             }
         };
@@ -401,14 +401,14 @@ impl RenderedOutput {
 }
 
 /// Create render output of a single chunk with a value
-impl From<Value> for RenderedOutput {
+impl From<Value> for RenderedChunks {
     fn from(value: Value) -> Self {
         Self(vec![RenderedChunk::Rendered(LazyValue::Value(value))])
     }
 }
 
 /// Create render output of a single chunk that may have failed
-impl From<Result<Value, RenderError>> for RenderedOutput {
+impl From<Result<Value, RenderError>> for RenderedChunks {
     fn from(result: Result<Value, RenderError>) -> Self {
         let chunk = match result {
             Ok(value) => RenderedChunk::Rendered(value.into()),
@@ -419,7 +419,7 @@ impl From<Result<Value, RenderError>> for RenderedOutput {
 }
 
 /// Get an iterator over the chunks of this output
-impl IntoIterator for RenderedOutput {
+impl IntoIterator for RenderedChunks {
     type Item = RenderedChunk;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 

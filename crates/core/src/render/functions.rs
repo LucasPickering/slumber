@@ -879,7 +879,7 @@ pub async fn prompt(
         sensitive,
         channel: tx.into(),
     });
-    let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
+    let chunks = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
 
     // If the input was sensitive, we should mask the output as well. This only
     // impacts previews as show_sensitive is enabled for request renders. This
@@ -888,9 +888,9 @@ pub async fn prompt(
     // "<prompt>", we show "••••••••". It's "technically" right and plays well
     // in tests. Also it reminds users that a prompt is sensitive in the TUI
     if sensitive {
-        Ok(mask_sensitive(context, output))
+        Ok(mask_sensitive(context, chunks))
     } else {
-        Ok(output)
+        Ok(chunks)
     }
 }
 

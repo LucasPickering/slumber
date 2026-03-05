@@ -71,9 +71,9 @@ async fn test_profile(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let output = template.render(&context.stream()).await;
-    assert_eq!(output.has_stream(), expected_has_stream);
-    assert_eq!(output.try_collect_value().await.unwrap(), expected);
+    let chunks = template.render(&context.stream()).await;
+    assert_eq!(chunks.has_stream(), expected_has_stream);
+    assert_eq!(chunks.try_collect_value().await.unwrap(), expected);
 }
 
 /// Rendering a profile field propagates the streaming setting
@@ -92,10 +92,10 @@ async fn test_profile_stream_disabled() {
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let output = template.render(&context).await;
-    assert!(!output.has_stream());
+    let chunks = template.render(&context).await;
+    assert!(!chunks.has_stream());
     assert_eq!(
-        output.try_collect_value().await.unwrap(),
+        chunks.try_collect_value().await.unwrap(),
         "content: first".into()
     );
 }
@@ -260,16 +260,16 @@ async fn test_command_lazy() {
     let template =
         Template::function_call("command", [vec!["i-will-fail"].into()], []);
     // This shouldn't fail because the command isn't evaluated yet
-    let output = template
+    let chunks = template
         .render(&TemplateContext::factory(()).stream())
         .await;
     assert_eq!(
-        output.stream_source(),
+        chunks.stream_source(),
         Some(&StreamSource::Command {
             command: vec!["i-will-fail".into()]
         })
     );
-    let stream = output.try_into_stream().unwrap();
+    let stream = chunks.try_into_stream().unwrap();
 
     // Error happens when we collect
     assert_result(
@@ -1194,11 +1194,11 @@ async fn test_stream_source(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let output = template.render(&context.stream()).await;
+    let chunks = template.render(&context.stream()).await;
     if expected_has_source {
-        assert_matches!(output.stream_source(), Some(_));
+        assert_matches!(chunks.stream_source(), Some(_));
     } else {
-        assert_matches!(output.stream_source(), None);
+        assert_matches!(chunks.stream_source(), None);
     }
 }
 

@@ -1,7 +1,7 @@
 //! Template runtime values
 
 use crate::{
-    Expected, Literal, RenderError, RenderedOutput, ValueError, WithValue,
+    Expected, Literal, RenderError, RenderedChunks, ValueError, WithValue,
     error::RenderErrorContext,
     parse::{FALSE, NULL, TRUE},
 };
@@ -195,7 +195,7 @@ pub enum LazyValue {
     ///
     /// To be honest I'm not sure this is really necessary, but it's how I built
     /// it. I'd really love to refactor this whole spaghetti.
-    Nested(RenderedOutput),
+    Nested(RenderedChunks),
 }
 
 impl LazyValue {
@@ -210,7 +210,7 @@ impl LazyValue {
                 .await
                 .map(|bytes| Value::Bytes(bytes.into())),
             // Box needed for recursion
-            Self::Nested(output) => Box::pin(output.try_collect_value()).await,
+            Self::Nested(chunks) => Box::pin(chunks.try_collect_value()).await,
         }
     }
 
@@ -574,7 +574,7 @@ mod tests {
         Err("Unknown function")
     )]
     #[case::nested(
-        LazyValue::Nested(RenderedOutput(vec![
+        LazyValue::Nested(RenderedChunks(vec![
             RenderedChunk::Rendered(LazyValue::Value("test1".into())),
             RenderedChunk::Raw(" ".into()),
             RenderedChunk::Rendered(stream(Ok("test2".into()))),
@@ -582,7 +582,7 @@ mod tests {
         Ok("test1 test2".into()),
     )]
     #[case::nested_error(
-        LazyValue::Nested(RenderedOutput(vec![
+        LazyValue::Nested(RenderedChunks(vec![
             RenderedChunk::Rendered(LazyValue::Value("test1".into())),
             RenderedChunk::Raw(" ".into()),
             RenderedChunk::Rendered(stream(Err(RenderError::FunctionUnknown))),

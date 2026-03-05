@@ -1,9 +1,7 @@
 //! Utilities for working with templated JSON
 
 use crate::collection::ValueTemplate;
-use slumber_template::{
-    Context, RenderError, Template, TemplateParseError, Value,
-};
+use slumber_template::{Template, TemplateParseError, Value};
 use thiserror::Error;
 
 impl ValueTemplate {
@@ -52,18 +50,6 @@ impl ValueTemplate {
         // Then map all the strings as templates
         let mapped = json.try_into()?;
         Ok(mapped)
-    }
-
-    /// Render all templates to strings and return a static JSON value
-    /// TODO get rid of this
-    pub async fn render_json<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<serde_json::Value, RenderError> {
-        // Collect render output as a single value. The renderer should always
-        // output a single chunk, so it gets unpacked back to one value.
-        let value = self.render(context).await.try_collect_value().await?;
-        Ok(value_to_json(value))
     }
 }
 
@@ -196,19 +182,13 @@ pub fn value_to_json(value: Value) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        collection::Profile,
-        render::TemplateContext,
-        test_util::{by_id, invalid_utf8},
-    };
-    use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
     use serde_yaml::{
         Mapping,
         value::{Tag, TaggedValue},
     };
-    use slumber_util::{Factory, assert_result};
+    use slumber_util::assert_result;
 
     #[rstest]
     #[case::null(serde_json::Value::Null, ValueTemplate::Null)]
@@ -322,48 +302,5 @@ mod tests {
         #[case] expected: Result<ValueTemplate, &str>,
     ) {
         assert_result(ValueTemplate::try_from(yaml), expected);
-    }
-
-    /// Render JSON templates to JSON values
-    #[rstest]
-    #[case::null(json!(null), Ok(json!(null)))]
-    #[case::bool(json!(true), Ok(json!(true)))]
-    #[case::integer(json!(3), Ok(json!(3)))]
-    #[case::float(json!(3.15), Ok(json!(3.15)))]
-    #[case::string(json!("{{ username }}"), Ok(json!("testuser")))]
-    #[case::array(
-        json!([1, 2, "{{ username }}"]),
-        Ok(json!([1, 2, "testuser"])),
-    )]
-    #[case::object(
-        json!({"{{ user_id }}": {"name": "{{ username }}"}}),
-        Ok(json!({"123": {"name": "testuser"}})),
-    )]
-    // serde_json converts the byte string to a number array. Seems reasonable
-    // enough.
-    #[case::bytes(json!("{{ invalid_utf8 }}"), Ok(json!([0xc3, 0x28])))]
-    // Once we have non-string profile values we can test:
-    // - Invalid int/float values
-    // - Unpacking strings
-    #[tokio::test]
-    async fn test_render_json(
-        #[case] input: serde_json::Value,
-        #[case] expected: Result<serde_json::Value, &str>,
-    ) {
-        let profile = Profile {
-            data: indexmap! {
-                "user_id".into() => "123".into(),
-                "username".into() => "testuser".into(),
-                "invalid_utf8".into() => invalid_utf8().into(),
-            },
-            ..Profile::factory(())
-        };
-        let context =
-            TemplateContext::factory((by_id([profile]), indexmap! {}));
-
-        let template =
-            ValueTemplate::try_from(input).expect("Invalid template");
-        let result = template.render_json(&context).await;
-        assert_result(result, expected);
     }
 }

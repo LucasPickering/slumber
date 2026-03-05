@@ -285,6 +285,11 @@ impl From<Expression> for TemplateChunk {
 pub struct RenderedChunks(Vec<RenderedChunk>);
 
 impl RenderedChunks {
+    /// Get the inner list of chunks
+    pub fn into_chunks(self) -> Vec<RenderedChunk> {
+        self.0
+    }
+
     /// If this output is a single chunk and that chunk is a stream, get the
     /// source of the stream
     pub fn stream_source(&self) -> Option<&StreamSource> {

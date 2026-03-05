@@ -2,7 +2,6 @@ use crate::{
     message::RecipeCopyTarget,
     view::{
         Component,
-        common::template_preview::{Preview, render_json_preview},
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             editable_template::EditableTemplate,
@@ -12,18 +11,15 @@ use crate::{
             },
         },
         persistent::SessionKey,
+        util::preview::JsonTemplate,
     },
 };
-use async_trait::async_trait;
 use indexmap::IndexMap;
-use ratatui::text::Text;
 use slumber_core::{
-    collection::{Recipe, RecipeBody, RecipeId, ValueTemplate},
+    collection::{Recipe, RecipeBody, RecipeId},
     http::{BodyOverride, BuildFieldOverride},
-    util::json::JsonTemplateError,
 };
-use slumber_template::{Context, Template};
-use std::{borrow::Cow, str::FromStr};
+use slumber_template::Template;
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
@@ -171,40 +167,6 @@ enum Inner {
     Form(RecipeTable<FormTableKind>),
 }
 
-/// A previewable wrapper of [ValueTemplate] for JSON bodies
-#[derive(Clone, Debug, PartialEq)]
-struct JsonTemplate(ValueTemplate);
-
-impl FromStr for JsonTemplate {
-    type Err = JsonTemplateError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ValueTemplate::parse_json(s).map(Self)
-    }
-}
-
-#[async_trait(?Send)]
-impl Preview for JsonTemplate {
-    fn display(&self) -> Cow<'_, str> {
-        // Serialize with serde_json so we can offload formatting
-        serde_json::to_string_pretty(&self.0)
-            // There are no ValueTemplate values that fail to serialize
-            .expect("Template to JSON conversion cannot fail")
-            .into()
-    }
-
-    fn is_dynamic(&self) -> bool {
-        self.0.is_dynamic()
-    }
-
-    async fn render_preview<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Text<'static> {
-        render_json_preview(context, &self.0).await
-    }
-}
-
 /// Persistent key for text body override template
 #[derive(Clone, Debug, PartialEq)]
 struct BodyKey(RecipeId);
@@ -322,33 +284,6 @@ mod tests {
             edited("hello!"),
             "  ".into(),
         ]]);
-    }
-
-    /// Stringify JSON body to a raw template string, for editing
-    #[rstest]
-    #[case::null(ValueTemplate::Null, "null")]
-    #[case::bool(true.into(), "true")]
-    #[case::int((-300).into(), "-300")]
-    #[case::float((-17.3).into(), "-17.3")]
-    // JSON doesn't support inf/NaN so these map to null
-    #[case::float_inf(f64::INFINITY.into(), "null")]
-    #[case::float_nan(f64::NAN.into(), "null")]
-    // Template is parsed and re-stringified
-    #[case::template("{{www}}".into(), r#""{{ www }}""#)]
-    #[case::array(vec!["{{w}}", "raw"].into(), r#"[
-  "{{ w }}",
-  "raw"
-]"#)]
-    #[case::object(
-        vec![("{{w}}", "{{x}}")].into(), r#"{
-  "{{ w }}": "{{ x }}"
-}"#
-    )]
-    fn test_json_display(
-        #[case] template: ValueTemplate,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(JsonTemplate(template).display(), expected);
     }
 
     /// Style text to match the text window gutter

@@ -8,32 +8,26 @@ use crate::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
             select::Select,
-            template_preview::{Preview, render_json_preview},
         },
         component::{
             Canvas, Child, Component, ComponentId, Draw, DrawMetadata, ToChild,
             editable_template::EditableTemplate,
         },
         persistent::{PersistentKey, PersistentStore, SessionKey},
+        util::preview::YamlTemplate,
     },
 };
 use anyhow::anyhow;
-use async_trait::async_trait;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout, Spacing},
     style::Styled,
-    text::Text,
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{
-    collection::{ProfileId, ValueTemplate},
-    util::json::YamlTemplateError,
-};
-use slumber_template::Context;
-use std::{borrow::Cow, iter, str::FromStr};
+use slumber_core::collection::{ProfileId, ValueTemplate};
+use std::iter;
 use unicode_width::UnicodeWidthStr;
 
 /// Preview the fields of a profile
@@ -75,7 +69,7 @@ impl ProfileDetail {
                 ProfileField::new(
                     profile_id.clone(),
                     field.clone(),
-                    ProfileTemplate(template.clone()),
+                    YamlTemplate(template.clone()),
                 )
             })
             .collect_vec();
@@ -176,53 +170,6 @@ impl Draw for ProfileDetail {
     }
 }
 
-/// A previewable wrapper of [ValueTemplate] for profile fields
-///
-/// This displays/edits values as YAML, because that's how they're written in
-/// the collection file. Technically we could use any format here, as these
-/// fields are never directly serialized into requests, they're only used to
-/// build other values.
-#[derive(Clone, Debug, PartialEq)]
-struct ProfileTemplate(ValueTemplate);
-
-impl FromStr for ProfileTemplate {
-    type Err = YamlTemplateError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // First, parse it as regular YAML
-        let yaml: serde_yaml::Value = serde_yaml::from_str(s)?;
-        // Then map all the strings as templates
-        let mapped = yaml.try_into()?;
-        Ok(Self(mapped))
-    }
-}
-
-#[async_trait(?Send)]
-impl Preview for ProfileTemplate {
-    fn display(&self) -> Cow<'_, str> {
-        // Serialize with serde_yaml so we can offload formatting
-        let mut s = serde_yaml::to_string(&self.0)
-            // There are no ValueTemplate values that fail to serialize
-            .expect("Template to YAML conversion cannot fail");
-        // YAML includes a trailing newline that is not helpful
-        debug_assert_eq!(&s[s.len() - 1..], "\n");
-        s.truncate(s.len() - 1);
-        s.into()
-    }
-
-    fn is_dynamic(&self) -> bool {
-        self.0.is_dynamic()
-    }
-
-    async fn render_preview<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Text<'static> {
-        // TODO YAML
-        render_json_preview(context, &self.0).await
-    }
-}
-
 /// Persistence key for selected row in the [ProfileDetail] table
 #[derive(Debug, Serialize)]
 struct SelectedProfileFieldKey;
@@ -248,14 +195,14 @@ impl SessionKey for ProfileFieldOverrideKey {
 struct ProfileField {
     id: ComponentId,
     field: String,
-    template: EditableTemplate<ProfileFieldOverrideKey, ProfileTemplate>,
+    template: EditableTemplate<ProfileFieldOverrideKey, YamlTemplate>,
 }
 
 impl ProfileField {
     fn new(
         profile_id: ProfileId,
         field: String,
-        template: ProfileTemplate,
+        template: YamlTemplate,
     ) -> Self {
         let template = EditableTemplate::builder(
             "Field",
@@ -368,7 +315,7 @@ mod tests {
         let field = &component.select[1];
         assert_eq!(
             field.template.override_template(),
-            Some(&ProfileTemplate("def123".into()))
+            Some(&YamlTemplate("def123".into()))
         );
     }
 }

@@ -5,9 +5,7 @@ use crate::{
         Generate, UpdateContext, ViewContext,
         common::{
             actions::MenuItem,
-            template_preview::{
-                Preview, TemplatePreview, TemplatePreviewEvent,
-            },
+            template_preview::{TemplatePreview, TemplatePreviewEvent},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             text_window::{ScrollMode, TextWindow, TextWindowProps},
         },
@@ -16,7 +14,7 @@ use crate::{
         },
         event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentStore, SessionKey},
-        util::{highlight, view_text},
+        util::{highlight, preview::Preview, view_text},
     },
 };
 use anyhow::Context;

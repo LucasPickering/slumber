@@ -55,6 +55,7 @@ impl ValueTemplate {
     }
 
     /// Render all templates to strings and return a static JSON value
+    /// TODO get rid of this
     pub async fn render_json<Ctx: Context>(
         &self,
         context: &Ctx,

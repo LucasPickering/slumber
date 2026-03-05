@@ -1,3 +1,4 @@
+
 [tasks.cli]
 description = "Run a CLI command"
 quiet = true
@@ -15,6 +16,11 @@ sources = ["docs/theme/favicon.png"]
 [tasks.mdbook]
 # .rs scripts don't support #MISE headers so task metadata is defined here
 description = "Generate doc content from Rust code"
+
+[tasks.rustdoc]
+description = "Build Rust docs, checking for broken links"
+env.RUSTDOCFLAGS = "-D warnings"
+run = "cargo doc --no-deps --all-features --document-private-items --workspace"
 
 [tasks.test]
 description = "Run tests"

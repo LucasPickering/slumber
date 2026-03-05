@@ -24,6 +24,7 @@ run = "cargo doc --no-deps --all-features --document-private-items --workspace"
 
 [tasks.test]
 description = "Run tests"
+env.RUST_BACKTRACE = 0
 run = "cargo test"
 
 [tasks.tui-profile]
@@ -37,7 +38,7 @@ run = [
 tools."cargo:samply" = "0.13.1"
 
 [env]
-RUST_BACKTRACE = "1"
+RUST_BACKTRACE = 1
 
 [tools]
 mdbook = "0.5.1"

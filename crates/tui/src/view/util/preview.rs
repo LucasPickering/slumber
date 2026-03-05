@@ -2,19 +2,21 @@
 
 use crate::view::context::ViewContext;
 use async_trait::async_trait;
-use futures::FutureExt;
+use futures::future;
 use ratatui::{
     style::Style,
     text::{Line, Span, Text},
 };
+use serde::{Serialize, Serializer, ser::SerializeMap};
 use slumber_core::{
     collection::ValueTemplate,
-    util::json::{JsonTemplateError, YamlTemplateError, value_to_json},
+    util::json::{JsonTemplateError, YamlTemplateError},
 };
 use slumber_template::{
-    Context, LazyValue, RenderedChunk, RenderedChunks, Template,
+    Context, LazyValue, RenderError, RenderedChunk, RenderedChunks,
+    StreamSource, Template, Value,
 };
-use std::{borrow::Cow, mem, ops::Deref, str::FromStr};
+use std::{borrow::Cow, cell::RefCell, mem, ops::Deref, str::FromStr};
 
 /// A template that can be rendered to text for preview
 ///
@@ -63,6 +65,212 @@ impl Preview for Template {
     }
 }
 
+/// A complex value rendered from a [ValueTemplate]
+///
+/// This is like a [Value], except:
+/// - It can hold errors. Failed renders are not fatal. Instead, the errors are
+///   stored where they occurred so the rest of the render can proceed.
+/// - The provenance of values (raw vs dynamic) is stored, so styling can be
+///   applied appropriately
+///
+/// Rendering a [ValueTemplate] to [Text] is a 4-stage process:
+///
+/// 1. [ValueTemplate]: The unrendered template
+///   1. Rendering
+/// 2. [PreviewValue]: The rendered value, with errors and provenance retained
+///   1. Serialization
+/// 3. [String]: The serialized test (JSON, YAML, etc.)
+///   1. Text Construction
+/// 4. [Text]: The styled text
+///
+/// The construction of this relies on a key fact:
+///
+/// A raw value can contain dynamic values, but a dynamic value *cannot* contain
+/// raw values. For example, here's a template that renders to a [PreviewValue]
+/// that is partially raw, partially dynamic:
+///
+/// ```yaml
+/// data:
+///   static: 3
+///   inner:
+///     static: 4
+///     dynamic: "{{ 5 }}"
+///     stitched: "after 5 comes {{ 6 }}"
+/// ```
+///
+/// Once rendered, this is:
+///
+/// ```yaml
+/// data:
+///   static: 3
+///   inner:
+///     static: 4
+///     dynamic: 5
+///     stitched: "after 5 comes 6" # `after 5 comes ` is static, `6` is dynamic
+/// ```
+enum PreviewValue {
+    /// A value defined literally in source
+    Raw(RawValue),
+    /// A value computed dynamically from a template chunk
+    Dynamic(Value),
+    /// A stream that will *not* be resolved; it will be displayed as its source
+    Stream(StreamSource),
+    /// An error that occurred while rendering a dynamic template chunk
+    Error(RenderError),
+}
+
+impl PreviewValue {
+    /// Render from a [ValueTemplate]
+    async fn render<Ctx: Context>(
+        context: &Ctx,
+        template: &ValueTemplate,
+    ) -> PreviewValue {
+        match template {
+            ValueTemplate::Null => PreviewValue::Raw(RawValue::Null),
+            ValueTemplate::Boolean(b) => {
+                PreviewValue::Raw(RawValue::Boolean(*b))
+            }
+            ValueTemplate::Integer(i) => {
+                PreviewValue::Raw(RawValue::Integer(*i))
+            }
+            ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
+            ValueTemplate::String(template) => {
+                let chunks = template.render(context).await;
+                Self::unpack_chunks(chunks)
+            }
+            ValueTemplate::Array(array) => {
+                let items = future::join_all(
+                    array.iter().map(|value| Self::render(context, value)),
+                )
+                .await;
+                PreviewValue::Raw(RawValue::Array(items))
+            }
+            ValueTemplate::Object(object) => {
+                let entries =
+                    future::join_all(object.iter().map(|(key, value)| async {
+                        let key = PreviewChunks::new(
+                            key.render(context).await.into_chunks(),
+                        );
+                        let value = Self::render(context, value).await;
+                        (key, value)
+                    }))
+                    .await;
+                PreviewValue::Raw(RawValue::Object(entries))
+            }
+        }
+    }
+
+    /// Unpack a list of chunks into a preview value
+    ///
+    /// If the list is a single chunk, unpack its value. Otherwise, store the
+    /// list of chunks together so they can be concatenated (with styling)
+    /// during serialization.
+    fn unpack_chunks(chunks: RenderedChunks) -> Self {
+        match <[_; 1]>::try_from(chunks.into_chunks()) {
+            Ok(chunks @ [RenderedChunk::Raw(_)]) => PreviewValue::Raw(
+                RawValue::String(PreviewChunks::new(chunks.into())),
+            ),
+            Ok([RenderedChunk::Rendered(lazy)]) => match lazy {
+                LazyValue::Value(value) => PreviewValue::Dynamic(value),
+                LazyValue::Stream { source, .. } => {
+                    PreviewValue::Stream(source)
+                }
+                // I don't think this case is actually possible because we
+                // didn't unpack anywhere. Flaw in the type design!!
+                LazyValue::Nested(chunks) => PreviewValue::Raw(
+                    RawValue::String(PreviewChunks::new(chunks.into_chunks())),
+                ),
+            },
+            Ok([RenderedChunk::Error(error)]) => PreviewValue::Error(error),
+            // There's multiple chunks, we have to stitch them together
+            Err(chunks) => {
+                PreviewValue::Raw(RawValue::String(PreviewChunks::new(chunks)))
+            }
+        }
+    }
+}
+
+impl Serialize for PreviewValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PreviewValue::Raw(raw_value) => raw_value.serialize(serializer),
+            PreviewValue::Dynamic(value) => value.serialize(serializer),
+            PreviewValue::Stream(source) => {
+                source.to_string().serialize(serializer)
+            }
+            PreviewValue::Error(error) => {
+                error.to_string().serialize(serializer)
+            }
+        }
+    }
+}
+
+/// [Value] with provenance for dynamic values
+///
+/// This is mutually recursive with [PreviewValue].
+#[derive(Serialize)]
+#[serde(untagged)]
+enum RawValue {
+    Null,
+    Boolean(bool),
+    Integer(i64),
+    Float(f64),
+    String(PreviewChunks),
+    Array(Vec<PreviewValue>),
+    /// Object is stored as a list instead of map because the key is not
+    /// hashable, and we don't care about lookup
+    #[serde(serialize_with = "serialize_object")]
+    Object(Vec<(PreviewChunks, PreviewValue)>),
+}
+
+fn serialize_object<S>(
+    object: &Vec<(PreviewChunks, PreviewValue)>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut map = serializer.serialize_map(Some(object.len()))?;
+    for (k, v) in object {
+        map.serialize_entry(k, v)?;
+    }
+    map.end()
+}
+
+/// A wrapper of rendered chunks, ready to be serialized
+///
+/// Converting chunks to text requires an owned [RenderedChunk], but
+/// serialization always operates on references because it's meant to be
+/// repeatable. In our case, we know each preview value will only be serialized
+/// once. The first serialization pass will consume the owned chunks, and
+/// subsequent attempts to serialize will panic.
+struct PreviewChunks(RefCell<Option<Vec<RenderedChunk>>>);
+
+impl PreviewChunks {
+    fn new(chunks: Vec<RenderedChunk>) -> Self {
+        Self(RefCell::new(Some(chunks)))
+    }
+}
+
+impl Serialize for PreviewChunks {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Combine the chunks into a single string
+        let chunks = mem::take(&mut *self.0.borrow_mut())
+            .expect("PreviewChunks cannot be serialized more than once");
+        let s: String = chunks
+            .into_iter()
+            .map(TextBuilder::get_chunk_text)
+            .collect();
+        s.serialize(serializer)
+    }
+}
+
 /// A previewable wrapper of [ValueTemplate] for JSON bodies
 #[derive(Clone, Debug, PartialEq)]
 pub struct JsonTemplate(pub ValueTemplate);
@@ -93,7 +301,11 @@ impl Preview for JsonTemplate {
         &self,
         context: &Ctx,
     ) -> Text<'static> {
-        render_json_preview(context, &self.0).await
+        let value = PreviewValue::render(context, &self.0).await;
+        serde_json::to_string_pretty(&value)
+            // There are no PreviewValue values that fail to serialize
+            .expect("PreviewValue to JSON conversion cannot fail")
+            .into()
     }
 }
 
@@ -139,121 +351,12 @@ impl Preview for YamlTemplate {
         &self,
         context: &Ctx,
     ) -> Text<'static> {
-        // TODO YAML
-        render_json_preview(context, &self.0).await
+        let value = PreviewValue::render(context, &self.0).await;
+        serde_yaml::to_string(&value)
+            // There are no PreviewValue values that fail to serialize
+            .expect("PreviewValue to YAML conversion cannot fail")
+            .into()
     }
-}
-
-/// Preview a [ValueTemplate] as JSON
-async fn render_json_preview<Ctx: Context>(
-    context: &Ctx,
-    template: &ValueTemplate,
-) -> Text<'static> {
-    /// Recursive helper
-    async fn inner<Ctx: Context>(
-        context: &Ctx,
-        builder: &mut TextBuilder,
-        template: &ValueTemplate,
-    ) {
-        match template {
-            ValueTemplate::Null => builder.add_text("null"),
-            ValueTemplate::Boolean(false) => builder.add_text("false"),
-            ValueTemplate::Boolean(true) => builder.add_text("true"),
-            ValueTemplate::Integer(i) => builder.add_text(&i.to_string()),
-            ValueTemplate::Float(f) => builder.add_text(&f.to_string()),
-            ValueTemplate::String(template) => {
-                render_string(context, builder, template).await;
-            }
-            ValueTemplate::Array(array) => {
-                render_collection(
-                    builder,
-                    array,
-                    async |builder, el| {
-                        inner(context, builder, el).boxed_local().await;
-                    },
-                    ("[", "]"),
-                    ",",
-                )
-                .await;
-            }
-            ValueTemplate::Object(object) => {
-                render_collection(
-                    builder,
-                    object,
-                    async |builder, (key, value)| {
-                        // Render key. Keys have to be strings, can't unpack
-                        builder.add_json_string(key.render(context).await);
-                        builder.add_text(": ");
-                        // Add the value
-                        inner(context, builder, value).boxed_local().await;
-                    },
-                    ("{", "}"),
-                    ",",
-                )
-                .await;
-            }
-        }
-    }
-
-    /// Render a string literal preview, which *may* unpack to another value
-    async fn render_string<Ctx: Context>(
-        context: &Ctx,
-        builder: &mut TextBuilder,
-        template: &Template,
-    ) {
-        let chunks = template.render(context).await;
-        match chunks.unpack() {
-            // If this unpacks into a value, *don't* include quotes
-            LazyValue::Value(value) => {
-                let styles = ViewContext::styles();
-                let json = value_to_json(value);
-                builder.add_text_styled(
-                    &format!("{json:#}"),
-                    styles.template_preview.text,
-                );
-            }
-
-            LazyValue::Nested(chunks) => {
-                // The value can't be unpacked, so it has to be
-                // represented as a string
-                builder.add_json_string(chunks);
-            }
-            // I'd love to make this impossible in the type system
-            LazyValue::Stream { .. } => {
-                unreachable!("JSON bodies don't support streaming")
-            }
-        }
-    }
-
-    let mut builder = TextBuilder::new();
-    inner(context, &mut builder, template).await;
-    builder.build()
-}
-
-/// Generate text for an array/object
-async fn render_collection<T>(
-    builder: &mut TextBuilder,
-    collection: &[T],
-    render_fn: impl AsyncFn(&mut TextBuilder, &T),
-    (open, close): (&'static str, &'static str),
-    separator: &str,
-) {
-    // Doing this as a hundred little spans seems wasteful, but most of
-    // these will get broken apart by the syntax highlighter anyway so
-    // it should be minimal cost
-    builder.add_text(open);
-    builder.new_line();
-    builder.indent();
-    for (i, element) in collection.iter().enumerate() {
-        render_fn(builder, element).await;
-
-        if i < collection.len() - 1 {
-            builder.add_text(separator);
-        }
-        builder.new_line();
-    }
-    builder.outdent();
-    builder.add_text(close);
 }
 
 /// A helper to build `Text` from template render output
@@ -301,14 +404,6 @@ impl TextBuilder {
 
             self.add_text_styled(&chunk_text, style);
         }
-    }
-
-    /// Append some plain text to the builder
-    ///
-    /// The text will be split on newline as appropriate, but *no* additional
-    /// line breaks will be added.
-    fn add_text(&mut self, text: &str) {
-        self.add_text_styled(text, Style::default());
     }
 
     /// Append some plain text to the builder with some style
@@ -399,23 +494,6 @@ impl TextBuilder {
             // There's no good way to render the entire error inline
             RenderedChunk::Error(_) => "Error".into(),
         }
-    }
-
-    /// Add a JSON string with quotes to the text
-    fn add_json_string(&mut self, chunks: RenderedChunks) {
-        self.add_text("\"");
-        self.add_chunks(chunks);
-        self.add_text("\"");
-    }
-
-    /// Increment the indentation level
-    fn indent(&mut self) {
-        self.indent += 1;
-    }
-
-    /// Decrement the indentation level
-    fn outdent(&mut self) {
-        self.indent -= 1;
     }
 
     fn build(self) -> Text<'static> {
@@ -578,7 +656,6 @@ mod tests {
     #[case::float(json!(4.32), "4.32".into())]
     #[case::bool(json!(false), "false".into())]
     #[case::string(json!("hello"), "\"hello\"".into())]
-    #[ignore = "JSON escaping is broken"]
     #[case::string_escaped(
         json!("i have a \" quote"), r#""i have a \" quote""#.into()
     )]
@@ -588,7 +665,6 @@ mod tests {
         line(vec!["\"my name is ".into(), rendered("Ted"), "!\"".into()]),
     )]
     #[case::template_unpacked(json!("{{ 3 }}"), rendered("3").into())]
-    #[ignore = "JSON escaping is broken"]
     #[case::template_escaped(
         // Entire dynamic chunk gets styling. Make sure the escaped quote
         // doesn't cause any off-by-ones

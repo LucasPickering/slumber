@@ -138,6 +138,7 @@ pub struct TableStyles {
 /// Styles for TemplatePreview component
 #[derive(Clone, Debug)]
 pub struct TemplatePreviewStyles {
+    // TODO rename to dynamic
     pub text: Style,
     pub error: Style,
 }

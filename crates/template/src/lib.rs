@@ -285,6 +285,11 @@ impl From<Expression> for TemplateChunk {
 pub struct RenderedChunks(Vec<RenderedChunk>);
 
 impl RenderedChunks {
+    /// TODO
+    pub fn chunks(&self) -> &[RenderedChunk] {
+        &self.0
+    }
+
     /// Get the inner list of chunks
     pub fn into_chunks(self) -> Vec<RenderedChunk> {
         self.0

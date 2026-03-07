@@ -220,6 +220,7 @@ requests:
             string: "hello"
             template: "{{ username }}"
             unpacked_template: "{{ 3 }}"
+            stream: "{{ command(['echo', 'test']) }}"
             object:
               a: 1
               nested:

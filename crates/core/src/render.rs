@@ -19,6 +19,7 @@ use crate::{
         functions::RequestTrigger,
         util::{FieldCache, FieldCacheOutcome},
     },
+    test_util::by_id,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -325,6 +326,22 @@ impl slumber_template::Context for StreamTemplateContext<'_> {
 impl slumber_util::Factory for TemplateContext {
     fn factory((): ()) -> Self {
         Self::factory((IndexMap::new(), IndexMap::new()))
+    }
+}
+
+/// Initialize template context with a selected profile
+impl slumber_util::Factory<Profile> for TemplateContext {
+    fn factory(profile: Profile) -> Self {
+        let profile_id = profile.id.clone();
+        let collection = Collection {
+            profiles: by_id([profile]),
+            ..Collection::factory(())
+        };
+        TemplateContext {
+            collection: collection.into(),
+            selected_profile: Some(profile_id),
+            ..TemplateContext::factory(())
+        }
     }
 }
 

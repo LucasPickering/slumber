@@ -41,6 +41,7 @@ tree-sitter-highlight = "0.26.0"
 tree-sitter-json = "0.24.8"
 unicode-width = "0.2.0"
 uuid = {workspace = true}
+winnow = {workspace = true}
 
 [dev-dependencies]
 env-lock = {workspace = true}

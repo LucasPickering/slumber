@@ -116,7 +116,7 @@ async fn test_override() {
     };
     let context = TemplateContext {
         overrides: indexmap! {"host".into() => "http://override".into()},
-        ..TemplateContext::factory((by_id([profile]), IndexMap::new()))
+        ..TemplateContext::factory(profile)
     };
 
     assert_eq!(

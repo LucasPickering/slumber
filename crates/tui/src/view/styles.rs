@@ -138,8 +138,10 @@ pub struct TableStyles {
 /// Styles for TemplatePreview component
 #[derive(Clone, Debug)]
 pub struct TemplatePreviewStyles {
-    // TODO rename to dynamic
-    pub text: Style,
+    /// Text in a template preview that was replaced with dynamic content
+    pub dynamic: Style,
+    /// Text in a template preview that was supposed to be dynamic, but the
+    /// expression failed to render
     pub error: Style,
 }
 
@@ -263,7 +265,7 @@ impl Styles {
                     .add_modifier(Modifier::BOLD),
             },
             template_preview: TemplatePreviewStyles {
-                text: Style::default()
+                dynamic: Style::default()
                     .fg(theme.secondary_color.into())
                     .add_modifier(Modifier::UNDERLINED),
                 error: Style::default()

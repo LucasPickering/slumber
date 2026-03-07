@@ -575,17 +575,17 @@ mod tests {
     )]
     #[case::nested(
         LazyValue::Nested(RenderedChunks(vec![
-            RenderedChunk::Rendered(LazyValue::Value("test1".into())),
+            RenderedChunk::Dynamic(LazyValue::Value("test1".into())),
             RenderedChunk::Raw(" ".into()),
-            RenderedChunk::Rendered(stream(Ok("test2".into()))),
+            RenderedChunk::Dynamic(stream(Ok("test2".into()))),
         ])),
         Ok("test1 test2".into()),
     )]
     #[case::nested_error(
         LazyValue::Nested(RenderedChunks(vec![
-            RenderedChunk::Rendered(LazyValue::Value("test1".into())),
+            RenderedChunk::Dynamic(LazyValue::Value("test1".into())),
             RenderedChunk::Raw(" ".into()),
-            RenderedChunk::Rendered(stream(Err(RenderError::FunctionUnknown))),
+            RenderedChunk::Dynamic(stream(Err(RenderError::FunctionUnknown))),
         ])),
         Err("Unknown function"),
     )]

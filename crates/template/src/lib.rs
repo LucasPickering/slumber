@@ -28,7 +28,7 @@ use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use slumber_util::NEW_ISSUE_LINK;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, slice, sync::Arc};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
@@ -191,7 +191,7 @@ impl Template {
                 }
                 TemplateChunk::Expression(expression) => {
                     match expression.render(context).await {
-                        Ok(lazy) => RenderedChunk::Rendered(lazy),
+                        Ok(lazy) => RenderedChunk::Dynamic(lazy),
                         Err(error) => RenderedChunk::Error(error),
                     }
                 }
@@ -285,20 +285,20 @@ impl From<Expression> for TemplateChunk {
 pub struct RenderedChunks(Vec<RenderedChunk>);
 
 impl RenderedChunks {
-    /// TODO
-    pub fn chunks(&self) -> &[RenderedChunk] {
-        &self.0
-    }
-
     /// Get the inner list of chunks
     pub fn into_chunks(self) -> Vec<RenderedChunk> {
         self.0
     }
 
+    /// Get an iterator over references to the chunks
+    pub fn iter(&self) -> impl Iterator<Item = &RenderedChunk> {
+        self.0.iter()
+    }
+
     /// If this output is a single chunk and that chunk is a stream, get the
     /// source of the stream
     pub fn stream_source(&self) -> Option<&StreamSource> {
-        if let [RenderedChunk::Rendered(LazyValue::Stream { source, .. })] =
+        if let [RenderedChunk::Dynamic(LazyValue::Stream { source, .. })] =
             self.0.as_slice()
         {
             Some(source)
@@ -312,7 +312,7 @@ impl RenderedChunks {
         self.0.iter().any(|chunk| match chunk {
             RenderedChunk::Raw(_) => false,
             // Recursion! Mutual!!
-            RenderedChunk::Rendered(lazy_value) => lazy_value.has_stream(),
+            RenderedChunk::Dynamic(lazy_value) => lazy_value.has_stream(),
             RenderedChunk::Error(_) => true,
         })
     }
@@ -323,7 +323,7 @@ impl RenderedChunks {
     pub fn unpack(self) -> LazyValue {
         match <[_; 1]>::try_from(self.0) {
             // If we have a single dynamic chunk, return its value directly
-            Ok([RenderedChunk::Rendered(lazy)]) => lazy,
+            Ok([RenderedChunk::Dynamic(lazy)]) => lazy,
             Ok([chunk @ (RenderedChunk::Raw(_) | RenderedChunk::Error(_))]) => {
                 LazyValue::Nested(Self(vec![chunk]))
             }
@@ -352,7 +352,7 @@ impl RenderedChunks {
                 RenderedChunk::Raw(s) => {
                     stream_value(Bytes::from(s.to_string()))
                 }
-                RenderedChunk::Rendered(lazy) => match lazy {
+                RenderedChunk::Dynamic(lazy) => match lazy {
                     LazyValue::Value(value) => stream_value(value.into_bytes()),
                     LazyValue::Stream { stream, .. } => Ok(stream.boxed()),
                     LazyValue::Nested(chunks) => {
@@ -413,7 +413,7 @@ impl RenderedChunks {
 /// Create render output of a single chunk with a value
 impl From<Value> for RenderedChunks {
     fn from(value: Value) -> Self {
-        Self(vec![RenderedChunk::Rendered(LazyValue::Value(value))])
+        Self(vec![RenderedChunk::Dynamic(LazyValue::Value(value))])
     }
 }
 
@@ -421,7 +421,7 @@ impl From<Value> for RenderedChunks {
 impl From<Result<Value, RenderError>> for RenderedChunks {
     fn from(result: Result<Value, RenderError>) -> Self {
         let chunk = match result {
-            Ok(value) => RenderedChunk::Rendered(value.into()),
+            Ok(value) => RenderedChunk::Dynamic(value.into()),
             Err(error) => RenderedChunk::Error(error),
         };
         Self(vec![chunk])
@@ -438,6 +438,16 @@ impl IntoIterator for RenderedChunks {
     }
 }
 
+/// Get an iterator over references to chunks of this output
+impl<'a> IntoIterator for &'a RenderedChunks {
+    type Item = &'a RenderedChunk;
+    type IntoIter = slice::Iter<'a, RenderedChunk>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
@@ -447,7 +457,7 @@ pub enum RenderedChunk {
     /// without having to clone it.
     Raw(Arc<str>),
     /// A dynamic chunk of a template, rendered to a stream/value
-    Rendered(LazyValue),
+    Dynamic(LazyValue),
     /// An error occurred while rendering a template key
     Error(RenderError),
 }
@@ -458,11 +468,11 @@ impl PartialEq for RenderedChunk {
         match (self, other) {
             (Self::Raw(raw1), Self::Raw(raw2)) => raw1 == raw2,
             (
-                Self::Rendered(LazyValue::Value(value1)),
-                Self::Rendered(LazyValue::Value(value2)),
+                Self::Dynamic(LazyValue::Value(value1)),
+                Self::Dynamic(LazyValue::Value(value2)),
             ) => value1 == value2,
             // Streams are never equal
-            (Self::Rendered(_), Self::Rendered(_)) => false,
+            (Self::Dynamic(_), Self::Dynamic(_)) => false,
             (Self::Error(error1), Self::Error(error2)) => {
                 // RenderError doesn't have a PartialEq impl, so we have to
                 // do a string comparison.

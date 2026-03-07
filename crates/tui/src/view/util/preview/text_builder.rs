@@ -39,8 +39,8 @@ impl TextBuilder {
         let styles = ViewContext::styles().template_preview;
         for (content, chunk_style) in chunks {
             let style = match chunk_style {
-                Some(ChunkStyle::Dynamic) => styles.text,
-                Some(ChunkStyle::Error) => styles.error,
+                Some(ChunkTag::Dynamic) => styles.dynamic,
+                Some(ChunkTag::Error) => styles.error,
                 None => Style::default(),
             };
 
@@ -59,7 +59,7 @@ impl TextBuilder {
     /// Add rendered chunks to the text
     ///
     /// For [Template], this is the only thing required to build the preview.
-    pub fn add_chunks(&mut self, chunks: RenderedChunks) {
+    pub fn add_chunks(&mut self, chunks: &RenderedChunks) {
         let styles = ViewContext::styles();
 
         // Each chunk will get its own styling, but we can't just make each
@@ -70,7 +70,9 @@ impl TextBuilder {
         for chunk in chunks {
             let style = match chunk {
                 RenderedChunk::Raw(_) => Style::default(),
-                RenderedChunk::Rendered { .. } => styles.template_preview.text,
+                RenderedChunk::Dynamic { .. } => {
+                    styles.template_preview.dynamic
+                }
                 RenderedChunk::Error(_) => styles.template_preview.error,
             };
             let chunk_text = Self::get_chunk_text(chunk);
@@ -137,16 +139,17 @@ impl TextBuilder {
     /// text out of the chunk, because it's all stashed behind Arcs
     ///
     /// TODO make private?
-    pub fn get_chunk_text(chunk: RenderedChunk) -> String {
+    pub fn get_chunk_text(chunk: &RenderedChunk) -> String {
         match chunk {
             RenderedChunk::Raw(text) => text.deref().into(),
-            RenderedChunk::Rendered(lazy) => match lazy {
+            RenderedChunk::Dynamic(lazy) => match lazy {
                 LazyValue::Value(value) => {
                     // We could potentially use MaybeStr to show binary data as
                     // hex, but that could get weird if there's text data in the
                     // template as well. This is simpler and prevents giant
                     // binary blobs from getting rendered in.
                     value
+                        .clone() // TODO remove clone
                         .try_into_string()
                         .unwrap_or_else(|_| "<binary>".into())
                 }
@@ -158,7 +161,7 @@ impl TextBuilder {
                 // thing will get styled as dynamic, even if it contains raw
                 // chunks within.
                 LazyValue::Nested(chunks) => {
-                    chunks.into_iter().map(Self::get_chunk_text).collect()
+                    chunks.iter().map(Self::get_chunk_text).collect()
                 }
             },
             // There's no good way to render the entire error inline
@@ -189,21 +192,21 @@ impl TextBuilder {
 ///     ("Error", Error), " years old"
 /// ]
 /// ```
-fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkStyle>)> {
+fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkTag>)> {
     fn styled_chunk<'i>(
         input: &mut &'i str,
-    ) -> ModalResult<(&'i str, ChunkStyle), ()> {
+    ) -> ModalResult<(&'i str, ChunkTag), ()> {
         // The tag contains the style and the number of subsequent bytes to
         // which that style applies. It looks like:
         // $__slumber$<tag><content>$slumber__$
-        let (kind, content): (ChunkStyle, &str) = seq!(
-            _: ChunkStyle::PRELUDE,
+        let (kind, content): (ChunkTag, &str) = seq!(
+            _: ChunkTag::PRELUDE,
             alt((
-                ChunkStyle::DYNAMIC.value(ChunkStyle::Dynamic),
-                ChunkStyle::ERROR.value(ChunkStyle::Error),
+                ChunkTag::DYNAMIC.value(ChunkTag::Dynamic),
+                ChunkTag::ERROR.value(ChunkTag::Error),
             )),
-            take_until(0.., ChunkStyle::TERMINATOR),
-            _: ChunkStyle::TERMINATOR,
+            take_until(0.., ChunkTag::TERMINATOR),
+            _: ChunkTag::TERMINATOR,
         )
         .parse_next(input)?;
         Ok((content, kind))
@@ -216,7 +219,7 @@ fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkStyle>)> {
             // Styled chunk has to go first, so that if there's no content
             // before the first `__slumber`, we don't get an empty chunk
             styled_chunk.map(|(s, style)| (s, Some(style))),
-            take_until(0.., ChunkStyle::PRELUDE).map(|s| (s, None)),
+            take_until(0.., ChunkTag::PRELUDE).map(|s| (s, None)),
             rest.map(|s| (s, None)),
         )),
         eof,
@@ -232,14 +235,13 @@ fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkStyle>)> {
 }
 
 /// TODO
-/// TODO rename to ChunkTag
 #[derive(Copy, Clone, Debug)]
-pub enum ChunkStyle {
+pub enum ChunkTag {
     Dynamic,
     Error,
 }
 
-impl ChunkStyle {
+impl ChunkTag {
     const PRELUDE: &str = "$__slumber$";
     const TERMINATOR: &str = "$slumber__$";
     const DYNAMIC: &str = "dynamic";
@@ -255,8 +257,8 @@ impl ChunkStyle {
             "{prelude}{tag}{content}{terminator}",
             prelude = Self::PRELUDE,
             tag = match self {
-                ChunkStyle::Dynamic => Self::DYNAMIC,
-                ChunkStyle::Error => Self::ERROR,
+                ChunkTag::Dynamic => Self::DYNAMIC,
+                ChunkTag::Error => Self::ERROR,
             },
             terminator = Self::TERMINATOR,
         )

@@ -2,7 +2,7 @@
 
 mod text_builder;
 
-use crate::view::util::preview::text_builder::{ChunkStyle, TextBuilder};
+use crate::view::util::preview::text_builder::{ChunkTag, TextBuilder};
 use async_trait::async_trait;
 use futures::future;
 use ratatui::text::Text;
@@ -66,7 +66,7 @@ impl Preview for Template {
         let chunks = self.render(context).await;
         // Stitch the output together into Text
         let mut builder = TextBuilder::new();
-        builder.add_chunks(chunks);
+        builder.add_chunks(&chunks);
         builder.build()
     }
 }
@@ -266,7 +266,7 @@ impl PreviewValue {
 
         match <[_; 1]>::try_from(chunks.into_chunks()) {
             Ok(chunks @ [RenderedChunk::Raw(_)]) => string(chunks.into()),
-            Ok([RenderedChunk::Rendered(lazy)]) => match lazy {
+            Ok([RenderedChunk::Dynamic(lazy)]) => match lazy {
                 LazyValue::Value(value) => PreviewValue::Dynamic(value),
                 LazyValue::Stream { source, .. } => {
                     PreviewValue::Stream(source)
@@ -294,13 +294,13 @@ impl Serialize for PreviewValue {
             PreviewValue::Raw(raw_value) => raw_value.serialize(serializer),
             PreviewValue::Dynamic(value) => StyleInjector::with_style(
                 || value.serialize(serializer),
-                ChunkStyle::Dynamic,
+                ChunkTag::Dynamic,
             ),
             // TODO should this really be its own variant?
             PreviewValue::Stream(source) => StyleInjector::with_style(
                 // TODO format differently
                 || source.to_string().serialize(serializer),
-                ChunkStyle::Dynamic,
+                ChunkTag::Dynamic,
             ),
         }
     }
@@ -367,11 +367,11 @@ impl Serialize for PreviewChunks {
         let chunks = mem::take(&mut *self.0.borrow_mut())
             .expect("PreviewChunks cannot be serialized more than once");
         let mut content = String::new();
-        for chunk in chunks {
+        for chunk in &chunks {
             let chunk_kind = match &chunk {
                 RenderedChunk::Raw(_) => None,
-                RenderedChunk::Rendered(_) => Some(ChunkStyle::Dynamic),
-                RenderedChunk::Error(_) => Some(ChunkStyle::Error),
+                RenderedChunk::Dynamic(_) => Some(ChunkTag::Dynamic),
+                RenderedChunk::Error(_) => Some(ChunkTag::Error),
             };
             let chunk_content = TextBuilder::get_chunk_text(chunk);
 
@@ -396,12 +396,12 @@ struct StyleInjector {
 impl StyleInjector {
     thread_local! {
         // TODO rename
-        static VALUE_TAG: Cell<Option<ChunkStyle>> = Cell::default();
+        static VALUE_TAG: Cell<Option<ChunkTag>> = Cell::default();
     }
 
     /// TODO move this
     /// TODO rename
-    fn with_style<T>(f: impl FnOnce() -> T, chunk_kind: ChunkStyle) -> T {
+    fn with_style<T>(f: impl FnOnce() -> T, chunk_kind: ChunkTag) -> T {
         Self::VALUE_TAG.set(Some(chunk_kind));
         let out = f();
         Self::VALUE_TAG.set(None);
@@ -488,7 +488,7 @@ mod tests {
 
         let chunks = template.render(&context).await;
         let mut builder = TextBuilder::new();
-        builder.add_chunks(chunks);
+        builder.add_chunks(&chunks);
         assert_eq!(builder.build(), Text::from(expected));
     }
 
@@ -689,7 +689,7 @@ mod tests {
 
     /// Style some text as rendered
     fn rendered(text: &str) -> Span<'_> {
-        Span::styled(text, ViewContext::styles().template_preview.text)
+        Span::styled(text, ViewContext::styles().template_preview.dynamic)
     }
 
     /// Style some text as an error

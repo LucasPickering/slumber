@@ -23,10 +23,13 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use derive_more::{Deref, From, derive::Display};
+use futures::StreamExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
-use slumber_template::{Arguments, Identifier, LazyValue, RenderError, Value};
+use slumber_template::{
+    Arguments, Identifier, LazyValue, RenderError, StreamSource, Value,
+};
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
 };
@@ -137,7 +140,25 @@ impl TemplateContext {
             // it out of its chunk list. If it had multiple chunks, we need to
             // keep all of them to provide both a correct preview and the final
             // stream
-            Ok(chunks.unpack())
+            match chunks.unpack() {
+                Ok(lazy) => Ok(lazy),
+                Err(chunks) => {
+                    let stream = chunks.try_into_stream().map_err(
+                        // We *could* just return the error, but wrap it to
+                        // give additional context
+                        |error| {
+                            RenderError::from(FunctionError::ProfileNested {
+                                field: field.clone(),
+                                error,
+                            })
+                        },
+                    )?;
+                    Ok(LazyValue::Stream {
+                        source: StreamSource::Compound,
+                        stream: stream.boxed(),
+                    })
+                }
+            }
         } else {
             let value = chunks.try_collect_value().await.map_err(
                 // We *could* just return the error, but wrap it to give

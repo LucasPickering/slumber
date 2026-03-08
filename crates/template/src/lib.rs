@@ -317,17 +317,19 @@ impl RenderedChunks {
         })
     }
 
-    /// Unpack this output into a single lazy value. If the output is a single
-    /// dynamic chunk, unpack it into a scalar value. Otherwise return a
-    /// [LazyValue::Nested].
-    pub fn unpack(self) -> LazyValue {
+    /// Unpack this output into a single lazy value
+    ///
+    /// If the output is a single dynamic chunk, unpack it into a scalar value.
+    /// Otherwise, return `Err(self)`.
+    pub fn unpack(self) -> Result<LazyValue, Self> {
         match <[_; 1]>::try_from(self.0) {
             // If we have a single dynamic chunk, return its value directly
-            Ok([RenderedChunk::Dynamic(lazy)]) => lazy,
-            Ok([chunk @ (RenderedChunk::Raw(_) | RenderedChunk::Error(_))]) => {
-                LazyValue::Nested(Self(vec![chunk]))
+            Ok([RenderedChunk::Dynamic(lazy)]) => Ok(lazy),
+            // Unpack failed
+            Ok(chunks @ [RenderedChunk::Raw(_) | RenderedChunk::Error(_)]) => {
+                Err(Self(chunks.into()))
             }
-            Err(chunks) => LazyValue::Nested(Self(chunks)),
+            Err(chunks) => Err(Self(chunks)),
         }
     }
 
@@ -355,9 +357,6 @@ impl RenderedChunks {
                 RenderedChunk::Dynamic(lazy) => match lazy {
                     LazyValue::Value(value) => stream_value(value.into_bytes()),
                     LazyValue::Stream { stream, .. } => Ok(stream.boxed()),
-                    LazyValue::Nested(chunks) => {
-                        Ok(chunks.try_into_stream()?.boxed())
-                    }
                 },
 
                 RenderedChunk::Error(error) => Err(error),
@@ -378,9 +377,9 @@ impl RenderedChunks {
     pub async fn try_collect_value(self) -> Result<Value, RenderError> {
         // If we only have one chunk, unpack it into a value
         let value = match self.unpack() {
-            LazyValue::Value(value) => value,
-            lazy @ LazyValue::Stream { .. } => lazy.resolve().await?,
-            LazyValue::Nested(chunks) => {
+            Ok(LazyValue::Value(value)) => value,
+            Ok(lazy @ LazyValue::Stream { .. }) => lazy.resolve().await?,
+            Err(chunks) => {
                 // Render to bytes
                 let bytes = chunks.try_collect_bytes().await?;
                 Value::Bytes(bytes)

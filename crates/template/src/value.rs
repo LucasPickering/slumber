@@ -1,7 +1,7 @@
 //! Template runtime values
 
 use crate::{
-    Expected, Literal, RenderError, RenderedChunks, ValueError, WithValue,
+    Expected, Literal, RenderError, ValueError, WithValue,
     error::RenderErrorContext,
     parse::{FALSE, NULL, TRUE},
 };
@@ -187,15 +187,6 @@ pub enum LazyValue {
         #[debug(skip)]
         stream: BoxStream<'static, Result<Bytes, RenderError>>,
     },
-    /// A template chunk that rendered a nested template with multiple chunks
-    ///
-    /// This is built when a multi-chunk render output is unpacked into a
-    /// single [LazyValue]. For applications that need that singular value,
-    /// this allows multiple chunks to be wrapped into one value.
-    ///
-    /// To be honest I'm not sure this is really necessary, but it's how I built
-    /// it. I'd really love to refactor this whole spaghetti.
-    Nested(RenderedChunks),
 }
 
 impl LazyValue {
@@ -209,8 +200,6 @@ impl LazyValue {
                 .try_collect::<BytesMut>()
                 .await
                 .map(|bytes| Value::Bytes(bytes.into())),
-            // Box needed for recursion
-            Self::Nested(chunks) => Box::pin(chunks.try_collect_value()).await,
         }
     }
 
@@ -219,8 +208,6 @@ impl LazyValue {
         match self {
             LazyValue::Value(_) => false,
             LazyValue::Stream { .. } => true,
-            // Recursion!
-            LazyValue::Nested(rendered_output) => rendered_output.has_stream(),
         }
     }
 }
@@ -247,6 +234,11 @@ pub enum StreamSource {
         /// **Absolute** path to the file
         path: PathBuf,
     },
+    /// Stream is composed from a multi-chunk template where at least one of the
+    /// inner chunks is a stream
+    ///
+    /// We toss the original source(s) because they aren't needed anywhere.
+    Compound,
 }
 
 /// Convert [Value] to a type fallibly
@@ -558,7 +550,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RenderedChunk;
     use futures::{StreamExt, future, stream};
     use rstest::rstest;
     use slumber_util::assert_result;
@@ -572,22 +563,6 @@ mod tests {
     #[case::stream_error(
         stream(Err(RenderError::FunctionUnknown)),
         Err("Unknown function")
-    )]
-    #[case::nested(
-        LazyValue::Nested(RenderedChunks(vec![
-            RenderedChunk::Dynamic(LazyValue::Value("test1".into())),
-            RenderedChunk::Raw(" ".into()),
-            RenderedChunk::Dynamic(stream(Ok("test2".into()))),
-        ])),
-        Ok("test1 test2".into()),
-    )]
-    #[case::nested_error(
-        LazyValue::Nested(RenderedChunks(vec![
-            RenderedChunk::Dynamic(LazyValue::Value("test1".into())),
-            RenderedChunk::Raw(" ".into()),
-            RenderedChunk::Dynamic(stream(Err(RenderError::FunctionUnknown))),
-        ])),
-        Err("Unknown function"),
     )]
     #[tokio::test]
     async fn test_lazy_resolve(

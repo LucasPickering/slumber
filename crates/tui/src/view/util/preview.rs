@@ -292,11 +292,6 @@ impl PreviewValue {
                     | RenderedChunk::Error(_),
                 ],
             ) => string(chunks.into()),
-            // I don't think this case is actually possible because we
-            // didn't unpack anywhere. Flaw in the type design!!
-            Ok([RenderedChunk::Dynamic(LazyValue::Nested(chunks))]) => {
-                string(chunks.into_chunks())
-            }
             // There's multiple chunks, we have to stitch them together
             Err(chunks) => string(chunks),
         }

@@ -46,6 +46,7 @@ fn template_context(recipe: Recipe, host: Option<&str>) -> TemplateContext {
         "stream".into() => "{{ file('data.json') }}".into(),
         // Streamed value that we can use to test deduping
         "stream_prompt".into() => "{{ file(concat([prompt(), '.txt'])) }}".into(),
+        "stream_compound".into() => "inner: {{ file('first.txt') }}".into(),
         "error".into() => "{{ fake_fn() }}".into(),
     };
     let profile = Profile {
@@ -498,11 +499,17 @@ async fn test_body(
     None,
     r#"{ "a": 1, "b": 2 }"#,
 )]
-#[case::stream_multichunk(
+#[case::stream_compound(
     // This gets streamed one chunk at a time
     RecipeBody::Stream(r#"{ "data": {{ file('data.json') }} }"#.into()),
     None,
     r#"{ "data": { "a": 1, "b": 2 } }"#,
+)]
+// Stream multiple chunks of data via a profile field
+#[case::stream_compound_nested(
+    RecipeBody::Stream("outer: {{ stream_compound }}".into()),
+    None,
+    "outer: inner: first",
 )]
 #[case::form_multipart(
     RecipeBody::FormMultipart(indexmap! {

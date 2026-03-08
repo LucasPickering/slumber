@@ -134,8 +134,7 @@ impl Preview for YamlTemplate {
             // There are no ValueTemplate values that fail to serialize
             .expect("Template to YAML conversion cannot fail");
         // YAML includes a trailing newline that is not helpful
-        debug_assert_eq!(&s[s.len() - 1..], "\n");
-        s.truncate(s.len() - 1);
+        trim_newline(&mut s);
         s.into()
     }
 
@@ -151,7 +150,23 @@ impl Preview for YamlTemplate {
         let mut injector = StyleInjector::default();
         serde_yaml::to_writer(&mut injector, &value)
             .expect("PreviewValue serialization cannot fail");
+        // YAML includes a trailing newline that is not helpful
+        trim_newline(&mut injector.buffer);
         TextBuilder::from_tagged(&injector.buffer).build()
+    }
+}
+
+/// Strip the trailing newline from a YAML string
+///
+/// YAML always includes a trailing newline, even for primitive values like
+/// `null`. This causes unnecessary multi-line display in the TUI, and doesn't
+/// provide any value.
+fn trim_newline(yaml: &mut String) {
+    // Usually it's the last character, but if this is happening after style
+    // tagging, it's possible something else ended up behind it. So remove the
+    // final newline, wherever it is
+    if let Some(index) = yaml.rfind('\n') {
+        yaml.remove(index);
     }
 }
 
@@ -206,6 +221,7 @@ impl Preview for YamlTemplate {
 ///     dynamic: 5
 ///     stitched: "after 5 comes 6" # `after 5 comes ` is static, `6` is dynamic
 /// ```
+#[derive(Debug)]
 enum PreviewValue {
     /// A value defined literally in source
     Raw(RawValue),
@@ -306,7 +322,7 @@ impl Serialize for PreviewValue {
 /// [Value] that was defined literally, but may contain dynamic values within
 ///
 /// This is mutually recursive with [PreviewValue].
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(untagged)]
 enum RawValue {
     Null,
@@ -325,6 +341,7 @@ enum RawValue {
 ///
 /// This injects inline style information into the serialized text, which will
 /// be parsed by [TextBuilder].
+#[derive(Debug)]
 struct PreviewChunks(Vec<RenderedChunk>);
 
 impl Serialize for PreviewChunks {
@@ -647,7 +664,8 @@ mod tests {
         vec![
             "{".into(),
             vec![r#"  "double_dynamic": "#.into(), rendered("{")].into(),
-            rendered(r#"    "a": 1"#).into(),
+            rendered(r#"    "a": 1,"#).into(),
+            rendered(r#"    "b": 2"#).into(),
             rendered("  }").into(),
             "}".into(),
         ].into()
@@ -663,7 +681,7 @@ mod tests {
 
         let profile = Profile {
             data: indexmap! {
-                "object".into() => vec![("a", 1)].into(),
+                "object".into() => vec![("a", 1), ("b", 2)].into(),
             },
             ..Profile::factory(())
         };
@@ -672,8 +690,143 @@ mod tests {
         assert_eq!(text, expected);
     }
 
-    // TODO test yaml display
-    // TODO test yaml preview
+    /// Stringify YAML value to a raw template string, for editing
+    #[rstest]
+    #[case::null(ValueTemplate::Null, "null")]
+    #[case::bool(true.into(), "true")]
+    #[case::int((-300).into(), "-300")]
+    #[case::float((-17.3).into(), "-17.3")]
+    // YAML does support inf/NaN
+    #[case::float_inf(f64::INFINITY.into(), ".inf")]
+    #[case::float_nan(f64::NAN.into(), ".nan")]
+    // Template is parsed and re-stringified
+    #[case::template("{{www}}".into(), "'{{ www }}'")]
+    #[case::array(vec!["{{w}}", "raw"].into(), "- '{{ w }}'
+- raw")]
+    #[case::object(
+        vec![("{{w}}", "{{x}}")].into(), "'{{ w }}': '{{ x }}'"
+    )]
+    fn test_yaml_display(
+        #[case] template: ValueTemplate,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(YamlTemplate(template).display(), expected);
+    }
+
+    /// Preview YAML templates as text.
+    ///
+    /// The values are specified as JSON because there's no `yaml!` macro, and I
+    /// stole all the test cases from the JSON test.
+    #[rstest]
+    #[case::null(json!(null), "null".into())]
+    #[case::int(json!(3), "3".into())]
+    #[case::float(json!(4.32), "4.32".into())]
+    #[case::bool(json!(false), "false".into())]
+    #[case::string(json!("hello"), "hello".into())]
+    #[case::string_escaped(
+        // We have to do some funky stuff to get the serializer to escape quotes
+        json!("{i have \"' quotes}"), "'{i have \"'' quotes}'".into()
+    )]
+    #[case::template(
+        json!("my name is {{ 'Ted' }}!"),
+        // Just the dynamic part is styled colorly like
+        line(vec!["my name is ".into(), rendered("Ted"), "!".into()]),
+    )]
+    #[case::template_unpacked(json!("{{ 3 }}"), rendered("3").into())]
+    #[case::template_escaped(
+        // Entire dynamic chunk gets styling. Make sure the escaped quote
+        // doesn't cause any off-by-ones.
+        // The {} wrapper forces the YAML serializer to use quotes
+        json!("{dynamic: {{ 'with \\' quote' }}}"),
+        line(vec![
+            "'{dynamic: ".into(), rendered("with '' quote"), "}'".into(),
+        ]),
+    )]
+    #[case::error(json!("{{ w }}"), error("Error").into())]
+    #[case::multi_chunk_error(
+        json!("error? {{ w }} error!"),
+        line(vec!["error? ".into(), error("Error"), " error!".into()]),
+    )]
+    #[case::array(
+        json!(["dynamic {{ 'string' }}", "error {{ w }}", null]),
+        vec![
+            vec!["- dynamic ".into(), rendered("string")].into(),
+            vec!["- error ".into(), error("Error")].into(),
+            "- null".into(),
+        ].into(),
+    )]
+    #[case::object(
+        json!({
+            "a": 1,
+            "nested": {
+                "b": 2,
+                "nested": {"c": [3, 4, 5]},
+                "d": "dynamic {{ 'string' }}",
+                "e": "error {{ w }}",
+            }
+        }),
+        vec![
+            "a: 1".into(),
+            "nested:".into(),
+            "  b: 2".into(),
+            "  nested:".into(),
+            "    c:".into(),
+            "    - 3".into(),
+            "    - 4".into(),
+            "    - 5".into(),
+            vec!["  d: dynamic ".into(), rendered("string")].into(),
+            vec!["  e: error ".into(), error("Error")].into(),
+        ].into(),
+    )]
+    // Really these streams should be resolved because JSON bodies don't support
+    // streaming, but I got lazy here. Maybe I can fix this if I ever refactor
+    // the rendered output types
+    #[case::stream(
+        json!("stream: {{ command(['echo', 'test']) }}"),
+        line(vec![
+            "'stream: ".into(), rendered("<command `echo test`>"), "'".into(),
+        ]),
+    )]
+    // Stream does *not* get unpacked
+    #[case::stream_unpacked(
+        json!("{{ command(['echo', 'test']) }}"),
+        rendered("<command `echo test`>").into()
+    )]
+    // This is broken because the YAML serializer seems to buffer its output
+    // before passing it to the writer. This means the thread-local styling
+    // isn't set when the StyleInjector is called. Fortunately it only applies
+    // to profile values used within profile values, so not the biggest deal.
+    #[ignore = "Styling on nested YAML values is broken"]
+    #[case::nested_dynamic(
+        json!({ "double_dynamic": "{{ object }}" }),
+        // The entire value is styled as dynamic
+        vec![
+            "double_dynamic:".into(),
+            rendered("  a: 1").into(),
+            rendered("  b: 2").into(),
+        ].into()
+    )]
+    #[tokio::test]
+    async fn test_yaml_preview(
+        _harness: TestHarness,
+        #[case] json: serde_json::Value,
+        #[case] expected: Text<'static>,
+    ) {
+        // Parsing JSON to a ValueTemplate is the same as converting YAML.
+        // There's no yaml! macro or YAML->ValueTemplate converter, so this is
+        // just an easier way of defining the test data.
+        let yaml_template = YamlTemplate(json.try_into().unwrap());
+
+        let profile = Profile {
+            data: indexmap! {
+                "object".into() => vec![("a", 1), ("b", 2)].into(),
+            },
+            ..Profile::factory(())
+        };
+        let context = TemplateContext::factory(profile);
+        let text = yaml_template.render_preview(&context).await;
+        assert_eq!(text, expected);
+    }
 
     /// An unstyled `"`
     fn quote() -> Span<'static> {

@@ -395,11 +395,11 @@ struct StyleInjector {
 
 impl StyleInjector {
     thread_local! {
-        // TODO rename
+        /// TODO
         static VALUE_TAG: Cell<Option<ChunkTag>> = Cell::default();
     }
 
-    /// TODO move this
+    /// TODO
     /// TODO rename
     fn with_style<T>(f: impl FnOnce() -> T, chunk_kind: ChunkTag) -> T {
         Self::VALUE_TAG.set(Some(chunk_kind));
@@ -440,7 +440,10 @@ mod tests {
     use slumber_core::{collection::Profile, render::TemplateContext};
     use slumber_util::Factory;
 
-    /// Test line breaks, multi-byte characters, and binary data
+    /// Preview a plain template with:
+    /// - Line breaks
+    /// - Multi-byte characters
+    /// - Binary data
     #[rstest]
     #[case::line_breaks(
         // Test these cases related to line breaks:
@@ -471,7 +474,7 @@ mod tests {
         vec![Line::from(vec![Span::raw("binary data: "), rendered("<binary>")])]
     )]
     #[tokio::test]
-    async fn test_build_text(
+    async fn test_preview_template(
         _harness: TestHarness,
         #[case] template: Template,
         #[case] expected: Vec<Line<'static>>,

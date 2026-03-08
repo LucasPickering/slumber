@@ -9,10 +9,11 @@ use std::{
     mem,
     ops::Deref,
 };
+use tracing::warn;
 use winnow::{
     ModalResult, Parser,
-    combinator::{alt, eof, repeat_till, seq},
-    token::{rest, take_until},
+    combinator::{alt, eof, peek, repeat_till, seq},
+    token::{any, take_until},
 };
 
 /// A helper to build `Text` from template render output
@@ -180,8 +181,8 @@ impl TextBuilder {
 /// Parses this:
 ///
 /// ```notrust
-/// my name is $__slumber$dynamicTed$slumber__$ and
-/// I am $__slumber$errorError$slumber__$ years old
+/// my name is $__slumber$dy$Ted$slumber__$ and
+/// I am $__slumber$er$Error$slumber__$ years old
 /// ```
 ///
 /// into this:
@@ -198,7 +199,7 @@ fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkTag>)> {
     ) -> ModalResult<(&'i str, ChunkTag), ()> {
         // The tag contains the style and the number of subsequent bytes to
         // which that style applies. It looks like:
-        // $__slumber$<tag><content>$slumber__$
+        // $__slumber$<tag>$<content>$slumber__$
         let (kind, content): (ChunkTag, &str) = seq!(
             _: ChunkTag::PRELUDE,
             alt((
@@ -212,15 +213,21 @@ fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkTag>)> {
         Ok((content, kind))
     }
 
+    // TODO clean this up
     repeat_till(
         0..,
-        // TODO
         alt((
             // Styled chunk has to go first, so that if there's no content
-            // before the first `__slumber`, we don't get an empty chunk
+            // before the first prelude, we don't get an empty chunk
             styled_chunk.map(|(s, style)| (s, Some(style))),
-            take_until(0.., ChunkTag::PRELUDE).map(|s| (s, None)),
-            rest.map(|s| (s, None)),
+            // TODO explain (unless this gets deleted)
+            repeat_till::<_, _, (), _, _, _, _>(
+                1..,
+                any,
+                alt((peek(styled_chunk).void(), eof.void())),
+            )
+            .take()
+            .map(|s| (s, None)),
         )),
         eof,
     )
@@ -230,12 +237,17 @@ fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkTag>)> {
         chunks
     })
     .parse(input)
-    // TODO
-    .unwrap_or_else(|_| vec![(input, None)])
+    // The parser *should* never fail because anything invalid is just treated
+    // as the raw text, but I'm not willing to bet on it enough to panic here
+    .unwrap_or_else(|_| {
+        warn!(input, "Failed to parse styled text");
+        vec![(input, None)]
+    })
 }
 
 /// TODO
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ChunkTag {
     Dynamic,
     Error,
@@ -244,8 +256,8 @@ pub enum ChunkTag {
 impl ChunkTag {
     const PRELUDE: &str = "$__slumber$";
     const TERMINATOR: &str = "$slumber__$";
-    const DYNAMIC: &str = "dynamic";
-    const ERROR: &str = "error";
+    const DYNAMIC: &str = "dy$";
+    const ERROR: &str = "er$";
 
     /// Push some content into a string buffer, wrapper with tags indicating its
     /// chunk type
@@ -266,6 +278,61 @@ impl ChunkTag {
     }
 }
 
-// TODO add parser unit tests
-// - multi-byte chars in both static and dynamic chunks
-// - impartial tags are treated as unstyled text
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::empty("", &[])]
+    #[case::untagged("raw", &[("raw", None)])]
+    #[case::tagged_only(
+        "$__slumber$dy$Test$slumber__$",
+        &[("Test", Some(ChunkTag::Dynamic))],
+    )]
+    #[case::tagged_multiple(
+        "dynamic $__slumber$dy$Test$slumber__$ \
+        error $__slumber$er$Error$slumber__$ done",
+        &[
+            ("dynamic ", None),
+            ("Test", Some(ChunkTag::Dynamic)),
+            (" error ", None),
+            ("Error", Some(ChunkTag::Error)),
+            (" done", None),
+        ],
+    )]
+    #[case::multibyte(
+        "🧡$__slumber$dy$💜$slumber__$",
+        &[("🧡", None), ("💜", Some(ChunkTag::Dynamic))]
+    )]
+    // Test various cases where an incomplete tag is included. This could
+    // be a bug in the generator, or it's really in the data. Either way, it's
+    // treated as raw content
+    #[case::prelude_only("$__slumber$", &[("$__slumber$", None)])]
+    #[case::prelude_only_with_friends(
+        "test $__slumber$ test", &[("test $__slumber$ test", None)],
+    )]
+    #[case::unknown_tag(
+        "$__slumber$bad$Test$slumber__$",
+        &[("$__slumber$bad$Test$slumber__$", None)],
+    )]
+    #[case::missing_terminator(
+        "$__slumber$dy$Test$slu", &[("$__slumber$dy$Test$slu", None)],
+    )]
+    #[case::valid_and_invalid(
+        "$__slumber$dy$Test$slumber__$ $__slumber$incomplete \
+        $__slumber$dy$Test$slumber__$",
+        &[
+            ("Test", Some(ChunkTag::Dynamic)),
+            (" $__slumber$incomplete ", None),
+            ("Test", Some(ChunkTag::Dynamic)),
+        ],
+    )]
+    fn test_parse_tagged_chunks(
+        #[case] input: &str,
+        #[case] expected: &[(&str, Option<ChunkTag>)],
+    ) {
+        let actual = parse_tagged_chunks(input);
+        assert_eq!(actual, expected);
+    }
+}

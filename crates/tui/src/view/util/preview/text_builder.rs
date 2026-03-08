@@ -32,9 +32,9 @@ pub struct TextBuilder {
 }
 
 impl TextBuilder {
-    /// Build preview text from a list of rendered [Template] chunks
+    /// Build preview text from a list of rendered `Template` chunks
     ///
-    /// For [Template], this is the only thing required to build the preview.
+    /// For `Template`, this is the only thing required to build the preview.
     pub fn from_chunks(chunks: &RenderedChunks) -> Self {
         let mut builder = Self::new();
         let styles = ViewContext::styles();
@@ -62,7 +62,7 @@ impl TextBuilder {
 
     /// Parse styling metadata from a serialized (JSON/YAML/etc.) string
     ///
-    /// See [PreviewValue] for detailed information about this process. This
+    /// See `PreviewValue` for detailed information about this process. This
     /// function is the final step, loading style metadata from a serialized
     /// string and building user-facing text from it.
     pub fn from_tagged(s: &str) -> Self {
@@ -219,14 +219,17 @@ fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkTag>)> {
         Ok((content, kind))
     }
 
-    // TODO clean this up
+    // Parse an alternating series of raw and styled chunks
     repeat_till(
         0..,
         alt((
             // Styled chunk has to go first, so that if there's no content
             // before the first prelude, we don't get an empty chunk
             styled_chunk.map(|(s, style)| (s, Some(style))),
-            // TODO explain (unless this gets deleted)
+            // Parse raw content until we hit either a styled chunk or the end
+            // of input. It'd be nice to use take_until, but hitting the
+            // prelude doesn't necessarily mean we hit a full styled chunk.
+            // This is pretty ugly but I'm tired and want to move on.
             repeat_till::<_, _, (), _, _, _, _>(
                 1..,
                 any,
@@ -273,7 +276,7 @@ impl ChunkTag {
     /// Push some content into a string buffer, wrapper with tags indicating its
     /// chunk type
     ///
-    /// The embedded tags can be parsed by [TextBuilder::from_tagged_text]
+    /// The embedded tags can be parsed by [TextBuilder::from_tagged]
     pub fn push_tagged_content(self, buf: &mut String, content: &str) {
         write!(
             buf,

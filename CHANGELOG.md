@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Rename `Copy as ...` actions to `Export as ...`
 - Move component-specific recipe actions (URL, query params, etc.) into their own submenus
 
+### Fixed
+
+- Fix crash in TUI when previewing a JSON body containing a streamable function call (e.g. `command()` or `file()`)
+
 ## [5.1.1] - 2026-02-26
 
 <!-- ANCHOR: changelog -->

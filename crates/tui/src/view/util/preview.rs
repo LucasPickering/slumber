@@ -373,8 +373,8 @@ impl Serialize for PreviewChunks {
 
 /// [Write] impl for injecting styling metadata into non-text serialized values
 ///
-/// This is a shim between the generic [Serializer] (JSON, YAML, etc.) and
-/// [TextBuilder]. The [Serialize] implementation of [PreviewValue] can't
+/// This is a shim between the generic [serde::Serializer] (JSON, YAML, etc.)
+/// and [TextBuilder]. The [Serialize] implementation of [PreviewValue] can't
 /// directly serialize styling metadata into non-string values, because the
 /// serialization formats don't support arbitrary text anywhere. This writer
 /// uses a thread-local to let the [Serialize] impl and this writer pass data

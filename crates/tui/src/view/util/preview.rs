@@ -6,21 +6,19 @@ use crate::view::util::preview::text_builder::{ChunkTag, TextBuilder};
 use async_trait::async_trait;
 use futures::future;
 use ratatui::text::Text;
-use serde::{Serialize, Serializer, ser::SerializeMap};
+use serde::Serialize;
 use slumber_core::{
     collection::ValueTemplate,
     util::json::{JsonTemplateError, YamlTemplateError},
 };
 use slumber_template::{
-    Context, LazyValue, RenderedChunk, RenderedChunks, StreamSource, Template,
-    Value,
+    Context, LazyValue, RenderedChunk, RenderedChunks, Template, Value,
 };
 use std::{
     borrow::Cow,
-    cell::{Cell, RefCell},
+    cell::Cell,
     fmt::Debug,
     io::{self, Write},
-    mem,
     str::FromStr,
 };
 
@@ -65,9 +63,7 @@ impl Preview for Template {
     ) -> Text<'static> {
         let chunks = self.render(context).await;
         // Stitch the output together into Text
-        let mut builder = TextBuilder::new();
-        builder.add_chunks(&chunks);
-        builder.build()
+        TextBuilder::from_chunks(&chunks).build()
     }
 }
 
@@ -101,7 +97,6 @@ impl Preview for JsonTemplate {
         &self,
         context: &Ctx,
     ) -> Text<'static> {
-        // TODO dedupe this with the yaml impl
         let value = PreviewValue::render(&self.0, context).await;
         let mut injector = StyleInjector::default();
         serde_json::to_writer_pretty(&mut injector, &value)
@@ -168,16 +163,23 @@ impl Preview for YamlTemplate {
 /// - The provenance of values (raw vs dynamic) is stored, so styling can be
 ///   applied appropriately
 ///
-/// TODO move these docs to a better spot. maybe a single wrapper fn?
-/// Rendering a [ValueTemplate] to [Text] is a 4-stage process:
+/// Previews are really complicated to render because we need to carry over
+/// styling information. It's done in several phases:
 ///
 /// 1. [ValueTemplate]: The unrendered template
 ///   1. Rendering
 /// 2. [PreviewValue]: The rendered value, with errors and provenance retained
-///   1. Serialization
+///   1. Serialization. Style information is serialized within the content so it
+///      can be parsed back out in the next step.
 /// 3. [String]: The serialized text (JSON, YAML, etc.)
-///   1. Text Construction
+///   1. Text construction & style parsing
 /// 4. [Text]: The styled text
+///
+/// This whole charade is necessary in order to re-use `serde_json`/`serde_yaml`
+/// for step 2->3. It seems like a lot of code (and it is), but it would be a
+/// lot worse to re-implement that serialization. This is also much more
+/// scalable, because each new serialization format only requires a small amount
+/// of new work, instead of having to write an entire formatter.
 ///
 /// The construction of this relies on a key fact:
 ///
@@ -209,8 +211,6 @@ enum PreviewValue {
     Raw(RawValue),
     /// A value computed dynamically from a template chunk
     Dynamic(Value),
-    /// A stream that will *not* be resolved; it will be displayed as its source
-    Stream(StreamSource),
 }
 
 impl PreviewValue {
@@ -242,7 +242,7 @@ impl PreviewValue {
             ValueTemplate::Object(object) => {
                 let entries =
                     future::join_all(object.iter().map(|(key, value)| async {
-                        let key = PreviewChunks::new(
+                        let key = PreviewChunks(
                             key.render(context).await.into_chunks(),
                         );
                         let value = Self::render(value, context).await;
@@ -261,24 +261,26 @@ impl PreviewValue {
     /// during serialization.
     fn unpack_chunks(chunks: RenderedChunks) -> Self {
         fn string(chunks: Vec<RenderedChunk>) -> PreviewValue {
-            PreviewValue::Raw(RawValue::String(PreviewChunks::new(chunks)))
+            PreviewValue::Raw(RawValue::String(PreviewChunks(chunks)))
         }
 
         match <[_; 1]>::try_from(chunks.into_chunks()) {
             Ok(chunks @ [RenderedChunk::Raw(_)]) => string(chunks.into()),
-            Ok([RenderedChunk::Dynamic(lazy)]) => match lazy {
-                LazyValue::Value(value) => PreviewValue::Dynamic(value),
-                LazyValue::Stream { source, .. } => {
-                    PreviewValue::Stream(source)
-                }
-                // I don't think this case is actually possible because we
-                // didn't unpack anywhere. Flaw in the type design!!
-                LazyValue::Nested(chunks) => PreviewValue::Raw(
-                    RawValue::String(PreviewChunks::new(chunks.into_chunks())),
-                ),
-            },
+            Ok([RenderedChunk::Dynamic(LazyValue::Value(value))]) => {
+                PreviewValue::Dynamic(value)
+            }
             // Error can't be unpacked because it has to be written as a string
-            Ok(chunks @ [RenderedChunk::Error(_)]) => string(chunks.into()),
+            Ok(
+                chunks @ [
+                    RenderedChunk::Dynamic(LazyValue::Stream { .. })
+                    | RenderedChunk::Error(_),
+                ],
+            ) => string(chunks.into()),
+            // I don't think this case is actually possible because we
+            // didn't unpack anywhere. Flaw in the type design!!
+            Ok([RenderedChunk::Dynamic(LazyValue::Nested(chunks))]) => {
+                string(chunks.into_chunks())
+            }
             // There's multiple chunks, we have to stitch them together
             Err(chunks) => string(chunks),
         }
@@ -292,21 +294,16 @@ impl Serialize for PreviewValue {
     {
         match self {
             PreviewValue::Raw(raw_value) => raw_value.serialize(serializer),
-            PreviewValue::Dynamic(value) => StyleInjector::with_style(
+            // Tag the entire value as dynamic
+            PreviewValue::Dynamic(value) => StyleInjector::with_tag(
                 || value.serialize(serializer),
-                ChunkTag::Dynamic,
-            ),
-            // TODO should this really be its own variant?
-            PreviewValue::Stream(source) => StyleInjector::with_style(
-                // TODO format differently
-                || source.to_string().serialize(serializer),
                 ChunkTag::Dynamic,
             ),
         }
     }
 }
 
-/// [Value] with provenance for dynamic values
+/// [Value] that was defined literally, but may contain dynamic values within
 ///
 /// This is mutually recursive with [PreviewValue].
 #[derive(Serialize)]
@@ -320,43 +317,15 @@ enum RawValue {
     Array(Vec<PreviewValue>),
     /// Object is stored as a list instead of map because the key is not
     /// hashable, and we don't care about lookup
-    #[serde(serialize_with = "serialize_object")]
+    #[serde(serialize_with = "slumber_util::serialize_mapping")]
     Object(Vec<(PreviewChunks, PreviewValue)>),
-}
-
-/// TODO move to util crate
-fn serialize_object<S>(
-    object: &Vec<(PreviewChunks, PreviewValue)>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut map = serializer.serialize_map(Some(object.len()))?;
-    for (k, v) in object {
-        map.serialize_entry(k, v)?;
-    }
-    map.end()
 }
 
 /// A wrapper of rendered chunks, ready to be serialized
 ///
-/// Converting chunks to text requires an owned [RenderedChunk], but
-/// serialization always operates on references because it's meant to be
-/// repeatable. In our case, we know each preview value will only be serialized
-/// once. The first serialization pass will consume the owned chunks, and
-/// subsequent attempts to serialize will panic.
-///
-/// TODO explain inline styling
-///
-/// TODO eliminate need for owned value
-struct PreviewChunks(RefCell<Option<Vec<RenderedChunk>>>);
-
-impl PreviewChunks {
-    fn new(chunks: Vec<RenderedChunk>) -> Self {
-        Self(RefCell::new(Some(chunks)))
-    }
-}
+/// This injects inline style information into the serialized text, which will
+/// be parsed by [TextBuilder].
+struct PreviewChunks(Vec<RenderedChunk>);
 
 impl Serialize for PreviewChunks {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -364,11 +333,9 @@ impl Serialize for PreviewChunks {
         S: serde::Serializer,
     {
         // Combine the chunks into a single string
-        let chunks = mem::take(&mut *self.0.borrow_mut())
-            .expect("PreviewChunks cannot be serialized more than once");
         let mut content = String::new();
-        for chunk in &chunks {
-            let chunk_kind = match &chunk {
+        for chunk in &self.0 {
+            let chunk_kind = match chunk {
                 RenderedChunk::Raw(_) => None,
                 RenderedChunk::Dynamic(_) => Some(ChunkTag::Dynamic),
                 RenderedChunk::Error(_) => Some(ChunkTag::Error),
@@ -387,7 +354,15 @@ impl Serialize for PreviewChunks {
     }
 }
 
-/// TODO
+/// [Write] impl for injecting styling metadata into non-text serialized values
+///
+/// This is a shim between the generic [Serializer] (JSON, YAML, etc.) and
+/// [TextBuilder]. The [Serialize] implementation of [PreviewValue] can't
+/// directly serialize styling metadata into non-string values, because the
+/// serialization formats don't support arbitrary text anywhere. This writer
+/// uses a thread-local to let the [Serialize] impl and this writer pass data
+/// *around* the serializer. It's then injected into the output byte stream,
+/// which is subsequently parsed by [TextBuilder] and reconstructed into styles.
 #[derive(Default)]
 struct StyleInjector {
     buffer: String,
@@ -395,13 +370,19 @@ struct StyleInjector {
 
 impl StyleInjector {
     thread_local! {
-        /// TODO
         static VALUE_TAG: Cell<Option<ChunkTag>> = Cell::default();
     }
 
-    /// TODO
-    /// TODO rename
-    fn with_style<T>(f: impl FnOnce() -> T, chunk_kind: ChunkTag) -> T {
+    /// Call a closure with the thread-local value tag set
+    ///
+    /// Use this when serializing a stylized value. This uses the thread-local
+    /// as an out-of-band channel to communicate from the [Serialize] impl to
+    /// the writer that the value needs to be serialized within a [ChunkTag].
+    ///
+    /// This is used for non-string values, where the serialization format
+    /// doesn't support arbitrary text (e.g. wrapping an int or entire object
+    /// with styling).
+    fn with_tag<T>(f: impl FnOnce() -> T, chunk_kind: ChunkTag) -> T {
         Self::VALUE_TAG.set(Some(chunk_kind));
         let out = f();
         Self::VALUE_TAG.set(None);
@@ -411,7 +392,7 @@ impl StyleInjector {
 
 impl Write for StyleInjector {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let content = str::from_utf8(buf).expect("TODO");
+        let content = str::from_utf8(buf).expect("Text preview must be UTF-8");
         if let Some(tag) = Self::VALUE_TAG.get() {
             tag.push_tagged_content(&mut self.buffer, content);
         } else {
@@ -490,9 +471,8 @@ mod tests {
         let context = TemplateContext::factory(profile);
 
         let chunks = template.render(&context).await;
-        let mut builder = TextBuilder::new();
-        builder.add_chunks(&chunks);
-        assert_eq!(builder.build(), Text::from(expected));
+        let actual = TextBuilder::from_chunks(&chunks).build();
+        assert_eq!(actual, Text::from(expected));
     }
 
     /// Preview raw bodies. This tests:
@@ -586,12 +566,12 @@ mod tests {
         // doesn't cause any off-by-ones
         json!("dynamic: {{ 'with \" quote' }}"),
         line(vec![
-            "\"dynamic: ".into(), rendered(r#"with \" quote"#), "\"".into(),
+            "\"dynamic: ".into(), rendered(r#"with \" quote"#), quote(),
         ]),
     )]
     #[case::error(
         // Error can't be unpacked because it wouldn't be valid JSON
-        json!("{{ w }}"), line(vec!["\"".into(), error("Error"), "\"".into()]),
+        json!("{{ w }}"), line(vec![quote(), error("Error"), quote()]),
     )]
     #[case::multi_chunk_error(
         json!("error? {{ w }} error!"),
@@ -641,21 +621,25 @@ mod tests {
             vec![
                 r#"    "e": "error "#.into(),
                 error("Error"),
-                "\"".into(),
+                quote(),
             ].into(),
             r#"  }"#.into(),
             r#"}"#.into(),
         ].into(),
     )]
-    // JSON doesn't support streaming, so streams are resolved to strings
-    #[ignore = "Stream preview is broken"]
+    // Really these streams should be resolved because JSON bodies don't support
+    // streaming, but I got lazy here. Maybe I can fix this if I ever refactor
+    // the rendered output types
     #[case::stream(
-        json!("file content: {{ file('first.txt') }}"),
-        line(vec!["\"file content: ".into(), rendered("first"), "\"".into()])
+        json!("stream: {{ command(['echo', 'test']) }}"),
+        line(vec![
+            "\"stream: ".into(), rendered("<command `echo test`>"), quote(),
+        ]),
     )]
-    #[ignore = "Stream preview is broken"]
+    // Stream does *not* get unpacked
     #[case::stream_unpacked(
-        json!("{{ file('first.txt') }}"), rendered("\"first\"").into(),
+        json!("{{ command(['echo', 'test']) }}"),
+        line(vec![quote(), rendered("<command `echo test`>"), quote()])
     )]
     #[case::nested_dynamic(
         json!({ "double_dynamic": "{{ object }}" }),
@@ -688,7 +672,13 @@ mod tests {
         assert_eq!(text, expected);
     }
 
-    // TODO test YAML
+    // TODO test yaml display
+    // TODO test yaml preview
+
+    /// An unstyled `"`
+    fn quote() -> Span<'static> {
+        "\"".into()
+    }
 
     /// Style some text as rendered
     fn rendered(text: &str) -> Span<'_> {

@@ -1,5 +1,5 @@
 use futures::future;
-use serde::{Serialize, Serializer, ser::SerializeMap};
+use serde::Serialize;
 use slumber_template::{Context, RenderError, RenderedChunks, Template, Value};
 
 /// A templated [Value]
@@ -22,7 +22,7 @@ pub enum ValueTemplate {
     // the keys are templates, which aren't hashable. We never do key lookups
     // on this so there's no need for a map anyway.
     #[from(ignore)]
-    #[serde(serialize_with = "serialize_object")]
+    #[serde(serialize_with = "slumber_util::serialize_mapping")]
     #[cfg_attr(
         feature = "schema",
         schemars(with = "std::collections::HashMap<Template, Self>")
@@ -119,22 +119,4 @@ impl<T: Into<ValueTemplate>> From<Vec<(&str, T)>> for ValueTemplate {
                 .collect(),
         )
     }
-}
-
-/// Serialize a [ValueTemplate] object as a mapping
-///
-/// This is needed because the derived impl serializes as a sequence instead of
-/// a map.
-fn serialize_object<S>(
-    object: &Vec<(Template, ValueTemplate)>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut map = serializer.serialize_map(Some(object.len()))?;
-    for (k, v) in object {
-        map.serialize_entry(k, v)?;
-    }
-    map.end()
 }

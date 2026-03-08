@@ -24,43 +24,19 @@ use winnow::{
 ///
 /// See ratatui docs: <https://docs.rs/ratatui/latest/ratatui/text/index.html>
 ///
-/// TODO
+/// In addition to joining regular template chunks, this can also parse out
+/// style metadata from serialized JSON/YAML/etc. data. See [Self::from_tagged].
 #[derive(Debug)]
 pub struct TextBuilder {
     lines: Vec<Line<'static>>,
 }
 
 impl TextBuilder {
-    /// TODO
-    pub fn from_tagged(s: &str) -> Self {
-        // TODO explain
-        let chunks = parse_tagged_chunks(s);
-        let mut builder = Self::new();
-
-        let styles = ViewContext::styles().template_preview;
-        for (content, chunk_style) in chunks {
-            let style = match chunk_style {
-                Some(ChunkTag::Dynamic) => styles.dynamic,
-                Some(ChunkTag::Error) => styles.error,
-                None => Style::default(),
-            };
-
-            builder.add_text_styled(content, style);
-        }
-
-        builder
-    }
-
-    pub fn new() -> Self {
-        Self {
-            lines: vec![Line::default()],
-        }
-    }
-
-    /// Add rendered chunks to the text
+    /// Build preview text from a list of rendered [Template] chunks
     ///
     /// For [Template], this is the only thing required to build the preview.
-    pub fn add_chunks(&mut self, chunks: &RenderedChunks) {
+    pub fn from_chunks(chunks: &RenderedChunks) -> Self {
+        let mut builder = Self::new();
         let styles = ViewContext::styles();
 
         // Each chunk will get its own styling, but we can't just make each
@@ -78,7 +54,39 @@ impl TextBuilder {
             };
             let chunk_text = Self::get_chunk_text(chunk);
 
-            self.add_text_styled(&chunk_text, style);
+            builder.add_text_styled(&chunk_text, style);
+        }
+
+        builder
+    }
+
+    /// Parse styling metadata from a serialized (JSON/YAML/etc.) string
+    ///
+    /// See [PreviewValue] for detailed information about this process. This
+    /// function is the final step, loading style metadata from a serialized
+    /// string and building user-facing text from it.
+    pub fn from_tagged(s: &str) -> Self {
+        // Parse out style metadata from the text
+        let chunks = parse_tagged_chunks(s);
+        let mut builder = Self::new();
+
+        let styles = ViewContext::styles().template_preview;
+        for (content, chunk_style) in chunks {
+            let style = match chunk_style {
+                Some(ChunkTag::Dynamic) => styles.dynamic,
+                Some(ChunkTag::Error) => styles.error,
+                None => Style::default(),
+            };
+
+            builder.add_text_styled(content, style);
+        }
+
+        builder
+    }
+
+    fn new() -> Self {
+        Self {
+            lines: vec![Line::default()],
         }
     }
 
@@ -86,7 +94,7 @@ impl TextBuilder {
     ///
     /// The text will be split on newline as appropriate, but *no* additional
     /// line breaks will be added.
-    pub fn add_text_styled(&mut self, text: &str, style: Style) {
+    fn add_text_styled(&mut self, text: &str, style: Style) {
         // The first line should extend the final line of the current text,
         // because there isn't necessarily a line break between chunks
         let mut lines = text.lines();
@@ -138,8 +146,6 @@ impl TextBuilder {
 
     /// Get the renderable text for a chunk of a template. This will clone the
     /// text out of the chunk, because it's all stashed behind Arcs
-    ///
-    /// TODO make private?
     pub fn get_chunk_text(chunk: &RenderedChunk) -> String {
         match chunk {
             RenderedChunk::Raw(text) => text.deref().into(),
@@ -150,7 +156,7 @@ impl TextBuilder {
                     // template as well. This is simpler and prevents giant
                     // binary blobs from getting rendered in.
                     value
-                        .clone() // TODO remove clone
+                        .clone() // This is a bit ugly but I'm tired right now
                         .try_into_string()
                         .unwrap_or_else(|_| "<binary>".into())
                 }
@@ -245,7 +251,12 @@ fn parse_tagged_chunks(input: &str) -> Vec<(&str, Option<ChunkTag>)> {
     })
 }
 
-/// TODO
+/// Metadata attached to a chunk of preview text
+///
+/// This describes how the chunk should be styled when rendered in the TUI. It's
+/// serialized as special recognizable text within the overall rendered content,
+/// and parsed out by [TextBuilder::from_tagged] to be converted into Ratatui
+/// styles.
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ChunkTag {

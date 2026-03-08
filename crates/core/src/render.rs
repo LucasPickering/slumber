@@ -19,7 +19,6 @@ use crate::{
         functions::RequestTrigger,
         util::{FieldCache, FieldCacheOutcome},
     },
-    test_util::by_id,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -330,8 +329,11 @@ impl slumber_util::Factory for TemplateContext {
 }
 
 /// Initialize template context with a selected profile
+#[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory<Profile> for TemplateContext {
     fn factory(profile: Profile) -> Self {
+        use crate::test_util::by_id;
+
         let profile_id = profile.id.clone();
         let collection = Collection {
             profiles: by_id([profile]),

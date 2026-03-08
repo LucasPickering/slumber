@@ -16,7 +16,9 @@ pub mod yaml;
 pub use test_util::*;
 
 use itertools::Itertools;
-use serde::{Deserialize, de::Error as _};
+use serde::{
+    Deserialize, Serialize, Serializer, de::Error as _, ser::SerializeMap,
+};
 use std::{
     error::Error,
     fmt::{self, Debug, Display},
@@ -290,6 +292,26 @@ impl Display for DurationUnit {
             Self::Day => write!(f, "d"),
         }
     }
+}
+
+/// Serialize a list of tuples as a mapping
+///
+/// This is used in a few spots where data is stored internally as `Vec<(K, V)>`
+/// but needs to serialize as a mapping, rather than a sequence.
+pub fn serialize_mapping<S, K, V>(
+    input: &Vec<(K, V)>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    K: Serialize,
+    V: Serialize,
+{
+    let mut map = serializer.serialize_map(Some(input.len()))?;
+    for (k, v) in input {
+        map.serialize_entry(k, v)?;
+    }
+    map.end()
 }
 
 #[cfg(test)]

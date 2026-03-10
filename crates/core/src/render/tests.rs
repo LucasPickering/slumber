@@ -17,7 +17,9 @@ use futures::{StreamExt, TryStreamExt};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{Expression, Literal, StreamSource, Template, Value};
+use slumber_template::{
+    Expression, LazyValue, Literal, StreamSource, Template, Value,
+};
 use slumber_util::{
     Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
     temp_dir,
@@ -169,10 +171,9 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     let template = Template::function_call("boolean", [input], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await,
+            .try_into_value(),
         Ok(Value::Boolean(expected)),
     );
 }
@@ -404,10 +405,9 @@ async fn test_float(
     let template = Template::function_call("float", [input], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await,
+            .try_into_value(),
         expected.map(Value::from),
     );
 }
@@ -434,8 +434,7 @@ async fn test_index(
         template
             .render(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await
+            .try_into_value()
             .unwrap(),
         expected.into(),
     );
@@ -465,10 +464,9 @@ async fn test_integer(
     let template = Template::function_call("integer", [input], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await,
+            .try_into_value(),
         expected.map(Value::from),
     );
 }
@@ -563,10 +561,9 @@ async fn test_jq(
     );
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await,
+            .try_into_value(),
         expected,
     );
 }
@@ -586,10 +583,9 @@ async fn test_json_parse(
     let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await,
+            .try_into_value(),
         expected,
     );
 }
@@ -651,10 +647,9 @@ async fn test_jsonpath(
     );
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await,
+            .try_into_value(),
         expected,
     );
 }
@@ -1013,10 +1008,7 @@ async fn test_select(
         prompter: Box::new(TestSelectPrompter::new(select.into_iter())),
         ..TemplateContext::factory(())
     };
-    assert_result(
-        template.render(&context).await.try_collect_value().await,
-        expected,
-    );
+    assert_result(template.render(&context).await.try_into_value(), expected);
 }
 
 /// `sensitive()`
@@ -1069,8 +1061,7 @@ async fn test_slice(
         template
             .render(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await
+            .try_into_value()
             .unwrap(),
         expected,
     );
@@ -1102,10 +1093,9 @@ async fn test_split(
     );
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_collect_value()
-            .await,
+            .try_into_value(),
         expected.map(Value::from),
     );
 }
@@ -1232,7 +1222,7 @@ async fn test_stream_chunks(temp_dir: TempDir) {
     // Stream init succeeds even though the files don't exist yet, because they
     // aren't loaded until the respective chunk is loaded
     let mut stream = template
-        .render(&context.stream())
+        .render::<_, LazyValue>(&context.stream())
         .await
         .try_into_stream()
         .unwrap();

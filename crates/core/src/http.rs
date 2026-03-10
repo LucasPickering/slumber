@@ -65,7 +65,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{RenderError, StreamSource, Template};
+use slumber_template::{RenderError, StreamSource, Template, Value};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, hash::Hash};
 use tracing::{Instrument, error, info, info_span};
@@ -765,11 +765,11 @@ impl Recipe {
             | (Some(RecipeBody::Stream(_)), Some(BodyOverride::Json(json)))
             | (Some(RecipeBody::Json(_)), Some(BodyOverride::Json(json))) => {
                 // Render the value
-                let rendered_value = async {
-                    json.render(context).await.try_collect_value().await
-                }
-                .await
-                .map_err(RequestBuildErrorKind::BodyRender)?;
+                let rendered_value = json
+                    .render::<_, Value>(context)
+                    .await
+                    .try_into_value()
+                    .map_err(RequestBuildErrorKind::BodyRender)?;
                 let json = value_to_json(rendered_value);
                 Ok(Some(RenderedBody::Json(json)))
             }

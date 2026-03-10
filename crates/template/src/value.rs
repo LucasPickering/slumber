@@ -57,6 +57,18 @@ impl Value {
         }
     }
 
+    /// TODO
+    #[must_use = "TODO"]
+    pub fn decode_bytes(self) -> Self {
+        match self {
+            Self::Bytes(bytes) => match String::from_utf8(bytes.into()) {
+                Ok(s) => Self::String(s),
+                Err(error) => Self::Bytes(error.into_bytes().into()),
+            },
+            _ => self,
+        }
+    }
+
     /// Attempt to convert this value to a string. This can fail only if the
     /// value contains non-UTF-8 bytes, or if it is a collection that contains
     /// non-UTF-8 bytes.
@@ -175,6 +187,8 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
+///
+/// TODO rename to ValueStream?
 #[derive(derive_more::Debug)]
 pub enum LazyValue {
     /// A pre-resolved value
@@ -204,6 +218,7 @@ impl LazyValue {
     }
 
     /// Is this a [LazyValue::Stream] or a nested value with a stream in it?
+    /// TODO get rid of this
     pub fn has_stream(&self) -> bool {
         match self {
             LazyValue::Value(_) => false,
@@ -239,6 +254,48 @@ pub enum StreamSource {
     ///
     /// We toss the original source(s) because they aren't needed anywhere.
     Compound,
+}
+
+/// TODO
+///
+/// TODO rename
+pub trait RenderValue: Sized {
+    /// TODO
+    fn from_value(value: Value) -> Self;
+
+    /// TODO
+    fn into_lazy(self) -> LazyValue;
+
+    /// TODO
+    async fn from_resolve(lazy: LazyValue) -> Result<Self, RenderError>;
+}
+
+impl RenderValue for Value {
+    fn from_value(value: Value) -> Self {
+        value
+    }
+
+    async fn from_resolve(lazy: LazyValue) -> Result<Self, RenderError> {
+        lazy.resolve().await
+    }
+
+    fn into_lazy(self) -> LazyValue {
+        LazyValue::Value(self)
+    }
+}
+
+impl RenderValue for LazyValue {
+    fn from_value(value: Value) -> Self {
+        Self::Value(value)
+    }
+
+    async fn from_resolve(lazy: LazyValue) -> Result<Self, RenderError> {
+        Ok(lazy)
+    }
+
+    fn into_lazy(self) -> LazyValue {
+        self
+    }
 }
 
 /// Convert [Value] to a type fallibly

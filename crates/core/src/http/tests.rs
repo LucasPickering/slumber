@@ -402,7 +402,7 @@ async fn test_authentication(
     // JSON data is loaded as a string and NOT unpacked. file() returns bytes
     // which automatically get interpreted as a string.
     RecipeBody::json(json!(
-        "{{ file(concat([test_data_dir, '/data.json'])) | trim() }}"
+        "{{ file(concat([test_data_dir, '/data.json'])) }}"
     )).unwrap(),
     None,
     Some("application/json"),

@@ -61,11 +61,14 @@ impl Preview for Template {
         &self,
         context: &Ctx,
     ) -> Text<'static> {
-        let chunks = self.render(context).await;
+        // TODO how support stream here?
+        let chunks: RenderedChunks<Value> = self.render(context).await;
         // Stitch the output together into Text
         TextBuilder::from_chunks(&chunks).build()
     }
 }
+
+// TODO should body/profile templates be moved back to their files?
 
 /// A previewable wrapper of [ValueTemplate] for JSON bodies
 #[derive(Clone, Debug, PartialEq)]
@@ -97,6 +100,7 @@ impl Preview for JsonTemplate {
         &self,
         context: &Ctx,
     ) -> Text<'static> {
+        // JSON bodies don't support streams
         let value = PreviewValue::render(&self.0, context).await;
         let mut injector = StyleInjector::default();
         serde_json::to_writer_pretty(&mut injector, &value)
@@ -146,7 +150,8 @@ impl Preview for YamlTemplate {
         &self,
         context: &Ctx,
     ) -> Text<'static> {
-        let value = PreviewValue::render(&self.0, context).await;
+        // Profile values *do* support streams
+        let value = PreviewValue::render_streamable(&self.0, context).await;
         let mut injector = StyleInjector::default();
         serde_yaml::to_writer(&mut injector, &value)
             .expect("PreviewValue serialization cannot fail");
@@ -234,7 +239,7 @@ impl PreviewValue {
     async fn render<Ctx: Context>(
         template: &ValueTemplate,
         context: &Ctx,
-    ) -> PreviewValue {
+    ) -> Self {
         match template {
             ValueTemplate::Null => PreviewValue::Raw(RawValue::Null),
             ValueTemplate::Boolean(b) => {
@@ -245,8 +250,13 @@ impl PreviewValue {
             }
             ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
             ValueTemplate::String(template) => {
-                let chunks = template.render(context).await;
-                Self::unpack_chunks(chunks)
+                let chunks = template.render::<_, Value>(context).await;
+                match chunks.unpack() {
+                    Ok(value) => PreviewValue::Dynamic(value.decode_bytes()),
+                    Err(chunks) => PreviewValue::Raw(RawValue::String(
+                        PreviewChunks(chunks.into_chunks()),
+                    )),
+                }
             }
             ValueTemplate::Array(array) => {
                 let items = future::join_all(
@@ -270,30 +280,74 @@ impl PreviewValue {
         }
     }
 
-    /// Unpack a list of chunks into a preview value
-    ///
-    /// If the list is a single chunk, unpack its value. Otherwise, store the
-    /// list of chunks together so they can be concatenated (with styling)
-    /// during serialization.
-    fn unpack_chunks(chunks: RenderedChunks) -> Self {
-        fn string(chunks: Vec<RenderedChunk>) -> PreviewValue {
-            PreviewValue::Raw(RawValue::String(PreviewChunks(chunks)))
+    /// TODO
+    async fn render_streamable<Ctx: Context>(
+        template: &ValueTemplate,
+        context: &Ctx,
+    ) -> Self {
+        /// TODO
+        fn lazy_to_value(lazy: LazyValue) -> Value {
+            match lazy {
+                LazyValue::Value(value) => value,
+                LazyValue::Stream { source, .. } => {
+                    format!("<{source}>").into()
+                }
+            }
         }
 
-        match <[_; 1]>::try_from(chunks.into_chunks()) {
-            Ok(chunks @ [RenderedChunk::Raw(_)]) => string(chunks.into()),
-            Ok([RenderedChunk::Dynamic(LazyValue::Value(value))]) => {
-                PreviewValue::Dynamic(value)
+        // TODO dedupe with render()
+        match template {
+            ValueTemplate::Null => PreviewValue::Raw(RawValue::Null),
+            ValueTemplate::Boolean(b) => {
+                PreviewValue::Raw(RawValue::Boolean(*b))
             }
-            // Error can't be unpacked because it has to be written as a string
-            Ok(
-                chunks @ [
-                    RenderedChunk::Dynamic(LazyValue::Stream { .. })
-                    | RenderedChunk::Error(_),
-                ],
-            ) => string(chunks.into()),
-            // There's multiple chunks, we have to stitch them together
-            Err(chunks) => string(chunks),
+            ValueTemplate::Integer(i) => {
+                PreviewValue::Raw(RawValue::Integer(*i))
+            }
+            ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
+            ValueTemplate::String(template) => {
+                let chunks = template.render::<_, LazyValue>(context).await;
+                match chunks.unpack() {
+                    Ok(lazy) => PreviewValue::Dynamic(lazy_to_value(lazy)),
+                    // TODO explain
+                    Err(chunks) => {
+                        let chunks = chunks
+                            .into_iter()
+                            .map(|chunk| match chunk {
+                                RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
+                                RenderedChunk::Dynamic(lazy) => {
+                                    RenderedChunk::Dynamic(lazy_to_value(lazy))
+                                }
+                                RenderedChunk::Error(error) => {
+                                    RenderedChunk::Error(error)
+                                }
+                            })
+                            .collect();
+                        PreviewValue::Raw(RawValue::String(PreviewChunks(
+                            chunks,
+                        )))
+                    }
+                }
+            }
+            ValueTemplate::Array(array) => {
+                let items = future::join_all(
+                    array.iter().map(|value| Self::render(value, context)),
+                )
+                .await;
+                PreviewValue::Raw(RawValue::Array(items))
+            }
+            ValueTemplate::Object(object) => {
+                let entries =
+                    future::join_all(object.iter().map(|(key, value)| async {
+                        let key = PreviewChunks(
+                            key.render(context).await.into_chunks(),
+                        );
+                        let value = Self::render(value, context).await;
+                        (key, value)
+                    }))
+                    .await;
+                PreviewValue::Raw(RawValue::Object(entries))
+            }
         }
     }
 }
@@ -337,7 +391,7 @@ enum RawValue {
 /// This injects inline style information into the serialized text, which will
 /// be parsed by [TextBuilder].
 #[derive(Debug)]
-struct PreviewChunks(Vec<RenderedChunk>);
+struct PreviewChunks(Vec<RenderedChunk<Value>>);
 
 impl Serialize for PreviewChunks {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -482,8 +536,7 @@ mod tests {
         };
         let context = TemplateContext::factory(profile);
 
-        let chunks = template.render(&context).await;
-        let actual = TextBuilder::from_chunks(&chunks).build();
+        let actual = template.render_preview(&context).await;
         assert_eq!(actual, Text::from(expected));
     }
 
@@ -639,19 +692,16 @@ mod tests {
             r#"}"#.into(),
         ].into(),
     )]
-    // Really these streams should be resolved because JSON bodies don't support
-    // streaming, but I got lazy here. Maybe I can fix this if I ever refactor
-    // the rendered output types
+    // JSON bodies don't support streaming, so these are eaglery evaluated
     #[case::stream(
-        json!("stream: {{ command(['echo', 'test']) }}"),
-        line(vec![
-            "\"stream: ".into(), rendered("<command `echo test`>"), quote(),
-        ]),
+        json!("stream: {{ command(['echo', '-n', 'test']) }}"),
+        line(vec!["\"stream: ".into(), rendered("test"), quote()]),
     )]
-    // Stream does *not* get unpacked
+    // Stream does not get unpacked as an array of bytes, it's converted to a
+    // string
     #[case::stream_unpacked(
-        json!("{{ command(['echo', 'test']) }}"),
-        line(vec![quote(), rendered("<command `echo test`>"), quote()])
+        json!("{{ command(['echo', '-n', 'test']) }}"),
+        rendered(r#""test""#).into()
     )]
     #[case::nested_dynamic(
         json!({ "double_dynamic": "{{ object }}" }),
@@ -773,16 +823,12 @@ mod tests {
             vec!["  e: error ".into(), error("Error")].into(),
         ].into(),
     )]
-    // Really these streams should be resolved because JSON bodies don't support
-    // streaming, but I got lazy here. Maybe I can fix this if I ever refactor
-    // the rendered output types
     #[case::stream(
         json!("stream: {{ command(['echo', 'test']) }}"),
         line(vec![
             "'stream: ".into(), rendered("<command `echo test`>"), "'".into(),
         ]),
     )]
-    // Stream does *not* get unpacked
     #[case::stream_unpacked(
         json!("{{ command(['echo', 'test']) }}"),
         rendered("<command `echo test`>").into()

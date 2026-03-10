@@ -3,7 +3,7 @@ use ratatui::{
     style::Style,
     text::{Line, Span, Text},
 };
-use slumber_template::{LazyValue, RenderedChunk, RenderedChunks};
+use slumber_template::{RenderedChunk, RenderedChunks, Value};
 use std::{
     fmt::{Debug, Write as _},
     mem,
@@ -35,7 +35,7 @@ impl TextBuilder {
     /// Build preview text from a list of rendered `Template` chunks
     ///
     /// For `Template`, this is the only thing required to build the preview.
-    pub fn from_chunks(chunks: &RenderedChunks) -> Self {
+    pub fn from_chunks(chunks: &RenderedChunks<Value>) -> Self {
         let mut builder = Self::new();
         let styles = ViewContext::styles();
 
@@ -146,24 +146,19 @@ impl TextBuilder {
 
     /// Get the renderable text for a chunk of a template. This will clone the
     /// text out of the chunk, because it's all stashed behind Arcs
-    pub fn get_chunk_text(chunk: &RenderedChunk) -> String {
+    pub fn get_chunk_text(chunk: &RenderedChunk<Value>) -> String {
         match chunk {
             RenderedChunk::Raw(text) => text.deref().into(),
-            RenderedChunk::Dynamic(lazy) => match lazy {
-                LazyValue::Value(value) => {
-                    // We could potentially use MaybeStr to show binary data as
-                    // hex, but that could get weird if there's text data in the
-                    // template as well. This is simpler and prevents giant
-                    // binary blobs from getting rendered in.
-                    value
-                        .clone() // This is a bit ugly but I'm tired right now
-                        .try_into_string()
-                        .unwrap_or_else(|_| "<binary>".into())
-                }
-                LazyValue::Stream { source, .. } => {
-                    format!("<{source}>")
-                }
-            },
+            RenderedChunk::Dynamic(value) => {
+                // We could potentially use MaybeStr to show binary data as
+                // hex, but that could get weird if there's text data in the
+                // template as well. This is simpler and prevents giant
+                // binary blobs from getting rendered in.
+                value
+                    .clone() // This is a bit ugly but I'm tired right now
+                    .try_into_string()
+                    .unwrap_or_else(|_| "<binary>".into())
+            }
             // There's no good way to render the entire error inline
             RenderedChunk::Error(_) => "Error".into(),
         }

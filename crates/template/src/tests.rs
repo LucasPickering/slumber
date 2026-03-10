@@ -1,6 +1,6 @@
 use crate::{
     Arguments, Context, Identifier, LazyValue, RenderError, Template, Value,
-    value::StreamSource,
+    value::{RenderValue, StreamSource},
 };
 use bytes::{Bytes, BytesMut};
 use futures::{StreamExt, TryFutureExt, TryStreamExt};
@@ -30,10 +30,9 @@ use tokio_util::io::ReaderStream;
 async fn test_expression(#[case] template: Template, #[case] expected: Value) {
     assert_eq!(
         template
-            .render(&TestContext)
+            .render::<_, Value>(&TestContext)
             .await
-            .try_collect_value()
-            .await
+            .try_into_value()
             .unwrap(),
         expected
     );
@@ -60,8 +59,7 @@ async fn test_render_value(
         template
             .render(&TestContext)
             .await
-            .try_collect_value()
-            .await
+            .try_into_value()
             .unwrap(),
         expected
     );
@@ -90,7 +88,7 @@ async fn test_render_stream(
 ) {
     // Join into a stream, then collect the stream
     let stream = template
-        .render(&TestContext)
+        .render::<_, LazyValue>(&TestContext)
         .await
         .try_into_stream()
         .unwrap();
@@ -104,7 +102,7 @@ async fn test_render_stream(
 async fn test_render_stream_chunk_error() {
     let template: Template = "{{ unknown() }}".into();
     let result = template
-        .render(&TestContext)
+        .render::<_, LazyValue>(&TestContext)
         .await
         .try_into_stream()
         .map(|_| "stream");
@@ -117,7 +115,7 @@ async fn test_render_stream_chunk_error() {
 async fn test_render_stream_collect_error() {
     let template: Template = "{{ file('fake.txt') }}".into();
     let stream = template
-        .render(&TestContext)
+        .render::<_, LazyValue>(&TestContext)
         .await
         .try_into_stream()
         .unwrap();
@@ -228,10 +226,13 @@ async fn test_function_error(
 struct TestContext;
 
 impl Context for TestContext {
-    async fn get_field(
+    async fn get_field<V>(
         &self,
         identifier: &Identifier,
-    ) -> Result<LazyValue, RenderError> {
+    ) -> Result<V, RenderError>
+    where
+        V: RenderValue,
+    {
         match identifier.as_str() {
             "name" => Ok("Mike".into()),
             "array" => Ok(vec!["a", "b", "c"].into()),
@@ -240,24 +241,28 @@ impl Context for TestContext {
                 field: identifier.clone(),
             }),
         }
+        .map(V::from_value)
     }
 
-    async fn call(
+    async fn call<V>(
         &self,
         function_name: &Identifier,
         mut arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError> {
+    ) -> Result<V, RenderError>
+    where
+        V: RenderValue,
+    {
         match function_name.as_str() {
             "identity" => {
                 let value: Value = arguments.pop_position()?;
                 arguments.ensure_consumed()?;
-                Ok(value.into())
+                Ok(V::from_value(value))
             }
             "add" => {
                 let a: i64 = arguments.pop_position()?;
                 let b: i64 = arguments.pop_position()?;
                 arguments.ensure_consumed()?;
-                Ok((a + b).into())
+                Ok(V::from_value((a + b).into()))
             }
             "concat" => {
                 let mut a: String = arguments.pop_position()?;
@@ -266,9 +271,11 @@ impl Context for TestContext {
                 arguments.ensure_consumed()?;
                 a.push_str(&b);
                 if reverse {
-                    Ok(a.chars().rev().collect::<String>().into())
+                    Ok(V::from_value(
+                        a.chars().rev().collect::<String>().into(),
+                    ))
                 } else {
-                    Ok(a.into())
+                    Ok(V::from_value(a.into()))
                 }
             }
             "file" => {
@@ -281,10 +288,11 @@ impl Context for TestContext {
                     .try_flatten_stream()
                     .map_err(RenderError::other)
                     .boxed();
-                Ok(LazyValue::Stream {
+                V::from_resolve(LazyValue::Stream {
                     source: StreamSource::File { path },
                     stream,
                 })
+                .await
             }
             _ => Err(RenderError::FunctionUnknown),
         }

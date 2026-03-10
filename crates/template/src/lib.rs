@@ -19,11 +19,12 @@ pub use error::{
 };
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
 pub use value::{
-    Arguments, FunctionOutput, LazyValue, StreamSource, TryFromValue, Value,
+    Arguments, FunctionOutput, LazyValue, RenderValue, StreamSource,
+    TryFromValue, Value,
 };
 
 use bytes::{Bytes, BytesMut};
-use futures::{Stream, StreamExt, TryStreamExt, future, stream};
+use futures::{Stream, StreamExt, TryFutureExt, TryStreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
@@ -38,17 +39,25 @@ pub trait Context: Sized {
     /// and be `async`. For example, fields can be loaded from a map of nested
     /// templates, in which case the nested template would need to be rendered
     /// before this can be returned.
-    async fn get_field(
+    ///
+    /// TODO explain type param
+    async fn get_field<V>(
         &self,
         identifier: &Identifier,
-    ) -> Result<LazyValue, RenderError>;
+    ) -> Result<V, RenderError>
+    where
+        V: RenderValue;
 
     /// Call a function by name
-    async fn call(
+    ///
+    /// TODO explain type param
+    async fn call<V>(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError>;
+    ) -> Result<V, RenderError>
+    where
+        V: RenderValue;
 }
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -180,7 +189,11 @@ impl Template {
     /// [RenderedChunk::Error] and the rest of the template will still be
     /// rendered. The returned output can be transformed into a variety of final
     /// output types.
-    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedChunks {
+    pub async fn render<Ctx, V>(&self, context: &Ctx) -> RenderedChunks<V>
+    where
+        Ctx: Context,
+        V: RenderValue,
+    {
         // Map over each parsed chunk, and render the expressions into values.
         // because raw text uses Arc and expressions just contain metadata
         // The raw text chunks will be mapped 1:1. This clone is pretty cheap
@@ -190,8 +203,14 @@ impl Template {
                     RenderedChunk::Raw(Arc::clone(text))
                 }
                 TemplateChunk::Expression(expression) => {
-                    match expression.render(context).await {
-                        Ok(lazy) => RenderedChunk::Dynamic(lazy),
+                    let result = expression
+                        .render(context)
+                        // If caller is requested an eager value, resolve any
+                        // possible streams
+                        .and_then(V::from_resolve)
+                        .await;
+                    match result {
+                        Ok(value) => RenderedChunk::Dynamic(value),
                         Err(error) => RenderedChunk::Error(error),
                     }
                 }
@@ -209,7 +228,7 @@ impl Template {
         &self,
         context: &Ctx,
     ) -> Result<Bytes, RenderError> {
-        self.render(context).await.try_collect_bytes().await
+        self.render::<Ctx, Value>(context).await.try_into_bytes()
     }
 
     /// Convenience method for rendering a template and collecting the output
@@ -282,55 +301,61 @@ impl From<Expression> for TemplateChunk {
 /// intermediate output type that can be resolved into a variety of final
 /// output types.
 #[derive(Debug)]
-pub struct RenderedChunks(Vec<RenderedChunk>);
+pub struct RenderedChunks<V>(Vec<RenderedChunk<V>>);
 
-impl RenderedChunks {
+impl<V: RenderValue> RenderedChunks<V> {
     /// Get the inner list of chunks
-    pub fn into_chunks(self) -> Vec<RenderedChunk> {
+    pub fn into_chunks(self) -> Vec<RenderedChunk<V>> {
         self.0
     }
 
     /// Get an iterator over references to the chunks
-    pub fn iter(&self) -> impl Iterator<Item = &RenderedChunk> {
+    pub fn iter(&self) -> impl Iterator<Item = &RenderedChunk<V>> {
         self.0.iter()
-    }
-
-    /// If this output is a single chunk and that chunk is a stream, get the
-    /// source of the stream
-    pub fn stream_source(&self) -> Option<&StreamSource> {
-        if let [RenderedChunk::Dynamic(LazyValue::Stream { source, .. })] =
-            self.0.as_slice()
-        {
-            Some(source)
-        } else {
-            None
-        }
-    }
-
-    /// Does this output contain *any* stream chunks?
-    pub fn has_stream(&self) -> bool {
-        self.0.iter().any(|chunk| match chunk {
-            RenderedChunk::Raw(_) => false,
-            // Recursion! Mutual!!
-            RenderedChunk::Dynamic(lazy_value) => lazy_value.has_stream(),
-            RenderedChunk::Error(_) => true,
-        })
     }
 
     /// Unpack this output into a single lazy value
     ///
     /// If the output is a single dynamic chunk, unpack it into a scalar value.
     /// Otherwise, return `Err(self)`.
-    pub fn unpack(self) -> Result<LazyValue, Self> {
+    pub fn unpack(self) -> Result<V, Self> {
         match <[_; 1]>::try_from(self.0) {
             // If we have a single dynamic chunk, return its value directly
-            Ok([RenderedChunk::Dynamic(lazy)]) => Ok(lazy),
+            Ok([RenderedChunk::Dynamic(value)]) => Ok(value),
             // Unpack failed
             Ok(chunks @ [RenderedChunk::Raw(_) | RenderedChunk::Error(_)]) => {
                 Err(Self(chunks.into()))
             }
             Err(chunks) => Err(Self(chunks)),
         }
+    }
+
+    /// Collect the rendered chunks into a [Value] by these rules:
+    /// - If the template is a single dynamic chunk, return the output of that
+    ///   chunk, which may be any type of [Value]
+    /// - Any other template will be rendered to a string by stringifying each
+    ///   dynamic chunk and concatenating them all together
+    /// - If rendering to a string fails because the bytes are not valid UTF-8,
+    ///   concatenate into a bytes object instead
+    pub async fn try_collect_value(self) -> Result<Value, RenderError> {
+        // If we only have one chunk, unpack it into a value
+        let value = match self.unpack().map(V::into_lazy) {
+            Ok(LazyValue::Value(value)) => value,
+            Ok(lazy @ LazyValue::Stream { .. }) => lazy.resolve().await?,
+            Err(chunks) => {
+                // Render to bytes
+                let bytes = chunks
+                    .try_into_stream()?
+                    .try_collect::<BytesMut>()
+                    .await?
+                    .into();
+                Value::Bytes(bytes)
+            }
+        };
+
+        // Try to convert bytes to string, because that's generally more
+        // useful to the consumer
+        Ok(value.decode_bytes())
     }
 
     /// Convert this output into a byte stream. Each chunk will be yielded as a
@@ -354,7 +379,7 @@ impl RenderedChunks {
                 RenderedChunk::Raw(s) => {
                     stream_value(Bytes::from(s.to_string()))
                 }
-                RenderedChunk::Dynamic(lazy) => match lazy {
+                RenderedChunk::Dynamic(value) => match V::into_lazy(value) {
                     LazyValue::Value(value) => stream_value(value.into_bytes()),
                     LazyValue::Stream { stream, .. } => Ok(stream.boxed()),
                 },
@@ -366,7 +391,10 @@ impl RenderedChunks {
         // If none of the chunks failed, we can chain all the streams together
         Ok(stream::iter(chunks).flatten())
     }
+}
 
+// Non-stream functions
+impl RenderedChunks<Value> {
     /// Collect the rendered chunks into a [Value] by these rules:
     /// - If the template is a single dynamic chunk, return the output of that
     ///   chunk, which may be any type of [Value]
@@ -374,50 +402,79 @@ impl RenderedChunks {
     ///   dynamic chunk and concatenating them all together
     /// - If rendering to a string fails because the bytes are not valid UTF-8,
     ///   concatenate into a bytes object instead
-    pub async fn try_collect_value(self) -> Result<Value, RenderError> {
+    ///
+    /// TODO
+    pub fn try_into_value(self) -> Result<Value, RenderError> {
+        // TODO dedupe with try_collect_value
         // If we only have one chunk, unpack it into a value
         let value = match self.unpack() {
-            Ok(LazyValue::Value(value)) => value,
-            Ok(lazy @ LazyValue::Stream { .. }) => lazy.resolve().await?,
+            Ok(value) => value,
             Err(chunks) => {
                 // Render to bytes
-                let bytes = chunks.try_collect_bytes().await?;
+                let bytes = chunks.try_into_bytes()?;
                 Value::Bytes(bytes)
             }
         };
 
-        // Try to convert bytes to string, because that's generally more
-        // useful to the consumer
-        match value {
-            Value::Bytes(bytes) => match String::from_utf8(bytes.into()) {
-                Ok(s) => Ok(Value::String(s)),
-                Err(error) => Ok(Value::Bytes(error.into_bytes().into())),
-            },
-            _ => Ok(value),
-        }
+        Ok(value.decode_bytes())
     }
 
     /// Collect the rendered chunks into a byte string. If any chunk is an
     /// error, return an error. This is async because the chunk may be a
     /// stream, in which case it will be resolved.
-    pub async fn try_collect_bytes(self) -> Result<Bytes, RenderError> {
-        // Build a stream, then collect it into bytes
-        self.try_into_stream()?
-            .try_collect::<BytesMut>()
-            .await
-            .map(Bytes::from)
+    ///
+    /// TODO
+    pub fn try_into_bytes(self) -> Result<Bytes, RenderError> {
+        let mut bytes: Vec<u8> = Vec::with_capacity(0); // TODO better initial capacity
+        for chunk in self {
+            match chunk {
+                RenderedChunk::Raw(s) => {
+                    bytes.extend_from_slice(s.as_bytes());
+                }
+                RenderedChunk::Dynamic(value) => {
+                    bytes.extend_from_slice(&value.into_bytes());
+                }
+                RenderedChunk::Error(error) => return Err(error),
+            }
+        }
+        Ok(bytes.into())
+    }
+}
+
+// Stream-only functions
+impl RenderedChunks<LazyValue> {
+    /// If this output is a single chunk and that chunk is a stream, get the
+    /// source of the stream
+    pub fn stream_source(&self) -> Option<&StreamSource> {
+        if let [RenderedChunk::Dynamic(LazyValue::Stream { source, .. })] =
+            self.0.as_slice()
+        {
+            Some(source)
+        } else {
+            None
+        }
+    }
+
+    /// Does this output contain *any* stream chunks?
+    pub fn has_stream(&self) -> bool {
+        self.0.iter().any(|chunk| match chunk {
+            RenderedChunk::Raw(_) => false,
+            // Recursion! Mutual!!
+            RenderedChunk::Dynamic(lazy_value) => lazy_value.has_stream(),
+            RenderedChunk::Error(_) => true,
+        })
     }
 }
 
 /// Create render output of a single chunk with a value
-impl From<Value> for RenderedChunks {
+impl<V: From<Value>> From<Value> for RenderedChunks<V> {
     fn from(value: Value) -> Self {
-        Self(vec![RenderedChunk::Dynamic(LazyValue::Value(value))])
+        Self(vec![RenderedChunk::Dynamic(value.into())])
     }
 }
 
 /// Create render output of a single chunk that may have failed
-impl From<Result<Value, RenderError>> for RenderedChunks {
+impl<V: From<Value>> From<Result<Value, RenderError>> for RenderedChunks<V> {
     fn from(result: Result<Value, RenderError>) -> Self {
         let chunk = match result {
             Ok(value) => RenderedChunk::Dynamic(value.into()),
@@ -428,8 +485,8 @@ impl From<Result<Value, RenderError>> for RenderedChunks {
 }
 
 /// Get an iterator over the chunks of this output
-impl IntoIterator for RenderedChunks {
-    type Item = RenderedChunk;
+impl<V> IntoIterator for RenderedChunks<V> {
+    type Item = RenderedChunk<V>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -438,9 +495,9 @@ impl IntoIterator for RenderedChunks {
 }
 
 /// Get an iterator over references to chunks of this output
-impl<'a> IntoIterator for &'a RenderedChunks {
-    type Item = &'a RenderedChunk;
-    type IntoIter = slice::Iter<'a, RenderedChunk>;
+impl<'a, V> IntoIterator for &'a RenderedChunks<V> {
+    type Item = &'a RenderedChunk<V>;
+    type IntoIter = slice::Iter<'a, RenderedChunk<V>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -450,28 +507,24 @@ impl<'a> IntoIterator for &'a RenderedChunks {
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
-pub enum RenderedChunk {
+pub enum RenderedChunk<V> {
     /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
     /// stored in an `Arc` so we can reference the text in the parsed input
     /// without having to clone it.
     Raw(Arc<str>),
     /// A dynamic chunk of a template, rendered to a stream/value
-    Dynamic(LazyValue),
+    Dynamic(V),
     /// An error occurred while rendering a template key
     Error(RenderError),
 }
 
+// TODO use derive_more for this
 #[cfg(test)]
-impl PartialEq for RenderedChunk {
+impl<V: PartialEq> PartialEq for RenderedChunk<V> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Raw(raw1), Self::Raw(raw2)) => raw1 == raw2,
-            (
-                Self::Dynamic(LazyValue::Value(value1)),
-                Self::Dynamic(LazyValue::Value(value2)),
-            ) => value1 == value2,
-            // Streams are never equal
-            (Self::Dynamic(_), Self::Dynamic(_)) => false,
+            (Self::Dynamic(value1), Self::Dynamic(value2)) => value1 == value2,
             (Self::Error(error1), Self::Error(error2)) => {
                 // RenderError doesn't have a PartialEq impl, so we have to
                 // do a string comparison.

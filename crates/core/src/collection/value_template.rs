@@ -1,6 +1,8 @@
 use futures::future;
 use serde::Serialize;
-use slumber_template::{Context, RenderError, RenderedChunks, Template, Value};
+use slumber_template::{
+    Context, RenderError, RenderValue, RenderedChunks, Template, Value,
+};
 
 /// A templated [Value]
 ///
@@ -61,7 +63,13 @@ impl ValueTemplate {
     /// The return value is *usually* a single chunk, but if `self` is a
     /// multi-chunk template string, then its multi-chunk output will be the
     /// output for this.
-    pub async fn render<Ctx: Context>(&self, context: &Ctx) -> RenderedChunks {
+    ///
+    /// TODO explain type param
+    pub async fn render<Ctx, V>(&self, context: &Ctx) -> RenderedChunks<V>
+    where
+        Ctx: Context,
+        V: From<Value> + RenderValue,
+    {
         match self {
             Self::Null => Value::Null.into(),
             Self::Boolean(b) => Value::Boolean(*b).into(),
@@ -71,7 +79,11 @@ impl ValueTemplate {
             Self::Array(array) => {
                 // Render each value and collection into an Array
                 future::try_join_all(array.iter().map(|value| async {
-                    value.render(context).await.try_collect_value().await
+                    value
+                        .render::<Ctx, V>(context)
+                        .await
+                        .try_collect_value()
+                        .await
                 }))
                 .await
                 .map(Value::from)
@@ -81,8 +93,11 @@ impl ValueTemplate {
                 // Render each key/value and collect into an Object
                 future::try_join_all(map.iter().map(|(key, value)| async {
                     let key = key.render_string(context).await?;
-                    let value =
-                        value.render(context).await.try_collect_value().await?;
+                    let value = value
+                        .render::<Ctx, V>(context)
+                        .await
+                        .try_collect_value()
+                        .await?;
                     Ok::<_, RenderError>((key, value))
                 }))
                 .await

@@ -28,7 +28,8 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
 use slumber_template::{
-    Arguments, Identifier, LazyValue, RenderError, StreamSource, Value,
+    Arguments, Identifier, LazyValue, RenderError, RenderValue, StreamSource,
+    Value,
 };
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -267,19 +268,23 @@ impl TemplateContext {
 }
 
 impl slumber_template::Context for TemplateContext {
-    async fn get_field(
-        &self,
-        field: &Identifier,
-    ) -> Result<LazyValue, RenderError> {
-        self.get_field_inner(field, false).await
+    async fn get_field<V>(&self, field: &Identifier) -> Result<V, RenderError>
+    where
+        V: RenderValue,
+    {
+        let lazy = self.get_field_inner(field, false).await?;
+        V::from_resolve(lazy).await
     }
 
-    async fn call(
+    async fn call<V>(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError> {
-        match function_name.as_str() {
+    ) -> Result<V, RenderError>
+    where
+        V: RenderValue,
+    {
+        let lazy = match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
             "command" => functions::command(arguments),
@@ -307,7 +312,8 @@ impl slumber_template::Context for TemplateContext {
             "trim" => functions::trim(arguments),
             "upper" => functions::upper(arguments),
             _ => Err(RenderError::FunctionUnknown),
-        }
+        }?;
+        V::from_resolve(lazy).await
     }
 }
 
@@ -324,18 +330,22 @@ pub struct StreamTemplateContext<'a> {
 }
 
 impl slumber_template::Context for StreamTemplateContext<'_> {
-    async fn get_field(
-        &self,
-        field: &Identifier,
-    ) -> Result<LazyValue, RenderError> {
-        self.get_field_inner(field, true).await
+    async fn get_field<V>(&self, field: &Identifier) -> Result<V, RenderError>
+    where
+        V: RenderValue,
+    {
+        let lazy = self.get_field_inner(field, true).await?;
+        V::from_resolve(lazy).await
     }
 
-    async fn call(
+    async fn call<V>(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError> {
+    ) -> Result<V, RenderError>
+    where
+        V: RenderValue,
+    {
         let arguments = arguments.map_context(|ctx| ctx.context);
         self.context.call(function_name, arguments).await
     }

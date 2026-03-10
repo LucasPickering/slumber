@@ -207,7 +207,7 @@ requests:
 
       large_json:
         $ref: "#/.base_request"
-        name: Big JSON
+        name: Large JSON
         method: POST
         url: "{{ host }}/anything"
         body:

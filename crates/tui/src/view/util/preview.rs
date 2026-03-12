@@ -94,8 +94,6 @@ impl Preview for StreamTemplate {
     }
 }
 
-// TODO should body/profile templates be moved back to their files?
-
 /// A previewable wrapper of [ValueTemplate] for JSON bodies
 #[derive(Clone, Debug, PartialEq)]
 pub struct JsonTemplate(pub ValueTemplate);
@@ -170,7 +168,8 @@ impl Preview for YamlTemplate {
     }
 
     async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
-        // Profile values *do* support streams
+        // Profile values *do* support streams, because they may be used in
+        // stream bodies
         let value = PreviewValue::render_streamable(&self.0, context).await;
         let mut injector = StyleInjector::default();
         serde_yaml::to_writer(&mut injector, &value)

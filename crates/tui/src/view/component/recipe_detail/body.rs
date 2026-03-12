@@ -11,7 +11,7 @@ use crate::{
             },
         },
         persistent::SessionKey,
-        util::preview::{JsonTemplate, StreamTemplate},
+        util::preview::{JsonTemplate, Preview, StreamTemplate},
     },
 };
 use indexmap::IndexMap;
@@ -31,42 +31,31 @@ impl RecipeBodyDisplay {
     /// takes in the full recipe as well as the body so we can guarantee the
     /// body is not `None`.
     pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
+        fn build<T: Preview>(
+            template: T,
+            recipe: &Recipe,
+        ) -> EditableTemplate<BodyKey, T> {
+            EditableTemplate::builder(
+                "Body",
+                BodyKey(recipe.id.clone()),
+                template.clone(),
+            )
+            .copy_target(RecipeCopyTarget::Body)
+            .mime(recipe.mime())
+            .window_mode(true)
+            .build()
+        }
+
         match body {
-            RecipeBody::Raw(body) => Self(Inner::Raw(
-                EditableTemplate::builder(
-                    "Body",
-                    BodyKey(recipe.id.clone()),
-                    body.clone(),
-                )
-                .copy_target(RecipeCopyTarget::Body)
-                .mime(recipe.mime())
-                .window_mode(true)
-                .build(),
-            )),
-            // TODO dedupe this
-            RecipeBody::Stream(body) => Self(Inner::Stream(
-                EditableTemplate::builder(
-                    "Body",
-                    BodyKey(recipe.id.clone()),
-                    StreamTemplate(body.clone()),
-                )
-                .copy_target(RecipeCopyTarget::Body)
-                .mime(recipe.mime())
-                .window_mode(true)
-                .build(),
-            )),
-            RecipeBody::Json(json) => Self(Inner::Json(
-                EditableTemplate::builder(
-                    "Body",
-                    BodyKey(recipe.id.clone()),
-                    JsonTemplate(json.clone()),
-                )
-                .copy_target(RecipeCopyTarget::Body)
-                .mime(recipe.mime())
-                .window_mode(true)
-                // JSON doesn't support streaming
-                .build(),
-            )),
+            RecipeBody::Raw(body) => {
+                Self(Inner::Raw(build(body.clone(), recipe)))
+            }
+            RecipeBody::Stream(body) => {
+                Self(Inner::Stream(build(StreamTemplate(body.clone()), recipe)))
+            }
+            RecipeBody::Json(json) => {
+                Self(Inner::Json(build(JsonTemplate(json.clone()), recipe)))
+            }
             RecipeBody::FormUrlencoded(fields) => {
                 Self(Inner::Form(Self::form_table(&recipe.id, fields)))
             }
@@ -177,7 +166,8 @@ impl Draw for RecipeBodyDisplay {
 enum Inner {
     /// A raw text body with no known content type
     Raw(EditableTemplate<BodyKey, Template>),
-    /// TODO
+    /// A raw text or binary body where data is streamed from a source (e.g. a
+    /// file)
     Stream(EditableTemplate<BodyKey, StreamTemplate>),
     /// A body declared with the `json` type. This is presented as text so it
     /// uses the same internal type as `Raw`, but the distinction allows us to

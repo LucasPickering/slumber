@@ -48,11 +48,9 @@ use tracing::error;
 /// same context for an entire request so common profile fields can be cached
 /// between components of the request.
 ///
-/// This context does not emit streams from profile fields. If a field renders
-/// to a stream, it will be eagerly resolved. This is fine for most contexts
-/// because the value must be resolved to build the request. For outputs that
-/// support streaming though (request bodies), use [TemplateContext::stream] to
-/// get a context that will emit streams.
+/// This has two different implementations of [Context]: one for `Value` and
+/// one for `LazyValue`. The former is used in most cases, where values are
+/// eagerly evaluated. The latter is used when streams are supported.
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Entire request collection
@@ -88,7 +86,7 @@ impl TemplateContext {
             .and_then(|id| self.collection.profiles.get(id))
     }
 
-    /// TODO
+    /// Call a function and return a value that may be a stream
     async fn call_inner(
         &self,
         function_name: &Identifier,
@@ -249,7 +247,7 @@ impl slumber_template::Context<Value> for TemplateContext {
         // Render the nested template
         let chunks = template.render::<Value>(self).await;
 
-        let value = chunks.try_collect_value().await.map_err(
+        let value = chunks.try_into_value().map_err(
             // We *could* just return the error, but wrap it to give
             // additional context
             |error| {

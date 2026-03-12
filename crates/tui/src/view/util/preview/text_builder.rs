@@ -3,7 +3,7 @@ use ratatui::{
     style::Style,
     text::{Line, Span, Text},
 };
-use slumber_template::{RenderedChunk, RenderedChunks, Value};
+use slumber_template::{RenderedChunk, Value};
 use std::{
     fmt::{Debug, Write as _},
     mem,
@@ -35,7 +35,7 @@ impl TextBuilder {
     /// Build preview text from a list of rendered `Template` chunks
     ///
     /// For `Template`, this is the only thing required to build the preview.
-    pub fn from_chunks(chunks: &RenderedChunks<Value>) -> Self {
+    pub fn from_chunks(chunks: &[RenderedChunk<Value>]) -> Self {
         let mut builder = Self::new();
         let styles = ViewContext::styles();
 

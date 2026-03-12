@@ -48,18 +48,11 @@ impl<Kind: RecipeTableKind> RecipeTable<Kind> {
         noun: &'static str,
         recipe_id: RecipeId,
         rows: impl IntoIterator<Item = (Kind::Key, Template)>,
-        can_stream: bool,
     ) -> Self {
         let rows: Vec<RecipeTableRow<Kind>> = rows
             .into_iter()
             .map(|(key, template)| {
-                RecipeTableRow::new(
-                    recipe_id.clone(),
-                    noun,
-                    key,
-                    template,
-                    can_stream,
-                )
+                RecipeTableRow::new(recipe_id.clone(), noun, key, template)
             })
             .collect();
 
@@ -210,7 +203,6 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
         noun: &'static str,
         key: Kind::Key,
         template: Template,
-        can_stream: bool,
     ) -> Self {
         let persistent_key = RowPersistentKey::new(recipe_id, key.clone());
         let value = EditableTemplate::builder(
@@ -218,7 +210,6 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
             persistent_key.clone(),
             template.clone(),
         )
-        .can_stream(can_stream)
         .build();
         Self {
             id: ComponentId::default(),
@@ -457,7 +448,7 @@ mod tests {
 
         let mut component = TestComponent::builder(
             &mut harness,
-            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows),
         )
         .with_props(props_factory())
         .build();
@@ -504,7 +495,7 @@ mod tests {
 
         let mut component = TestComponent::builder(
             &mut harness,
-            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows),
         )
         .with_props(props_factory())
         .build();
@@ -555,7 +546,7 @@ mod tests {
 
         let mut component = TestComponent::builder(
             &mut harness,
-            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows),
         )
         .with_props(props_factory())
         .build();
@@ -595,7 +586,7 @@ mod tests {
         let rows = [("row0".into(), "".into()), ("row1".into(), "".into())];
         let component = TestComponent::builder(
             &mut harness,
-            RecipeTable::<TestKey>::new("Row", recipe_id, rows, false),
+            RecipeTable::<TestKey>::new("Row", recipe_id, rows),
         )
         .with_props(props_factory())
         .build();

@@ -72,9 +72,6 @@ pub struct EditableTemplate<PK, T: Preview = Template> {
     // Component customization settings
     /// Descriptor for the *type* of template being shown, e.g. "Header"
     noun: &'static str,
-    /// Is streaming possible for the output destination? If `false`, streams
-    /// will be eagerly evaluated
-    can_stream: bool,
     /// If `Some`, the Copy menu action will be shown and it will trigger a
     /// render+copy of the specified recipe component.
     copy_target: Option<RecipeCopyTarget>,
@@ -105,8 +102,8 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
     /// - `template`: Template being edited
     ///
     /// ```notest
-    /// EditableTemplate("Body", BodyKey, "{{ data }}".into())
-    ///     .can_stream(true)
+    /// EditableTemplate::build("Body", BodyKey, "{{ data }}".into())
+    ///     .window_mode(true)
     ///     .build()
     /// ```
     pub fn builder(
@@ -118,7 +115,6 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
             noun,
             persistent_key,
             original_template: template,
-            can_stream: false,
             copy_target: None,
             mime: None,
             refresh_on_edit: false,
@@ -180,11 +176,8 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
         match source.parse::<T>() {
             Ok(template) if template != self.original_template => {
                 // Show raw text until the preview loads
-                let (preview, text) = TemplatePreview::new(
-                    template.clone(),
-                    self.can_stream,
-                    true,
-                );
+                let (preview, text) =
+                    TemplatePreview::new(template.clone(), true);
                 self.preview = preview;
                 self.set_text(text);
                 self.override_result = Some(Ok(template));
@@ -211,11 +204,8 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
     /// recompute the template preview
     fn reset_override(&mut self) {
         self.override_result = None;
-        let (preview, text) = TemplatePreview::new(
-            self.original_template.clone(),
-            self.can_stream,
-            false,
-        );
+        let (preview, text) =
+            TemplatePreview::new(self.original_template.clone(), false);
         self.preview = preview;
         self.set_text(text);
     }
@@ -482,7 +472,6 @@ pub struct EditableTemplateBuilder<PK, T> {
     noun: &'static str,
     persistent_key: PK,
     original_template: T,
-    can_stream: bool,
     copy_target: Option<RecipeCopyTarget>,
     mime: Option<Mime>,
     refresh_on_edit: bool,
@@ -490,12 +479,6 @@ pub struct EditableTemplateBuilder<PK, T> {
 }
 
 impl<PK, T> EditableTemplateBuilder<PK, T> {
-    /// Enable/disable streaming output for the template
-    pub fn can_stream(mut self, can_stream: bool) -> Self {
-        self.can_stream = can_stream;
-        self
-    }
-
     /// Set the [RecipeCopyTarget], which will enable the `Copy` menu action and
     /// determine which component of the recipe to render and copy.
     pub fn copy_target(mut self, copy_target: RecipeCopyTarget) -> Self {
@@ -546,7 +529,6 @@ impl<PK, T> EditableTemplateBuilder<PK, T> {
                 .and_then(|result| result.as_ref().ok())
                 .unwrap_or(&self.original_template)
                 .clone(),
-            self.can_stream,
             override_result.is_some(),
         );
 
@@ -561,7 +543,6 @@ impl<PK, T> EditableTemplateBuilder<PK, T> {
             preview,
             text_window: TextWindow::default(),
             edit_text_box: None,
-            can_stream: self.can_stream,
             copy_target: self.copy_target,
             mime: self.mime,
             refresh_on_edit: self.refresh_on_edit,

@@ -1,3 +1,4 @@
+use crate::render::TemplateContext;
 use futures::future;
 use serde::Serialize;
 use slumber_template::{
@@ -65,9 +66,12 @@ impl ValueTemplate {
     /// output for this.
     ///
     /// TODO explain type param
-    pub async fn render<Ctx, V>(&self, context: &Ctx) -> RenderedChunks<V>
+    pub async fn render<V>(
+        &self,
+        context: &TemplateContext,
+    ) -> RenderedChunks<V>
     where
-        Ctx: Context,
+        TemplateContext: Context<V>,
         V: From<Value> + RenderValue,
     {
         match self {
@@ -79,11 +83,7 @@ impl ValueTemplate {
             Self::Array(array) => {
                 // Render each value and collection into an Array
                 future::try_join_all(array.iter().map(|value| async {
-                    value
-                        .render::<Ctx, V>(context)
-                        .await
-                        .try_collect_value()
-                        .await
+                    value.render(context).await.try_collect_value().await
                 }))
                 .await
                 .map(Value::from)
@@ -92,12 +92,16 @@ impl ValueTemplate {
             Self::Object(map) => {
                 // Render each key/value and collect into an Object
                 future::try_join_all(map.iter().map(|(key, value)| async {
-                    let key = key.render_string(context).await?;
-                    let value = value
-                        .render::<Ctx, V>(context)
+                    let key = key
+                        .render(context)
                         .await
+                        // TODO impl render_string for LazyValue too
                         .try_collect_value()
-                        .await?;
+                        .await?
+                        .try_into_string()
+                        .expect("TODO");
+                    let value =
+                        value.render(context).await.try_collect_value().await?;
                     Ok::<_, RenderError>((key, value))
                 }))
                 .await

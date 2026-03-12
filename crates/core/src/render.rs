@@ -22,7 +22,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use derive_more::{Deref, From, derive::Display};
+use derive_more::{From, derive::Display};
 use futures::StreamExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -82,97 +82,46 @@ pub struct TemplateContext {
 }
 
 impl TemplateContext {
-    /// Get a version of this template context that supports streaming
-    pub fn stream(&self) -> StreamTemplateContext<'_> {
-        StreamTemplateContext { context: self }
-    }
-
     fn current_profile(&self) -> Option<&Profile> {
         self.selected_profile
             .as_ref()
             .and_then(|id| self.collection.profiles.get(id))
     }
 
-    /// Evaluate a profile field
-    ///
-    /// Resolved values will be cached. If `can_stream` is disabled and the
-    /// returned value is a stream, it will be resolved and cached. If
-    /// `can_stream` is enabled, streams will be returned natively.
-    async fn get_field_inner(
+    /// TODO
+    async fn call_inner(
         &self,
-        field: &Identifier,
-        can_stream: bool,
+        function_name: &Identifier,
+        arguments: Arguments<'_, Self>,
     ) -> Result<LazyValue, RenderError> {
-        // Check the field cache to see if this value is already being computed
-        // somewhere else. If it is, we'll block on that and re-use the result.
-        // If not, we get a guard back, meaning we're responsible for the
-        // computation. At the end, we'll write back to the guard so everyone
-        // else can copy our homework.
-        let guard =
-            match self.state.field_cache.get_or_init(field.clone()).await {
-                FieldCacheOutcome::Hit(value) => return Ok(value.into()),
-                FieldCacheOutcome::Miss(guard) => guard,
-            };
-
-        // We're responsible for the computation. Grab the field's value
-        let template = self
-            // Check overrides first
-            .overrides
-            .get(field.as_str())
-            .or_else(|| {
-                // Check the current profile
-                let profile = self.current_profile()?;
-                profile.data.get(field.as_str())
-            })
-            .ok_or_else(|| FunctionError::UnknownField {
-                field: field.to_string(),
-            })?;
-
-        // Render the nested template
-        let chunks = template.render(self).await;
-
-        // If the output is a value, we can cache it. If it's a stream, it can't
-        // be cloned so it can't be cached. In practice there's probably no
-        // reason to include the same stream field twice in a single body, but
-        // if that happens we'll have to compute it twice. This saves us a lot
-        // of annoying machinery though.
-        if can_stream && chunks.has_stream() {
-            // If the nested template rendered to a single chunk, we can unpack
-            // it out of its chunk list. If it had multiple chunks, we need to
-            // keep all of them to provide both a correct preview and the final
-            // stream
-            match chunks.unpack() {
-                Ok(lazy) => Ok(lazy),
-                Err(chunks) => {
-                    let stream = chunks.try_into_stream().map_err(
-                        // We *could* just return the error, but wrap it to
-                        // give additional context
-                        |error| {
-                            RenderError::from(FunctionError::ProfileNested {
-                                field: field.clone(),
-                                error,
-                            })
-                        },
-                    )?;
-                    Ok(LazyValue::Stream {
-                        source: StreamSource::Compound,
-                        stream: stream.boxed(),
-                    })
-                }
-            }
-        } else {
-            let value = chunks.try_collect_value().await.map_err(
-                // We *could* just return the error, but wrap it to give
-                // additional context
-                |error| {
-                    RenderError::from(FunctionError::ProfileNested {
-                        field: field.clone(),
-                        error,
-                    })
-                },
-            )?;
-            guard.set(value.clone());
-            Ok(LazyValue::Value(value))
+        match function_name.as_str() {
+            "base64" => functions::base64(arguments),
+            "boolean" => functions::boolean(arguments),
+            "command" => functions::command(arguments),
+            "concat" => functions::concat(arguments),
+            "debug" => functions::debug(arguments),
+            "env" => functions::env(arguments),
+            "file" => functions::file(arguments),
+            "float" => functions::float(arguments),
+            "index" => functions::index(arguments),
+            "integer" => functions::integer(arguments),
+            "join" => functions::join(arguments),
+            "jq" => functions::jq(arguments),
+            "json_parse" => functions::json_parse(arguments),
+            "jsonpath" => functions::jsonpath(arguments),
+            "lower" => functions::lower(arguments),
+            "prompt" => functions::prompt(arguments).await,
+            "replace" => functions::replace(arguments),
+            "response" => functions::response(arguments).await,
+            "response_header" => functions::response_header(arguments).await,
+            "select" => functions::select(arguments).await,
+            "sensitive" => functions::sensitive(arguments),
+            "slice" => functions::slice(arguments),
+            "split" => functions::split(arguments),
+            "string" => functions::string(arguments),
+            "trim" => functions::trim(arguments),
+            "upper" => functions::upper(arguments),
+            _ => Err(RenderError::FunctionUnknown),
         }
     }
 
@@ -267,87 +216,148 @@ impl TemplateContext {
     }
 }
 
-impl slumber_template::Context for TemplateContext {
-    async fn get_field<V>(&self, field: &Identifier) -> Result<V, RenderError>
-    where
-        V: RenderValue,
-    {
-        let lazy = self.get_field_inner(field, false).await?;
-        V::from_resolve(lazy).await
+impl slumber_template::Context<Value> for TemplateContext {
+    async fn get_field(
+        &self,
+        field: &Identifier,
+    ) -> Result<Value, RenderError> {
+        // Check the field cache to see if this value is already being computed
+        // somewhere else. If it is, we'll block on that and re-use the result.
+        // If not, we get a guard back, meaning we're responsible for the
+        // computation. At the end, we'll write back to the guard so everyone
+        // else can copy our homework.
+        let guard =
+            match self.state.field_cache.get_or_init(field.clone()).await {
+                FieldCacheOutcome::Hit(value) => return Ok(value),
+                FieldCacheOutcome::Miss(guard) => guard,
+            };
+
+        // We're responsible for the computation. Grab the field's value
+        let template = self
+            // Check overrides first
+            .overrides
+            .get(field.as_str())
+            .or_else(|| {
+                // Check the current profile
+                let profile = self.current_profile()?;
+                profile.data.get(field.as_str())
+            })
+            .ok_or_else(|| FunctionError::UnknownField {
+                field: field.to_string(),
+            })?;
+
+        // Render the nested template
+        let chunks = template.render::<Value>(self).await;
+
+        let value = chunks.try_collect_value().await.map_err(
+            // We *could* just return the error, but wrap it to give
+            // additional context
+            |error| {
+                RenderError::from(FunctionError::ProfileNested {
+                    field: field.clone(),
+                    error,
+                })
+            },
+        )?;
+        guard.set(value.clone());
+        Ok(value)
     }
 
-    async fn call<V>(
+    async fn call(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<V, RenderError>
-    where
-        V: RenderValue,
-    {
-        let lazy = match function_name.as_str() {
-            "base64" => functions::base64(arguments),
-            "boolean" => functions::boolean(arguments),
-            "command" => functions::command(arguments),
-            "concat" => functions::concat(arguments),
-            "debug" => functions::debug(arguments),
-            "env" => functions::env(arguments),
-            "file" => functions::file(arguments),
-            "float" => functions::float(arguments),
-            "index" => functions::index(arguments),
-            "integer" => functions::integer(arguments),
-            "join" => functions::join(arguments),
-            "jq" => functions::jq(arguments),
-            "json_parse" => functions::json_parse(arguments),
-            "jsonpath" => functions::jsonpath(arguments),
-            "lower" => functions::lower(arguments),
-            "prompt" => functions::prompt(arguments).await,
-            "replace" => functions::replace(arguments),
-            "response" => functions::response(arguments).await,
-            "response_header" => functions::response_header(arguments).await,
-            "select" => functions::select(arguments).await,
-            "sensitive" => functions::sensitive(arguments),
-            "slice" => functions::slice(arguments),
-            "split" => functions::split(arguments),
-            "string" => functions::string(arguments),
-            "trim" => functions::trim(arguments),
-            "upper" => functions::upper(arguments),
-            _ => Err(RenderError::FunctionUnknown),
-        }?;
-        V::from_resolve(lazy).await
+    ) -> Result<Value, RenderError> {
+        let lazy = self.call_inner(function_name, arguments).await?;
+        lazy.try_resolve().await
     }
 }
 
-/// A [TemplateContext] that supports streaming
-///
-/// By default, [TemplateContext] will not emit streamed values from profile
-/// fields. All streams are resolved eagerly and cached. For output destinations
-/// that support streaming (request bodies), use [TemplateContext::stream] to
-/// get a context that will emit streams instead of eagerly resolving them.
-#[derive(Debug, Deref)]
-pub struct StreamTemplateContext<'a> {
-    #[deref]
-    context: &'a TemplateContext,
-}
+impl slumber_template::Context<LazyValue> for TemplateContext {
+    async fn get_field(
+        &self,
+        field: &Identifier,
+    ) -> Result<LazyValue, RenderError> {
+        // TODO dedupe
+        // Check the field cache to see if this value is already being computed
+        // somewhere else. If it is, we'll block on that and re-use the result.
+        // If not, we get a guard back, meaning we're responsible for the
+        // computation. At the end, we'll write back to the guard so everyone
+        // else can copy our homework.
+        let guard =
+            match self.state.field_cache.get_or_init(field.clone()).await {
+                FieldCacheOutcome::Hit(value) => return Ok(value.into()),
+                FieldCacheOutcome::Miss(guard) => guard,
+            };
 
-impl slumber_template::Context for StreamTemplateContext<'_> {
-    async fn get_field<V>(&self, field: &Identifier) -> Result<V, RenderError>
-    where
-        V: RenderValue,
-    {
-        let lazy = self.get_field_inner(field, true).await?;
-        V::from_resolve(lazy).await
+        // We're responsible for the computation. Grab the field's value
+        let template = self
+            // Check overrides first
+            .overrides
+            .get(field.as_str())
+            .or_else(|| {
+                // Check the current profile
+                let profile = self.current_profile()?;
+                profile.data.get(field.as_str())
+            })
+            .ok_or_else(|| FunctionError::UnknownField {
+                field: field.to_string(),
+            })?;
+
+        // Render the nested template
+        let chunks = template.render(self).await;
+
+        // If the output is a value, we can cache it. If it's a stream, it can't
+        // be cloned so it can't be cached. In practice there's probably no
+        // reason to include the same stream field twice in a single body, but
+        // if that happens we'll have to compute it twice. This saves us a lot
+        // of annoying machinery though.
+        if chunks.has_stream() {
+            // If the nested template rendered to a single chunk, we can unpack
+            // it out of its chunk list. If it had multiple chunks, we need to
+            // keep all of them to provide both a correct preview and the final
+            // stream
+            match chunks.unpack() {
+                Ok(lazy) => Ok(lazy),
+                Err(chunks) => {
+                    let stream = chunks.try_into_stream().map_err(
+                        // We *could* just return the error, but wrap it to
+                        // give additional context
+                        |error| {
+                            RenderError::from(FunctionError::ProfileNested {
+                                field: field.clone(),
+                                error,
+                            })
+                        },
+                    )?;
+                    Ok(LazyValue::Stream {
+                        source: StreamSource::Compound,
+                        stream: stream.boxed(),
+                    })
+                }
+            }
+        } else {
+            let value = chunks.try_collect_value().await.map_err(
+                // We *could* just return the error, but wrap it to give
+                // additional context
+                |error| {
+                    RenderError::from(FunctionError::ProfileNested {
+                        field: field.clone(),
+                        error,
+                    })
+                },
+            )?;
+            guard.set(value.clone());
+            Ok(LazyValue::Value(value))
+        }
     }
 
-    async fn call<V>(
+    async fn call(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<V, RenderError>
-    where
-        V: RenderValue,
-    {
-        let arguments = arguments.map_context(|ctx| ctx.context);
-        self.context.call(function_name, arguments).await
+    ) -> Result<LazyValue, RenderError> {
+        self.call_inner(function_name, arguments).await
     }
 }
 

@@ -268,6 +268,9 @@ pub trait RenderValue: Sized {
 
     /// TODO
     async fn from_resolve(lazy: LazyValue) -> Result<Self, RenderError>;
+
+    /// TODO
+    async fn try_resolve(self) -> Result<Value, RenderError>;
 }
 
 impl RenderValue for Value {
@@ -282,6 +285,10 @@ impl RenderValue for Value {
     fn into_lazy(self) -> LazyValue {
         LazyValue::Value(self)
     }
+
+    async fn try_resolve(self) -> Result<Value, RenderError> {
+        Ok(self)
+    }
 }
 
 impl RenderValue for LazyValue {
@@ -295,6 +302,10 @@ impl RenderValue for LazyValue {
 
     fn into_lazy(self) -> LazyValue {
         self
+    }
+
+    async fn try_resolve(self) -> Result<Value, RenderError> {
+        self.resolve().await
     }
 }
 
@@ -505,19 +516,6 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
     /// Get a reference to the template context
     pub fn context(&self) -> &'ctx Ctx {
         self.context
-    }
-
-    /// Replace the context value by mapping it through a function
-    pub fn map_context<Ctx2>(
-        self,
-        f: impl FnOnce(&'ctx Ctx) -> &'ctx Ctx2,
-    ) -> Arguments<'ctx, Ctx2> {
-        Arguments {
-            context: f(self.context),
-            position: self.position,
-            num_popped: self.num_popped,
-            keyword: self.keyword,
-        }
     }
 
     /// Pop the next positional argument off the front of the queue and convert

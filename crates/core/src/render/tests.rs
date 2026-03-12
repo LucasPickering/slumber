@@ -73,33 +73,9 @@ async fn test_profile(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let chunks = template.render(&context.stream()).await;
+    let chunks = template.render(&context).await;
     assert_eq!(chunks.has_stream(), expected_has_stream);
     assert_eq!(chunks.try_collect_value().await.unwrap(), expected);
-}
-
-/// Rendering a profile field propagates the streaming setting
-#[rstest]
-#[tokio::test]
-async fn test_profile_stream_disabled() {
-    let template: Template = "content: {{ file }}".into();
-    // Put some profile data in the context
-    let profile_data = [("file", "{{ file('first.txt') }}".into())]
-        .into_iter()
-        .map(|(k, v)| (k.to_owned(), v))
-        .collect::<IndexMap<String, ValueTemplate>>();
-    let profile = Profile {
-        data: profile_data,
-        ..Profile::factory(())
-    };
-    let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
-
-    let chunks = template.render(&context).await;
-    assert!(!chunks.has_stream());
-    assert_eq!(
-        chunks.try_collect_value().await.unwrap(),
-        "content: first".into()
-    );
 }
 
 /// Override profiles fields
@@ -261,9 +237,7 @@ async fn test_command_lazy() {
     let template =
         Template::function_call("command", [vec!["i-will-fail"].into()], []);
     // This shouldn't fail because the command isn't evaluated yet
-    let chunks = template
-        .render(&TemplateContext::factory(()).stream())
-        .await;
+    let chunks = template.render(&TemplateContext::factory(())).await;
     assert_eq!(
         chunks.stream_source(),
         Some(&StreamSource::Command {
@@ -1184,7 +1158,7 @@ async fn test_stream_source(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let chunks = template.render(&context.stream()).await;
+    let chunks = template.render(&context).await;
     if expected_has_source {
         assert_matches!(chunks.stream_source(), Some(_));
     } else {
@@ -1222,7 +1196,7 @@ async fn test_stream_chunks(temp_dir: TempDir) {
     // Stream init succeeds even though the files don't exist yet, because they
     // aren't loaded until the respective chunk is loaded
     let mut stream = template
-        .render::<_, LazyValue>(&context.stream())
+        .render::<_, LazyValue>(&context)
         .await
         .try_into_stream()
         .unwrap();

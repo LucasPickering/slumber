@@ -225,14 +225,11 @@ async fn test_function_error(
 #[derive(Debug, Default)]
 struct TestContext;
 
-impl Context for TestContext {
-    async fn get_field<V>(
+impl<V: RenderValue> Context<V> for TestContext {
+    async fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> Result<V, RenderError>
-    where
-        V: RenderValue,
-    {
+    ) -> Result<V, RenderError> {
         match identifier.as_str() {
             "name" => Ok("Mike".into()),
             "array" => Ok(vec!["a", "b", "c"].into()),
@@ -244,14 +241,11 @@ impl Context for TestContext {
         .map(V::from_value)
     }
 
-    async fn call<V>(
+    async fn call(
         &self,
         function_name: &Identifier,
         mut arguments: Arguments<'_, Self>,
-    ) -> Result<V, RenderError>
-    where
-        V: RenderValue,
-    {
+    ) -> Result<V, RenderError> {
         match function_name.as_str() {
             "identity" => {
                 let value: Value = arguments.pop_position()?;

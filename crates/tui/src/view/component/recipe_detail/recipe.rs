@@ -67,7 +67,6 @@ impl RecipeDisplay {
                 recipe.query_iter().map(|(param, index, value)| {
                     ((param.to_owned(), index), value.clone())
                 }),
-                false,
             ),
             headers: RecipeTable::new(
                 "Header",
@@ -76,7 +75,6 @@ impl RecipeDisplay {
                     .headers
                     .iter()
                     .map(|(header, value)| (header.clone(), value.clone())),
-                false,
             ),
             body: recipe
                 .body

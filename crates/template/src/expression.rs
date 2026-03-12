@@ -3,19 +3,19 @@
 #[cfg(test)]
 use crate::test_util;
 use crate::{
-    Arguments, Context, LazyValue, RenderError, Value,
+    Arguments, Context, RenderError, RenderValue, Value,
     error::RenderErrorContext,
 };
 use bytes::Bytes;
 use derive_more::{Deref, Display, From};
 use futures::{
-    FutureExt,
+    FutureExt, TryFutureExt,
     future::{self, try_join},
 };
 use indexmap::IndexMap;
 use std::borrow::Cow;
 
-type RenderResult = Result<LazyValue, RenderError>;
+type RenderResult<V> = Result<V, RenderError>;
 
 /// A dynamic segment of a template that will be computed at render time.
 /// Expressions are derived from the template context and may include external
@@ -44,12 +44,13 @@ pub enum Expression {
 
 impl Expression {
     /// Render this expression to bytes
-    pub(crate) async fn render<Ctx>(&self, context: &Ctx) -> RenderResult
+    pub(crate) async fn render<Ctx, V>(&self, context: &Ctx) -> RenderResult<V>
     where
-        Ctx: Context,
+        Ctx: Context<V>,
+        V: RenderValue,
     {
         match self {
-            Self::Literal(literal) => Ok(literal.into()),
+            Self::Literal(literal) => Ok(V::from_value(literal.into())),
             Self::Array(expressions) => {
                 // Render each inner expression
                 let values = future::try_join_all(
@@ -59,7 +60,7 @@ impl Expression {
                 )
                 .boxed_local() // Box for recursion
                 .await?;
-                Ok(Value::Array(values).into())
+                Ok(V::from_value(Value::Array(values)))
             }
             Self::Object(entries) => {
                 let pairs: Vec<(String, Value)> =
@@ -76,7 +77,7 @@ impl Expression {
                     .boxed_local() // Box for recursion
                     .await?;
                 // Keys will be deduped here, with the last taking priority
-                Ok(Value::Object(IndexMap::from_iter(pairs)).into())
+                Ok(V::from_value(Value::Object(IndexMap::from_iter(pairs))))
             }
             Self::Field(field) => context.get_field(field).await,
             Self::Call(call) => call.call(context, None).await,
@@ -90,11 +91,12 @@ impl Expression {
     }
 
     /// Render this expression, resolving any stream to a concrete value.
-    async fn render_value<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Result<Value, RenderError> {
-        self.render(context).await?.resolve().await
+    async fn render_value<Ctx, V>(&self, context: &Ctx) -> RenderResult<Value>
+    where
+        Ctx: Context<V>,
+        V: RenderValue,
+    {
+        self.render(context).and_then(V::try_resolve).await
     }
 
     /// Build a function call expression. Any keyword arguments with `None`
@@ -289,11 +291,15 @@ impl FunctionCall {
     }
 
     /// Render arguments and call the function
-    async fn call<Ctx: Context>(
+    async fn call<Ctx, V>(
         &self,
         context: &Ctx,
         piped_argument: Option<Value>,
-    ) -> RenderResult {
+    ) -> RenderResult<V>
+    where
+        Ctx: Context<V>,
+        V: RenderValue,
+    {
         // Provide context to the error
         let map_error = |error: RenderError| {
             error.context(RenderErrorContext::Function(self.function.clone()))
@@ -312,10 +318,14 @@ impl FunctionCall {
     }
 
     /// Render each argument passed in this function call
-    async fn render_arguments<'ctx, Ctx: Context>(
+    async fn render_arguments<'ctx, Ctx, V>(
         &self,
         context: &'ctx Ctx,
-    ) -> Result<Arguments<'ctx, Ctx>, RenderError> {
+    ) -> Result<Arguments<'ctx, Ctx>, RenderError>
+    where
+        Ctx: Context<V>,
+        V: RenderValue,
+    {
         // Render all position and keyword arguments concurrently. We attach
         // error context to any failures so the user know which arg failed to
         // render

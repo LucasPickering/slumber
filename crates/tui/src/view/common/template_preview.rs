@@ -40,10 +40,6 @@ pub struct TemplatePreview<T> {
     template: T,
     /// Emitter for events whenever new text is rendered
     emitter: Emitter<TemplatePreviewEvent>,
-    /// Does this component of the recipe support streaming? If so, the
-    /// template will be rendered to a stream if possible and its metadata will
-    /// be displayed rather than the resolved value.
-    can_stream: bool,
     /// Is the text a user-given override? This changes the styling
     is_override: bool,
 }
@@ -63,20 +59,12 @@ impl<T: Preview> TemplatePreview<T> {
     /// ## Params
     ///
     /// - `template`: Template to be displayed/rendered
-    /// - `can_stream`: Does the consumer support streaming template output? If
-    ///   `true`, streams will *not* be resolved, and instead displayed as
-    ///   metadata. If `false`, streams will be resolved in the preview.
     /// - `is_override`: Is the template a single-session override? For styling
-    pub fn new(
-        template: T,
-        can_stream: bool,
-        is_override: bool,
-    ) -> (Self, Text<'static>) {
+    pub fn new(template: T, is_override: bool) -> (Self, Text<'static>) {
         let slf = Self {
             id: ComponentId::new(),
             template,
             emitter: Emitter::default(),
-            can_stream,
             is_override,
         };
         slf.render_preview(); // Render preview in the background
@@ -101,18 +89,13 @@ impl<T: Preview> TemplatePreview<T> {
             let style = self.style();
             let emitter = self.emitter;
             let template = self.template.clone();
-            let can_stream = self.can_stream;
 
             // Build a callback that gets the context and uses it to render.
             // This will be spawned into a background task automatically.
             let callback = move |context: TemplateContext| {
                 async move {
                     // Render chunks to text
-                    let text = if can_stream {
-                        template.render_preview(&context.stream()).await
-                    } else {
-                        template.render_preview(&context).await
-                    };
+                    let text = template.render_preview(&context).await;
 
                     // Apply final styling based on override context
                     let text = text.set_style(style);
@@ -184,7 +167,7 @@ mod tests {
         #[case] template: Template,
         #[case] should_send: bool,
     ) {
-        TemplatePreview::new(template, false, false);
+        TemplatePreview::new(template, false);
         if should_send {
             assert_matches!(
                 harness.messages_rx().try_pop(),

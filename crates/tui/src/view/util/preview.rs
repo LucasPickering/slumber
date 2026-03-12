@@ -4,15 +4,17 @@ mod text_builder;
 
 use crate::view::util::preview::text_builder::{ChunkTag, TextBuilder};
 use async_trait::async_trait;
+use derive_more::FromStr;
 use futures::future;
 use ratatui::text::Text;
 use serde::Serialize;
 use slumber_core::{
     collection::ValueTemplate,
+    render::TemplateContext,
     util::json::{JsonTemplateError, YamlTemplateError},
 };
 use slumber_template::{
-    Context, LazyValue, RenderedChunk, RenderedChunks, Template, Value,
+    LazyValue, RenderedChunk, RenderedChunks, Template, Value,
 };
 use std::{
     borrow::Cow,
@@ -41,10 +43,7 @@ pub trait Preview: 'static + Clone + FromStr + PartialEq {
     fn is_dynamic(&self) -> bool;
 
     /// Render the template as preview text, including styling
-    async fn render_preview<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Text<'static>;
+    async fn render_preview(&self, context: &TemplateContext) -> Text<'static>;
 }
 
 #[async_trait(?Send)]
@@ -57,13 +56,40 @@ impl Preview for Template {
         self.is_dynamic()
     }
 
-    async fn render_preview<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Text<'static> {
-        // TODO how support stream here?
+    async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
         let chunks: RenderedChunks<Value> = self.render(context).await;
         // Stitch the output together into Text
+        TextBuilder::from_chunks(chunks.chunks()).build()
+    }
+}
+
+/// TODO
+#[derive(Clone, Debug, FromStr, PartialEq)]
+pub struct StreamTemplate(pub Template);
+
+#[async_trait(?Send)]
+impl Preview for StreamTemplate {
+    fn display(&self) -> Cow<'_, str> {
+        self.0.display()
+    }
+
+    fn is_dynamic(&self) -> bool {
+        self.0.is_dynamic()
+    }
+
+    async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
+        let chunks = self.0.render::<_, LazyValue>(context).await;
+        // TODO explain
+        let chunks: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| match chunk {
+                RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
+                RenderedChunk::Dynamic(lazy) => {
+                    RenderedChunk::Dynamic(PreviewValue::lazy_to_value(lazy))
+                }
+                RenderedChunk::Error(error) => RenderedChunk::Error(error),
+            })
+            .collect();
         TextBuilder::from_chunks(&chunks).build()
     }
 }
@@ -96,10 +122,7 @@ impl Preview for JsonTemplate {
         self.0.is_dynamic()
     }
 
-    async fn render_preview<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Text<'static> {
+    async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
         // JSON bodies don't support streams
         let value = PreviewValue::render(&self.0, context).await;
         let mut injector = StyleInjector::default();
@@ -146,10 +169,7 @@ impl Preview for YamlTemplate {
         self.0.is_dynamic()
     }
 
-    async fn render_preview<Ctx: Context>(
-        &self,
-        context: &Ctx,
-    ) -> Text<'static> {
+    async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
         // Profile values *do* support streams
         let value = PreviewValue::render_streamable(&self.0, context).await;
         let mut injector = StyleInjector::default();
@@ -236,9 +256,9 @@ enum PreviewValue {
 
 impl PreviewValue {
     /// Render from a [ValueTemplate]
-    async fn render<Ctx: Context>(
+    async fn render(
         template: &ValueTemplate,
-        context: &Ctx,
+        context: &TemplateContext,
     ) -> Self {
         match template {
             ValueTemplate::Null => PreviewValue::Raw(RawValue::Null),
@@ -281,20 +301,10 @@ impl PreviewValue {
     }
 
     /// TODO
-    async fn render_streamable<Ctx: Context>(
+    async fn render_streamable(
         template: &ValueTemplate,
-        context: &Ctx,
+        context: &TemplateContext,
     ) -> Self {
-        /// TODO
-        fn lazy_to_value(lazy: LazyValue) -> Value {
-            match lazy {
-                LazyValue::Value(value) => value,
-                LazyValue::Stream { source, .. } => {
-                    format!("<{source}>").into()
-                }
-            }
-        }
-
         // TODO dedupe with render()
         match template {
             ValueTemplate::Null => PreviewValue::Raw(RawValue::Null),
@@ -308,7 +318,9 @@ impl PreviewValue {
             ValueTemplate::String(template) => {
                 let chunks = template.render::<_, LazyValue>(context).await;
                 match chunks.unpack() {
-                    Ok(lazy) => PreviewValue::Dynamic(lazy_to_value(lazy)),
+                    Ok(lazy) => {
+                        PreviewValue::Dynamic(Self::lazy_to_value(lazy))
+                    }
                     // TODO explain
                     Err(chunks) => {
                         let chunks = chunks
@@ -316,7 +328,9 @@ impl PreviewValue {
                             .map(|chunk| match chunk {
                                 RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
                                 RenderedChunk::Dynamic(lazy) => {
-                                    RenderedChunk::Dynamic(lazy_to_value(lazy))
+                                    RenderedChunk::Dynamic(Self::lazy_to_value(
+                                        lazy,
+                                    ))
                                 }
                                 RenderedChunk::Error(error) => {
                                     RenderedChunk::Error(error)
@@ -348,6 +362,14 @@ impl PreviewValue {
                     .await;
                 PreviewValue::Raw(RawValue::Object(entries))
             }
+        }
+    }
+
+    /// TODO
+    fn lazy_to_value(lazy: LazyValue) -> Value {
+        match lazy {
+            LazyValue::Value(value) => value,
+            LazyValue::Stream { source, .. } => format!("<{source}>").into(),
         }
     }
 }
@@ -543,21 +565,9 @@ mod tests {
     /// Preview raw bodies. This tests:
     /// - Plain text
     /// - Dynamic chunks
-    /// - Streams
-    /// - Streams via profile fields (ensure context is forwarded)
     #[rstest]
     #[case::plain("hello", vec!["hello".into()])]
-    #[case::dynamic(
-        "hello {{ name }}",
-        vec!["hello ".into(), rendered("bob")],
-    )]
-    #[case::stream(
-        "data: {{ command(['echo', 'test']) }}",
-        vec!["data: ".into(), rendered("<command `echo test`>")])]
-    #[case::stream_profile(
-        "data: {{ stream }}",
-        vec!["data: ".into(), rendered("<command `echo test`>")],
-    )]
+    #[case::dynamic("hello {{ name }}", vec!["hello ".into(), rendered("bob")])]
     #[tokio::test]
     async fn test_preview_raw(
         _harness: TestHarness,
@@ -574,7 +584,40 @@ mod tests {
         };
         let context = TemplateContext::factory(profile);
 
-        let text = template.render_preview(&context.stream()).await;
+        let text = template.render_preview(&context).await;
+        let expected = Text::from(Line::from(expected));
+        assert_eq!(text, expected);
+    }
+
+    /// TODO
+    /// - Streams (directly)
+    /// - Streams via profile fields (ensure context is forwarded)
+    #[rstest]
+    #[case::direct(
+        "data: {{ command(['echo', 'test']) }}",
+        vec!["data: ".into(), rendered("<command `echo test`>")])]
+    #[case::profile(
+        "data: {{ stream }}",
+        vec!["data: ".into(), rendered("<command `echo test`>")],
+    )]
+    #[tokio::test]
+    async fn test_preview_stream(
+        _harness: TestHarness,
+        #[case] template: Template,
+        #[case] expected: Vec<Span<'static>>,
+    ) {
+        let profile_data = indexmap! {
+            "name".into() => "bob".into(),
+            "stream".into() => "{{ command(['echo', 'test']) }}".into(),
+        };
+        let profile = Profile {
+            data: profile_data,
+            ..Profile::factory(())
+        };
+        let context = TemplateContext::factory(profile);
+
+        let template = StreamTemplate(template);
+        let text = template.render_preview(&context).await;
         let expected = Text::from(Line::from(expected));
         assert_eq!(text, expected);
     }

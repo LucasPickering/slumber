@@ -22,11 +22,6 @@ description = "Build Rust docs, checking for broken links"
 env.RUSTDOCFLAGS = "-D warnings"
 run = "cargo doc --no-deps --all-features --document-private-items --workspace"
 
-[tasks.test]
-description = "Run tests"
-env.RUST_BACKTRACE = 0
-run = "cargo test"
-
 [tasks.tui-profile]
 description = "Run the TUI with samply for profiling"
 env.CARGO_PROFILE_RELEASE_DEBUG = true # Include debug symbols

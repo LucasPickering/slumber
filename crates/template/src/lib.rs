@@ -24,7 +24,7 @@ pub use value::{
 };
 
 use bytes::{Bytes, BytesMut};
-use futures::{Stream, StreamExt, TryFutureExt, TryStreamExt, future, stream};
+use futures::{Stream, StreamExt, TryStreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
@@ -33,7 +33,9 @@ use std::{fmt::Debug, slice, sync::Arc};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
-pub trait Context: Sized {
+///
+/// TODO document type param
+pub trait Context<V>: Sized {
     /// Get the value of a field from the context. The implementor can decide
     /// where fields are derived from. Fields can also be computed dynamically
     /// and be `async`. For example, fields can be loaded from a map of nested
@@ -41,23 +43,19 @@ pub trait Context: Sized {
     /// before this can be returned.
     ///
     /// TODO explain type param
-    async fn get_field<V>(
+    async fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> Result<V, RenderError>
-    where
-        V: RenderValue;
+    ) -> Result<V, RenderError>;
 
     /// Call a function by name
     ///
     /// TODO explain type param
-    async fn call<V>(
+    async fn call(
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<V, RenderError>
-    where
-        V: RenderValue;
+    ) -> Result<V, RenderError>;
 }
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -189,9 +187,11 @@ impl Template {
     /// [RenderedChunk::Error] and the rest of the template will still be
     /// rendered. The returned output can be transformed into a variety of final
     /// output types.
+    ///
+    /// TODO make this only for <Value>, and render_streamable for <LazyValue>
     pub async fn render<Ctx, V>(&self, context: &Ctx) -> RenderedChunks<V>
     where
-        Ctx: Context,
+        Ctx: Context<V>,
         V: RenderValue,
     {
         // Map over each parsed chunk, and render the expressions into values.
@@ -203,13 +203,7 @@ impl Template {
                     RenderedChunk::Raw(Arc::clone(text))
                 }
                 TemplateChunk::Expression(expression) => {
-                    let result = expression
-                        .render(context)
-                        // If caller is requested an eager value, resolve any
-                        // possible streams
-                        .and_then(V::from_resolve)
-                        .await;
-                    match result {
+                    match expression.render(context).await {
                         Ok(value) => RenderedChunk::Dynamic(value),
                         Err(error) => RenderedChunk::Error(error),
                     }
@@ -224,16 +218,16 @@ impl Template {
 
     /// Convenience method for rendering a template and collecting the output
     /// into a byte string.
-    pub async fn render_bytes<Ctx: Context>(
+    pub async fn render_bytes<Ctx: Context<Value>>(
         &self,
         context: &Ctx,
     ) -> Result<Bytes, RenderError> {
-        self.render::<Ctx, Value>(context).await.try_into_bytes()
+        self.render(context).await.try_into_bytes()
     }
 
     /// Convenience method for rendering a template and collecting the output
     /// into a string. If the output is not valid UTF-8, return an error.
-    pub async fn render_string<Ctx: Context>(
+    pub async fn render_string<Ctx: Context<Value>>(
         &self,
         context: &Ctx,
     ) -> Result<String, RenderError> {
@@ -307,6 +301,11 @@ impl<V: RenderValue> RenderedChunks<V> {
     /// Get the inner list of chunks
     pub fn into_chunks(self) -> Vec<RenderedChunk<V>> {
         self.0
+    }
+
+    /// Get the inner chunks as a slice
+    pub fn chunks(&self) -> &[RenderedChunk<V>] {
+        &self.0
     }
 
     /// Get an iterator over references to the chunks

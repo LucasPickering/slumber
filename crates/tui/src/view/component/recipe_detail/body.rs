@@ -11,7 +11,7 @@ use crate::{
             },
         },
         persistent::SessionKey,
-        util::preview::JsonTemplate,
+        util::preview::{JsonTemplate, StreamTemplate},
     },
 };
 use indexmap::IndexMap;
@@ -32,20 +32,29 @@ impl RecipeBodyDisplay {
     /// body is not `None`.
     pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
         match body {
-            RecipeBody::Raw(body) | RecipeBody::Stream(body) => {
-                Self(Inner::Raw(
-                    EditableTemplate::builder(
-                        "Body",
-                        BodyKey(recipe.id.clone()),
-                        body.clone(),
-                    )
-                    .can_stream(true)
-                    .copy_target(RecipeCopyTarget::Body)
-                    .mime(recipe.mime())
-                    .window_mode(true)
-                    .build(),
-                ))
-            }
+            RecipeBody::Raw(body) => Self(Inner::Raw(
+                EditableTemplate::builder(
+                    "Body",
+                    BodyKey(recipe.id.clone()),
+                    body.clone(),
+                )
+                .copy_target(RecipeCopyTarget::Body)
+                .mime(recipe.mime())
+                .window_mode(true)
+                .build(),
+            )),
+            // TODO dedupe this
+            RecipeBody::Stream(body) => Self(Inner::Stream(
+                EditableTemplate::builder(
+                    "Body",
+                    BodyKey(recipe.id.clone()),
+                    StreamTemplate(body.clone()),
+                )
+                .copy_target(RecipeCopyTarget::Body)
+                .mime(recipe.mime())
+                .window_mode(true)
+                .build(),
+            )),
             RecipeBody::Json(json) => Self(Inner::Json(
                 EditableTemplate::builder(
                     "Body",
@@ -59,10 +68,11 @@ impl RecipeBodyDisplay {
                 .build(),
             )),
             RecipeBody::FormUrlencoded(fields) => {
-                Self(Inner::Form(Self::form_table(&recipe.id, fields, false)))
+                Self(Inner::Form(Self::form_table(&recipe.id, fields)))
             }
             RecipeBody::FormMultipart(fields) => {
-                Self(Inner::Form(Self::form_table(&recipe.id, fields, true)))
+                // TODO make this support streaming again
+                Self(Inner::Form(Self::form_table(&recipe.id, fields)))
             }
         }
     }
@@ -70,7 +80,6 @@ impl RecipeBodyDisplay {
     fn form_table(
         recipe_id: &RecipeId,
         fields: &IndexMap<String, Template>,
-        can_stream: bool,
     ) -> RecipeTable<FormTableKind> {
         RecipeTable::new(
             "Field",
@@ -78,7 +87,6 @@ impl RecipeBodyDisplay {
             fields
                 .iter()
                 .map(|(field, value)| (field.clone(), value.clone())),
-            can_stream,
         )
     }
 
@@ -90,6 +98,10 @@ impl RecipeBodyDisplay {
             Inner::Raw(inner) => {
                 inner.override_template().cloned().map(BodyOverride::Raw)
             }
+            Inner::Stream(inner) => inner
+                .override_template()
+                .cloned()
+                .map(|template| BodyOverride::Raw(template.0)),
             Inner::Json(inner) => inner
                 .override_template()
                 .cloned()
@@ -106,7 +118,7 @@ impl RecipeBodyDisplay {
         &self,
     ) -> Option<IndexMap<String, BuildFieldOverride>> {
         match &self.0 {
-            Inner::Raw(_) | Inner::Json(_) => None,
+            Inner::Raw(_) | Inner::Stream(_) | Inner::Json(_) => None,
             Inner::Form(form) => Some(form.to_build_overrides()),
         }
     }
@@ -116,6 +128,7 @@ impl Component for RecipeBodyDisplay {
     fn id(&self) -> ComponentId {
         match &self.0 {
             Inner::Raw(text_body) => text_body.id(),
+            Inner::Stream(text_body) => text_body.id(),
             Inner::Json(text_body) => text_body.id(),
             Inner::Form(table) => table.id(),
         }
@@ -124,6 +137,7 @@ impl Component for RecipeBodyDisplay {
     fn children(&mut self) -> Vec<Child<'_>> {
         let child = match &mut self.0 {
             Inner::Raw(text_body) => text_body.to_child(),
+            Inner::Stream(text_body) => text_body.to_child(),
             Inner::Json(text_body) => text_body.to_child(),
             Inner::Form(form) => form.to_child(),
         };
@@ -135,6 +149,9 @@ impl Draw for RecipeBodyDisplay {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         match &self.0 {
             Inner::Raw(inner) => {
+                canvas.draw(inner, (), metadata.area(), true);
+            }
+            Inner::Stream(inner) => {
                 canvas.draw(inner, (), metadata.area(), true);
             }
             Inner::Json(inner) => {
@@ -160,6 +177,8 @@ impl Draw for RecipeBodyDisplay {
 enum Inner {
     /// A raw text body with no known content type
     Raw(EditableTemplate<BodyKey, Template>),
+    /// TODO
+    Stream(EditableTemplate<BodyKey, StreamTemplate>),
     /// A body declared with the `json` type. This is presented as text so it
     /// uses the same internal type as `Raw`, but the distinction allows us to
     /// parse and generate an override body correctly
@@ -332,3 +351,10 @@ mod tests {
         component.int(harness).drain_draw().assert().empty();
     }
 }
+
+// TODO add preview tests
+// - raw body
+// - stream body
+// - json body
+// - form URL
+// - form multipart (include stream case)

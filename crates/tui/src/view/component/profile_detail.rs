@@ -212,9 +212,6 @@ impl ProfileField {
             },
             template,
         )
-        // We don't know how this value will be used, so let's say we *do*
-        // support streaming to prevent loading some huge streams
-        .can_stream(true)
         // This edit could have downstream changes, so refresh after edit
         .refresh_on_edit(true)
         .build();

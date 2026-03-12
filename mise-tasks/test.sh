@@ -1,7 +1,6 @@
 
 #!/bin/sh
 #MISE description="Run tests via Cargo"
-#MISE env = {"RUST_BACKTRACE" = 0}
 # 
 #USAGE arg "[crate]" var=#true help="Crate(s) to run tests in" {
 #USAGE   choices "cli" "config" "core" "import" "macros" "python" "template" "tui" "util"
@@ -18,6 +17,10 @@ else
   done
 fi
 
-export RUST_BACKTRACE=$usage_backtrace
+if [ -z $usage_backtrace ]; then
+  export RUST_BACKTRACE=0
+else
+  export RUST_BACKTRACE=1
+fi 
 set -x
 exec cargo test $args -- $usage_test

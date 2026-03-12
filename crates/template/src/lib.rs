@@ -457,10 +457,10 @@ impl RenderedChunks<LazyValue> {
     /// Does this output contain *any* stream chunks?
     pub fn has_stream(&self) -> bool {
         self.0.iter().any(|chunk| match chunk {
-            RenderedChunk::Raw(_) => false,
-            // Recursion! Mutual!!
-            RenderedChunk::Dynamic(lazy_value) => lazy_value.has_stream(),
-            RenderedChunk::Error(_) => true,
+            RenderedChunk::Raw(_)
+            | RenderedChunk::Dynamic(LazyValue::Value(_))
+            | RenderedChunk::Error(_) => false,
+            RenderedChunk::Dynamic(LazyValue::Stream { .. }) => true,
         })
     }
 }

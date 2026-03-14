@@ -17,9 +17,7 @@ use futures::{StreamExt, TryStreamExt};
 use indexmap::{IndexMap, indexmap};
 use rstest::rstest;
 use serde_json::json;
-use slumber_template::{
-    Expression, LazyValue, Literal, StreamSource, Template, Value,
-};
+use slumber_template::{Expression, Literal, StreamSource, Template, Value};
 use slumber_util::{
     Factory, TempDir, assert_matches, assert_result, paths::get_repo_root,
     temp_dir,
@@ -73,7 +71,7 @@ async fn test_profile(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let chunks = template.render(&context).await;
+    let chunks = template.render_streamable(&context).await;
     assert_eq!(chunks.has_stream(), expected_has_stream);
     assert_eq!(chunks.try_collect_value().await.unwrap(), expected);
 }
@@ -147,7 +145,7 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     let template = Template::function_call("boolean", [input], []);
     assert_result(
         template
-            .render::<_, Value>(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         Ok(Value::Boolean(expected)),
@@ -237,7 +235,9 @@ async fn test_command_lazy() {
     let template =
         Template::function_call("command", [vec!["i-will-fail"].into()], []);
     // This shouldn't fail because the command isn't evaluated yet
-    let chunks = template.render(&TemplateContext::factory(())).await;
+    let chunks = template
+        .render_streamable(&TemplateContext::factory(()))
+        .await;
     assert_eq!(
         chunks.stream_source(),
         Some(&StreamSource::Command {
@@ -379,7 +379,7 @@ async fn test_float(
     let template = Template::function_call("float", [input], []);
     assert_result(
         template
-            .render::<_, Value>(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected.map(Value::from),
@@ -438,7 +438,7 @@ async fn test_integer(
     let template = Template::function_call("integer", [input], []);
     assert_result(
         template
-            .render::<_, Value>(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected.map(Value::from),
@@ -535,7 +535,7 @@ async fn test_jq(
     );
     assert_result(
         template
-            .render::<_, Value>(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected,
@@ -557,7 +557,7 @@ async fn test_json_parse(
     let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
         template
-            .render::<_, Value>(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected,
@@ -621,7 +621,7 @@ async fn test_jsonpath(
     );
     assert_result(
         template
-            .render::<_, Value>(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected,
@@ -1067,7 +1067,7 @@ async fn test_split(
     );
     assert_result(
         template
-            .render::<_, Value>(&TemplateContext::factory(()))
+            .render(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected.map(Value::from),
@@ -1158,7 +1158,7 @@ async fn test_stream_source(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let chunks = template.render(&context).await;
+    let chunks = template.render_streamable(&context).await;
     if expected_has_source {
         assert_matches!(chunks.stream_source(), Some(_));
     } else {
@@ -1196,7 +1196,7 @@ async fn test_stream_chunks(temp_dir: TempDir) {
     // Stream init succeeds even though the files don't exist yet, because they
     // aren't loaded until the respective chunk is loaded
     let mut stream = template
-        .render::<_, LazyValue>(&context)
+        .render_streamable(&context)
         .await
         .try_into_stream()
         .unwrap();

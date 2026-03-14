@@ -264,13 +264,7 @@ pub trait RenderValue: Sized {
     fn from_value(value: Value) -> Self;
 
     /// TODO
-    fn into_lazy(self) -> LazyValue;
-
-    /// TODO
-    async fn from_resolve(lazy: LazyValue) -> Result<Self, RenderError>;
-
-    /// TODO
-    async fn try_resolve(self) -> Result<Value, RenderError>;
+    async fn try_resolve_lazy(self) -> Result<Value, RenderError>;
 }
 
 impl RenderValue for Value {
@@ -278,15 +272,7 @@ impl RenderValue for Value {
         value
     }
 
-    async fn from_resolve(lazy: LazyValue) -> Result<Self, RenderError> {
-        lazy.resolve().await
-    }
-
-    fn into_lazy(self) -> LazyValue {
-        LazyValue::Value(self)
-    }
-
-    async fn try_resolve(self) -> Result<Value, RenderError> {
+    async fn try_resolve_lazy(self) -> Result<Value, RenderError> {
         Ok(self)
     }
 }
@@ -296,15 +282,7 @@ impl RenderValue for LazyValue {
         Self::Value(value)
     }
 
-    async fn from_resolve(lazy: LazyValue) -> Result<Self, RenderError> {
-        Ok(lazy)
-    }
-
-    fn into_lazy(self) -> LazyValue {
-        self
-    }
-
-    async fn try_resolve(self) -> Result<Value, RenderError> {
+    async fn try_resolve_lazy(self) -> Result<Value, RenderError> {
         self.resolve().await
     }
 }

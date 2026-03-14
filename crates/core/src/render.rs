@@ -23,13 +23,12 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use derive_more::{From, derive::Display};
-use futures::StreamExt;
+use futures::{StreamExt, TryFutureExt};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
 use slumber_template::{
-    Arguments, Identifier, LazyValue, RenderError, RenderValue, StreamSource,
-    Value,
+    Arguments, Context, Identifier, LazyValue, RenderError, StreamSource, Value,
 };
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -86,41 +85,39 @@ impl TemplateContext {
             .and_then(|id| self.collection.profiles.get(id))
     }
 
-    /// Call a function and return a value that may be a stream
-    async fn call_inner(
+    /// Check the field cache to see if a field is already being computed
+    ///
+    /// If it's being computed, we'll block on that and re-use the result. If
+    /// not, we get a guard back, meaning the caller is responsible for the
+    /// computation. At the end, we'll write back to the guard so everyone else
+    /// can copy our homework.
+    async fn get_field_cache_guard(
         &self,
-        function_name: &Identifier,
-        arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError> {
-        match function_name.as_str() {
-            "base64" => functions::base64(arguments),
-            "boolean" => functions::boolean(arguments),
-            "command" => functions::command(arguments),
-            "concat" => functions::concat(arguments),
-            "debug" => functions::debug(arguments),
-            "env" => functions::env(arguments),
-            "file" => functions::file(arguments),
-            "float" => functions::float(arguments),
-            "index" => functions::index(arguments),
-            "integer" => functions::integer(arguments),
-            "join" => functions::join(arguments),
-            "jq" => functions::jq(arguments),
-            "json_parse" => functions::json_parse(arguments),
-            "jsonpath" => functions::jsonpath(arguments),
-            "lower" => functions::lower(arguments),
-            "prompt" => functions::prompt(arguments).await,
-            "replace" => functions::replace(arguments),
-            "response" => functions::response(arguments).await,
-            "response_header" => functions::response_header(arguments).await,
-            "select" => functions::select(arguments).await,
-            "sensitive" => functions::sensitive(arguments),
-            "slice" => functions::slice(arguments),
-            "split" => functions::split(arguments),
-            "string" => functions::string(arguments),
-            "trim" => functions::trim(arguments),
-            "upper" => functions::upper(arguments),
-            _ => Err(RenderError::FunctionUnknown),
-        }
+        field: &Identifier,
+    ) -> FieldCacheOutcome {
+        self.state.field_cache.get_or_init(field.clone()).await
+    }
+
+    /// Get the template bound to a field, or an error if the field is unknown
+    fn get_field_template(
+        &self,
+        field: &Identifier,
+    ) -> Result<&ValueTemplate, RenderError> {
+        self
+            // Check overrides first
+            .overrides
+            .get(field.as_str())
+            .or_else(|| {
+                // Check the current profile
+                let profile = self.current_profile()?;
+                profile.data.get(field.as_str())
+            })
+            .ok_or_else(|| {
+                FunctionError::UnknownField {
+                    field: field.to_string(),
+                }
+                .into()
+            })
     }
 
     /// Get the most recent response for a profile+recipe pair. This will
@@ -214,49 +211,20 @@ impl TemplateContext {
     }
 }
 
-impl slumber_template::Context<Value> for TemplateContext {
+impl Context<Value> for TemplateContext {
     async fn get_field(
         &self,
         field: &Identifier,
     ) -> Result<Value, RenderError> {
-        // Check the field cache to see if this value is already being computed
-        // somewhere else. If it is, we'll block on that and re-use the result.
-        // If not, we get a guard back, meaning we're responsible for the
-        // computation. At the end, we'll write back to the guard so everyone
-        // else can copy our homework.
-        let guard =
-            match self.state.field_cache.get_or_init(field.clone()).await {
-                FieldCacheOutcome::Hit(value) => return Ok(value),
-                FieldCacheOutcome::Miss(guard) => guard,
-            };
-
-        // We're responsible for the computation. Grab the field's value
-        let template = self
-            // Check overrides first
-            .overrides
-            .get(field.as_str())
-            .or_else(|| {
-                // Check the current profile
-                let profile = self.current_profile()?;
-                profile.data.get(field.as_str())
-            })
-            .ok_or_else(|| FunctionError::UnknownField {
-                field: field.to_string(),
-            })?;
-
-        // Render the nested template
-        let chunks = template.render::<Value>(self).await;
-
-        let value = chunks.try_into_value().map_err(
-            // We *could* just return the error, but wrap it to give
-            // additional context
-            |error| {
-                RenderError::from(FunctionError::ProfileNested {
-                    field: field.clone(),
-                    error,
-                })
-            },
-        )?;
+        let guard = match self.get_field_cache_guard(field).await {
+            FieldCacheOutcome::Hit(value) => return Ok(value),
+            FieldCacheOutcome::Miss(guard) => guard,
+        };
+        let template = self.get_field_template(field)?;
+        let chunks = template.render(self).await; // Render the nested template
+        let value = chunks
+            .try_into_value()
+            .map_err(|error| field_error(error, field))?;
         guard.set(value.clone());
         Ok(value)
     }
@@ -266,44 +234,25 @@ impl slumber_template::Context<Value> for TemplateContext {
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
     ) -> Result<Value, RenderError> {
-        let lazy = self.call_inner(function_name, arguments).await?;
-        lazy.try_resolve().await
+        <Self as Context<LazyValue>>::call(self, function_name, arguments)
+            .and_then(LazyValue::resolve)
+            .await
     }
 }
 
-impl slumber_template::Context<LazyValue> for TemplateContext {
+impl Context<LazyValue> for TemplateContext {
     async fn get_field(
         &self,
         field: &Identifier,
     ) -> Result<LazyValue, RenderError> {
-        // TODO dedupe
-        // Check the field cache to see if this value is already being computed
-        // somewhere else. If it is, we'll block on that and re-use the result.
-        // If not, we get a guard back, meaning we're responsible for the
-        // computation. At the end, we'll write back to the guard so everyone
-        // else can copy our homework.
-        let guard =
-            match self.state.field_cache.get_or_init(field.clone()).await {
-                FieldCacheOutcome::Hit(value) => return Ok(value.into()),
-                FieldCacheOutcome::Miss(guard) => guard,
-            };
-
-        // We're responsible for the computation. Grab the field's value
-        let template = self
-            // Check overrides first
-            .overrides
-            .get(field.as_str())
-            .or_else(|| {
-                // Check the current profile
-                let profile = self.current_profile()?;
-                profile.data.get(field.as_str())
-            })
-            .ok_or_else(|| FunctionError::UnknownField {
-                field: field.to_string(),
-            })?;
+        let guard = match self.get_field_cache_guard(field).await {
+            FieldCacheOutcome::Hit(value) => return Ok(value.into()),
+            FieldCacheOutcome::Miss(guard) => guard,
+        };
+        let template = self.get_field_template(field)?;
 
         // Render the nested template
-        let chunks = template.render(self).await;
+        let chunks = template.render_streamable(self).await;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no
@@ -318,16 +267,9 @@ impl slumber_template::Context<LazyValue> for TemplateContext {
             match chunks.unpack() {
                 Ok(lazy) => Ok(lazy),
                 Err(chunks) => {
-                    let stream = chunks.try_into_stream().map_err(
-                        // We *could* just return the error, but wrap it to
-                        // give additional context
-                        |error| {
-                            RenderError::from(FunctionError::ProfileNested {
-                                field: field.clone(),
-                                error,
-                            })
-                        },
-                    )?;
+                    let stream = chunks
+                        .try_into_stream()
+                        .map_err(|error| field_error(error, field))?;
                     Ok(LazyValue::Stream {
                         source: StreamSource::Compound,
                         stream: stream.boxed(),
@@ -335,16 +277,10 @@ impl slumber_template::Context<LazyValue> for TemplateContext {
                 }
             }
         } else {
-            let value = chunks.try_collect_value().await.map_err(
-                // We *could* just return the error, but wrap it to give
-                // additional context
-                |error| {
-                    RenderError::from(FunctionError::ProfileNested {
-                        field: field.clone(),
-                        error,
-                    })
-                },
-            )?;
+            let value = chunks
+                .try_collect_value()
+                .await
+                .map_err(|error| field_error(error, field))?;
             guard.set(value.clone());
             Ok(LazyValue::Value(value))
         }
@@ -355,7 +291,35 @@ impl slumber_template::Context<LazyValue> for TemplateContext {
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
     ) -> Result<LazyValue, RenderError> {
-        self.call_inner(function_name, arguments).await
+        match function_name.as_str() {
+            "base64" => functions::base64(arguments),
+            "boolean" => functions::boolean(arguments),
+            "command" => functions::command(arguments),
+            "concat" => functions::concat(arguments),
+            "debug" => functions::debug(arguments),
+            "env" => functions::env(arguments),
+            "file" => functions::file(arguments),
+            "float" => functions::float(arguments),
+            "index" => functions::index(arguments),
+            "integer" => functions::integer(arguments),
+            "join" => functions::join(arguments),
+            "jq" => functions::jq(arguments),
+            "json_parse" => functions::json_parse(arguments),
+            "jsonpath" => functions::jsonpath(arguments),
+            "lower" => functions::lower(arguments),
+            "prompt" => functions::prompt(arguments).await,
+            "replace" => functions::replace(arguments),
+            "response" => functions::response(arguments).await,
+            "response_header" => functions::response_header(arguments).await,
+            "select" => functions::select(arguments).await,
+            "sensitive" => functions::sensitive(arguments),
+            "slice" => functions::slice(arguments),
+            "split" => functions::split(arguments),
+            "string" => functions::string(arguments),
+            "trim" => functions::trim(arguments),
+            "upper" => functions::upper(arguments),
+            _ => Err(RenderError::FunctionUnknown),
+        }
     }
 }
 
@@ -668,4 +632,12 @@ impl From<FunctionError> for RenderError {
     fn from(error: FunctionError) -> Self {
         RenderError::other(error)
     }
+}
+
+/// Wrap an error with additional context about the profile field being accessed
+fn field_error(error: RenderError, field: &Identifier) -> RenderError {
+    RenderError::from(FunctionError::ProfileNested {
+        field: field.clone(),
+        error,
+    })
 }

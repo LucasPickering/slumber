@@ -1,8 +1,8 @@
 use crate::render::TemplateContext;
-use futures::future;
+use futures::{FutureExt, future};
 use serde::Serialize;
 use slumber_template::{
-    Context, RenderError, RenderValue, RenderedChunks, Template, Value,
+    LazyValue, RenderError, RenderedChunks, Template, Value,
 };
 
 /// A templated [Value]
@@ -59,21 +59,15 @@ impl ValueTemplate {
         }
     }
 
-    /// Render to previewable chunks
+    /// TODO
     ///
     /// The return value is *usually* a single chunk, but if `self` is a
     /// multi-chunk template string, then its multi-chunk output will be the
     /// output for this.
-    ///
-    /// TODO explain type param
-    pub async fn render<V>(
+    pub async fn render(
         &self,
         context: &TemplateContext,
-    ) -> RenderedChunks<V>
-    where
-        TemplateContext: Context<V>,
-        V: From<Value> + RenderValue,
-    {
+    ) -> RenderedChunks<Value> {
         match self {
             Self::Null => Value::Null.into(),
             Self::Boolean(b) => Value::Boolean(*b).into(),
@@ -82,8 +76,8 @@ impl ValueTemplate {
             Self::String(template) => template.render(context).await,
             Self::Array(array) => {
                 // Render each value and collection into an Array
-                future::try_join_all(array.iter().map(|value| async {
-                    value.render(context).await.try_collect_value().await
+                future::try_join_all(array.iter().map(|value| {
+                    value.render(context).map(RenderedChunks::try_into_value)
                 }))
                 .await
                 .map(Value::from)
@@ -92,16 +86,45 @@ impl ValueTemplate {
             Self::Object(map) => {
                 // Render each key/value and collect into an Object
                 future::try_join_all(map.iter().map(|(key, value)| async {
-                    let key = key
-                        .render(context)
-                        .await
-                        // TODO impl render_string for LazyValue too
-                        .try_collect_value()
-                        .await?
-                        .try_into_string()
-                        .expect("TODO");
-                    let value =
-                        value.render(context).await.try_collect_value().await?;
+                    let key = key.render_string(context).await?;
+                    let value = value.render(context).await.try_into_value()?;
+                    Ok::<_, RenderError>((key, value))
+                }))
+                .await
+                .map(Value::from)
+                .into() // Wrap into RenderedOutput
+            }
+        }
+    }
+
+    /// TODO
+    pub async fn render_streamable(
+        &self,
+        context: &TemplateContext,
+    ) -> RenderedChunks<LazyValue> {
+        // TODO dedupe some stuff with render()
+        match self {
+            Self::Null => Value::Null.into(),
+            Self::Boolean(b) => Value::Boolean(*b).into(),
+            Self::Integer(i) => Value::Integer(*i).into(),
+            Self::Float(f) => Value::Float(*f).into(),
+            Self::String(template) => template.render_streamable(context).await,
+            Self::Array(array) => {
+                // Render each value and collection into an Array
+                future::try_join_all(array.iter().map(|value| async {
+                    // Inner values can't be streams, so eagerly evaluate here
+                    value.render(context).await.try_into_value()
+                }))
+                .await
+                .map(Value::from)
+                .into() // Wrap into RenderedOutput
+            }
+            Self::Object(map) => {
+                // Render each key/value and collect into an Object
+                future::try_join_all(map.iter().map(|(key, value)| async {
+                    // Inner values can't be streams
+                    let key = key.render_string(context).await?;
+                    let value = value.render(context).await.try_into_value()?;
                     Ok::<_, RenderError>((key, value))
                 }))
                 .await

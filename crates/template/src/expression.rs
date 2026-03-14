@@ -96,7 +96,7 @@ impl Expression {
         Ctx: Context<V>,
         V: RenderValue,
     {
-        self.render(context).and_then(V::try_resolve).await
+        self.render(context).and_then(V::try_resolve_lazy).await
     }
 
     /// Build a function call expression. Any keyword arguments with `None`

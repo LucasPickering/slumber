@@ -78,7 +78,7 @@ impl Preview for StreamTemplate {
     }
 
     async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
-        let chunks = self.0.render::<_, LazyValue>(context).await;
+        let chunks = self.0.render_streamable(context).await;
         // TODO explain
         let chunks: Vec<_> = chunks
             .into_iter()
@@ -269,7 +269,7 @@ impl PreviewValue {
             }
             ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
             ValueTemplate::String(template) => {
-                let chunks = template.render::<_, Value>(context).await;
+                let chunks = template.render(context).await;
                 match chunks.unpack() {
                     Ok(value) => PreviewValue::Dynamic(value.decode_bytes()),
                     Err(chunks) => PreviewValue::Raw(RawValue::String(
@@ -315,7 +315,7 @@ impl PreviewValue {
             }
             ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
             ValueTemplate::String(template) => {
-                let chunks = template.render::<_, LazyValue>(context).await;
+                let chunks = template.render_streamable(context).await;
                 match chunks.unpack() {
                     Ok(lazy) => {
                         PreviewValue::Dynamic(Self::lazy_to_value(lazy))

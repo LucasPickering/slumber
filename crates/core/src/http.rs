@@ -65,7 +65,7 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{LazyValue, RenderError, StreamSource, Template, Value};
+use slumber_template::{RenderError, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, hash::Hash};
 use tracing::{Instrument, error, info, info_span};
@@ -748,7 +748,7 @@ impl Recipe {
                 Some(BodyOverride::Raw(template)),
             ) => {
                 // Stream body is rendered as a stream (!!)
-                let chunks = template.render::<_, LazyValue>(context).await;
+                let chunks = template.render_streamable(context).await;
                 let source = chunks.stream_source().cloned();
                 let stream = chunks
                     .try_into_stream()
@@ -766,7 +766,7 @@ impl Recipe {
             | (Some(RecipeBody::Json(_)), Some(BodyOverride::Json(json))) => {
                 // Render the value
                 let rendered_value = json
-                    .render::<Value>(context)
+                    .render(context)
                     .await
                     .try_into_value()
                     .map_err(RequestBuildErrorKind::BodyRender)?;
@@ -794,7 +794,7 @@ impl Recipe {
             (Some(RecipeBody::FormMultipart(fields)), None) => {
                 let merged = apply_overrides(fields, &options.form_fields);
                 let iter = merged.into_iter().map(async |(field, template)| {
-                    let chunks = template.render::<_, LazyValue>(context).await;
+                    let chunks = template.render_streamable(context).await;
                     // If this is a single-chunk template, we might be able to
                     // load directly from the source, since we support file
                     // streams natively. In that case, the stream will be thrown

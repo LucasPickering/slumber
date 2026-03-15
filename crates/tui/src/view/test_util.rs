@@ -19,6 +19,7 @@ use itertools::Itertools;
 use ratatui::{
     Frame, Terminal,
     backend::TestBackend,
+    buffer::Buffer,
     layout::{Position, Rect},
     text::Line,
 };
@@ -147,6 +148,24 @@ impl TestHarness {
         lines: impl IntoIterator<Item = impl Into<Line<'l>>>,
     ) {
         self.terminal.backend().assert_buffer_lines(lines);
+    }
+
+    /// Assert the contents of the buffer matches the given lines
+    ///
+    /// Styles are stripped from the *actual* buffer, but not the given lines.
+    #[track_caller]
+    pub fn assert_buffer_lines_unstyled<'l>(
+        &self,
+        lines: impl IntoIterator<Item = impl Into<Line<'l>>>,
+    ) {
+        let from = self.terminal.backend().buffer();
+        // set_style(default) doesn't seem to work, so we need to rebuild a
+        // buffer from scratch
+        let mut buffer = Buffer::empty(from.area);
+        for (from, to) in from.content.iter().zip(buffer.content.iter_mut()) {
+            to.set_symbol(from.symbol());
+        }
+        assert_eq!(buffer, Buffer::with_lines(lines));
     }
 
     /// Alias for [assert_cursor_position](TestBackend::assert_cursor_position)

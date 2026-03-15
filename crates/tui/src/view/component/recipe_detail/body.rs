@@ -209,15 +209,132 @@ mod tests {
             test_util::{TestComponent, TestHarness, harness},
         },
     };
+    use indexmap::indexmap;
     use ratatui::{
         style::{Color, Styled},
-        text::Span,
+        text::{Line, Span},
     };
     use rstest::rstest;
     use serde_json::json;
+    use slumber_core::{
+        collection::{Collection, Profile},
+        render::TemplateContext,
+        test_util::by_id,
+    };
     use slumber_util::{Factory, assert_matches};
-    use std::fs;
+    use std::{fs, sync::Arc};
     use terminput::KeyCode;
+
+    /// Test preview rendering
+    ///
+    /// Edge cases of each template type is tested within the preview module.
+    /// This just tests that each preview is called correctly, particularly
+    /// around streamed values.
+    #[rstest]
+    #[case::raw(RecipeBody::Raw(
+        "{{ string }} {{ stream }}".into()),
+        [
+            "1 hello! stream!                            ".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        ],
+    )]
+    #[case::stream(RecipeBody::Stream(
+        "{{ string }} {{ stream }}".into()),
+        [
+            "1 hello! <command `echo -n stream!`>        ".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        ],
+    )]
+    #[case::json(
+        RecipeBody::Json(vec![
+            ("number", "{{ number }}"),
+            ("string", "{{ string }}"),
+            ("stream", "{{ stream }}"),
+        ].into()),
+        [
+            "1 {                                         ".into(),
+            r#"2   "number": 4,"#.into(),
+            r#"3   "string": "hello!","#.into(),
+            // Streams are eagerly resolved
+            r#"4   "stream": "stream!""#.into(),
+            "5 }".into(),
+        ]
+    )]
+    #[case::form_urlencoded(
+        RecipeBody::FormUrlencoded(IndexMap::from_iter([
+            ("f".into(), "{{ string }} {{ stream }}".into()),
+        ])),
+        [
+            "    Field Value                             ".into(),
+            // Streams are eagerly resolved
+            "[x] f     hello! stream!".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        ]
+    )]
+    #[case::form_multipart(
+        RecipeBody::FormMultipart(IndexMap::from_iter([
+            ("f".into(), "{{ string }} {{ stream }}".into()),
+        ])),
+        [
+            "    Field Value".into(),
+            // Streams are *not* eagerly resolved
+            "[x] f     hello! <command `echo -n stream!`>".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        ]
+    )]
+    #[tokio::test]
+    async fn test_preview(
+        #[case] body: RecipeBody,
+        #[case] expected: impl IntoIterator<Item = Line<'static>>,
+    ) {
+        let collection = Collection {
+            profiles: by_id([Profile {
+                data: indexmap! {
+                    "number".into() => 4.into(),
+                    "string".into() => "hello!".into(),
+                    "stream".into() => "{{ command(['echo', '-n', 'stream!']) }}".into()
+                },
+                ..Profile::factory(())
+            }]),
+            recipes: by_id([Recipe {
+                body: Some(body),
+                ..Recipe::factory(())
+            }])
+            .into(),
+            ..Collection::factory(())
+        };
+        let mut harness = TestHarness::with_size(collection, 44, 5);
+        let recipe = harness.collection.first_recipe();
+        let component =
+            RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), recipe);
+        let mut component = TestComponent::new(&mut harness, component);
+
+        // Render the previews
+        let callback = assert_matches!(
+            component.int(&mut harness).drain_draw().into_propagated(),
+            [Message::TemplatePreview { callback }] => callback
+        );
+        let collection = Arc::clone(&harness.collection);
+        let context = TemplateContext {
+            selected_profile: Some(collection.first_profile_id().clone()),
+            collection,
+            ..TemplateContext::factory(())
+        };
+        callback(context).await;
+        component.int(&mut harness).drain_draw().assert().empty();
+
+        harness.assert_buffer_lines_unstyled(expected);
+    }
 
     /// Test editing a JSON body, which should open a file for the user to edit,
     /// then load the response
@@ -341,10 +458,3 @@ mod tests {
         component.int(harness).drain_draw().assert().empty();
     }
 }
-
-// TODO add preview tests
-// - raw body
-// - stream body
-// - json body
-// - form URL
-// - form multipart (include stream case)

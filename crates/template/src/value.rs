@@ -189,8 +189,6 @@ impl From<serde_json::Value> for Value {
 /// superset of all values. Not all renders accept streams as results though,
 /// so it's a separate type rather than a variant on [Value]. To convert a
 /// stream into a value, call [Self::resolve].
-///
-/// TODO rename to ValueStream?
 #[derive(derive_more::Debug)]
 pub enum LazyValue {
     /// A pre-resolved value

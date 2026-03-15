@@ -57,26 +57,24 @@ impl RecipeBodyDisplay {
                 Self(Inner::Json(build(JsonTemplate(json.clone()), recipe)))
             }
             RecipeBody::FormUrlencoded(fields) => {
-                Self(Inner::Form(Self::form_table(&recipe.id, fields)))
+                Self(Inner::FormUrlencoded(RecipeTable::new(
+                    "Field",
+                    recipe.id.clone(),
+                    fields
+                        .iter()
+                        .map(|(field, value)| (field.clone(), value.clone())),
+                )))
             }
             RecipeBody::FormMultipart(fields) => {
-                // TODO make this support streaming again
-                Self(Inner::Form(Self::form_table(&recipe.id, fields)))
+                Self(Inner::FormMultipart(RecipeTable::new(
+                    "Field",
+                    recipe.id.clone(),
+                    fields.iter().map(|(field, value)| {
+                        (field.clone(), StreamTemplate(value.clone()))
+                    }),
+                )))
             }
         }
-    }
-
-    fn form_table(
-        recipe_id: &RecipeId,
-        fields: &IndexMap<String, Template>,
-    ) -> RecipeTable<FormTableKind> {
-        RecipeTable::new(
-            "Field",
-            recipe_id.clone(),
-            fields
-                .iter()
-                .map(|(field, value)| (field.clone(), value.clone())),
-        )
     }
 
     /// Get the user's temporary text body override (raw or JSON)
@@ -96,7 +94,7 @@ impl RecipeBodyDisplay {
                 .cloned()
                 .map(|template| BodyOverride::Json(template.0)),
             // Form bodies override per-field so return None for them
-            Inner::Form(_) => None,
+            Inner::FormUrlencoded(_) | Inner::FormMultipart(_) => None,
         }
     }
 
@@ -108,7 +106,8 @@ impl RecipeBodyDisplay {
     ) -> Option<IndexMap<String, BuildFieldOverride>> {
         match &self.0 {
             Inner::Raw(_) | Inner::Stream(_) | Inner::Json(_) => None,
-            Inner::Form(form) => Some(form.to_build_overrides()),
+            Inner::FormUrlencoded(form) => Some(form.to_build_overrides()),
+            Inner::FormMultipart(form) => Some(form.to_build_overrides()),
         }
     }
 }
@@ -119,7 +118,8 @@ impl Component for RecipeBodyDisplay {
             Inner::Raw(text_body) => text_body.id(),
             Inner::Stream(text_body) => text_body.id(),
             Inner::Json(text_body) => text_body.id(),
-            Inner::Form(table) => table.id(),
+            Inner::FormUrlencoded(table) => table.id(),
+            Inner::FormMultipart(table) => table.id(),
         }
     }
 
@@ -128,7 +128,8 @@ impl Component for RecipeBodyDisplay {
             Inner::Raw(text_body) => text_body.to_child(),
             Inner::Stream(text_body) => text_body.to_child(),
             Inner::Json(text_body) => text_body.to_child(),
-            Inner::Form(form) => form.to_child(),
+            Inner::FormUrlencoded(form) => form.to_child(),
+            Inner::FormMultipart(form) => form.to_child(),
         };
         vec![child]
     }
@@ -136,6 +137,10 @@ impl Component for RecipeBodyDisplay {
 
 impl Draw for RecipeBodyDisplay {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
+        let form_props = RecipeTableProps {
+            key_header: "Field",
+            value_header: "Value",
+        };
         match &self.0 {
             Inner::Raw(inner) => {
                 canvas.draw(inner, (), metadata.area(), true);
@@ -146,15 +151,12 @@ impl Draw for RecipeBodyDisplay {
             Inner::Json(inner) => {
                 canvas.draw(inner, (), metadata.area(), true);
             }
-            Inner::Form(form) => canvas.draw(
-                form,
-                RecipeTableProps {
-                    key_header: "Field",
-                    value_header: "Value",
-                },
-                metadata.area(),
-                true,
-            ),
+            Inner::FormUrlencoded(form) => {
+                canvas.draw(form, form_props, metadata.area(), true);
+            }
+            Inner::FormMultipart(form) => {
+                canvas.draw(form, form_props, metadata.area(), true);
+            }
         }
     }
 }
@@ -173,7 +175,8 @@ enum Inner {
     /// uses the same internal type as `Raw`, but the distinction allows us to
     /// parse and generate an override body correctly
     Json(EditableTemplate<BodyKey, JsonTemplate>),
-    Form(RecipeTable<FormTableKind>),
+    FormUrlencoded(RecipeTable<FormUrlencodedTableKind>),
+    FormMultipart(RecipeTable<FormMultipartTableKind>),
 }
 
 /// Persistent key for text body override template
@@ -188,9 +191,23 @@ impl SessionKey for BodyKey {
 
 /// [RecipeTableKind] for the form field table
 #[derive(Debug)]
-pub struct FormTableKind;
+pub struct FormUrlencodedTableKind;
 
-impl RecipeTableKind for FormTableKind {
+impl RecipeTableKind for FormUrlencodedTableKind {
+    type Template = Template;
+    type Key = String;
+
+    fn key_as_str(key: &Self::Key) -> &str {
+        key.as_str()
+    }
+}
+
+/// [RecipeTableKind] for the form field table
+#[derive(Debug)]
+pub struct FormMultipartTableKind;
+
+impl RecipeTableKind for FormMultipartTableKind {
+    type Template = StreamTemplate;
     type Key = String;
 
     fn key_as_str(key: &Self::Key) -> &str {

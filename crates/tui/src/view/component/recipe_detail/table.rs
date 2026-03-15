@@ -13,6 +13,7 @@ use crate::view::{
     context::{UpdateContext, ViewContext},
     event::{Event, EventMatch, ToEmitter},
     persistent::{PersistentKey, PersistentStore, SessionKey},
+    util::preview::Preview,
 };
 use indexmap::IndexMap;
 use ratatui::{
@@ -47,7 +48,7 @@ impl<Kind: RecipeTableKind> RecipeTable<Kind> {
     pub fn new(
         noun: &'static str,
         recipe_id: RecipeId,
-        rows: impl IntoIterator<Item = (Kind::Key, Template)>,
+        rows: impl IntoIterator<Item = (Kind::Key, Kind::Template)>,
     ) -> Self {
         let rows: Vec<RecipeTableRow<Kind>> = rows
             .into_iter()
@@ -185,7 +186,7 @@ struct RecipeTableRow<Kind: RecipeTableKind> {
     key: Kind::Key,
     /// Value template. This includes functionality to make it editable, and
     /// persist the edited value within the current session
-    value: EditableTemplate<RowPersistentKey<Kind>>,
+    value: EditableTemplate<RowPersistentKey<Kind>, Kind::Template>,
     /// Persistence key to store the toggle and override state for this row
     persistent_key: RowPersistentKey<Kind>,
     /// Is the row enabled/included? This is persisted by row *key* rather than
@@ -202,7 +203,7 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
         recipe_id: RecipeId,
         noun: &'static str,
         key: Kind::Key,
-        template: Template,
+        template: Kind::Template,
     ) -> Self {
         let persistent_key = RowPersistentKey::new(recipe_id, key.clone());
         let value = EditableTemplate::builder(
@@ -227,9 +228,9 @@ impl<Kind: RecipeTableKind> RecipeTableRow<Kind> {
     /// Get the disabled/override state of this row
     fn to_build_override(&self) -> Option<BuildFieldOverride> {
         if self.enabled {
-            self.value
-                .override_template()
-                .map(|template| BuildFieldOverride::Override(template.clone()))
+            self.value.override_template().map(|template| {
+                BuildFieldOverride::Override(template.clone().into())
+            })
         } else {
             Some(BuildFieldOverride::Omit)
         }
@@ -298,11 +299,20 @@ struct RecipeTableRowProps {
 }
 
 /// A trait to define a single usage of [RecipeTable], e.g. headers, query
-/// params, etc. This serves two purposes:
+/// params, etc. This serves three purposes:
 ///
+/// - Define the template type
 /// - Define the key type for the table
 /// - Provide a unique type to attach to each table's persisted state
 pub trait RecipeTableKind: 'static {
+    /// Template type
+    ///
+    /// In most cases this will be [Template], but it's dynamic to support
+    /// streaming templates as well.
+    type Template: Clone // Clone when building overrides
+        + Debug // Debuggery
+        + Into<Template> // Convert back to Template for overrides
+        + Preview; // Render preview text
     /// Type of the key column for this table. The key value **must be unique**
     /// within each table. For most tables this is just `String`, but for tables
     /// that don't have a single unique value (e.g. query parameters), it will
@@ -423,6 +433,7 @@ mod tests {
     use crate::view::test_util::{TestComponent, TestHarness, harness};
     use rstest::rstest;
     use slumber_core::collection::RecipeId;
+    use slumber_template::Template;
     use slumber_util::Factory;
     use terminput::KeyCode;
 
@@ -430,6 +441,7 @@ mod tests {
     struct TestKey;
 
     impl RecipeTableKind for TestKey {
+        type Template = Template;
         type Key = String;
 
         fn key_as_str(key: &Self::Key) -> &str {

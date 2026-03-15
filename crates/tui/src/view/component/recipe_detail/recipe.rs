@@ -20,6 +20,7 @@ use slumber_core::{
     collection::Recipe,
     http::{BuildOptions, HttpMethod},
 };
+use slumber_template::Template;
 use std::iter;
 use strum::{EnumCount, EnumIter};
 
@@ -232,6 +233,7 @@ enum Tab {
 struct QueryTableKind;
 
 impl RecipeTableKind for QueryTableKind {
+    type Template = Template;
     /// Query parameters can be repeated, so the parameter name alone isn't
     /// unique. The index makes each key unique. These are pulled directly from
     /// [Recipe::query_iter].
@@ -247,6 +249,7 @@ impl RecipeTableKind for QueryTableKind {
 struct HeaderTableKind;
 
 impl RecipeTableKind for HeaderTableKind {
+    type Template = Template;
     type Key = String;
 
     fn key_as_str(key: &Self::Key) -> &str {

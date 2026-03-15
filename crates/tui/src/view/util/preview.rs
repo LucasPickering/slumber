@@ -19,6 +19,7 @@ use slumber_template::{
 use std::{
     borrow::Cow,
     cell::Cell,
+    error::Error,
     fmt::Debug,
     io::{self, Write},
     str::FromStr,
@@ -31,7 +32,7 @@ use std::{
 /// - `FromStr`: Parse overrides from strings
 /// - `PartialEq`: Compare override to original to see if it's changed
 #[async_trait(?Send)]
-pub trait Preview: 'static + Clone + FromStr + PartialEq {
+pub trait Preview: 'static + Clone + FromStr<Err: Error> + PartialEq {
     /// Get the template's equivalent source code
     ///
     /// This is *functionally* equivalent to the template's input source, but
@@ -69,6 +70,12 @@ impl Preview for Template {
 /// source.
 #[derive(Clone, Debug, FromStr, PartialEq)]
 pub struct StreamTemplate(pub Template);
+
+impl From<StreamTemplate> for Template {
+    fn from(value: StreamTemplate) -> Self {
+        value.0
+    }
+}
 
 #[async_trait(?Send)]
 impl Preview for StreamTemplate {

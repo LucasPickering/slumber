@@ -166,4 +166,4 @@ jobs:
 
       - name: Run tests
         working-directory: crates/python
-        run: mise test
+        run: mise test-python

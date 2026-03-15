@@ -34,23 +34,21 @@ use std::{fmt::Debug, slice, sync::Arc};
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
 ///
-/// TODO document type param
+///
+/// `V` is the type of value rendered with this context. Generally [Value] or
+/// [LazyValue].
 pub trait Context<V>: Sized {
     /// Get the value of a field from the context. The implementor can decide
     /// where fields are derived from. Fields can also be computed dynamically
     /// and be `async`. For example, fields can be loaded from a map of nested
     /// templates, in which case the nested template would need to be rendered
     /// before this can be returned.
-    ///
-    /// TODO explain type param
     async fn get_field(
         &self,
         identifier: &Identifier,
     ) -> Result<V, RenderError>;
 
     /// Call a function by name
-    ///
-    /// TODO explain type param
     async fn call(
         &self,
         function_name: &Identifier,
@@ -182,13 +180,14 @@ impl Template {
     }
 
     /// Render the template, returning the individual rendered chunks rather
-    /// than stitching them together into a string. If any individual chunk
-    /// fails to render, its error will be returned inline as
-    /// [RenderedChunk::Error] and the rest of the template will still be
-    /// rendered. The returned output can be transformed into a variety of final
-    /// output types.
+    /// than stitching them together into a string
     ///
-    /// TODO
+    /// If any individual chunk fails to render, its error will be returned
+    /// inline as [RenderedChunk::Error] and the rest of the template will still
+    /// be rendered. The returned output can be transformed into a variety of
+    /// final output types.
+    ///
+    /// Use this for cases that do *not* support streaming.
     pub async fn render<Ctx>(&self, context: &Ctx) -> RenderedChunks<Value>
     where
         Ctx: Context<Value>,
@@ -196,7 +195,10 @@ impl Template {
         self.render_chunks_inner(context).await
     }
 
-    /// TODO
+    /// Render the template with streaming supported
+    ///
+    /// This is [Self::render] but streams are *not* resolved eagerly. Use this
+    /// for cases where streams can be used natively.
     pub async fn render_streamable<Ctx>(
         &self,
         context: &Ctx,
@@ -226,7 +228,7 @@ impl Template {
         String::from_utf8(bytes.into()).map_err(RenderError::other)
     }
 
-    /// TODO
+    /// Render to chunks with a variable value type
     async fn render_chunks_inner<Ctx, V>(
         &self,
         context: &Ctx,
@@ -364,10 +366,7 @@ impl RenderedChunks<Value> {
     ///   dynamic chunk and concatenating them all together
     /// - If rendering to a string fails because the bytes are not valid UTF-8,
     ///   concatenate into a bytes object instead
-    ///
-    /// TODO
     pub fn try_into_value(self) -> Result<Value, RenderError> {
-        // TODO dedupe with try_collect_value
         // If we only have one chunk, unpack it into a value
         let value = match self.unpack() {
             Ok(value) => value,
@@ -381,25 +380,20 @@ impl RenderedChunks<Value> {
         Ok(value.decode_bytes())
     }
 
-    /// Collect the rendered chunks into a byte string. If any chunk is an
-    /// error, return an error. This is async because the chunk may be a
-    /// stream, in which case it will be resolved.
+    /// Collect the rendered chunks into a byte string
     ///
-    /// TODO
+    /// If any chunk is an error, return an error.
     pub fn try_into_bytes(self) -> Result<Bytes, RenderError> {
-        let mut bytes: Vec<u8> = Vec::with_capacity(0); // TODO better initial capacity
-        for chunk in self {
-            match chunk {
+        self.into_iter()
+            .map(|chunk| match chunk {
                 RenderedChunk::Raw(s) => {
-                    bytes.extend_from_slice(s.as_bytes());
+                    Ok(Bytes::copy_from_slice(s.as_bytes()))
                 }
-                RenderedChunk::Dynamic(value) => {
-                    bytes.extend_from_slice(&value.into_bytes());
-                }
-                RenderedChunk::Error(error) => return Err(error),
-            }
-        }
-        Ok(bytes.into())
+                RenderedChunk::Dynamic(value) => Ok(value.into_bytes()),
+                RenderedChunk::Error(error) => Err(error),
+            })
+            .flatten_ok()
+            .try_collect()
     }
 }
 
@@ -543,7 +537,6 @@ pub enum RenderedChunk<V> {
     Error(RenderError),
 }
 
-// TODO use derive_more for this
 #[cfg(test)]
 impl<V: PartialEq> PartialEq for RenderedChunk<V> {
     fn eq(&self, other: &Self) -> bool {

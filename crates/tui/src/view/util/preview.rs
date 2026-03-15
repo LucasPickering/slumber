@@ -63,7 +63,10 @@ impl Preview for Template {
     }
 }
 
-/// TODO
+/// Preview a template for an output that supports streaming
+///
+/// Streams will *not* be eagerly evaluated. They'll be displayed as the stream
+/// source.
 #[derive(Clone, Debug, FromStr, PartialEq)]
 pub struct StreamTemplate(pub Template);
 
@@ -79,7 +82,7 @@ impl Preview for StreamTemplate {
 
     async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
         let chunks = self.0.render_streamable(context).await;
-        // TODO explain
+        // Render each chunk. Errors and streams are shown inline
         let chunks: Vec<_> = chunks
             .into_iter()
             .map(|chunk| match chunk {
@@ -259,52 +262,59 @@ impl PreviewValue {
         template: &ValueTemplate,
         context: &TemplateContext,
     ) -> Self {
-        match template {
-            ValueTemplate::Null => PreviewValue::Raw(RawValue::Null),
-            ValueTemplate::Boolean(b) => {
-                PreviewValue::Raw(RawValue::Boolean(*b))
+        Self::render_inner(template, context, async |template, context| {
+            let chunks = template.render(context).await;
+            match chunks.unpack() {
+                Ok(value) => PreviewValue::Dynamic(value.decode_bytes()),
+                Err(chunks) => PreviewValue::Raw(RawValue::String(
+                    PreviewChunks(chunks.into_chunks()),
+                )),
             }
-            ValueTemplate::Integer(i) => {
-                PreviewValue::Raw(RawValue::Integer(*i))
-            }
-            ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
-            ValueTemplate::String(template) => {
-                let chunks = template.render(context).await;
-                match chunks.unpack() {
-                    Ok(value) => PreviewValue::Dynamic(value.decode_bytes()),
-                    Err(chunks) => PreviewValue::Raw(RawValue::String(
-                        PreviewChunks(chunks.into_chunks()),
-                    )),
-                }
-            }
-            ValueTemplate::Array(array) => {
-                let items = future::join_all(
-                    array.iter().map(|value| Self::render(value, context)),
-                )
-                .await;
-                PreviewValue::Raw(RawValue::Array(items))
-            }
-            ValueTemplate::Object(object) => {
-                let entries =
-                    future::join_all(object.iter().map(|(key, value)| async {
-                        let key = PreviewChunks(
-                            key.render(context).await.into_chunks(),
-                        );
-                        let value = Self::render(value, context).await;
-                        (key, value)
-                    }))
-                    .await;
-                PreviewValue::Raw(RawValue::Object(entries))
-            }
-        }
+        })
+        .await
     }
 
-    /// TODO
+    /// Render from a [ValueTemplate] for an output that supports streaming
+    ///
+    /// Streams will be shown as their source string, instead of being resolved.
     async fn render_streamable(
         template: &ValueTemplate,
         context: &TemplateContext,
     ) -> Self {
-        // TODO dedupe with render()
+        Self::render_inner(template, context, async |template, context| {
+            let chunks = template.render_streamable(context).await;
+            match chunks.unpack() {
+                Ok(lazy) => PreviewValue::Dynamic(Self::lazy_to_value(lazy)),
+                // Map the chunks from stream values to eager values by
+                // stringifying the streams
+                Err(chunks) => {
+                    let chunks = chunks
+                        .into_iter()
+                        .map(|chunk| match chunk {
+                            RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
+                            RenderedChunk::Dynamic(lazy) => {
+                                RenderedChunk::Dynamic(Self::lazy_to_value(
+                                    lazy,
+                                ))
+                            }
+                            RenderedChunk::Error(error) => {
+                                RenderedChunk::Error(error)
+                            }
+                        })
+                        .collect();
+                    PreviewValue::Raw(RawValue::String(PreviewChunks(chunks)))
+                }
+            }
+        })
+        .await
+    }
+
+    /// Render eager or lazy previews
+    async fn render_inner(
+        template: &ValueTemplate,
+        context: &TemplateContext,
+        render_string: impl AsyncFn(&Template, &TemplateContext) -> Self,
+    ) -> Self {
         match template {
             ValueTemplate::Null => PreviewValue::Raw(RawValue::Null),
             ValueTemplate::Boolean(b) => {
@@ -315,32 +325,7 @@ impl PreviewValue {
             }
             ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
             ValueTemplate::String(template) => {
-                let chunks = template.render_streamable(context).await;
-                match chunks.unpack() {
-                    Ok(lazy) => {
-                        PreviewValue::Dynamic(Self::lazy_to_value(lazy))
-                    }
-                    // TODO explain
-                    Err(chunks) => {
-                        let chunks = chunks
-                            .into_iter()
-                            .map(|chunk| match chunk {
-                                RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
-                                RenderedChunk::Dynamic(lazy) => {
-                                    RenderedChunk::Dynamic(Self::lazy_to_value(
-                                        lazy,
-                                    ))
-                                }
-                                RenderedChunk::Error(error) => {
-                                    RenderedChunk::Error(error)
-                                }
-                            })
-                            .collect();
-                        PreviewValue::Raw(RawValue::String(PreviewChunks(
-                            chunks,
-                        )))
-                    }
-                }
+                render_string(template, context).await
             }
             ValueTemplate::Array(array) => {
                 let items = future::join_all(
@@ -364,7 +349,7 @@ impl PreviewValue {
         }
     }
 
-    /// TODO
+    /// Convert streams to strings
     fn lazy_to_value(lazy: LazyValue) -> Value {
         match lazy {
             LazyValue::Value(value) => value,
@@ -588,7 +573,7 @@ mod tests {
         assert_eq!(text, expected);
     }
 
-    /// TODO
+    /// Test [StreamTemplate] previews
     /// - Streams (directly)
     /// - Streams via profile fields (ensure context is forwarded)
     #[rstest]

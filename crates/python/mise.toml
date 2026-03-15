@@ -19,7 +19,7 @@ run = ["uv run python -i dev.py"]
 description = "First-time project setup"
 run = "uv sync"
 
-[tasks.test]
+[tasks.test-python]
 depends = ["dev"]
 description = "Run Python tests"
 run = "uv run pytest"

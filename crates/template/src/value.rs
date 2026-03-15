@@ -57,8 +57,10 @@ impl Value {
         }
     }
 
-    /// TODO
-    #[must_use = "TODO"]
+    /// If the value is [Self::Bytes], attempt to decode it as UTF-8
+    ///
+    /// Any non-bytes value, or non-UTF-8 bytes, is returned as-is.
+    #[must_use = "Returned value must be used"]
     pub fn decode_bytes(self) -> Self {
         match self {
             Self::Bytes(bytes) => match String::from_utf8(bytes.into()) {
@@ -216,15 +218,6 @@ impl LazyValue {
                 .map(|bytes| Value::Bytes(bytes.into())),
         }
     }
-
-    /// Is this a [LazyValue::Stream] or a nested value with a stream in it?
-    /// TODO get rid of this
-    pub fn has_stream(&self) -> bool {
-        match self {
-            LazyValue::Value(_) => false,
-            LazyValue::Stream { .. } => true,
-        }
-    }
 }
 
 impl<T: Into<Value>> From<T> for LazyValue {
@@ -256,14 +249,16 @@ pub enum StreamSource {
     Compound,
 }
 
-/// TODO
+/// An abstraction for cases that support both [Value] and [LazyValue]
 ///
-/// TODO rename
+/// External-facing functions distinguish explicitly between the two value
+/// types, but within the template crate this trait allows depulication of
+/// evaluation/rendering code.
 pub trait RenderValue: Sized {
-    /// TODO
+    /// Convert from a [Value] infallibly
     fn from_value(value: Value) -> Self;
 
-    /// TODO
+    /// Convert to a [Value] asyncronously and fallibly
     async fn try_resolve_lazy(self) -> Result<Value, RenderError>;
 }
 

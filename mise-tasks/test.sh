@@ -1,4 +1,3 @@
-
 #!/bin/sh
 #MISE description="Run tests via Cargo"
 # 

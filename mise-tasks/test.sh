@@ -1,17 +1,17 @@
 #!/bin/sh
 #MISE description="Run tests via Cargo"
 # 
-#USAGE arg "[crate]" var=#true help="Crate(s) to run tests in" {
+#USAGE flag "--package -p <package>" help="Crate(s) to run tests in" {
 #USAGE   choices "cli" "config" "core" "import" "macros" "python" "template" "tui" "util"
 #USAGE }
-#USAGE flag "--test -t <test>" var=#true help="Test(s) to run"
 #USAGE flag "--backtrace --bt" help="Enable RUST_BACKTRACE"
+#USAGE arg "[rest]" var=#true help="Additional arguments to pass to the test binary"
 
 args="--lib"
-if [ -z "$usage_crate" ]; then
+if [ -z "$usage_package" ]; then
   args="$args --workspace --all-features"
 else
-  for crate in $usage_crate; do
+  for crate in $usage_package; do
     args="$args -p slumber_$crate"
   done
 fi
@@ -22,4 +22,4 @@ else
   export RUST_BACKTRACE=1
 fi 
 set -x
-exec cargo test $args -- $usage_test
+exec cargo test $args -- $usage_rest

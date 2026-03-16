@@ -303,9 +303,7 @@ impl IntoV4 for TemplateInputChunkV3 {
     ) -> anyhow::Result<Self::Output> {
         match self {
             Self::Raw(s) => Ok(TemplateChunkV4::Raw(s)),
-            Self::Key(key) => {
-                key.into_v4(chains).map(TemplateChunkV4::Expression)
-            }
+            Self::Key(key) => key.into_v4(chains).map(TemplateChunkV4::from),
         }
     }
 }

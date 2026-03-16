@@ -22,14 +22,18 @@ pub use value::{
     Arguments, FunctionOutput, StreamSource, TryFromValue, Value, ValueStream,
 };
 
-use crate::value::RenderValue;
+use crate::{parse::MODIFIER_UNPACK, value::RenderValue};
 use bytes::{Bytes, BytesMut};
 use futures::{Stream, StreamExt, TryStreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use slumber_util::NEW_ISSUE_LINK;
-use std::{fmt::Debug, slice, sync::Arc};
+use std::{
+    fmt::{self, Debug, Display},
+    slice,
+    sync::Arc,
+};
 
 /// `Context` defines how template fields and functions are resolved. Both
 /// field resolution and function calls can be asynchronous.
@@ -160,9 +164,10 @@ impl Template {
         position: impl IntoIterator<Item = Expression>,
         keyword: impl IntoIterator<Item = (&'static str, Option<Expression>)>,
     ) -> Self {
-        let chunks = vec![TemplateChunk::Expression(Expression::call(
-            name, position, keyword,
-        ))];
+        let chunks = vec![TemplateChunk::Expression {
+            expression: Expression::call(name, position, keyword),
+            modifier: None,
+        }];
         Self { chunks }
     }
 
@@ -176,7 +181,7 @@ impl Template {
     pub fn is_dynamic(&self) -> bool {
         self.chunks
             .iter()
-            .any(|chunk| matches!(chunk, TemplateChunk::Expression(_)))
+            .any(|chunk| matches!(chunk, TemplateChunk::Expression { .. }))
     }
 
     /// Render the template, returning the individual rendered chunks rather
@@ -250,12 +255,13 @@ impl Template {
                     TemplateChunk::Raw(text) => {
                         RenderedChunk::Raw(Arc::clone(text))
                     }
-                    TemplateChunk::Expression(expression) => {
-                        match expression.render(context).await {
-                            Ok(value) => RenderedChunk::Dynamic(value),
-                            Err(error) => RenderedChunk::Error(error),
-                        }
-                    }
+                    TemplateChunk::Expression {
+                        expression,
+                        modifier,
+                    } => match expression.render(context).await {
+                        Ok(value) => RenderedChunk::Dynamic(value),
+                        Err(error) => RenderedChunk::Error(error),
+                    },
                 }
             });
 
@@ -269,7 +275,10 @@ impl Template {
 /// Build a single-chunk template
 impl From<Expression> for Template {
     fn from(expression: Expression) -> Self {
-        Self::from_chunks(vec![TemplateChunk::Expression(expression)])
+        Self::from_chunks(vec![TemplateChunk::Expression {
+            expression,
+            modifier: None,
+        }])
     }
 }
 
@@ -305,19 +314,58 @@ pub enum TemplateChunk {
         Arc<str>,
     ),
     /// Dynamic expression to be computed at render time
-    Expression(
+    Expression {
+        /// Expression to render
         #[cfg_attr(
             test,
             proptest(strategy = "test_util::expression_arbitrary()")
         )]
-        Expression,
-    ),
+        expression: Expression,
+        /// Modifier changing the output of the expression
+        modifier: Option<ExpressionModifier>,
+    },
 }
 
-#[cfg(test)]
 impl From<Expression> for TemplateChunk {
     fn from(expression: Expression) -> Self {
-        Self::Expression(expression)
+        Self::Expression {
+            expression,
+            modifier: None,
+        }
+    }
+}
+
+/// A modifier changes the behavior of a rendered expression
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub enum ExpressionModifier {
+    /// The rendered value from the expression should be unpacked as the value
+    /// for the entire template
+    ///
+    /// For example:
+    ///
+    /// ```notrust
+    /// "{{ 3 }}" => "3"
+    /// "{{* 3 }}" => 3
+    /// ```
+    ///
+    /// This is only allowed for templates with a single dynamic chunk, such
+    /// as `{{* [1, 2, 3] }}`. Using this modifier in any other template will
+    /// result in an error **at render time**. It'd be nice for the error to
+    /// show up at parse time since it can be determined statically, but it's a
+    /// bit complicated to ensure all template construction goes through that
+    /// fallible path, and I'm being lazy.
+    ///
+    /// TODO add documentation for this
+    Unpack,
+}
+
+impl Display for ExpressionModifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Unpack => MODIFIER_UNPACK,
+        };
+        write!(f, "{s}")
     }
 }
 

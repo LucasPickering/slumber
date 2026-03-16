@@ -70,6 +70,24 @@ When you send the `list_fish` command with the `user_prompt` profile selected, i
 
 This feature can also be used to [deduplicate common template expressions](./templates/examples.md#deduplicating-template-expressions).
 
+Profile values can be any data type, not just strings:
+
+```yaml
+profiles:
+  user1:
+    data:
+      usernames: [user1, user_1, user-1]
+
+requests:
+  list_fish:
+    method: GET
+    url: "https://myfishes.fish/fishes"
+    authentication:
+      type: basic
+      username: "{{ select(usernames) }}"
+      password: "{{ file('./password.txt') }}"
+```
+
 ## Template caching
 
 In the example above, we saw how a profile field can contain a dynamic template. These dynamic profile fields are automatically cached within the scope of a single request. This means if you use the same field multiple times in a request, **the template will only be rendered once**. Here's an extension of the above example:

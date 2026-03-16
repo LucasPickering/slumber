@@ -71,7 +71,7 @@ async fn test_profile(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let chunks = template.render_streamable(&context).await;
+    let chunks = template.render_chunks_stream(&context).await;
     assert_eq!(chunks.has_stream(), expected_has_stream);
     assert_eq!(chunks.try_collect_value().await.unwrap(), expected);
 }
@@ -145,7 +145,7 @@ async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
     let template = Template::function_call("boolean", [input], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         Ok(Value::Boolean(expected)),
@@ -236,7 +236,7 @@ async fn test_command_lazy() {
         Template::function_call("command", [vec!["i-will-fail"].into()], []);
     // This shouldn't fail because the command isn't evaluated yet
     let chunks = template
-        .render_streamable(&TemplateContext::factory(()))
+        .render_chunks_stream(&TemplateContext::factory(()))
         .await;
     assert_eq!(
         chunks.stream_source(),
@@ -379,7 +379,7 @@ async fn test_float(
     let template = Template::function_call("float", [input], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected.map(Value::from),
@@ -406,7 +406,7 @@ async fn test_index(
     let template = Template::function_call("index", [index.into(), value], []);
     assert_eq!(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value()
             .unwrap(),
@@ -438,7 +438,7 @@ async fn test_integer(
     let template = Template::function_call("integer", [input], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected.map(Value::from),
@@ -535,7 +535,7 @@ async fn test_jq(
     );
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected,
@@ -557,7 +557,7 @@ async fn test_json_parse(
     let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected,
@@ -621,7 +621,7 @@ async fn test_jsonpath(
     );
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected,
@@ -982,7 +982,10 @@ async fn test_select(
         prompter: Box::new(TestSelectPrompter::new(select.into_iter())),
         ..TemplateContext::factory(())
     };
-    assert_result(template.render(&context).await.try_into_value(), expected);
+    assert_result(
+        template.render_chunks(&context).await.try_into_value(),
+        expected,
+    );
 }
 
 /// `sensitive()`
@@ -1033,7 +1036,7 @@ async fn test_slice(
     );
     assert_eq!(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value()
             .unwrap(),
@@ -1067,7 +1070,7 @@ async fn test_split(
     );
     assert_result(
         template
-            .render(&TemplateContext::factory(()))
+            .render_chunks(&TemplateContext::factory(()))
             .await
             .try_into_value(),
         expected.map(Value::from),
@@ -1158,7 +1161,7 @@ async fn test_stream_source(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let chunks = template.render_streamable(&context).await;
+    let chunks = template.render_chunks_stream(&context).await;
     if expected_has_source {
         assert_matches!(chunks.stream_source(), Some(_));
     } else {
@@ -1196,7 +1199,7 @@ async fn test_stream_chunks(temp_dir: TempDir) {
     // Stream init succeeds even though the files don't exist yet, because they
     // aren't loaded until the respective chunk is loaded
     let mut stream = template
-        .render_streamable(&context)
+        .render_chunks_stream(&context)
         .await
         .try_into_stream()
         .unwrap();

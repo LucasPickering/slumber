@@ -30,7 +30,7 @@ use tokio_util::io::ReaderStream;
 async fn test_expression(#[case] template: Template, #[case] expected: Value) {
     assert_eq!(
         template
-            .render(&TestContext)
+            .render_chunks(&TestContext)
             .await
             .try_into_value()
             .unwrap(),
@@ -57,7 +57,7 @@ async fn test_render_value(
 ) {
     assert_eq!(
         template
-            .render(&TestContext)
+            .render_chunks(&TestContext)
             .await
             .try_into_value()
             .unwrap(),
@@ -88,7 +88,7 @@ async fn test_render_stream(
 ) {
     // Join into a stream, then collect the stream
     let stream = template
-        .render_streamable(&TestContext)
+        .render_chunks_stream(&TestContext)
         .await
         .try_into_stream()
         .unwrap();
@@ -102,7 +102,7 @@ async fn test_render_stream(
 async fn test_render_stream_chunk_error() {
     let template: Template = "{{ unknown() }}".into();
     let result = template
-        .render_streamable(&TestContext)
+        .render_chunks_stream(&TestContext)
         .await
         .try_into_stream()
         .map(|_| "stream");
@@ -115,7 +115,7 @@ async fn test_render_stream_chunk_error() {
 async fn test_render_stream_collect_error() {
     let template: Template = "{{ file('fake.txt') }}".into();
     let stream = template
-        .render_streamable(&TestContext)
+        .render_chunks_stream(&TestContext)
         .await
         .try_into_stream()
         .unwrap();

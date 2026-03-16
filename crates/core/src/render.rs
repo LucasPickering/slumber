@@ -221,7 +221,7 @@ impl Context<Value> for TemplateContext {
             FieldCacheOutcome::Miss(guard) => guard,
         };
         let template = self.get_field_template(field)?;
-        let chunks = template.render(self).await; // Render the nested template
+        let chunks = template.render_chunks(self).await; // Render the nested template
         let value = chunks
             .try_into_value()
             .map_err(|error| field_error(error, field))?;
@@ -252,7 +252,7 @@ impl Context<LazyValue> for TemplateContext {
         let template = self.get_field_template(field)?;
 
         // Render the nested template
-        let chunks = template.render_streamable(self).await;
+        let chunks = template.render_chunks_stream(self).await;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no

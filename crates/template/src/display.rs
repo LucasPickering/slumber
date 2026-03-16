@@ -60,20 +60,24 @@ impl Template {
                         buf.to_mut().push_str(&s[last_copied..]);
                     }
                 }
-                TemplateChunk::Expression(expression) => {
+                TemplateChunk::Expression {
+                    expression,
+                    modifier,
+                } => {
                     // If the previous chunk ends with a potential escape
                     // sequence, add an underscore to escape the upcoming key
                     static REGEX: LazyLock<Regex> =
                         LazyLock::new(|| Regex::new(r"\{_*$").unwrap());
-                    if REGEX.is_match(&buf) {
-                        buf.to_mut().push_str(ESCAPE);
+                    let buf = buf.to_mut();
+                    if REGEX.is_match(buf) {
+                        buf.push_str(ESCAPE);
                     }
 
-                    write!(
-                        buf.to_mut(),
-                        "{EXPRESSION_OPEN} {expression} {EXPRESSION_CLOSE}"
-                    )
-                    .unwrap();
+                    write!(buf, "{EXPRESSION_OPEN}").unwrap();
+                    if let Some(modifier) = modifier {
+                        write!(buf, "{modifier}").unwrap();
+                    }
+                    write!(buf, " {expression} {EXPRESSION_CLOSE}").unwrap();
                 }
             }
         }

@@ -1,12 +1,12 @@
 //! Template parsing
 
 use crate::{
-    Template, TemplateChunk,
+    ExpressionModifier, Template, TemplateChunk,
     error::TemplateParseError,
     expression::{Expression, FunctionCall, Identifier, Literal},
 };
 use indexmap::IndexMap;
-use std::{convert, str::FromStr, sync::Arc};
+use std::{convert, str::FromStr};
 use winnow::{
     ModalParser, ModalResult, Parser,
     ascii::{dec_int, escaped, float, multispace0},
@@ -28,15 +28,15 @@ pub(crate) const EXPRESSION_CLOSE: &str = "}}";
 pub(crate) const NULL: &str = "null";
 pub(crate) const FALSE: &str = "false";
 pub(crate) const TRUE: &str = "true";
+/// Symbol for [ExpressionModifier::Unpack]
+pub(crate) const MODIFIER_UNPACK: &str = "*";
 
 impl Template {
     /// Create a template that renders a single field, equivalent to
     /// `{{ <field> }}`
     pub fn from_field(field: impl Into<Identifier>) -> Self {
         Self {
-            chunks: vec![TemplateChunk::Expression(Expression::Field(
-                field.into(),
-            ))],
+            chunks: vec![Expression::Field(field.into()).into()],
         }
     }
 }
@@ -103,11 +103,7 @@ impl FromStr for Identifier {
 fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateChunk>> {
     repeat_till(
         0..,
-        alt((
-            expression_chunk.map(TemplateChunk::Expression),
-            raw.map(TemplateChunk::Raw),
-        ))
-        .context(ctx_label("template chunk")),
+        alt((expression_chunk, raw_chunk)).context(ctx_label("template chunk")),
         eof,
     )
     .map(|(chunks, _)| chunks)
@@ -116,7 +112,9 @@ fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateChunk>> {
 }
 
 /// Parse raw text, until we hit a key or end of input
-fn raw(input: &mut &str) -> ModalResult<Arc<str>> {
+///
+/// Returned chunk is always a [TemplateChunk::Raw]
+fn raw_chunk(input: &mut &str) -> ModalResult<TemplateChunk> {
     repeat(
         0..,
         alt((
@@ -129,7 +127,7 @@ fn raw(input: &mut &str) -> ModalResult<Arc<str>> {
             (not(EXPRESSION_OPEN), any).take(),
         )),
     )
-    .map(String::into)
+    .map(|s: String| TemplateChunk::Raw(s.into()))
     .context(ctx_label("raw text"))
     .parse_next(input)
 }
@@ -150,14 +148,31 @@ fn escape_sequence<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
 }
 
 /// Parse a template expression with its bounding `{{ }}`
-fn expression_chunk(input: &mut &str) -> ModalResult<Expression> {
+///
+/// Returned chunk is always a [TemplateChunk::Expression]
+fn expression_chunk(input: &mut &str) -> ModalResult<TemplateChunk> {
     preceded(
         EXPRESSION_OPEN,
         // Any error inside a template key is fatal, including an unclosed key
-        cut_err(terminated(expression, EXPRESSION_CLOSE)),
+        cut_err(terminated(
+            // Whitespace is NOT allowed between {{ and modifier
+            (opt(modifier), expression),
+            EXPRESSION_CLOSE,
+        )),
     )
+    .map(|(modifier, expression)| TemplateChunk::Expression {
+        expression,
+        modifier,
+    })
     .context(ctx_label("expression"))
     .parse_next(input)
+}
+
+/// Parse an [ExpressionModifier]
+fn modifier(input: &mut &str) -> ModalResult<ExpressionModifier> {
+    MODIFIER_UNPACK
+        .value(ExpressionModifier::Unpack)
+        .parse_next(input)
 }
 
 /// Parse the contents of an expression (inside the `{{ }}` or nested within
@@ -558,6 +573,13 @@ mod tests {
     )]
     // `{_` should be treated literally when not followed by another {
     #[case::literal_underscores("{_a {_ _{", [raw("{_a {_ _{")])]
+    #[case::modifier_unpack(
+        "{{* 3 }}",
+        [TemplateChunk::Expression {
+            expression: 3.into(),
+            modifier: Some(ExpressionModifier::Unpack),
+        }],
+    )]
     fn test_parse_display_template(
         #[case] input: &'static str,
         #[case] expected: impl Into<Template>,
@@ -596,6 +618,13 @@ mod tests {
         "{{{{'a':1}:2}}}",
         [object([(object([(literal("a"), literal(1))]), literal(2))]).into()],
     )]
+    #[case::modifier_no_whitespace(
+        "{{*3}}",
+        [TemplateChunk::Expression {
+          expression: literal(3),
+          modifier: Some(ExpressionModifier::Unpack),
+        }],
+    )]
     fn test_parse_template(
         #[case] input: &'static str,
         #[case] expected: impl Into<Template>,
@@ -610,6 +639,8 @@ mod tests {
     #[case::empty_expression("{{}}", "invalid expression")]
     #[case::invalid_expression("{{.}}", "invalid expression")]
     #[case::trailing_dot("{{bogus.}}", "invalid expression")]
+    #[case::modifier_unknown("{{! 3 }}", "invalid expression")]
+    #[case::modifier_whitespace("{{ * 3 }}", "invalid expression")]
     // the first { is escaped, 2nd and 3rd make the expression, 4th opens an
     // object that never gets closed
     #[case::bonus_braces(r"\\{{{{field}}", "invalid object\nexpected `}`")]

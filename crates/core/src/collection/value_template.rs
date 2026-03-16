@@ -66,11 +66,12 @@ impl ValueTemplate {
     /// output for this.
     ///
     /// Use this for cases where streaming is *not* allowed.
-    pub async fn render(
+    pub async fn render_chunks(
         &self,
         context: &TemplateContext,
     ) -> RenderedChunks<Value> {
-        self.render_inner(context, Template::render).await
+        self.render_chunks_inner(context, Template::render_chunks)
+            .await
     }
 
     /// Render to chunks with stream values
@@ -80,16 +81,16 @@ impl ValueTemplate {
     /// output for this.
     ///
     /// Use this for cases where streaming is allowed.
-    pub async fn render_streamable(
+    pub async fn render_chunks_stream(
         &self,
         context: &TemplateContext,
     ) -> RenderedChunks<LazyValue> {
-        self.render_inner(context, Template::render_streamable)
+        self.render_chunks_inner(context, Template::render_chunks_stream)
             .await
     }
 
     /// Render to chunks with dynamic output type
-    async fn render_inner<V>(
+    async fn render_chunks_inner<V>(
         &self,
         context: &TemplateContext,
         render_string: impl AsyncFn(
@@ -109,7 +110,9 @@ impl ValueTemplate {
             Self::Array(array) => {
                 // Render each value and collection into an Array
                 future::try_join_all(array.iter().map(|value| {
-                    value.render(context).map(RenderedChunks::try_into_value)
+                    value
+                        .render_chunks(context)
+                        .map(RenderedChunks::try_into_value)
                 }))
                 .await
                 .map(Value::from)
@@ -119,7 +122,8 @@ impl ValueTemplate {
                 // Render each key/value and collect into an Object
                 future::try_join_all(map.iter().map(|(key, value)| async {
                     let key = key.render_string(context).await?;
-                    let value = value.render(context).await.try_into_value()?;
+                    let value =
+                        value.render_chunks(context).await.try_into_value()?;
                     Ok::<_, RenderError>((key, value))
                 }))
                 .await

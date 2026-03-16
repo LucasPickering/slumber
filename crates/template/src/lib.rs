@@ -188,7 +188,10 @@ impl Template {
     /// final output types.
     ///
     /// Use this for cases that do *not* support streaming.
-    pub async fn render<Ctx>(&self, context: &Ctx) -> RenderedChunks<Value>
+    pub async fn render_chunks<Ctx>(
+        &self,
+        context: &Ctx,
+    ) -> RenderedChunks<Value>
     where
         Ctx: Context<Value>,
     {
@@ -197,9 +200,9 @@ impl Template {
 
     /// Render the template with streaming supported
     ///
-    /// This is [Self::render] but streams are *not* resolved eagerly. Use this
-    /// for cases where streams can be used natively.
-    pub async fn render_streamable<Ctx>(
+    /// This is [Self::render_chunks] but streams are *not* resolved eagerly.
+    /// Use this for cases where streams can be used natively.
+    pub async fn render_chunks_stream<Ctx>(
         &self,
         context: &Ctx,
     ) -> RenderedChunks<LazyValue>
@@ -215,7 +218,7 @@ impl Template {
         &self,
         context: &Ctx,
     ) -> Result<Bytes, RenderError> {
-        self.render(context).await.try_into_bytes()
+        self.render_chunks(context).await.try_into_bytes()
     }
 
     /// Convenience method for rendering a template and collecting the output

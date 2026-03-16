@@ -58,7 +58,7 @@ impl Preview for Template {
     }
 
     async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
-        let chunks: RenderedChunks<Value> = self.render(context).await;
+        let chunks: RenderedChunks<Value> = self.render_chunks(context).await;
         // Stitch the output together into Text
         TextBuilder::from_chunks(chunks.chunks()).build()
     }
@@ -88,7 +88,7 @@ impl Preview for StreamTemplate {
     }
 
     async fn render_preview(&self, context: &TemplateContext) -> Text<'static> {
-        let chunks = self.0.render_streamable(context).await;
+        let chunks = self.0.render_chunks_stream(context).await;
         // Render each chunk. Errors and streams are shown inline
         let chunks: Vec<_> = chunks
             .into_iter()
@@ -270,7 +270,7 @@ impl PreviewValue {
         context: &TemplateContext,
     ) -> Self {
         Self::render_inner(template, context, async |template, context| {
-            let chunks = template.render(context).await;
+            let chunks = template.render_chunks(context).await;
             match chunks.unpack() {
                 Ok(value) => PreviewValue::Dynamic(value.decode_bytes()),
                 Err(chunks) => PreviewValue::Raw(RawValue::String(
@@ -289,7 +289,7 @@ impl PreviewValue {
         context: &TemplateContext,
     ) -> Self {
         Self::render_inner(template, context, async |template, context| {
-            let chunks = template.render_streamable(context).await;
+            let chunks = template.render_chunks_stream(context).await;
             match chunks.unpack() {
                 Ok(lazy) => PreviewValue::Dynamic(Self::lazy_to_value(lazy)),
                 // Map the chunks from stream values to eager values by
@@ -345,7 +345,7 @@ impl PreviewValue {
                 let entries =
                     future::join_all(object.iter().map(|(key, value)| async {
                         let key = PreviewChunks(
-                            key.render(context).await.into_chunks(),
+                            key.render_chunks(context).await.into_chunks(),
                         );
                         let value = Self::render(value, context).await;
                         (key, value)

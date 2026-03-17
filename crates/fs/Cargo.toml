@@ -1,0 +1,31 @@
+[package]
+authors = {workspace = true}
+description = "Filesystem (FUSE) interface for Slumber. Not intended for external use."
+edition = {workspace = true}
+homepage = {workspace = true}
+keywords = {workspace = true}
+license = {workspace = true}
+name = "slumber_fs"
+repository = {workspace = true}
+rust-version = {workspace = true}
+version = {workspace = true}
+
+[[bin]]
+name = "slumber_fs"
+path = "src/bin.rs"
+
+[lints]
+workspace = true
+
+[package.metadata.release]
+tag = false
+
+[dependencies]
+anyhow = {workspace = true}
+fuser = "0.17.0"
+slumber_config = {workspace = true}
+slumber_core = {workspace = true}
+slumber_template = {workspace = true}
+slumber_util = {workspace = true}
+tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
+tracing = {workspace = true}

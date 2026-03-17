@@ -240,29 +240,25 @@ impl Template {
         Ctx: Context<V>,
         V: RenderValue,
     {
-        {
-            // Map over each parsed chunk, and render the expressions into
-            // values. because raw text uses Arc and expressions
-            // just contain metadata The raw text chunks will be
-            // mapped 1:1. This clone is pretty cheap
-            let futures = self.chunks.iter().map(|chunk| async move {
-                match chunk {
-                    TemplateChunk::Raw(text) => {
-                        RenderedChunk::Raw(Arc::clone(text))
-                    }
-                    TemplateChunk::Expression(expression) => {
-                        match expression.render(context).await {
-                            Ok(value) => RenderedChunk::Dynamic(value),
-                            Err(error) => RenderedChunk::Error(error),
-                        }
+        // Map over each parsed chunk, and render the expressions into values.
+        // The raw text chunks will be mapped 1:1
+        let futures = self.chunks.iter().map(|chunk| async move {
+            match chunk {
+                TemplateChunk::Raw(text) => {
+                    RenderedChunk::Raw(Arc::clone(text))
+                }
+                TemplateChunk::Expression(expression) => {
+                    match expression.render(context).await {
+                        Ok(value) => RenderedChunk::Dynamic(value),
+                        Err(error) => RenderedChunk::Error(error),
                     }
                 }
-            });
+            }
+        });
 
-            // Concurrency!
-            let chunks = future::join_all(futures).await;
-            RenderedChunks(chunks)
-        }
+        // Concurrency!
+        let chunks = future::join_all(futures).await;
+        RenderedChunks(chunks)
     }
 }
 

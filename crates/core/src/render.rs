@@ -28,7 +28,8 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::Deserialize;
 use slumber_template::{
-    Arguments, Context, Identifier, LazyValue, RenderError, StreamSource, Value,
+    Arguments, Context, Identifier, RenderError, StreamSource, Value,
+    ValueStream,
 };
 use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
@@ -48,7 +49,7 @@ use tracing::error;
 /// between components of the request.
 ///
 /// This has two different implementations of [Context]: one for `Value` and
-/// one for `LazyValue`. The former is used in most cases, where values are
+/// one for `ValueStream`. The former is used in most cases, where values are
 /// eagerly evaluated. The latter is used when streams are supported.
 #[derive(Debug)]
 pub struct TemplateContext {
@@ -234,17 +235,17 @@ impl Context<Value> for TemplateContext {
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
     ) -> Result<Value, RenderError> {
-        <Self as Context<LazyValue>>::call(self, function_name, arguments)
-            .and_then(LazyValue::resolve)
+        <Self as Context<ValueStream>>::call(self, function_name, arguments)
+            .and_then(ValueStream::resolve)
             .await
     }
 }
 
-impl Context<LazyValue> for TemplateContext {
+impl Context<ValueStream> for TemplateContext {
     async fn get_field(
         &self,
         field: &Identifier,
-    ) -> Result<LazyValue, RenderError> {
+    ) -> Result<ValueStream, RenderError> {
         let guard = match self.get_field_cache_guard(field).await {
             FieldCacheOutcome::Hit(value) => return Ok(value.into()),
             FieldCacheOutcome::Miss(guard) => guard,
@@ -265,12 +266,12 @@ impl Context<LazyValue> for TemplateContext {
             // keep all of them to provide both a correct preview and the final
             // stream
             match chunks.unpack() {
-                Ok(lazy) => Ok(lazy),
+                Ok(stream) => Ok(stream),
                 Err(chunks) => {
                     let stream = chunks
                         .try_into_stream()
                         .map_err(|error| field_error(error, field))?;
-                    Ok(LazyValue::Stream {
+                    Ok(ValueStream::Stream {
                         source: StreamSource::Compound,
                         stream: stream.boxed(),
                     })
@@ -282,7 +283,7 @@ impl Context<LazyValue> for TemplateContext {
                 .await
                 .map_err(|error| field_error(error, field))?;
             guard.set(value.clone());
-            Ok(LazyValue::Value(value))
+            Ok(ValueStream::Value(value))
         }
     }
 
@@ -290,7 +291,7 @@ impl Context<LazyValue> for TemplateContext {
         &self,
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError> {
+    ) -> Result<ValueStream, RenderError> {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),

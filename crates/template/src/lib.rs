@@ -19,7 +19,7 @@ pub use error::{
 };
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
 pub use value::{
-    Arguments, FunctionOutput, LazyValue, StreamSource, TryFromValue, Value,
+    Arguments, FunctionOutput, StreamSource, TryFromValue, Value, ValueStream,
 };
 
 use crate::value::RenderValue;
@@ -36,7 +36,7 @@ use std::{fmt::Debug, slice, sync::Arc};
 ///
 ///
 /// `V` is the type of value rendered with this context. Generally [Value] or
-/// [LazyValue].
+/// [ValueStream].
 pub trait Context<V>: Sized {
     /// Get the value of a field from the context. The implementor can decide
     /// where fields are derived from. Fields can also be computed dynamically
@@ -205,9 +205,9 @@ impl Template {
     pub async fn render_chunks_stream<Ctx>(
         &self,
         context: &Ctx,
-    ) -> RenderedChunks<LazyValue>
+    ) -> RenderedChunks<ValueStream>
     where
-        Ctx: Context<LazyValue>,
+        Ctx: Context<ValueStream>,
     {
         self.render_chunks_inner(context).await
     }
@@ -343,7 +343,7 @@ impl<V: RenderValue> RenderedChunks<V> {
         self.0.iter()
     }
 
-    /// Unpack this output into a single lazy value
+    /// Unpack this output into a single value
     ///
     /// If the output is a single dynamic chunk, unpack it into a scalar value.
     /// Otherwise, return `Err(self)`.
@@ -401,11 +401,11 @@ impl RenderedChunks<Value> {
 }
 
 // Stream-only functions
-impl RenderedChunks<LazyValue> {
+impl RenderedChunks<ValueStream> {
     /// If this output is a single chunk and that chunk is a stream, get the
     /// source of the stream
     pub fn stream_source(&self) -> Option<&StreamSource> {
-        if let [RenderedChunk::Dynamic(LazyValue::Stream { source, .. })] =
+        if let [RenderedChunk::Dynamic(ValueStream::Stream { source, .. })] =
             self.0.as_slice()
         {
             Some(source)
@@ -418,9 +418,9 @@ impl RenderedChunks<LazyValue> {
     pub fn has_stream(&self) -> bool {
         self.0.iter().any(|chunk| match chunk {
             RenderedChunk::Raw(_)
-            | RenderedChunk::Dynamic(LazyValue::Value(_))
+            | RenderedChunk::Dynamic(ValueStream::Value(_))
             | RenderedChunk::Error(_) => false,
-            RenderedChunk::Dynamic(LazyValue::Stream { .. }) => true,
+            RenderedChunk::Dynamic(ValueStream::Stream { .. }) => true,
         })
     }
 
@@ -435,8 +435,8 @@ impl RenderedChunks<LazyValue> {
     pub async fn try_collect_value(self) -> Result<Value, RenderError> {
         // If we only have one chunk, unpack it into a value
         let value = match self.unpack() {
-            Ok(LazyValue::Value(value)) => value,
-            Ok(lazy @ LazyValue::Stream { .. }) => lazy.resolve().await?,
+            Ok(ValueStream::Value(value)) => value,
+            Ok(stream @ ValueStream::Stream { .. }) => stream.resolve().await?,
             Err(chunks) => {
                 // Render to bytes
                 let bytes = chunks
@@ -475,8 +475,10 @@ impl RenderedChunks<LazyValue> {
                     stream_value(Bytes::from(s.to_string()))
                 }
                 RenderedChunk::Dynamic(value) => match value {
-                    LazyValue::Value(value) => stream_value(value.into_bytes()),
-                    LazyValue::Stream { stream, .. } => Ok(stream.boxed()),
+                    ValueStream::Value(value) => {
+                        stream_value(value.into_bytes())
+                    }
+                    ValueStream::Stream { stream, .. } => Ok(stream.boxed()),
                 },
 
                 RenderedChunk::Error(error) => Err(error),

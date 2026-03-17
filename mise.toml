@@ -2,7 +2,7 @@
 [tasks.cli]
 description = "Run a CLI command"
 quiet = true
-run = "cargo run --no-default-features --features cli"
+run = "cargo run --package slumber_cli --no-default-features"
 
 [tasks.docs]
 description = "Build and serve docs"

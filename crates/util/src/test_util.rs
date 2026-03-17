@@ -164,16 +164,16 @@ pub fn assert_result<TA, TE, E>(
 ///
 /// Call this in a test to enable logging.
 #[deprecated(note = "Debugging only; remove when done")]
-pub fn initialize_tracing() {
+pub fn initialize_test_tracing() {
     #[expect(deprecated)]
-    initialize_tracing_with(LevelFilter::TRACE);
+    initialize_test_tracing_with(LevelFilter::TRACE);
 }
 
 /// Enable tracing output with a specific level filter
 ///
 /// Call this in a test to enable logging.
 #[deprecated(note = "Debugging only; remove when done")]
-pub fn initialize_tracing_with(level: LevelFilter) {
+pub fn initialize_test_tracing_with(level: LevelFilter) {
     let subscriber = tracing_subscriber::fmt::layer()
         .with_writer(io::stderr)
         .with_target(true)

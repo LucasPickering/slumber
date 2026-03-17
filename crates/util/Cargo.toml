@@ -14,6 +14,7 @@ version = {workspace = true}
 tag = false
 
 [dependencies]
+console-subscriber = {version = "0.5.0", default-features = false, optional = true}
 derive_more = {workspace = true, features = ["deref", "display", "from"]}
 dirs = {workspace = true}
 indexmap = {workspace = true}
@@ -25,7 +26,7 @@ serde = {workspace = true}
 serde_yaml = {workspace = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}
-tracing-subscriber = {workspace = true, optional = true}
+tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
 uuid = {workspace = true, features = ["v4"]}
 winnow = {workspace = true}
 
@@ -34,11 +35,12 @@ env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde = {workspace = true, features = ["derive"]}
-tracing-subscriber = {workspace = true}
 uuid = {workspace = true, features = ["v4"]}
 
 [features]
-test = ["dep:rstest", "dep:tracing-subscriber"]
+test = ["dep:rstest"]
+# Enable tokio-console tracing
+tokio_tracing = ["dep:console-subscriber"]
 
 [lints]
 workspace = true

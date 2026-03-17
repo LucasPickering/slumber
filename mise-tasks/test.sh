@@ -2,7 +2,7 @@
 #MISE description="Run tests via Cargo"
 # 
 #USAGE flag "--package -p <package>" help="Crate(s) to run tests in" {
-#USAGE   choices "cli" "config" "core" "import" "macros" "python" "template" "tui" "util"
+#USAGE   choices "cli" "config" "core" "fs" "import" "macros" "python" "template" "tui" "util"
 #USAGE }
 #USAGE flag "--backtrace --bt" help="Enable RUST_BACKTRACE"
 #USAGE arg "[rest]" var=#true help="Additional arguments to pass to the test binary"

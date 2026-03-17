@@ -13,8 +13,8 @@ use regex::Regex;
 use serde::{Deserialize, de::IntoDeserializer};
 use slumber_macros::template;
 use slumber_template::{
-    Expected, LazyValue, RenderError, StreamSource, TryFromValue, Value,
-    ValueError, WithValue, impl_try_from_value_str,
+    Expected, RenderError, StreamSource, TryFromValue, Value, ValueError,
+    ValueStream, WithValue, impl_try_from_value_str,
 };
 use slumber_util::{TimeSpan, paths::expand_home};
 use std::{
@@ -112,7 +112,7 @@ pub fn boolean(value: Value) -> bool {
 ///   stdin:
 ///     description: Data to pipe to the subprocess's stdin
 ///     default: "b''"
-/// return: Stdout output as bytes. May be returned as a stream (LazyValue).
+/// return: Stdout output as bytes
 /// errors:
 ///   - If the command fails to initialize (e.g. program unknown)
 ///   - If the subprocess exits with a non-zero status code
@@ -128,7 +128,7 @@ pub fn command(
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
-) -> Result<LazyValue, FunctionError> {
+) -> Result<ValueStream, FunctionError> {
     /// Wrap an IO error
     fn io_error(
         program: &str,
@@ -222,7 +222,7 @@ pub fn command(
 
     let stream = future.try_flatten_stream().boxed();
 
-    Ok(LazyValue::Stream {
+    Ok(ValueStream::Stream {
         source: StreamSource::Command { command },
         stream,
     })
@@ -304,7 +304,7 @@ pub fn env(variable: String, #[kwarg] default: String) -> String {
 ///     output: Contents of config.json file
 /// ```
 #[template]
-pub fn file(#[context] context: &TemplateContext, path: String) -> LazyValue {
+pub fn file(#[context] context: &TemplateContext, path: String) -> ValueStream {
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
     let source = StreamSource::File { path: path.clone() };
     // Return the file as a stream. If streaming isn't available here, it will
@@ -317,7 +317,7 @@ pub fn file(#[context] context: &TemplateContext, path: String) -> LazyValue {
             .map_err(|error| FunctionError::File { path, error })?;
         Ok(reader_stream(file))
     };
-    LazyValue::Stream {
+    ValueStream::Stream {
         source,
         stream: future.try_flatten_stream().boxed(),
     }

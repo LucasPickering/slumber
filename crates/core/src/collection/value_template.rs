@@ -2,7 +2,7 @@ use crate::render::TemplateContext;
 use futures::{FutureExt, future};
 use serde::Serialize;
 use slumber_template::{
-    LazyValue, RenderError, RenderedChunks, Template, Value,
+    RenderError, RenderedChunks, Template, Value, ValueStream,
 };
 
 /// A templated [Value]
@@ -84,7 +84,7 @@ impl ValueTemplate {
     pub async fn render_chunks_stream(
         &self,
         context: &TemplateContext,
-    ) -> RenderedChunks<LazyValue> {
+    ) -> RenderedChunks<ValueStream> {
         self.render_chunks_inner(context, Template::render_chunks_stream)
             .await
     }

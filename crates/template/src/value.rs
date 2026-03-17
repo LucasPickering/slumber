@@ -184,13 +184,12 @@ impl From<serde_json::Value> for Value {
     }
 }
 
-/// A source of a template value. This can be a concrete [Value] or a streamable
-/// source such as a file. This is used widely within rendering because it's a
-/// superset of all values. Not all renders accept streams as results though,
-/// so it's a separate type rather than a variant on [Value]. To convert a
-/// stream into a value, call [Self::resolve].
+/// A template output value that may be a concrete value or a stream
+///
+/// Not all renders accept streams as results, so this is a separate type rather
+/// than a variant on [Value]. To convert to [Value], call [Self::resolve].
 #[derive(derive_more::Debug)]
-pub enum LazyValue {
+pub enum ValueStream {
     /// A pre-resolved value
     Value(Value),
     /// Stream data from a (potentially) large source such as a file
@@ -203,8 +202,8 @@ pub enum LazyValue {
     },
 }
 
-impl LazyValue {
-    /// Resolve this lazy value to a concrete [Value]. If it's already a value,
+impl ValueStream {
+    /// Resolve this stream to a concrete [Value]. If it's already a value,
     /// just return it. If it's a stream it will be awaited and collected
     /// into bytes. If it's nested chunks, collect them into a single value.
     pub async fn resolve(self) -> Result<Value, RenderError> {
@@ -218,13 +217,13 @@ impl LazyValue {
     }
 }
 
-impl<T: Into<Value>> From<T> for LazyValue {
+impl<T: Into<Value>> From<T> for ValueStream {
     fn from(value: T) -> Self {
         Self::Value(value.into())
     }
 }
 
-/// Metadata about the source of a [Stream](LazyValue::Stream). This helps
+/// Metadata about the source of a [Stream](ValueStream::Stream). This helps
 /// consumers present the stream to the user, e.g. in a template preview
 #[derive(Clone, Debug, Display, PartialEq)]
 pub enum StreamSource {
@@ -247,7 +246,7 @@ pub enum StreamSource {
     Compound,
 }
 
-/// An abstraction for cases that support both [Value] and [LazyValue]
+/// An abstraction for cases that support both [Value] and [ValueStream]
 ///
 /// External-facing functions distinguish explicitly between the two value
 /// types, but within the template crate this trait allows depulication of
@@ -257,7 +256,7 @@ pub trait RenderValue: Sized {
     fn from_value(value: Value) -> Self;
 
     /// Convert to a [Value] asyncronously and fallibly
-    async fn try_resolve_lazy(self) -> Result<Value, RenderError>;
+    async fn try_resolve_stream(self) -> Result<Value, RenderError>;
 }
 
 impl RenderValue for Value {
@@ -265,17 +264,17 @@ impl RenderValue for Value {
         value
     }
 
-    async fn try_resolve_lazy(self) -> Result<Value, RenderError> {
+    async fn try_resolve_stream(self) -> Result<Value, RenderError> {
         Ok(self)
     }
 }
 
-impl RenderValue for LazyValue {
+impl RenderValue for ValueStream {
     fn from_value(value: Value) -> Self {
         Self::Value(value)
     }
 
-    async fn try_resolve_lazy(self) -> Result<Value, RenderError> {
+    async fn try_resolve_stream(self) -> Result<Value, RenderError> {
         self.resolve().await
     }
 }
@@ -554,21 +553,21 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
 ///
 /// This is used for converting function outputs back to template values.
 pub trait FunctionOutput {
-    fn into_result(self) -> Result<LazyValue, RenderError>;
+    fn into_result(self) -> Result<ValueStream, RenderError>;
 }
 
-impl<T: Into<LazyValue>> FunctionOutput for T {
-    fn into_result(self) -> Result<LazyValue, RenderError> {
+impl<T: Into<ValueStream>> FunctionOutput for T {
+    fn into_result(self) -> Result<ValueStream, RenderError> {
         Ok(self.into())
     }
 }
 
 impl<T, E> FunctionOutput for Result<T, E>
 where
-    T: Into<LazyValue>,
+    T: Into<ValueStream>,
     E: Into<RenderError>,
 {
-    fn into_result(self) -> Result<LazyValue, RenderError> {
+    fn into_result(self) -> Result<ValueStream, RenderError> {
         self.map(T::into).map_err(E::into)
     }
 }
@@ -581,7 +580,7 @@ mod tests {
     use slumber_util::assert_result;
 
     #[rstest]
-    #[case::value(LazyValue::Value("test".into()), Ok("test".into()))]
+    #[case::value(ValueStream::Value("test".into()), Ok("test".into()))]
     #[case::stream(
         stream(Ok("test".into())),
         Ok(b"test".into()),
@@ -591,15 +590,15 @@ mod tests {
         Err("Unknown function")
     )]
     #[tokio::test]
-    async fn test_lazy_resolve(
-        #[case] lazy: LazyValue,
+    async fn test_stream_resolve(
+        #[case] stream: ValueStream,
         #[case] expected: Result<Value, &str>,
     ) {
-        assert_result(lazy.resolve().await, expected);
+        assert_result(stream.resolve().await, expected);
     }
 
-    fn stream(result: Result<Bytes, RenderError>) -> LazyValue {
-        LazyValue::Stream {
+    fn stream(result: Result<Bytes, RenderError>) -> ValueStream {
+        ValueStream::Stream {
             stream: stream::once(future::ready(result)).boxed(),
             source: StreamSource::File {
                 path: "bogus".into(),

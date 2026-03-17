@@ -1,5 +1,5 @@
 use crate::{
-    Arguments, Context, Identifier, LazyValue, RenderError, Template, Value,
+    Arguments, Context, Identifier, RenderError, Template, Value, ValueStream,
     value::StreamSource,
 };
 use bytes::{Bytes, BytesMut};
@@ -245,27 +245,27 @@ impl Context<Value> for TestContext {
         function_name: &Identifier,
         arguments: Arguments<'_, Self>,
     ) -> Result<Value, RenderError> {
-        <Self as Context<LazyValue>>::call(self, function_name, arguments)
-            .and_then(LazyValue::resolve)
+        <Self as Context<ValueStream>>::call(self, function_name, arguments)
+            .and_then(ValueStream::resolve)
             .await
     }
 }
 
-impl Context<LazyValue> for TestContext {
+impl Context<ValueStream> for TestContext {
     async fn get_field(
         &self,
         identifier: &Identifier,
-    ) -> Result<LazyValue, RenderError> {
+    ) -> Result<ValueStream, RenderError> {
         <Self as Context<Value>>::get_field(self, identifier)
             .await
-            .map(LazyValue::from)
+            .map(ValueStream::from)
     }
 
     async fn call(
         &self,
         function_name: &Identifier,
         mut arguments: Arguments<'_, Self>,
-    ) -> Result<LazyValue, RenderError> {
+    ) -> Result<ValueStream, RenderError> {
         match function_name.as_str() {
             "identity" => {
                 let value: Value = arguments.pop_position()?;
@@ -300,7 +300,7 @@ impl Context<LazyValue> for TestContext {
                     .try_flatten_stream()
                     .map_err(RenderError::other)
                     .boxed();
-                Ok(LazyValue::Stream {
+                Ok(ValueStream::Stream {
                     source: StreamSource::File { path },
                     stream,
                 })

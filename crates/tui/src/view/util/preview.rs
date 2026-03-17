@@ -14,7 +14,7 @@ use slumber_core::{
     util::json::{JsonTemplateError, YamlTemplateError},
 };
 use slumber_template::{
-    LazyValue, RenderedChunk, RenderedChunks, Template, Value,
+    RenderedChunk, RenderedChunks, Template, Value, ValueStream,
 };
 use std::{
     borrow::Cow,
@@ -94,9 +94,9 @@ impl Preview for StreamTemplate {
             .into_iter()
             .map(|chunk| match chunk {
                 RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
-                RenderedChunk::Dynamic(lazy) => {
-                    RenderedChunk::Dynamic(PreviewValue::lazy_to_value(lazy))
-                }
+                RenderedChunk::Dynamic(stream) => RenderedChunk::Dynamic(
+                    PreviewValue::stream_to_value(stream),
+                ),
                 RenderedChunk::Error(error) => RenderedChunk::Error(error),
             })
             .collect();
@@ -291,17 +291,19 @@ impl PreviewValue {
         Self::render_inner(template, context, async |template, context| {
             let chunks = template.render_chunks_stream(context).await;
             match chunks.unpack() {
-                Ok(lazy) => PreviewValue::Dynamic(Self::lazy_to_value(lazy)),
-                // Map the chunks from stream values to eager values by
+                Ok(stream) => {
+                    PreviewValue::Dynamic(Self::stream_to_value(stream))
+                }
+                // Map the chunks from stream values to concrete values by
                 // stringifying the streams
                 Err(chunks) => {
                     let chunks = chunks
                         .into_iter()
                         .map(|chunk| match chunk {
                             RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
-                            RenderedChunk::Dynamic(lazy) => {
-                                RenderedChunk::Dynamic(Self::lazy_to_value(
-                                    lazy,
+                            RenderedChunk::Dynamic(stream) => {
+                                RenderedChunk::Dynamic(Self::stream_to_value(
+                                    stream,
                                 ))
                             }
                             RenderedChunk::Error(error) => {
@@ -316,7 +318,7 @@ impl PreviewValue {
         .await
     }
 
-    /// Render eager or lazy previews
+    /// Render concrete or stream previews
     async fn render_inner(
         template: &ValueTemplate,
         context: &TemplateContext,
@@ -357,10 +359,10 @@ impl PreviewValue {
     }
 
     /// Convert streams to strings
-    fn lazy_to_value(lazy: LazyValue) -> Value {
-        match lazy {
-            LazyValue::Value(value) => value,
-            LazyValue::Stream { source, .. } => format!("<{source}>").into(),
+    fn stream_to_value(stream: ValueStream) -> Value {
+        match stream {
+            ValueStream::Value(value) => value,
+            ValueStream::Stream { source, .. } => format!("<{source}>").into(),
         }
     }
 }

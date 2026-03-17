@@ -69,7 +69,6 @@ thiserror = "2.0.12"
 tokio = {version = "1.39.2", default-features = false}
 tokio-util = "0.7.13"
 tracing = "0.1.40"
-tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
 url = "2.0.0"
 uuid = {version = "1.10.0", default-features = false}
 winnow = "0.7.0"
@@ -108,22 +107,16 @@ used_underscore_binding = "allow"
 
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}
-console-subscriber = {version = "0.5.0", default-features = false, optional = true}
-slumber_cli = {workspace = true, optional = true}
-slumber_tui = {workspace = true, optional = true}
+slumber_cli = {workspace = true}
+slumber_tui = {workspace = true}
 slumber_util = {workspace = true}
 tokio = {workspace = true, features = ["macros", "rt", "tracing"]}
 tracing = {workspace = true}
-tracing-subscriber = {workspace = true}
 
 [features]
-default = ["cli", "import", "tui"]
-# TUI and CLI can be disabled in dev to speed up compilation while not in use
-cli = ["dep:slumber_cli"]
+default = ["import"]
+# Import can be disabled in dev to speed up compilation. It has a big dep tree
 import = ["slumber_cli/import"]
-tui = ["dep:slumber_tui"]
-# Enable tokio-console tracing
-tokio_tracing = ["dep:console-subscriber"]
 
 # https://proptest-rs.github.io/proptest/proptest/tips-and-best-practices.html#performance
 [profile.test.package.proptest]

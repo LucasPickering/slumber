@@ -3283,13 +3283,11 @@ name = "slumber"
 version = "5.2.0"
 dependencies = [
  "anyhow",
- "console-subscriber",
  "slumber_cli",
  "slumber_tui",
  "slumber_util",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3528,6 +3526,7 @@ dependencies = [
 name = "slumber_util"
 version = "5.2.0"
 dependencies = [
+ "console-subscriber",
  "derive_more",
  "dirs",
  "env-lock",

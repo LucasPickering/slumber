@@ -10,6 +10,10 @@ repository = {workspace = true}
 rust-version = {workspace = true}
 version = {workspace = true}
 
+[[bin]]
+name = "slumber_tui"
+path = "src/bin.rs"
+
 [dependencies]
 anyhow = {workspace = true}
 async-trait = {workspace = true}

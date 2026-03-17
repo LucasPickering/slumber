@@ -22,11 +22,16 @@ use serde::{
 use std::{
     error::Error,
     fmt::{self, Debug, Display},
+    fs::{File, OpenOptions},
+    io,
     ops::Deref,
     str::FromStr,
     time::Duration,
 };
-use tracing::error;
+use tracing::{error, level_filters::LevelFilter};
+use tracing_subscriber::{
+    Layer, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
+};
 use winnow::{
     ModalResult, Parser,
     ascii::digit1,
@@ -291,6 +296,75 @@ impl Display for DurationUnit {
             Self::Hour => write!(f, "h"),
             Self::Day => write!(f, "d"),
         }
+    }
+}
+
+/// Set up tracing to a log file, and optionally stderr as well. If there's
+/// an error creating the log file, we'll skip that part. This means in the TUI
+/// the error (and all other tracing) will never be visible, but that's a
+/// problem for another day.
+pub fn initialize_tracing(level_filter: LevelFilter, has_stderr: bool) {
+    /// Create a new log file in a temporary directory. Each file gets a unique
+    /// name so this won't clobber any old files.
+    fn initialize_log_file() -> io::Result<File> {
+        let path = paths::log_file();
+        paths::create_parent(&path)?;
+        let log_file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(path)?;
+        Ok(log_file)
+    }
+
+    // Failing to log shouldn't be a fatal crash, so just move on
+    let log_file = initialize_log_file().traced().ok();
+
+    let file_subscriber = log_file.map(|log_file| {
+        // Include PID
+        // https://github.com/tokio-rs/tracing/pull/2655
+        tracing_subscriber::fmt::layer()
+            .with_file(true)
+            .with_line_number(true)
+            .with_writer(log_file)
+            .with_target(false)
+            .with_ansi(false)
+            .with_span_events(FmtSpan::NONE)
+            // File output can't be lower than warn. There's no good reason to
+            // disable file output. If someone passes off/error, they probably
+            // just want to set the stderr level.
+            .with_filter(level_filter.max(LevelFilter::WARN))
+    });
+
+    // Enable console output for CLI. By default logging is off, but it can be
+    // turned up with the verbose flag
+    let stderr_subscriber = tracing_subscriber::fmt::layer()
+        .with_writer(io::stderr)
+        .with_target(false)
+        .with_span_events(FmtSpan::NONE)
+        .without_time()
+        // Disable stderr for TUI mode
+        .with_filter(if has_stderr {
+            level_filter
+        } else {
+            LevelFilter::OFF
+        });
+
+    // Enable tokio-console subscriber when tokio_tracing feature is enabled
+    #[cfg(feature = "tokio_tracing")]
+    {
+        tracing_subscriber::registry()
+            .with(file_subscriber)
+            .with(stderr_subscriber)
+            .with(console_subscriber::spawn())
+            .init();
+    }
+    #[cfg(not(feature = "tokio_tracing"))]
+    {
+        tracing_subscriber::registry()
+            .with(file_subscriber)
+            .with(stderr_subscriber)
+            .init();
     }
 }
 

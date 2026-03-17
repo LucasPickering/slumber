@@ -350,7 +350,6 @@ pub fn initialize_tracing(level_filter: LevelFilter, has_stderr: bool) {
             LevelFilter::OFF
         });
 
-    // Enable tokio-console subscriber when tokio_tracing feature is enabled
     #[cfg(feature = "tokio_tracing")]
     {
         tracing_subscriber::registry()

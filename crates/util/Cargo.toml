@@ -26,6 +26,7 @@ serde = {workspace = true}
 serde_yaml = {workspace = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}
+tracing-log = "0.2.0"
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
 uuid = {workspace = true, features = ["v4"]}
 winnow = {workspace = true}

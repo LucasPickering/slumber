@@ -29,6 +29,7 @@ use std::{
     time::Duration,
 };
 use tracing::{error, level_filters::LevelFilter};
+use tracing_log::LogTracer;
 use tracing_subscriber::{
     Layer, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -316,6 +317,9 @@ pub fn initialize_tracing(level_filter: LevelFilter, has_stderr: bool) {
             .open(path)?;
         Ok(log_file)
     }
+
+    // Pipe messages from the `log` crate to tracing
+    let _ = LogTracer::init();
 
     // Failing to log shouldn't be a fatal crash, so just move on
     let log_file = initialize_log_file().traced().ok();

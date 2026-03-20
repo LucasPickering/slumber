@@ -217,6 +217,7 @@ struct Context {
 fn unmount(path: &Path) -> anyhow::Result<()> {
     info!("Unmounting {}", path.display());
     Command::new("umount")
+        .arg("-l")
         .arg(path)
         .output()
         .with_context(|| format!("Error unmounting {}", path.display()))?;

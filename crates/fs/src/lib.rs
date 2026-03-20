@@ -1,79 +1,37 @@
 //! TODO
-//!
-//! The file structure looks like this:
-//!
-//! ```notrust
-//! mount_dir/
-//!   slumber.yml
-//!   profiles/
-//!     profile1/
-//!       profile.yml
-//!       preview.yml
-//!   requests/
-//!     folder1/
-//!       request1/
-//!         recipe.yml
-//!         preview.txt
-//!         go.sh
-//!         history/
-//!           2026-02-28T112233_request_guid/
-//!             request.txt
-//!             request_body.json
-//!             response.txt
-//!             response_body.json
-//! ```
 
 mod node;
 
-use crate::node::{Node, NodeKind, NodeMap};
-use anyhow::Context;
-use bytes::Bytes;
+use crate::node::NodeMap;
+use anyhow::Context as _;
 use fuser::{
-    Errno, FileAttr, FileHandle, FileType, Filesystem, INodeNo, LockOwner,
-    MountOption, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry,
+    Errno, FileHandle, FileType, Filesystem, INodeNo, LockOwner, MountOption,
+    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry,
 };
-use slumber_core::collection::{Collection, CollectionFile};
+use slumber_core::{
+    collection::{Collection, CollectionFile},
+    database::{CollectionDatabase, Database},
+};
 use slumber_util::ResultTracedAnyhow;
 use std::{
     borrow::Cow,
     env,
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     process::Command,
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 use tracing::info;
 
 const TTL: Duration = Duration::from_secs(1);
-const FILE_ATTR: FileAttr = FileAttr {
-    ino: INodeNo::ROOT,
-    size: 0,
-    blocks: 0,
-    atime: UNIX_EPOCH,
-    mtime: UNIX_EPOCH,
-    ctime: UNIX_EPOCH,
-    crtime: UNIX_EPOCH,
-    kind: FileType::RegularFile,
-    perm: 0,
-    nlink: 0,
-    uid: 501, // TODO correct?
-    gid: 20,  // TODO correct?
-    rdev: 0,
-    flags: 0,
-    blksize: 4096,
-};
 
 /// TODO
 /// TODO better name
 #[derive(Debug)]
 pub struct SlumberFs {
     /// TODO
-    mount_path: PathBuf,
-    /// TODO
-    collection_file: CollectionFile,
-    /// TODO
-    collection: Collection,
+    context: Context,
     /// TODO
     nodes: NodeMap,
 }
@@ -86,14 +44,16 @@ impl SlumberFs {
     ) -> anyhow::Result<()> {
         let collection_file = CollectionFile::new(collection_path)?;
         let collection = collection_file.load()?;
+        let database = Database::load()?.into_collection(&collection_file)?;
         let mount_path = env::current_dir()?.join(mount_path);
-        let nodes = NodeMap::new(&collection);
-        let filesystem = Self {
+        let context = Context {
             mount_path: mount_path.clone(),
             collection_file,
             collection,
-            nodes,
+            database,
         };
+        let nodes = NodeMap::new(&context);
+        let filesystem = Self { context, nodes };
 
         info!(?mount_path, "Starting filesystem server");
 
@@ -116,169 +76,19 @@ impl SlumberFs {
             format!("Error mounting filesystem at {}", mount_path.display())
         })
     }
+}
 
-    /// Get a node's name, i.e. the end of its path
-    fn name<'a>(&'a self, node: &'a Node) -> Cow<'a, OsStr> {
-        fn cow(s: &str) -> Cow<'_, OsStr> {
-            Cow::Borrowed(s.as_ref())
-        }
-        match &node.kind {
-            NodeKind::Root => {
-                self.mount_path.file_name().unwrap_or("".as_ref()).into()
-            }
-            NodeKind::CollectionFile => cow("slumber.yml"),
-            NodeKind::Profiles => cow("profiles"),
-            NodeKind::Profile(profile_id) => cow(profile_id),
-            NodeKind::ProfileDefinition(_) => cow("profile.yml"),
-            NodeKind::Recipes => cow("recipes"),
-            NodeKind::Folder(recipe_id) => cow(recipe_id),
-            NodeKind::Recipe(recipe_id) => cow(recipe_id),
-            NodeKind::RecipeDefinition(_) => cow("recipe.yml"),
-            NodeKind::RecipeSend(_) => cow("go.sh"),
-            NodeKind::RecipeHistory(_) => cow("history"),
-            // TODO include date/time in name
-            NodeKind::RecipeHistoryExchange(_, request_id) => {
-                OsString::from(request_id.to_string()).into()
+/// TODO
+macro_rules! get_node {
+    ($map:expr, $inode:expr, $reply:expr) => {
+        match $map.get($inode) {
+            Ok(node) => node,
+            Err(error) => {
+                $reply.error(error);
+                return;
             }
         }
-    }
-
-    /// Get a node's attributes
-    fn attr(&self, node: &Node) -> FileAttr {
-        let ino = node.inode;
-        // This may be inefficient for some files, but in most cases the only
-        // way to get the length is to generate the full content.
-        let size = self.content(node).len() as u64;
-
-        match &node.kind {
-            // All directories have the same attributes. Only files can vary
-            NodeKind::Root
-            | NodeKind::Profiles
-            | NodeKind::Profile(_)
-            | NodeKind::Recipes
-            | NodeKind::Folder(_)
-            | NodeKind::Recipe(_)
-            | NodeKind::RecipeHistory(_)
-            | NodeKind::RecipeHistoryExchange(_, _) => FileAttr {
-                // TODO fix all of these
-                ino,
-                size,
-                blocks: 0,
-                atime: UNIX_EPOCH,
-                mtime: UNIX_EPOCH,
-                ctime: UNIX_EPOCH,
-                crtime: UNIX_EPOCH,
-                kind: node.file_type(),
-                perm: 0o755,
-                ..FILE_ATTR
-            },
-            NodeKind::CollectionFile => FileAttr {
-                // TODO fix these
-                ino,
-                size,
-                blocks: 0, // TODO set this based on size?
-                atime: UNIX_EPOCH,
-                mtime: UNIX_EPOCH,
-                ctime: UNIX_EPOCH,
-                crtime: UNIX_EPOCH,
-                kind: node.file_type(),
-                perm: 0o644,
-                ..FILE_ATTR
-            },
-            NodeKind::ProfileDefinition(_) => FileAttr {
-                // TODO fix these
-                ino,
-                size,
-                blocks: 0, // TODO set this based on size?
-                atime: UNIX_EPOCH,
-                mtime: UNIX_EPOCH,
-                ctime: UNIX_EPOCH,
-                crtime: UNIX_EPOCH,
-                kind: node.file_type(),
-                perm: 0o644,
-                ..FILE_ATTR
-            },
-            NodeKind::RecipeDefinition(_) => FileAttr {
-                // TODO fix these
-                ino,
-                size,
-                blocks: 0, // TODO set this based on size?
-                atime: UNIX_EPOCH,
-                mtime: UNIX_EPOCH,
-                ctime: UNIX_EPOCH,
-                crtime: UNIX_EPOCH,
-                kind: node.file_type(),
-                perm: 0o644,
-                ..FILE_ATTR
-            },
-            NodeKind::RecipeSend(_) => FileAttr {
-                // TODO fix these
-                ino,
-                size,
-                blocks: 0, // TODO set this based on size?
-                atime: UNIX_EPOCH,
-                mtime: UNIX_EPOCH,
-                ctime: UNIX_EPOCH,
-                crtime: UNIX_EPOCH,
-                kind: node.file_type(),
-                perm: 0o755,
-                ..FILE_ATTR
-            },
-        }
-    }
-
-    /// Get the target for a symbol link
-    ///
-    /// Return `None` if the node is not a link
-    fn link(&self, node: &Node) -> Option<&Path> {
-        match &node.kind {
-            NodeKind::CollectionFile => Some(self.collection_file.path()),
-            // There aren't many link types, so this saves having to add here
-            // for every new node kind
-            _ => None,
-        }
-    }
-
-    /// Get the contents of a file node
-    ///
-    /// If the node is a directory, return empty bytes
-    fn content(&self, node: &Node) -> Bytes {
-        match &node.kind {
-            // TODO these should use the actual file contents?
-            NodeKind::ProfileDefinition(profile_id) => {
-                let profile = self
-                    .collection
-                    .profiles
-                    .get(profile_id)
-                    .expect("TODO error");
-                serde_yaml::to_string(profile).unwrap().into()
-            }
-            NodeKind::RecipeDefinition(recipe_id) => {
-                let recipe = self
-                    .collection
-                    .recipes
-                    .get_recipe(recipe_id)
-                    .expect("TODO error");
-                serde_yaml::to_string(recipe).unwrap().into()
-            }
-            NodeKind::RecipeSend(recipe_id) => {
-                // TODO include profile
-                // TODO make this persist
-                format!("#!/bin/sh
-slumber --file {collection} request {recipe_id}
-", collection = self.collection_file.path().display()).into()
-            }
-            NodeKind::Root
-            | NodeKind::CollectionFile // This is a symlink, it has no contents
-            | NodeKind::Profiles
-            | NodeKind::Profile(_)
-            | NodeKind::Recipes
-            | NodeKind::Folder(_)
-            | NodeKind::Recipe(_)
-            | NodeKind::RecipeHistory(_)
-            | NodeKind::RecipeHistoryExchange(_, _) => Bytes::new(),
-        }
-    }
+    };
 }
 
 impl Filesystem for SlumberFs {
@@ -290,7 +100,7 @@ impl Filesystem for SlumberFs {
         reply: ReplyAttr,
     ) {
         let node = get_node!(self.nodes, inode, reply);
-        reply.attr(&TTL, &self.attr(node));
+        reply.attr(&TTL, &node.attr(&self.context));
     }
 
     fn lookup(
@@ -301,12 +111,13 @@ impl Filesystem for SlumberFs {
         reply: ReplyEntry,
     ) {
         // Find a node matching the given (parent, path)
-        let node = self.nodes.iter().find(|node| {
-            node.parent == Some(parent) && self.name(node) == name
-        });
+        let node = self
+            .nodes
+            .children(parent)
+            .find(|node| node.name(&self.context) == name);
         if let Some(node) = node {
             // TODO what is generation?
-            reply.entry(&TTL, &self.attr(node), fuser::Generation(0));
+            reply.entry(&TTL, &node.attr(&self.context), fuser::Generation(0));
         } else {
             reply.error(Errno::ENOENT);
         }
@@ -324,8 +135,7 @@ impl Filesystem for SlumberFs {
         reply: ReplyData,
     ) {
         let node = get_node!(self.nodes, inode, reply);
-        // TODO do we need to make sure it's not a dir?
-        let content = self.content(node);
+        let content = node.content(&self.context);
         let start = (offset as usize).min(content.len());
         let end = (start + (size as usize)).min(content.len());
         reply.data(&content[start..end]);
@@ -339,12 +149,11 @@ impl Filesystem for SlumberFs {
         offset: u64,
         mut reply: ReplyDirectory,
     ) {
-        // If the parent doesn't exist, return an error instead of empty
+        // First, make sure the parent exists. Return an error if not
         get_node!(self.nodes, inode, reply);
 
         // Find all nodes with the given parent
-        let children =
-            self.nodes.iter().filter(|node| node.parent == Some(inode));
+        let children = self.nodes.children(inode);
         let entries = [
             (inode, FileType::Directory, Cow::Borrowed(".".as_ref())),
             // TODO is this inode correct?
@@ -353,8 +162,9 @@ impl Filesystem for SlumberFs {
         .into_iter()
         .chain(
             // Flatten into a tuple
-            children
-                .map(|node| (node.inode, node.file_type(), self.name(node))),
+            children.map(|node| {
+                (node.inode, node.file_type(), node.name(&self.context))
+            }),
         )
         .enumerate()
         .skip(offset as usize);
@@ -376,7 +186,7 @@ impl Filesystem for SlumberFs {
         reply: ReplyData,
     ) {
         let node = get_node!(self.nodes, inode, reply);
-        if let Some(link) = self.link(node) {
+        if let Some(link) = node.link(&self.context) {
             reply.data(link.as_os_str().as_encoded_bytes());
         } else {
             todo!("node wasn't a link")
@@ -387,8 +197,21 @@ impl Filesystem for SlumberFs {
 impl Drop for SlumberFs {
     fn drop(&mut self) {
         // Unmount on exit
-        let _ = unmount(&self.mount_path).traced();
+        let _ = unmount(&self.context.mount_path).traced();
     }
+}
+
+/// TODO
+#[derive(Debug)]
+struct Context {
+    /// TODO
+    mount_path: PathBuf,
+    /// TODO
+    collection_file: CollectionFile,
+    /// TODO
+    collection: Collection,
+    /// TODO
+    database: CollectionDatabase,
 }
 
 /// TODO

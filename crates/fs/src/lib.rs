@@ -27,16 +27,15 @@ use tracing::info;
 const TTL: Duration = Duration::from_secs(1);
 
 /// TODO
-/// TODO better name
 #[derive(Debug)]
-pub struct SlumberFs {
+pub struct CollectionFilesystem {
     /// TODO
     context: Context,
     /// TODO
     nodes: NodeMap,
 }
 
-impl SlumberFs {
+impl CollectionFilesystem {
     /// TODO
     pub fn run(
         collection_path: Option<PathBuf>,
@@ -91,7 +90,7 @@ macro_rules! get_node {
     };
 }
 
-impl Filesystem for SlumberFs {
+impl Filesystem for CollectionFilesystem {
     fn getattr(
         &self,
         _req: &fuser::Request,
@@ -194,7 +193,7 @@ impl Filesystem for SlumberFs {
     }
 }
 
-impl Drop for SlumberFs {
+impl Drop for CollectionFilesystem {
     fn drop(&mut self) {
         // Unmount on exit
         let _ = unmount(&self.context.mount_path).traced();

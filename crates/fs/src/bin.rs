@@ -24,6 +24,5 @@ async fn main() -> anyhow::Result<()> {
 
     initialize_tracing(log_level, true);
 
-    let fs = SlumberFs::new(collection_path, mount_path)?;
-    fs.run().await
+    SlumberFs::run(collection_path, mount_path)
 }

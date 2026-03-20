@@ -22,7 +22,10 @@ tag = false
 
 [dependencies]
 anyhow = {workspace = true}
+bytes = {workspace = true}
 fuser = "0.17.0"
+indexmap = {workspace = true}
+serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 slumber_template = {workspace = true}

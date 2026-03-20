@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use slumber_fs::CollectionFilesystem;
 use slumber_util::initialize_tracing;
 use std::{env, path::PathBuf};
 use tracing::level_filters::LevelFilter;
@@ -24,5 +23,5 @@ async fn main() -> anyhow::Result<()> {
 
     initialize_tracing(log_level, true);
 
-    CollectionFilesystem::run(collection_path, mount_path)
+    slumber_fs::run(collection_path, mount_path).await
 }

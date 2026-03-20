@@ -3479,6 +3479,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "fuser",
+ "futures",
  "indexmap",
  "serde_yaml",
  "slumber_config",

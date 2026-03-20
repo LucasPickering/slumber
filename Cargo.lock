@@ -3477,7 +3477,10 @@ name = "slumber_fs"
 version = "5.2.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "fuser",
+ "indexmap",
+ "serde_yaml",
  "slumber_config",
  "slumber_core",
  "slumber_template",

@@ -15,3 +15,4 @@ response.json
 *.data
 *.old
 profile.json.gz
+myfs/

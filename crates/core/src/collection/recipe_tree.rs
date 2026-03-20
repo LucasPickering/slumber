@@ -126,6 +126,11 @@ impl RecipeTree {
             .filter(|id| self.get_recipe(id).is_some())
     }
 
+    /// Get the recipe tree as a recursive map
+    pub fn tree(&self) -> &IndexMap<RecipeId, RecipeNode> {
+        &self.tree
+    }
+
     /// Get a flat iterator over all nodes in the tree, using depth first
     /// search. Each yielded item will include the lookup key to retrieve
     /// that item.

@@ -35,11 +35,34 @@ use fuser::{
 use slumber_core::collection::{Collection, CollectionFile};
 use slumber_util::ResultTracedAnyhow;
 use std::{
-    borrow::Cow, env, ffi::{OsStr, OsString}, fs, path::{Path, PathBuf}, process::Command, time::{Duration, UNIX_EPOCH}
+    borrow::Cow,
+    env,
+    ffi::{OsStr, OsString},
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    time::{Duration, UNIX_EPOCH},
 };
 use tracing::info;
 
 const TTL: Duration = Duration::from_secs(1);
+const FILE_ATTR: FileAttr = FileAttr {
+    ino: INodeNo::ROOT,
+    size: 0,
+    blocks: 0,
+    atime: UNIX_EPOCH,
+    mtime: UNIX_EPOCH,
+    ctime: UNIX_EPOCH,
+    crtime: UNIX_EPOCH,
+    kind: FileType::RegularFile,
+    perm: 0,
+    nlink: 0,
+    uid: 501, // TODO correct?
+    gid: 20,  // TODO correct?
+    rdev: 0,
+    flags: 0,
+    blksize: 4096,
+};
 
 /// TODO
 /// TODO better name
@@ -96,7 +119,7 @@ impl SlumberFs {
 
     /// Get a node's name, i.e. the end of its path
     fn name<'a>(&'a self, node: &'a Node) -> Cow<'a, OsStr> {
-        fn cow(s:&str) -> Cow<'_,OsStr> {
+        fn cow(s: &str) -> Cow<'_, OsStr> {
             Cow::Borrowed(s.as_ref())
         }
         match &node.kind {
@@ -147,12 +170,7 @@ impl SlumberFs {
                 crtime: UNIX_EPOCH,
                 kind: node.file_type(),
                 perm: 0o755,
-                nlink: 1,
-                uid: 501,
-                gid: 20,
-                rdev: 0,
-                flags: 0,
-                blksize: 512,
+                ..FILE_ATTR
             },
             NodeKind::CollectionFile => FileAttr {
                 // TODO fix these
@@ -165,12 +183,7 @@ impl SlumberFs {
                 crtime: UNIX_EPOCH,
                 kind: node.file_type(),
                 perm: 0o644,
-                nlink: 1,
-                uid: 501,
-                gid: 20,
-                rdev: 0,
-                flags: 0,
-                blksize: 512,
+                ..FILE_ATTR
             },
             NodeKind::ProfileDefinition(_) => FileAttr {
                 // TODO fix these
@@ -183,12 +196,7 @@ impl SlumberFs {
                 crtime: UNIX_EPOCH,
                 kind: node.file_type(),
                 perm: 0o644,
-                nlink: 1,
-                uid: 501,
-                gid: 20,
-                rdev: 0,
-                flags: 0,
-                blksize: 512,
+                ..FILE_ATTR
             },
             NodeKind::RecipeDefinition(_) => FileAttr {
                 // TODO fix these
@@ -201,12 +209,7 @@ impl SlumberFs {
                 crtime: UNIX_EPOCH,
                 kind: node.file_type(),
                 perm: 0o644,
-                nlink: 1,
-                uid: 501,
-                gid: 20,
-                rdev: 0,
-                flags: 0,
-                blksize: 512,
+                ..FILE_ATTR
             },
             NodeKind::RecipeSend(_) => FileAttr {
                 // TODO fix these
@@ -219,12 +222,7 @@ impl SlumberFs {
                 crtime: UNIX_EPOCH,
                 kind: node.file_type(),
                 perm: 0o755,
-                nlink: 1,
-                uid: 501,
-                gid: 20,
-                rdev: 0,
-                flags: 0,
-                blksize: 512,
+                ..FILE_ATTR
             },
         }
     }
@@ -276,7 +274,7 @@ slumber --file {collection} request {recipe_id}
             | NodeKind::Profile(_)
             | NodeKind::Recipes
             | NodeKind::Folder(_)
-            | NodeKind::Recipe(_) 
+            | NodeKind::Recipe(_)
             | NodeKind::RecipeHistory(_)
             | NodeKind::RecipeHistoryExchange(_, _) => Bytes::new(),
         }

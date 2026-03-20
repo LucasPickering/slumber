@@ -27,15 +27,20 @@
 //! ```
 
 use crate::Context;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use fuser::{Errno, FileAttr, FileType, INodeNo};
 use slumber_core::{
     collection::{ProfileId, RecipeId, RecipeNode as RecipeTreeNode},
     database::ProfileFilter,
-    http::RequestId,
+    http::{Exchange, RequestBody, RequestId, RequestRecord},
 };
 use std::{
-    borrow::Cow, collections::HashMap, ffi::OsStr, fmt::Debug, mem, path::Path,
+    borrow::Cow,
+    collections::HashMap,
+    ffi::OsStr,
+    fmt::{Debug, Write},
+    mem,
+    path::Path,
     time::UNIX_EPOCH,
 };
 
@@ -504,16 +509,16 @@ impl FileNode for RecipeHistoryDirectory {
         };
         exchanges
             .into_iter()
-            .map(|exchange| RecipeHistoryExchangeDirectory(exchange.id).boxed())
+            .map(|exchange| ExchangeDirectory(exchange.id).boxed())
             .collect()
     }
 }
 
 /// Request/response for a single historical exchange
 #[derive(Debug)]
-struct RecipeHistoryExchangeDirectory(RequestId);
+struct ExchangeDirectory(RequestId);
 
-impl FileNode for RecipeHistoryExchangeDirectory {
+impl FileNode for ExchangeDirectory {
     fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
         // TODO include the timestamp in here
         Cow::Owned(self.0.to_string().into())
@@ -523,8 +528,104 @@ impl FileNode for RecipeHistoryExchangeDirectory {
         FileType::Directory
     }
 
-    fn children(&self, _context: &Context) -> Vec<Box<dyn FileNode>> {
-        vec![]
+    fn children(&self, context: &Context) -> Vec<Box<dyn FileNode>> {
+        let request_id = self.0;
+        let Ok(Some(exchange)) = context.database.get_request(request_id)
+        else {
+            return vec![];
+        };
+        let Exchange { request, .. } = exchange;
+
+        let mut children = vec![RequestMetadataFile::new(&request).boxed()];
+        // Only include the request body if it has content
+        if let RequestBody::Some(bytes) = &request.body {
+            children.push(
+                RequestBodyFile {
+                    // Bytes uses refcounting so this is cheap
+                    bytes: bytes.clone(),
+                }
+                .boxed(),
+            );
+        }
+        children
+    }
+}
+
+/// Request metadata (HTTP version + URL + headers) for a request
+#[derive(Debug)]
+struct RequestMetadataFile {
+    content: Bytes,
+}
+
+impl RequestMetadataFile {
+    fn new(request: &RequestRecord) -> Self {
+        // Pre-load the contents, since the request is already in memory
+        let mut content = BytesMut::new();
+
+        // HTTP version and URL are UTF-8, so add those first
+        write!(
+            &mut content,
+            "{version}
+{url}
+",
+            version = request.http_version,
+            url = request.url
+        )
+        .unwrap();
+
+        // Headers
+        for (name, value) in &request.headers {
+            // <https://www.rfc-editor.org/rfc/rfc9110.html#name-field-values>
+            content.extend(name.as_str().as_bytes());
+            content.extend(b": ");
+            content.extend(value.as_bytes());
+            content.extend(b"\n");
+        }
+
+        Self {
+            content: content.into(),
+        }
+    }
+}
+
+impl FileNode for RequestMetadataFile {
+    fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
+        to_cow("request_metadata.txt")
+    }
+
+    fn file_type(&self) -> FileType {
+        FileType::RegularFile
+    }
+
+    fn content(&self, _context: &Context) -> Bytes {
+        self.content.clone()
+    }
+}
+
+/// Body for a request
+///
+/// This is only included if the request had a body
+#[derive(Debug)]
+struct RequestBodyFile {
+    /// Body content
+    ///
+    /// The body has to be loaded from the DB when creating this node to see if
+    /// it exists, so we might as well store it instead of fetching it lazily.
+    bytes: Bytes,
+}
+
+impl FileNode for RequestBodyFile {
+    fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
+        // TODO set file name dynamically based on content type
+        to_cow("request_body.txt")
+    }
+
+    fn file_type(&self) -> FileType {
+        FileType::RegularFile
+    }
+
+    fn content(&self, _context: &Context) -> Bytes {
+        self.bytes.clone()
     }
 }
 

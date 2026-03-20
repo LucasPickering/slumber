@@ -14,17 +14,19 @@ run = "magick -background transparent $MISE_PROJECT_ROOT/static/slumber.png -def
 sources = ["docs/theme/favicon.png"]
 
 [tasks.fs]
-description = "Run the FS frontend"
+description = "Run the FS frontend and watch for changes"
 usage = '''
 flag "--file -f <file>" help="Collection file path"
-flag "--mount -m <path>" default="my_fs" help="Filesystem mount path"
+flag "--mount -m <path>" default="myfs" help="Filesystem mount path"
 flag "--log-level <level>" default="info" help="Set log level"
 '''
 run = '''
 export COLLECTION_PATH=$usage_file
 export MOUNT_PATH=$usage_mount
 export LOG=$usage_log_level
-cargo run --package slumber_fs
+watchexec --on-busy-update=restart --shell=none \
+    --watch=Cargo.toml --watch=Cargo.lock --watch=crates/ \
+    cargo run --package slumber_fs
 '''
 
 [tasks.mdbook]

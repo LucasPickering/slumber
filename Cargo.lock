@@ -3495,6 +3495,8 @@ dependencies = [
  "fuser",
  "futures",
  "indexmap",
+ "serde",
+ "serde_json",
  "serde_yaml",
  "slumber_config",
  "slumber_core",

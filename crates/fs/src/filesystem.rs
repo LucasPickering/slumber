@@ -2,7 +2,8 @@ use crate::{MessagesTx, node::NodeMap};
 use anyhow::Context as _;
 use fuser::{
     Errno, FileHandle, FileType, Filesystem, INodeNo, LockOwner, MountOption,
-    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry,
+    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyWrite,
+    WriteFlags,
 };
 use slumber_core::{
     collection::{Collection, CollectionFile},
@@ -30,8 +31,6 @@ pub struct CollectionFilesystem {
     context: Context,
     /// TODO
     nodes: NodeMap,
-    /// Channel to communicate async messages back to the main thread
-    messages_tx: MessagesTx,
 }
 
 impl CollectionFilesystem {
@@ -50,13 +49,10 @@ impl CollectionFilesystem {
             collection_file,
             collection,
             database,
+            messages_tx,
         };
         let nodes = NodeMap::new(&context);
-        Ok(Self {
-            context,
-            nodes,
-            messages_tx,
-        })
+        Ok(Self { context, nodes })
     }
 
     /// TODO
@@ -106,6 +102,17 @@ macro_rules! get_node {
 }
 
 impl Filesystem for CollectionFilesystem {
+    fn flush(
+        &self,
+        _req: &fuser::Request,
+        _ino: INodeNo,
+        _fh: FileHandle,
+        _lock_owner: LockOwner,
+        _reply: fuser::ReplyEmpty,
+    ) {
+        // Nothing to flush...
+    }
+
     fn getattr(
         &self,
         _req: &fuser::Request,
@@ -206,6 +213,25 @@ impl Filesystem for CollectionFilesystem {
             todo!("node wasn't a link")
         }
     }
+
+    fn write(
+        &self,
+        _req: &fuser::Request,
+        inode: INodeNo,
+        _fh: FileHandle,
+        _offset: u64,
+        data: &[u8],
+        _write_flags: WriteFlags,
+        _flags: OpenFlags,
+        _lock_owner: Option<LockOwner>,
+        reply: ReplyWrite,
+    ) {
+        // TODO handle offset
+        let node = get_node!(self.nodes, inode, reply);
+        dbg!(data);
+        node.write(&self.context, data);
+        reply.written(data.len() as u32); // TODO
+    }
 }
 
 impl Drop for CollectionFilesystem {
@@ -226,6 +252,8 @@ pub struct Context {
     pub collection: Collection,
     /// TODO
     pub database: CollectionDatabase,
+    /// TODO
+    pub messages_tx: MessagesTx,
 }
 
 /// TODO

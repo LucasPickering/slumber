@@ -1,12 +1,14 @@
 //! TODO
 
 use crate::filesystem::{CollectionFilesystem, Context};
+use serde::{Deserialize, Serialize};
 use slumber_core::collection::RecipeId;
 use std::path::PathBuf;
 use tokio::{
     select,
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
 };
+use tracing::debug;
 
 mod filesystem;
 mod node;
@@ -30,6 +32,7 @@ pub async fn run(
 }
 
 /// TODO
+#[derive(Debug, Serialize, Deserialize)]
 enum Message {
     /// Trigger an HTTP request
     SendRequest { recipe_id: RecipeId },
@@ -40,8 +43,7 @@ async fn handle_messages(mut rx: MessagesRx) -> anyhow::Result<()> {
         let Some(message) = rx.recv().await else {
             return Ok(());
         };
-        match message {
-            Message::SendRequest { recipe_id } => todo!(),
-        }
+        debug!(?message, "Received message");
+        // TODO use message
     }
 }

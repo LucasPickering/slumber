@@ -1,3 +1,8 @@
+[tasks.build-web]
+description = "Build Slumber for WASM"
+run = "cargo check --target wasm32-unknown-unknown -p slumber_util"
+sources = ["Cargo.toml", "Cargo.lock", "crates/**"]
+
 [tasks.ci]
 description = "Run local CI commands"
 run = [
@@ -36,6 +41,7 @@ run = [
   "samply record ./target/release/slumber",
 ]
 tools."cargo:samply" = "0.13.1"
+
 
 [env]
 RUST_BACKTRACE = 1

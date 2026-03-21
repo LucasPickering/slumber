@@ -2,3 +2,4 @@
 # Keep in sync w/ Cargo.toml
 channel = "1.90.0"
 components = ["cargo", "clippy", "rustfmt", "rust-analyzer"]
+targets = ["wasm32-unknown-unknown"]

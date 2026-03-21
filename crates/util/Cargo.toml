@@ -30,6 +30,9 @@ tracing-subscriber = {version = "0.3.17", default-features = false, features = [
 uuid = {workspace = true, features = ["v4"]}
 winnow = {workspace = true}
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = {workspace = true, features = ["js"]}
+
 [dev-dependencies]
 env-lock = {workspace = true}
 pretty_assertions = {workspace = true}

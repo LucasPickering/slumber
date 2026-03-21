@@ -63,7 +63,7 @@ impl Default for RequestId {
     }
 }
 
-/// HTTP protocl version. This is duplicated from [reqwest::Version] because
+/// HTTP protocol version. This is duplicated from [reqwest::Version] because
 /// that type doesn't provide any way to construct it. It only allows you to use
 /// the existing constants.
 #[derive(Copy, Clone, Debug, Default, EnumIter, Serialize, Deserialize)]
@@ -76,6 +76,9 @@ pub enum HttpVersion {
     Http11,
     Http2,
     Http3,
+    /// Web only - the Fetch API doesn't expose HTTP version
+    #[cfg(target_arch = "wasm32")]
+    Unknown,
 }
 
 impl HttpVersion {
@@ -86,6 +89,8 @@ impl HttpVersion {
             Self::Http11 => "HTTP/1.1",
             Self::Http2 => "HTTP/2.0",
             Self::Http3 => "HTTP/3.0",
+            #[cfg(target_arch = "wasm32")]
+            Self::Unknown => "HTTP/Unknown",
         }
     }
 }
@@ -577,8 +582,10 @@ impl RequestRecord {
             id,
             profile_id,
             recipe_id,
-
+            #[cfg(not(target_arch = "wasm32"))]
             http_version: request.version().into(),
+            #[cfg(target_arch = "wasm32")]
+            http_version: HttpVersion::Unknown, // Fetch API doesn't expose this
             method: request.method().into(),
             url: request.url().clone(),
             headers: request.headers().clone(),
@@ -950,6 +957,13 @@ pub enum RequestBuildErrorKind {
     /// Error while streaming bytes for a body
     #[error("Streaming request body")]
     BodyStream(#[source] RenderError),
+    /// Streaming not supported on web
+    ///
+    /// This is not a big deal because stream sources (files, etc.) also aren't
+    /// supported, so there isn't a use case for stream bodies.
+    #[cfg(target_arch = "wasm32")]
+    #[error("Streaming not supported on web")]
+    BodyStreamWeb,
 
     /// Error assembling the final request
     #[error(transparent)]

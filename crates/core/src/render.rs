@@ -627,6 +627,11 @@ pub enum FunctionError {
     /// User referenced a field that isn't defined in the current profile
     #[error("Unknown profile field `{field}`")]
     UnknownField { field: String },
+
+    /// Function doesn't work on the web platform
+    #[cfg(target_arch = "wasm32")]
+    #[error("Not supported on web")]
+    WebUnsupported,
 }
 
 impl From<FunctionError> for RenderError {

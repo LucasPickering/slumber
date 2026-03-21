@@ -59,10 +59,9 @@ use futures::{
 };
 use indexmap::IndexMap;
 use reqwest::{
-    Body, Client, Request, RequestBuilder, Response, Url,
+    Client, Request, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
-    redirect,
 };
 use slumber_config::HttpEngineConfig;
 use slumber_template::{RenderError, StreamSource, Template};
@@ -91,29 +90,45 @@ pub struct HttpEngine {
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
     pub fn new(config: &HttpEngineConfig) -> Self {
-        let make_builder = || {
+        #[cfg(not(target_arch = "wasm32"))]
+        let build_client = |danger: bool| {
+            use reqwest::redirect;
             let redirect_policy = if config.follow_redirects {
                 redirect::Policy::default()
             } else {
                 redirect::Policy::none()
             };
 
-            Client::builder()
+            let mut builder = Client::builder()
                 .user_agent(USER_AGENT)
-                .redirect(redirect_policy)
+                .redirect(redirect_policy);
+            if danger {
+                builder = builder.danger_accept_invalid_certs(true);
+            }
+            builder.build().expect("Error building reqwest client")
         };
 
-        let client = make_builder()
-            .build()
-            .expect("Error building reqwest client");
+        // Redirect and TLS customizations aren't allowed on web
+        #[cfg(target_arch = "wasm32")]
+        let build_client = |danger: bool| {
+            if config.follow_redirects {
+                error!("follow_redirects not supported on web");
+            }
+            if danger {
+                error!("TLS customizations not supported on web");
+            }
+            Client::builder()
+                .user_agent(USER_AGENT)
+                .build()
+                .expect("Error building reqwest client")
+        };
+
+        let client = build_client(false);
         let danger_client = if config.ignore_certificate_hosts.is_empty() {
             None
         } else {
             Some((
-                make_builder()
-                    .danger_accept_invalid_certs(true)
-                    .build()
-                    .expect("Error building reqwest client"),
+                build_client(true),
                 config.ignore_certificate_hosts.iter().cloned().collect(),
             ))
         };
@@ -862,9 +877,16 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
+            // Streaming not supported on wasm. Fix if this is merged:
+            // https://github.com/seanmonstar/reqwest/pull/2713
+            #[cfg(not(target_arch = "wasm32"))]
             RenderedBody::Stream(stream) => {
-                let body = Body::wrap_stream(stream.stream);
+                let body = reqwest::Body::wrap_stream(stream.stream);
                 Ok(builder.body(body))
+            }
+            #[cfg(target_arch = "wasm32")]
+            RenderedBody::Stream(_) => {
+                Err(RequestBuildErrorKind::BodyStreamWeb)
             }
             RenderedBody::Json(json) => Ok(builder.json(&json)),
             RenderedBody::FormUrlencoded(fields) => Ok(builder.form(&fields)),
@@ -880,7 +902,9 @@ impl RenderedBody {
                 }
 
                 for (field, stream) in fields {
-                    // Convert the stream to a form part
+                    // Convert the stream to a form part. Streaming is only
+                    // supported on native
+                    #[cfg(not(target_arch = "wasm32"))]
                     let part = match stream.source {
                         // Files can be handled natively by reqwest, which gets
                         // bonus support for Content-Type and
@@ -889,8 +913,22 @@ impl RenderedBody {
                             .await
                             .map_err(RequestBuildErrorKind::BodyFileStream)?,
                         // Any other stream can be streamed directly as bytes
-                        _ => Part::stream(Body::wrap_stream(stream.stream)),
+                        _ => Part::stream(reqwest::Body::wrap_stream(
+                            stream.stream,
+                        )),
                     };
+
+                    // Streaming isn't supported on web, so we have to eagerly
+                    // resolve. Fix if this is merged:
+                    // https://github.com/seanmonstar/reqwest/pull/2713
+                    #[cfg(target_arch = "wasm32")]
+                    let bytes: BytesMut = stream
+                        .stream
+                        .try_collect()
+                        .await
+                        .map_err(RequestBuildErrorKind::BodyStream)?;
+                    let part = Part::bytes(Vec::from(bytes));
+
                     form = form.part(field, part);
                 }
 

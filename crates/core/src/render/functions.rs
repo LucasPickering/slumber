@@ -1,5 +1,8 @@
 //! Functions available in templates
 
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
+
 use crate::{
     collection::RecipeId,
     render::{FunctionError, Prompt, SelectOption, TemplateContext},
@@ -7,27 +10,17 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
-use futures::{FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, de::IntoDeserializer};
 use slumber_macros::template;
 use slumber_template::{
-    Expected, RenderError, StreamSource, TryFromValue, Value, ValueError,
-    ValueStream, WithValue, impl_try_from_value_str,
+    Expected, TryFromValue, Value, ValueError, WithValue,
+    impl_try_from_value_str,
 };
-use slumber_util::{TimeSpan, paths::expand_home};
-use std::{
-    env, fmt::Debug, io, path::PathBuf, process::Stdio, str::FromStr, sync::Arc,
-};
-use tokio::{
-    fs::File,
-    io::{AsyncRead, AsyncWriteExt},
-    process::Command,
-    sync::oneshot,
-};
-use tokio_util::io::ReaderStream;
-use tracing::{Instrument, debug, debug_span};
+use slumber_util::TimeSpan;
+use std::{env, fmt::Debug, str::FromStr, sync::Arc};
+use tokio::sync::oneshot;
 
 // ===========================================================
 // Documentation for these functions is generated automatically by an mdbook
@@ -121,6 +114,7 @@ pub fn boolean(value: Value) -> bool {
 ///     output: "hello\n"
 ///   - input: command(["grep","1"], stdin="line 1\nline2")
 ///     output: "line 1\n"
+/// web: false
 /// ```
 #[template]
 pub fn command(
@@ -128,104 +122,16 @@ pub fn command(
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
-) -> Result<ValueStream, FunctionError> {
-    /// Wrap an IO error
-    fn io_error(
-        program: &str,
-        arguments: &[String],
-        error: io::Error,
-    ) -> RenderError {
-        RenderError::from(FunctionError::CommandInit {
-            program: program.to_owned(),
-            arguments: arguments.to_owned(),
-            error,
-        })
+) -> Result<slumber_template::ValueStream, FunctionError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        native::command(context, command, cwd, stdin)
     }
-
-    let cwd = context.root_dir.join(cwd.unwrap_or_default());
-    let [program, arguments @ ..] = command.as_slice() else {
-        return Err(FunctionError::CommandEmpty);
-    };
-    let program = program.clone();
-    let arguments = arguments.to_owned();
-
-    // We're going to defer command spawning *and* streaming. Streamed commands
-    // shouldn't be spawned until the stream is actually resolved, to prevent
-    // running large/slow commands in a preview.
-    //
-    // We construct a 3-stage stream:
-    // - Spawn command
-    // - Stream from stdout
-    // - Check command status
-    let span = debug_span!("command()", ?program, ?arguments);
-    let span_ = span.clone(); // Clone so we can attach to the inner stream too
-    let future = async move {
-        // Spawn the command process
-        debug!("Spawning");
-        let mut child = Command::new(&program)
-            .args(&arguments)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .current_dir(cwd)
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|error| io_error(&program, &arguments, error))?;
-
-        // Write the stdin to the process
-        if let Some(stdin) = stdin {
-            child
-                .stdin
-                .as_mut()
-                .expect("Process missing stdin")
-                .write_all(&stdin)
-                .await
-                .map_err(|error| io_error(&program, &arguments, error))?;
-        }
-
-        // We have to poll the process (via wait()) and stream from stdout
-        // simultaneously. If we just stream from stdout, we never get any
-        // output. If we try to wait() then stream from stdout, the stdout
-        // buffer may fill up and the process will hang until it's drained. In
-        // practice this means we'll poll in a background task, then stream
-        // stdout until it's done.
-        let stdout = child.stdout.take().expect("stdout not set for child");
-        let handle = tokio::spawn(async move { child.wait().await });
-
-        // After stdout is done, we'll check the status code of the process to
-        // make sure it succeeded. This gets chained on to the end of
-        // the stream
-        let status_future = async move {
-            let status_result = handle.await;
-            debug!(?status_result, "Finished");
-            let status = status_result
-                .map_err(RenderError::other)? // Join error - task panicked
-                // Command error
-                .map_err(|error| io_error(&program, &arguments, error))?;
-            if status.success() {
-                // Since we're chaining onto the end of the output stream, we
-                // need to emit empty bytes
-                Ok(Bytes::new())
-            } else {
-                Err(FunctionError::CommandStatus {
-                    program,
-                    arguments,
-                    status,
-                }
-                .into())
-            }
-        }
-        .instrument(span_);
-        Ok(reader_stream(stdout).chain(status_future.into_stream()))
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (context, command, cwd, stdin); // disable warnings
+        Err(FunctionError::WebUnsupported)
     }
-    .instrument(span);
-
-    let stream = future.try_flatten_stream().boxed();
-
-    Ok(ValueStream::Stream {
-        source: StreamSource::Command { command },
-        stream,
-    })
 }
 
 /// ```notrust
@@ -302,24 +208,22 @@ pub fn env(variable: String, #[kwarg] default: String) -> String {
 /// examples:
 ///   - input: file("config.json")
 ///     output: Contents of config.json file
+/// web: false
 /// ```
 #[template]
-pub fn file(#[context] context: &TemplateContext, path: String) -> ValueStream {
-    let path = context.root_dir.join(expand_home(PathBuf::from(path)));
-    let source = StreamSource::File { path: path.clone() };
-    // Return the file as a stream. If streaming isn't available here, it will
-    // be resolved immediately instead. If the file doesn't exist or any other
-    // error occurs, the error will be deferred until the data is actually
-    // streamed.
-    let future = async move {
-        let file = File::open(&path)
-            .await
-            .map_err(|error| FunctionError::File { path, error })?;
-        Ok(reader_stream(file))
-    };
-    ValueStream::Stream {
-        source,
-        stream: future.try_flatten_stream().boxed(),
+#[expect(clippy::unnecessary_wraps)] // Needed for wasm version
+pub fn file(
+    #[context] context: &TemplateContext,
+    path: String,
+) -> Result<slumber_template::ValueStream, FunctionError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Ok(native::file(context, path))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (context, path); // disable warnings
+        Err(FunctionError::WebUnsupported)
     }
 }
 
@@ -1457,13 +1361,6 @@ impl From<Sequence> for Value {
             Sequence::Array(array) => Value::Array(array),
         }
     }
-}
-
-/// Create a stream from an `AsyncRead` value
-fn reader_stream(
-    reader: impl AsyncRead,
-) -> impl Stream<Item = Result<Bytes, RenderError>> {
-    ReaderStream::new(reader).map_err(RenderError::other)
 }
 
 // There are no unit tests for these functions. Instead we use integration-ish

@@ -1,7 +1,8 @@
 [tasks.build-web]
 description = "Build Slumber for WASM"
-run = "cargo check --target wasm32-unknown-unknown -p slumber_util"
-sources = ["Cargo.toml", "Cargo.lock", "crates/**"]
+run = "cargo build --target wasm32-unknown-unknown -p slumber_cli"
+sources = ["Cargo.toml", "Cargo.lock", "crates/**/*"]
+tools = {"conda:clang" = "latest"} # Requires MISE_EXPERIMENTAL=1
 
 [tasks.ci]
 description = "Run local CI commands"
@@ -41,7 +42,6 @@ run = [
   "samply record ./target/release/slumber",
 ]
 tools."cargo:samply" = "0.13.1"
-
 
 [env]
 RUST_BACKTRACE = 1

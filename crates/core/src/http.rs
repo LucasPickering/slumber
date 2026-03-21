@@ -62,7 +62,6 @@ use reqwest::{
     Body, Client, Request, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
-    redirect,
 };
 use slumber_config::HttpEngineConfig;
 use slumber_template::{RenderError, StreamSource, Template};
@@ -91,29 +90,38 @@ pub struct HttpEngine {
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
     pub fn new(config: &HttpEngineConfig) -> Self {
-        let make_builder = || {
+        #[cfg(not(target_arch = "wasm32"))]
+        let build_client = |danger: bool| {
+            use reqwest::redirect;
             let redirect_policy = if config.follow_redirects {
                 redirect::Policy::default()
             } else {
                 redirect::Policy::none()
             };
 
+            let mut builder = Client::builder()
+                .user_agent(USER_AGENT)
+                .redirect(redirect_policy);
+            if danger {
+                builder = builder.danger_accept_invalid_certs(true);
+            }
+            builder.build().expect("Error building reqwest client")
+        };
+        // TODO error if redirect/danger are set
+        #[cfg(target_arch = "wasm32")]
+        let build_client = |_danger: bool| {
             Client::builder()
                 .user_agent(USER_AGENT)
-                .redirect(redirect_policy)
+                .build()
+                .expect("Error building reqwest client")
         };
 
-        let client = make_builder()
-            .build()
-            .expect("Error building reqwest client");
+        let client = build_client(false);
         let danger_client = if config.ignore_certificate_hosts.is_empty() {
             None
         } else {
             Some((
-                make_builder()
-                    .danger_accept_invalid_certs(true)
-                    .build()
-                    .expect("Error building reqwest client"),
+                build_client(true),
                 config.ignore_certificate_hosts.iter().cloned().collect(),
             ))
         };
@@ -862,10 +870,13 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
+            #[cfg(not(target_arch = "wasm32"))]
             RenderedBody::Stream(stream) => {
                 let body = Body::wrap_stream(stream.stream);
                 Ok(builder.body(body))
             }
+            #[cfg(target_arch = "wasm32")]
+            RenderedBody::Stream(_) => todo!("error"),
             RenderedBody::Json(json) => Ok(builder.json(&json)),
             RenderedBody::FormUrlencoded(fields) => Ok(builder.form(&fields)),
             RenderedBody::FormMultipart(fields) => {
@@ -879,6 +890,7 @@ impl RenderedBody {
                     tests::MULTIPART_BOUNDARY.set(form.boundary().to_owned());
                 }
 
+                #[cfg(not(target_arch = "wasm32"))]
                 for (field, stream) in fields {
                     // Convert the stream to a form part
                     let part = match stream.source {

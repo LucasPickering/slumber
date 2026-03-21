@@ -7,27 +7,19 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
-use futures::{FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt};
+use futures::{Stream, TryStreamExt};
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, de::IntoDeserializer};
 use slumber_macros::template;
 use slumber_template::{
-    Expected, RenderError, StreamSource, TryFromValue, Value, ValueError,
-    ValueStream, WithValue, impl_try_from_value_str,
+    Expected, RenderError, TryFromValue, Value, ValueError, WithValue,
+    impl_try_from_value_str,
 };
-use slumber_util::{TimeSpan, paths::expand_home};
-use std::{
-    env, fmt::Debug, io, path::PathBuf, process::Stdio, str::FromStr, sync::Arc,
-};
-use tokio::{
-    fs::File,
-    io::{AsyncRead, AsyncWriteExt},
-    process::Command,
-    sync::oneshot,
-};
+use slumber_util::TimeSpan;
+use std::{env, fmt::Debug, str::FromStr, sync::Arc};
+use tokio::{io::AsyncRead, sync::oneshot};
 use tokio_util::io::ReaderStream;
-use tracing::{Instrument, debug, debug_span};
 
 // ===========================================================
 // Documentation for these functions is generated automatically by an mdbook
@@ -122,13 +114,20 @@ pub fn boolean(value: Value) -> bool {
 ///   - input: command(["grep","1"], stdin="line 1\nline2")
 ///     output: "line 1\n"
 /// ```
+#[cfg(not(target_arch = "wasm32"))]
 #[template]
 pub fn command(
     #[context] context: &TemplateContext,
     command: Vec<String>,
     #[kwarg] cwd: Option<String>,
     #[kwarg] stdin: Option<Bytes>,
-) -> Result<ValueStream, FunctionError> {
+) -> Result<slumber_template::ValueStream, FunctionError> {
+    use futures::{FutureExt, StreamExt, TryFutureExt};
+    use slumber_template::{StreamSource, ValueStream};
+    use std::{io, process::Stdio};
+    use tokio::{io::AsyncWriteExt, process::Command};
+    use tracing::{Instrument, debug, debug_span};
+
     /// Wrap an IO error
     fn io_error(
         program: &str,
@@ -142,6 +141,7 @@ pub fn command(
         })
     }
 
+    // TODO document that this is unsupported on web
     let cwd = context.root_dir.join(cwd.unwrap_or_default());
     let [program, arguments @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
@@ -161,6 +161,7 @@ pub fn command(
     let span_ = span.clone(); // Clone so we can attach to the inner stream too
     let future = async move {
         // Spawn the command process
+
         debug!("Spawning");
         let mut child = Command::new(&program)
             .args(&arguments)
@@ -303,8 +304,19 @@ pub fn env(variable: String, #[kwarg] default: String) -> String {
 ///   - input: file("config.json")
 ///     output: Contents of config.json file
 /// ```
+#[cfg(not(target_arch = "wasm32"))]
 #[template]
-pub fn file(#[context] context: &TemplateContext, path: String) -> ValueStream {
+pub fn file(
+    #[context] context: &TemplateContext,
+    path: String,
+) -> slumber_template::ValueStream {
+    use futures::{StreamExt, TryFutureExt};
+    use slumber_template::{StreamSource, ValueStream};
+    use slumber_util::paths::expand_home;
+    use std::path::PathBuf;
+    use tokio::fs::File;
+
+    // TODO document that this is unsupported on web
     let path = context.root_dir.join(expand_home(PathBuf::from(path)));
     let source = StreamSource::File { path: path.clone() };
     // Return the file as a stream. If streaming isn't available here, it will
@@ -1458,6 +1470,27 @@ impl From<Sequence> for Value {
         }
     }
 }
+
+/// Wrap a function call to return an error on Wasm targets
+///
+/// Use this in the `call()` implementation for functions that are not supposed
+/// on Wasm (e.g. `file()`). The function definition should also be gated
+/// behind `cfg(not(target_arch = "wasm32"))` to prevent compilation of non-web
+/// code.
+#[cfg(not(target_arch = "wasm32"))]
+macro_rules! no_wasm {
+    ($fn_call:expr, $arguments:expr) => {
+        functions::file($arguments)
+    };
+}
+#[cfg(target_arch = "wasm32")]
+macro_rules! no_wasm {
+    ($fn_call:expr, $arguments:expr) => {
+        todo!()
+    };
+}
+
+pub(super) use no_wasm;
 
 /// Create a stream from an `AsyncRead` value
 fn reader_stream(

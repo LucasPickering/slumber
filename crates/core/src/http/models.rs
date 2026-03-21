@@ -63,7 +63,7 @@ impl Default for RequestId {
     }
 }
 
-/// HTTP protocl version. This is duplicated from [reqwest::Version] because
+/// HTTP protocol version. This is duplicated from [reqwest::Version] because
 /// that type doesn't provide any way to construct it. It only allows you to use
 /// the existing constants.
 #[derive(Copy, Clone, Debug, Default, EnumIter, Serialize, Deserialize)]
@@ -577,8 +577,11 @@ impl RequestRecord {
             id,
             profile_id,
             recipe_id,
-
+            // version() isn't supposed on wasm
+            #[cfg(not(target_arch = "wasm32"))]
             http_version: request.version().into(),
+            #[cfg(target_arch = "wasm32")]
+            http_version: HttpVersion::Http11, // TODO is this right?
             method: request.method().into(),
             url: request.url().clone(),
             headers: request.headers().clone(),

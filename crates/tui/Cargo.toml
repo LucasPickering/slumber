@@ -38,7 +38,7 @@ slumber_util = {workspace = true}
 strum = {workspace = true}
 terminput = {workspace = true}
 terminput-crossterm = "0.4.0"
-tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
+tokio = {workspace = true, features = ["macros", "tracing"]}
 tokio-util = {workspace = true}
 tracing = {workspace = true}
 tree-sitter-highlight = "0.26.0"
@@ -46,6 +46,9 @@ tree-sitter-json = "0.24.8"
 unicode-width = "0.2.0"
 uuid = {workspace = true}
 winnow = {workspace = true}
+
+[target.'cfg(not(target_arch = "wasm32"))']
+tokio = {workspace = true, features = ["signals"]}
 
 [dev-dependencies]
 env-lock = {workspace = true}

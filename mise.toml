@@ -1,7 +1,7 @@
 [tasks.build-web]
 description = "Build Slumber for WASM"
 sources = ["Cargo.toml", "Cargo.lock", "crates/**/*"]
-run = "cargo build --target wasm32-unknown-unknown -p slumber_cli"
+run = "cargo build --target wasm32-unknown-unknown -p slumber_tui"
 tools = {"conda:clang" = "latest"} # Requires MISE_EXPERIMENTAL=1
 
 [tasks.cli]

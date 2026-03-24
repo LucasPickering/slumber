@@ -7,7 +7,6 @@
 //!
 //! ```notrust
 //! mount_dir/
-//!   .channel # write-only message channel
 //!   slumber.yml
 //!   profiles/
 //!     profile1/
@@ -27,7 +26,7 @@
 //!             response_body.json
 //! ```
 
-use crate::{Context, Message};
+use crate::{Context, Message, socket_path};
 use bytes::{Bytes, BytesMut};
 use fuser::{Errno, FileAttr, FileType, INodeNo};
 use slumber_core::{
@@ -178,11 +177,6 @@ impl Node {
         self.kind.content(context)
     }
 
-    /// TODO
-    pub fn write(&self, context: &Context, data: &[u8]) {
-        self.kind.write(context, data);
-    }
-
     /// Get the target for a symbol link
     ///
     /// If the node is not a link, return `None`.
@@ -227,11 +221,6 @@ trait FileNode: 'static + Debug + Send + Sync {
             }
             _ => Bytes::new(),
         }
-    }
-
-    /// TODO
-    fn write(&self, _context: &Context, _data: &[u8]) {
-        unimplemented!("File not writable")
     }
 
     /// TODO
@@ -282,47 +271,10 @@ impl FileNode for RootDirectory {
 
     fn children(&self, _context: &Context) -> Vec<Box<dyn FileNode>> {
         vec![
-            ChannelFile.boxed(),
             CollectionLink.boxed(),
             ProfilesDirectory.boxed(),
             RecipesDirectory.boxed(),
         ]
-    }
-}
-
-/// Write-only async channel file
-///
-/// The client can write messages to this to trigger actions in the filesystem
-/// server. For example, this is how the user triggers requests. Scripts are
-/// used as a frontend to make the message construction/writing simpler.
-#[derive(Debug)]
-struct ChannelFile;
-
-impl ChannelFile {
-    const FILE_NAME: &str = ".channel";
-}
-
-impl FileNode for ChannelFile {
-    fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
-        to_cow(Self::FILE_NAME)
-    }
-
-    fn file_type(&self) -> FileType {
-        FileType::RegularFile
-    }
-
-    fn permissions(&self) -> u16 {
-        0o200 // Write-only
-    }
-
-    fn content(&self, _context: &Context) -> Bytes {
-        Bytes::new() // Needs to be overridden for correct len() calculation
-    }
-
-    fn write(&self, context: &Context, data: &[u8]) {
-        // TODO logging
-        let message: Message = serde_json::from_slice(data).expect("TODO");
-        let _ = context.messages_tx.send(message);
     }
 }
 
@@ -522,12 +474,17 @@ impl FileNode for RecipeSendFile {
         FileType::RegularFile
     }
 
-    fn content(&self, context: &Context) -> Bytes {
-        // A script that sends a message to the channel file
+    fn content(&self, _context: &Context) -> Bytes {
         let message = Message::SendRequest {
             recipe_id: self.0.clone(),
         };
-        send_message_script(context, &message).into()
+        let socket_path = socket_path();
+        let data = serde_json::to_string(&message).expect("TODO");
+        format!(
+            "#!/bin/sh\necho '{data}' | nc -U {socket_path}\n",
+            socket_path = socket_path.display()
+        )
+        .into()
     }
 }
 
@@ -688,18 +645,4 @@ fn recipe_to_file(node: &RecipeTreeNode) -> Box<dyn FileNode> {
             RecipeDirectory(recipe.id.clone()).boxed()
         }
     }
-}
-
-/// Generate a shell script that sends a particular message to the channel
-/// file
-fn send_message_script(context: &Context, message: &Message) -> String {
-    let data = serde_json::to_string(message).unwrap();
-    // TODO dedupe the channel file name
-    let channel_path = context.mount_path.join(ChannelFile::FILE_NAME);
-    format!(
-        "#!/bin/sh
-echo '{data}' > {channel_path}
-",
-        channel_path = channel_path.display()
-    )
 }

@@ -1,9 +1,8 @@
-use crate::{MessagesTx, node::NodeMap};
+use crate::node::NodeMap;
 use anyhow::Context as _;
 use fuser::{
     Errno, FileHandle, FileType, Filesystem, INodeNo, LockOwner, MountOption,
-    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyWrite,
-    WriteFlags,
+    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry,
 };
 use slumber_core::{
     collection::{Collection, CollectionFile},
@@ -38,7 +37,6 @@ impl CollectionFilesystem {
     pub fn new(
         collection_path: Option<PathBuf>,
         mount_path: PathBuf,
-        messages_tx: MessagesTx,
     ) -> anyhow::Result<Self> {
         let collection_file = CollectionFile::new(collection_path)?;
         let collection = collection_file.load()?;
@@ -49,7 +47,6 @@ impl CollectionFilesystem {
             collection_file,
             collection,
             database,
-            messages_tx,
         };
         let nodes = NodeMap::new(&context);
         Ok(Self { context, nodes })
@@ -213,25 +210,6 @@ impl Filesystem for CollectionFilesystem {
             todo!("node wasn't a link")
         }
     }
-
-    fn write(
-        &self,
-        _req: &fuser::Request,
-        inode: INodeNo,
-        _fh: FileHandle,
-        _offset: u64,
-        data: &[u8],
-        _write_flags: WriteFlags,
-        _flags: OpenFlags,
-        _lock_owner: Option<LockOwner>,
-        reply: ReplyWrite,
-    ) {
-        // TODO handle offset
-        let node = get_node!(self.nodes, inode, reply);
-        dbg!(data);
-        node.write(&self.context, data);
-        reply.written(data.len() as u32); // TODO
-    }
 }
 
 impl Drop for CollectionFilesystem {
@@ -252,17 +230,16 @@ pub struct Context {
     pub collection: Collection,
     /// TODO
     pub database: CollectionDatabase,
-    /// TODO
-    pub messages_tx: MessagesTx,
 }
 
 /// TODO
 fn unmount(path: &Path) -> anyhow::Result<()> {
     info!("Unmounting {}", path.display());
     Command::new("umount")
-        .arg("-l")
+        // .arg("-l")
         .arg(path)
         .output()
+        .and_then(|_| fs::remove_dir(path))
         .with_context(|| format!("Error unmounting {}", path.display()))?;
     Ok(())
 }

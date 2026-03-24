@@ -3478,6 +3478,7 @@ version = "5.2.0"
 dependencies = [
  "anyhow",
  "bytes",
+ "clap",
  "fuser",
  "futures",
  "indexmap",

@@ -8,14 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
-## [5.2.2] - 2026-03-30
-
-<!-- ANCHOR: changelog -->
-
-## [5.2.1] - 2026-03-30
-
-<!-- ANCHOR: changelog -->
-
 ### Changed
 
 - Add additional platforms/architectures to the release binaries
@@ -26,6 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `armv7-unknown-linux-gnueabihf`
   - `armv7-unknown-linux-musleabi`
   - `armv7-unknown-linux-musleabihf`
+
+## [5.2.2] - 2026-03-30
+
+Skipped (CI issues)
+
+## [5.2.1] - 2026-03-30
+
+Skipped (CI issues)
 
 ## [5.2.0] - 2026-03-17
 

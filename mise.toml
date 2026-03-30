@@ -1,4 +1,3 @@
-
 [tasks.cli]
 description = "Run a CLI command"
 quiet = true
@@ -7,15 +6,12 @@ run = "cargo run --package slumber_cli --no-default-features"
 [tasks.docs]
 description = "Build and serve docs"
 run = "mdbook serve docs/"
+tools.mdbook = "0.5.1"
 
 [tasks.favicon]
 description = "Generate favicon for the site from the logo image"
 run = "magick -background transparent $MISE_PROJECT_ROOT/static/slumber.png -define icon:auto-resize=64 $MISE_PROJECT_ROOT/docs/theme/favicon.png"
 sources = ["docs/theme/favicon.png"]
-
-[tasks.mdbook]
-# .rs scripts don't support #MISE headers so task metadata is defined here
-description = "Generate doc content from Rust code"
 
 [tasks.rustdoc]
 description = "Build Rust docs, checking for broken links"
@@ -36,5 +32,4 @@ tools."cargo:samply" = "0.13.1"
 RUST_BACKTRACE = 1
 
 [tools]
-mdbook = "0.5.1"
 watchexec = "2.3.3"

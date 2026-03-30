@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "doc_utils"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3280,7 +3280,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "slumber"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "slumber_cli",
@@ -3292,7 +3292,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_cli"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3327,7 +3327,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_config"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "derive_more",
  "dirs",
@@ -3352,7 +3352,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_core"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3400,7 +3400,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_import"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3432,7 +3432,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_macros"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3441,7 +3441,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_python"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "async-trait",
  "dialoguer",
@@ -3455,7 +3455,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_template"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "bytes",
  "derive_more",
@@ -3482,7 +3482,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_tui"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3524,7 +3524,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_util"
-version = "5.2.2"
+version = "5.2.0"
 dependencies = [
  "console-subscriber",
  "derive_more",

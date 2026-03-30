@@ -21,7 +21,7 @@ from threading import Thread
 TAPE_DIR = "tapes/"
 OUTPUT_REGEX = re.compile(r"^Output \"(?P<path>.*)\"$")
 GIF_MD_FILE = "gifs.md"
-
+SKIP_ENV_VAR = "SLUMBER_SKIP_GIF_CHECK"
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -78,6 +78,12 @@ def generate(tape_path: str) -> str:
 
 def check_all(tapes: list[str]) -> None:
     """Check all GIFs to see if any are outdated"""
+    # Allow skipping the check for releases that really definitely don't
+    # change TUI behavior. Env var allows it to be set without code changes
+    if os.environ.get(SKIP_ENV_VAR, "").lower() == "true":
+        print(f"WARNING: {SKIP_ENV_VAR} is set, skipping gif check")
+        return
+
     if not tapes:
         tapes = get_tapes()
     latest_commit = run(["git", "rev-parse", "HEAD"])

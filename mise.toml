@@ -6,7 +6,6 @@ run = "cargo run --package slumber_cli --no-default-features"
 [tasks.docs]
 description = "Build and serve docs"
 run = "mdbook serve docs/"
-tools.mdbook = "0.5.1"
 
 [tasks.favicon]
 description = "Generate favicon for the site from the logo image"
@@ -32,4 +31,5 @@ tools."cargo:samply" = "0.13.1"
 RUST_BACKTRACE = 1
 
 [tools]
+"github:rust-lang/mdbook" = "0.5.1" # mdbook tool doesn't support aarch64/linux
 watchexec = "2.3.3"

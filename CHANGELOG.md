@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
-## [5.2.3] - 2026-03-30
+## [5.2.4] - 2026-03-30
 
 <!-- ANCHOR: changelog -->
 
@@ -18,10 +18,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `aarch64-unknown-linux-gnu`
   - `aarch64-unknown-linux-musl`
   - `aarch64-pc-windows-msvc`
-  - `armv7-unknown-linux-gnueabi`
-  - `armv7-unknown-linux-gnueabihf`
-  - `armv7-unknown-linux-musleabi`
-  - `armv7-unknown-linux-musleabihf`
 
 ## [5.2.2] - 2026-03-30
 

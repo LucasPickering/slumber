@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [5.2.2] - 2026-03-30
+
+<!-- ANCHOR: changelog -->
+
 ## [5.2.1] - 2026-03-30
 
 <!-- ANCHOR: changelog -->

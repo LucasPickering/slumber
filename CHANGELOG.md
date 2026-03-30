@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Changed
+
+- Add additional platforms/architectures to the release binaries
+  - `aarch64-unknown-linux-gnu`
+  - `aarch64-unknown-linux-musl`
+  - `aarch64-pc-windows-msvc`
+  - `armv7-unknown-linux-gnueabi`
+  - `armv7-unknown-linux-gnueabihf`
+  - `armv7-unknown-linux-musleabi`
+  - `armv7-unknown-linux-musleabihf`
+
 ## [5.2.0] - 2026-03-17
 
 <!-- ANCHOR: changelog -->

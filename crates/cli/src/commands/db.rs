@@ -11,11 +11,8 @@ use crate::{
         collection::DbCollectionCommand, request::DbRequestCommand,
     },
 };
-use anyhow::Context;
 use clap::Parser;
-use slumber_core::database::Database;
 use std::process::ExitCode;
-use tokio::process::Command;
 
 /// Access and modify the Slumber database (collection and request history)
 ///
@@ -84,45 +81,57 @@ enum DbSubcommand {
 impl Subcommand for DbCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.subcommand {
-            None => {
-                let path = Database::path();
-
-                if self.path {
-                    println!("{}", path.display());
-                    return Ok(ExitCode::SUCCESS);
-                }
-
-                // Open a shell
-                let exit_status = Command::new(self.exec)
-                    .arg(&path)
-                    .args(self.args)
-                    .spawn()
-                    .with_context(|| {
-                        format!(
-                            "Error opening database file `{}`",
-                            path.display()
-                        )
-                    })?
-                    .wait()
-                    .await?;
-
-                // Forward exit code if we can, otherwise just do success/fail
-                let exit_code =
-                    exit_status.code().and_then(|code| u8::try_from(code).ok());
-                if let Some(code) = exit_code {
-                    Ok(code.into())
-                } else if exit_status.success() {
-                    Ok(ExitCode::SUCCESS)
-                } else {
-                    Ok(ExitCode::FAILURE)
-                }
-            }
+            #[cfg(not(target_arch = "wasm32"))]
+            None => self.sqlite_shell().await,
+            #[cfg(target_arch = "wasm32")]
+            None => Err(anyhow::anyhow!("SQLite shell not supported on web")),
             Some(DbSubcommand::Collection(command)) => {
                 command.execute(global).await
             }
             Some(DbSubcommand::Request(command)) => {
                 command.execute(global).await
             }
+        }
+    }
+}
+
+impl DbCommand {
+    /// Open the sqlite shell
+    ///
+    /// Not supported on the web because this uses a subprocess.
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn sqlite_shell(self) -> anyhow::Result<ExitCode> {
+        use anyhow::Context;
+        use slumber_core::database::Database;
+        use tokio::process::Command;
+
+        let path = Database::path();
+
+        if self.path {
+            println!("{}", path.display());
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        // Open a shell
+        let exit_status = Command::new(self.exec)
+            .arg(&path)
+            .args(self.args)
+            .spawn()
+            .with_context(|| {
+                format!("Error opening database file `{}`", path.display())
+            })?
+            .wait()
+            .await?;
+
+        // Forward exit code if we can, otherwise just do success/fail
+        let exit_code =
+            exit_status.code().and_then(|code| u8::try_from(code).ok());
+        if let Some(code) = exit_code {
+            Ok(code.into())
+        } else if exit_status.success() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Ok(ExitCode::FAILURE)
         }
     }
 }

@@ -8,9 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
-## [5.2.4] - 2026-03-30
+### Changed
 
-<!-- ANCHOR: changelog -->
+- Set extension on temporary file when editing recipe body in TUI
+  - When editing a JSON body in the TUI, the created temp file will have `.json` as the extension, so your editor can use syntax highlighting and other language-specific features.
 
 ## [5.2.4] - 2026-03-30
 
@@ -22,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `aarch64-unknown-linux-gnu`
   - `aarch64-unknown-linux-musl`
   - `aarch64-pc-windows-msvc`
+
+## [5.2.3] - 2026-03-30
+
+Skipped (CI issues)
 
 ## [5.2.2] - 2026-03-30
 

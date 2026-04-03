@@ -246,7 +246,16 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
         if self.window_mode || source.lines().count() > 1 {
             // Template has multiple lines so it can't be edited inline. Open it
             // externally
-            let Some(file) = TempFile::new(source.as_bytes(), None)
+
+            // Use the MIME type to set the file extension, so the edit gets
+            // syntax highlighting
+            let syntax = self.mime.as_ref().and_then(|mime| {
+                SyntaxType::from_mime(
+                    ViewContext::config().mime_overrides(),
+                    mime,
+                )
+            });
+            let Some(file) = TempFile::new(source.as_bytes(), syntax)
                 .reported(&ViewContext::messages_tx())
             else {
                 // Write failed

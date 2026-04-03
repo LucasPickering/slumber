@@ -239,7 +239,7 @@ mod tests {
         test_util::by_id,
     };
     use slumber_util::{Factory, assert_matches};
-    use std::{fs, sync::Arc};
+    use std::{ffi::OsStr, fs, sync::Arc};
     use terminput::KeyCode;
 
     /// Test preview rendering
@@ -382,7 +382,13 @@ mod tests {
         ]]);
 
         // Open the editor
-        edit(&mut component, &mut harness, &initial_text, &override_text);
+        edit(
+            &mut component,
+            &mut harness,
+            &initial_text,
+            Some("json"),
+            &override_text,
+        );
 
         assert_eq!(component.body_override(), Some(override_json.into()));
         harness.assert_buffer_lines([vec![
@@ -449,6 +455,7 @@ mod tests {
         component: &mut TestComponent<RecipeBodyDisplay>,
         harness: &mut TestHarness,
         expected_initial_content: &str,
+        expected_extension: Option<&str>,
         content: &str,
     ) {
         harness.messages_rx().clear();
@@ -467,6 +474,7 @@ mod tests {
             fs::read_to_string(file.path()).unwrap(),
             expected_initial_content
         );
+        assert_eq!(file.path().extension(), expected_extension.map(OsStr::new));
 
         // Simulate the editor modifying the file
         fs::write(file.path(), content).unwrap();

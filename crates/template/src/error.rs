@@ -9,7 +9,6 @@ use std::{
     str::Utf8Error,
 };
 use thiserror::Error;
-use tracing::error;
 use winnow::error::{ContextError, ParseError};
 
 /// An error while parsing a template

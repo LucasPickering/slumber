@@ -409,10 +409,11 @@ impl DeserializeYaml for ValueTemplate {
             YamlData::Value(Scalar::FloatingPoint(f)) => Ok(Self::Float(f.0)),
             // Parse string as a template
             YamlData::Value(Scalar::String(s)) => {
-                let template = s.parse::<Template>().map_err(|error| {
+                // Template will be unpacked here if appropriate
+                let template = s.parse::<Self>().map_err(|error| {
                     LocatedError::other(error, yaml.location)
                 })?;
-                Ok(Self::String(template))
+                Ok(template)
             }
             YamlData::Sequence(sequence) => {
                 let values = sequence

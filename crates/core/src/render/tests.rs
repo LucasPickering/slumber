@@ -45,7 +45,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 #[case::array_stream("{{ array_stream }}", vec!["first"].into(), false)]
 #[tokio::test]
 async fn test_profile(
-    #[case] template: Template,
+    #[case] template: ValueTemplate,
     #[case] expected: Value,
     #[case] expected_has_stream: bool,
 ) {
@@ -71,7 +71,7 @@ async fn test_profile(
     };
     let context = TemplateContext::factory((by_id([profile]), IndexMap::new()));
 
-    let chunks = template.render_chunks_stream(&context).await;
+    let chunks = template.render_value_stream(&context).await;
     assert_eq!(chunks.has_stream(), expected_has_stream);
     assert_eq!(chunks.try_collect_value().await.unwrap(), expected);
 }
@@ -142,12 +142,10 @@ async fn test_base64(
 #[case::array_filled(vec!["1", "2"].into(), true)]
 #[tokio::test]
 async fn test_boolean(#[case] input: Expression, #[case] expected: bool) {
-    let template = Template::function_call("boolean", [input], []);
     assert_result(
-        template
-            .render_chunks(&TemplateContext::factory(()))
-            .await
-            .try_into_value(),
+        Expression::call("boolean", [input], [])
+            .render::<_, Value>(&TemplateContext::factory(()))
+            .await,
         Ok(Value::Boolean(expected)),
     );
 }
@@ -376,12 +374,10 @@ async fn test_float(
     #[case] input: Expression,
     #[case] expected: Result<f64, &str>,
 ) {
-    let template = Template::function_call("float", [input], []);
     assert_result(
-        template
-            .render_chunks(&TemplateContext::factory(()))
-            .await
-            .try_into_value(),
+        Expression::call("float", [input], [])
+            .render::<_, Value>(&TemplateContext::factory(()))
+            .await,
         expected.map(Value::from),
     );
 }
@@ -403,12 +399,10 @@ async fn test_index(
     #[case] index: i64,
     #[case] expected: Option<Value>,
 ) {
-    let template = Template::function_call("index", [index.into(), value], []);
     assert_eq!(
-        template
-            .render_chunks(&TemplateContext::factory(()))
+        Expression::call("index", [index.into(), value], [])
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_into_value()
             .unwrap(),
         expected.into(),
     );
@@ -435,12 +429,10 @@ async fn test_integer(
     #[case] input: Expression,
     #[case] expected: Result<i64, &str>,
 ) {
-    let template = Template::function_call("integer", [input], []);
     assert_result(
-        template
-            .render_chunks(&TemplateContext::factory(()))
-            .await
-            .try_into_value(),
+        Expression::call("integer", [input], [])
+            .render::<_, Value>(&TemplateContext::factory(()))
+            .await,
         expected.map(Value::from),
     );
 }
@@ -528,16 +520,14 @@ async fn test_jq(
             .map(Expression::from)
             .collect()
     });
-    let template = Template::function_call(
-        "jq",
-        [query.into(), json],
-        [("mode", mode.map(Expression::from))],
-    );
     assert_result(
-        template
-            .render_chunks(&TemplateContext::factory(()))
-            .await
-            .try_into_value(),
+        Expression::call(
+            "jq",
+            [query.into(), json],
+            [("mode", mode.map(Expression::from))],
+        )
+        .render::<_, Value>(&TemplateContext::factory(()))
+        .await,
         expected,
     );
 }
@@ -554,12 +544,10 @@ async fn test_json_parse(
     #[case] json: &'static [u8],
     #[case] expected: Result<Value, &str>,
 ) {
-    let template = Template::function_call("json_parse", [json.into()], []);
     assert_result(
-        template
-            .render_chunks(&TemplateContext::factory(()))
-            .await
-            .try_into_value(),
+        Expression::call("json_parse", [json.into()], [])
+            .render::<_, Value>(&TemplateContext::factory(()))
+            .await,
         expected,
     );
 }
@@ -614,16 +602,14 @@ async fn test_jsonpath(
             .map(Expression::from)
             .collect()
     });
-    let template = Template::function_call(
-        "jsonpath",
-        [query.into(), json],
-        [("mode", mode.map(Expression::from))],
-    );
     assert_result(
-        template
-            .render_chunks(&TemplateContext::factory(()))
-            .await
-            .try_into_value(),
+        Expression::call(
+            "jsonpath",
+            [query.into(), json],
+            [("mode", mode.map(Expression::from))],
+        )
+        .render::<_, Value>(&TemplateContext::factory(()))
+        .await,
         expected,
     );
 }
@@ -977,13 +963,14 @@ async fn test_select(
     #[case] select: Option<usize>,
     #[case] expected: Result<Value, &str>,
 ) {
-    let template = Template::function_call("select", [options.into()], []);
     let context = TemplateContext {
         prompter: Box::new(TestSelectPrompter::new(select.into_iter())),
         ..TemplateContext::factory(())
     };
     assert_result(
-        template.render_chunks(&context).await.try_into_value(),
+        Expression::call("select", [options.into()], [])
+            .render::<_, Value>(&context)
+            .await,
         expected,
     );
 }
@@ -1021,7 +1008,7 @@ async fn test_sensitive(#[case] input: &str, #[case] expected: &str) {
 #[case::stop_high("abc".into(), 1, Some(5), "bc".into())]
 #[case::utf8_string("nägemist".into(), 1, Some(3), "äg".into())]
 #[case::utf8_bytes_partial_char(b"n\xc3\xa4gemist".into(), 1, Some(2), b"\xc3".into())]
-#[case::utf8_bytes_full_char(b"n\xc3\xa4gemist".into(), 1, Some(3), "ä".into())]
+#[case::utf8_bytes_full_char(b"n\xc3\xa4gemist".into(), 1, Some(3), b"\xc3\xa4".into())]
 #[tokio::test]
 async fn test_slice(
     #[case] value: Expression,
@@ -1029,16 +1016,10 @@ async fn test_slice(
     #[case] stop: Option<i64>,
     #[case] expected: Value,
 ) {
-    let template = Template::function_call(
-        "slice",
-        [start.into(), stop.into(), value],
-        [],
-    );
     assert_eq!(
-        template
-            .render_chunks(&TemplateContext::factory(()))
+        Expression::call("slice", [start.into(), stop.into(), value], [],)
+            .render::<_, Value>(&TemplateContext::factory(()))
             .await
-            .try_into_value()
             .unwrap(),
         expected,
     );
@@ -1063,16 +1044,14 @@ async fn test_split(
     #[case] n: Option<i64>,
     #[case] expected: Result<Vec<&str>, &str>,
 ) {
-    let template = Template::function_call(
-        "split",
-        [separator.into(), value.into()],
-        [("n", n.map(Expression::from))],
-    );
     assert_result(
-        template
-            .render_chunks(&TemplateContext::factory(()))
-            .await
-            .try_into_value(),
+        Expression::call(
+            "split",
+            [separator.into(), value.into()],
+            [("n", n.map(Expression::from))],
+        )
+        .render::<_, Value>(&TemplateContext::factory(()))
+        .await,
         expected.map(Value::from),
     );
 }

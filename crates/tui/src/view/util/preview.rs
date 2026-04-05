@@ -14,7 +14,8 @@ use slumber_core::{
     util::json::{JsonTemplateError, YamlTemplateError},
 };
 use slumber_template::{
-    RenderedChunk, RenderedChunks, Template, Value, ValueStream,
+    Expression, RenderError, RenderedChunk, RenderedChunks, Template, Value,
+    ValueStream,
 };
 use std::{
     borrow::Cow,
@@ -269,15 +270,17 @@ impl PreviewValue {
         template: &ValueTemplate,
         context: &TemplateContext,
     ) -> Self {
-        Self::render_inner(template, context, async |template, context| {
-            let chunks = template.render_chunks(context).await;
-            match chunks.unpack() {
-                Ok(value) => PreviewValue::Dynamic(value.decode_bytes()),
-                Err(chunks) => PreviewValue::Raw(RawValue::String(
-                    PreviewChunks(chunks.into_chunks()),
-                )),
-            }
-        })
+        Self::render_inner(
+            template,
+            context,
+            Expression::render::<_, Value>,
+            async |template, context| {
+                let chunks = template.render_chunks(context).await;
+                PreviewValue::Raw(RawValue::String(PreviewChunks(
+                    chunks.into_chunks(),
+                )))
+            },
+        )
         .await
     }
 
@@ -288,33 +291,34 @@ impl PreviewValue {
         template: &ValueTemplate,
         context: &TemplateContext,
     ) -> Self {
-        Self::render_inner(template, context, async |template, context| {
-            let chunks = template.render_chunks_stream(context).await;
-            match chunks.unpack() {
-                Ok(stream) => {
-                    PreviewValue::Dynamic(Self::stream_to_value(stream))
-                }
+        Self::render_inner(
+            template,
+            context,
+            async |expression, context| {
+                // Stringify streams
+                expression.render(context).await.map(Self::stream_to_value)
+            },
+            async |template, context| {
+                let chunks = template.render_chunks_stream(context).await;
                 // Map the chunks from stream values to concrete values by
                 // stringifying the streams
-                Err(chunks) => {
-                    let chunks = chunks
-                        .into_iter()
-                        .map(|chunk| match chunk {
-                            RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
-                            RenderedChunk::Dynamic(stream) => {
-                                RenderedChunk::Dynamic(Self::stream_to_value(
-                                    stream,
-                                ))
-                            }
-                            RenderedChunk::Error(error) => {
-                                RenderedChunk::Error(error)
-                            }
-                        })
-                        .collect();
-                    PreviewValue::Raw(RawValue::String(PreviewChunks(chunks)))
-                }
-            }
-        })
+                let chunks = chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        RenderedChunk::Raw(s) => RenderedChunk::Raw(s),
+                        RenderedChunk::Dynamic(stream) => {
+                            RenderedChunk::Dynamic(Self::stream_to_value(
+                                stream,
+                            ))
+                        }
+                        RenderedChunk::Error(error) => {
+                            RenderedChunk::Error(error)
+                        }
+                    })
+                    .collect();
+                PreviewValue::Raw(RawValue::String(PreviewChunks(chunks)))
+            },
+        )
         .await
     }
 
@@ -322,6 +326,10 @@ impl PreviewValue {
     async fn render_inner(
         template: &ValueTemplate,
         context: &TemplateContext,
+        render_expression: impl AsyncFn(
+            &Expression,
+            &TemplateContext,
+        ) -> Result<Value, RenderError>,
         render_string: impl AsyncFn(&Template, &TemplateContext) -> Self,
     ) -> Self {
         match template {
@@ -333,6 +341,30 @@ impl PreviewValue {
                 PreviewValue::Raw(RawValue::Integer(*i))
             }
             ValueTemplate::Float(f) => PreviewValue::Raw(RawValue::Float(*f)),
+            ValueTemplate::Expression(expression) => {
+                let result = render_expression(expression, context).await;
+                match result {
+                    // Byte strings can't be encoded in JSON or YAML, so replace
+                    // non-UTF-8 bytes with a placeholder. But first, try to
+                    // decode it as a string.
+                    //
+                    // During body construction, JSON will actually encode
+                    // bytes as an int array so this becomes a mismatch, but
+                    // either way it's probably not what the user wants so it's
+                    // not a huge deal. It's easier to handle all formats here.
+                    Ok(value) => match value.decode_bytes() {
+                        Value::Bytes(_) => Self::Dynamic("<binary>".into()),
+                        value => Self::Dynamic(value),
+                    },
+                    // There's no top-level error value, we have to pretend
+                    // this was a chunk in a template
+                    Err(error) => {
+                        Self::Raw(RawValue::String(PreviewChunks(vec![
+                            RenderedChunk::Error(error),
+                        ])))
+                    }
+                }
+            }
             ValueTemplate::String(template) => {
                 render_string(template, context).await
             }
@@ -373,9 +405,9 @@ impl Serialize for PreviewValue {
         S: serde::Serializer,
     {
         match self {
-            PreviewValue::Raw(raw_value) => raw_value.serialize(serializer),
+            Self::Raw(raw_value) => raw_value.serialize(serializer),
             // Tag the entire value as dynamic
-            PreviewValue::Dynamic(value) => StyleInjector::with_tag(
+            Self::Dynamic(value) => StyleInjector::with_tag(
                 || value.serialize(serializer),
                 ChunkTag::Dynamic,
             ),
@@ -518,10 +550,10 @@ mod tests {
         "intro\n{{simple}}\n{{emoji}} 💚💙💜 {{unknown}}\n\noutro\r\nmore outro\n",
         vec![
             Line::from("intro"),
-            Line::from(rendered("ww")),
-            Line::from(rendered("🧡")),
+            Line::from(dynamic("ww")),
+            Line::from(dynamic("🧡")),
             Line::from(vec![
-                rendered("💛"),
+                dynamic("💛"),
                 Span::raw(" 💚💙💜 "),
                 error("Error"),
             ]),
@@ -533,7 +565,7 @@ mod tests {
     )]
     #[case::binary(
         r"binary data: {{ b'\xc3\x28' }}",
-        vec![Line::from(vec![Span::raw("binary data: "), rendered("<binary>")])]
+        vec![Line::from(vec![Span::raw("binary data: "), dynamic("<binary>")])]
     )]
     #[tokio::test]
     async fn test_preview_template(
@@ -560,7 +592,7 @@ mod tests {
     /// - Dynamic chunks
     #[rstest]
     #[case::plain("hello", vec!["hello".into()])]
-    #[case::dynamic("hello {{ name }}", vec!["hello ".into(), rendered("bob")])]
+    #[case::dynamic("hello {{ name }}", vec!["hello ".into(), dynamic("bob")])]
     #[tokio::test]
     async fn test_preview_raw(
         _harness: TestHarness,
@@ -588,10 +620,10 @@ mod tests {
     #[rstest]
     #[case::direct(
         "data: {{ command(['echo', 'test']) }}",
-        vec!["data: ".into(), rendered("<command `echo test`>")])]
+        vec!["data: ".into(), dynamic("<command `echo test`>")])]
     #[case::profile(
         "data: {{ stream }}",
-        vec!["data: ".into(), rendered("<command `echo test`>")],
+        vec!["data: ".into(), dynamic("<command `echo test`>")],
     )]
     #[tokio::test]
     async fn test_preview_stream(
@@ -656,18 +688,19 @@ mod tests {
     #[case::string_escaped(
         json!("i have a \" quote"), r#""i have a \" quote""#.into()
     )]
+    #[case::bytes(json!("{{ invalid_utf8 }}"), dynamic("\"<binary>\"").into())]
     #[case::template(
         json!("my name is {{ 'Ted' }}!"),
         // Just the dynamic part is styled colorly like
-        line(vec!["\"my name is ".into(), rendered("Ted"), "!\"".into()]),
+        line(vec!["\"my name is ".into(), dynamic("Ted"), "!\"".into()]),
     )]
-    #[case::template_unpacked(json!("{{ 3 }}"), rendered("3").into())]
+    #[case::template_unpacked(json!("{{ 3 }}"), dynamic("3").into())]
     #[case::template_escaped(
         // Entire dynamic chunk gets styling. Make sure the escaped quote
         // doesn't cause any off-by-ones
         json!("dynamic: {{ 'with \" quote' }}"),
         line(vec![
-            "\"dynamic: ".into(), rendered(r#"with \" quote"#), quote(),
+            "\"dynamic: ".into(), dynamic(r#"with \" quote"#), quote(),
         ]),
     )]
     #[case::error(
@@ -683,7 +716,7 @@ mod tests {
         vec![
             "[".into(),
             vec![
-                r#"  "dynamic "#.into(), rendered("string"), "\",".into(),
+                r#"  "dynamic "#.into(), dynamic("string"), "\",".into(),
             ].into(),
             vec![r#"  "error "#.into(), error("Error"), "\",".into()].into(),
             "  null".into(),
@@ -716,7 +749,7 @@ mod tests {
             r#"    },"#.into(),
             vec![
                 r#"    "d": "dynamic "#.into(),
-                rendered("string"),
+                dynamic("string"),
                 "\",".into(),
             ].into(),
             vec![
@@ -731,23 +764,23 @@ mod tests {
     // JSON bodies don't support streaming, so these are eaglery evaluated
     #[case::stream(
         json!("stream: {{ command(['echo', '-n', 'test']) }}"),
-        line(vec!["\"stream: ".into(), rendered("test"), quote()]),
+        line(vec!["\"stream: ".into(), dynamic("test"), quote()]),
     )]
     // Stream does not get unpacked as an array of bytes, it's converted to a
     // string
     #[case::stream_unpacked(
         json!("{{ command(['echo', '-n', 'test']) }}"),
-        rendered(r#""test""#).into()
+        dynamic(r#""test""#).into()
     )]
     #[case::nested_dynamic(
         json!({ "double_dynamic": "{{ object }}" }),
         // The entire value is styled as dynamic
         vec![
             "{".into(),
-            vec![r#"  "double_dynamic": "#.into(), rendered("{")].into(),
-            rendered(r#"    "a": 1,"#).into(),
-            rendered(r#"    "b": 2"#).into(),
-            rendered("  }").into(),
+            vec![r#"  "double_dynamic": "#.into(), dynamic("{")].into(),
+            dynamic(r#"    "a": 1,"#).into(),
+            dynamic(r#"    "b": 2"#).into(),
+            dynamic("  }").into(),
             "}".into(),
         ].into()
     )]
@@ -762,6 +795,7 @@ mod tests {
 
         let profile = Profile {
             data: indexmap! {
+                "invalid_utf8".into() => "{{ b'\\xc3\\x28' }}".into(),
                 "object".into() => vec![("a", 1), ("b", 2)].into(),
             },
             ..Profile::factory(())
@@ -808,19 +842,22 @@ mod tests {
         // We have to do some funky stuff to get the serializer to escape quotes
         json!("{i have \"' quotes}"), "'{i have \"'' quotes}'".into()
     )]
+    // Unlike JSON, YAML won't serialize bytes so we have to replace them with
+    // a placeholder
+    #[case::bytes(json!("{{ invalid_utf8 }}"), dynamic("<binary>").into())]
     #[case::template(
         json!("my name is {{ 'Ted' }}!"),
         // Just the dynamic part is styled colorly like
-        line(vec!["my name is ".into(), rendered("Ted"), "!".into()]),
+        line(vec!["my name is ".into(), dynamic("Ted"), "!".into()]),
     )]
-    #[case::template_unpacked(json!("{{ 3 }}"), rendered("3").into())]
+    #[case::template_unpacked(json!("{{ 3 }}"), dynamic("3").into())]
     #[case::template_escaped(
         // Entire dynamic chunk gets styling. Make sure the escaped quote
         // doesn't cause any off-by-ones.
         // The {} wrapper forces the YAML serializer to use quotes
         json!("{dynamic: {{ 'with \\' quote' }}}"),
         line(vec![
-            "'{dynamic: ".into(), rendered("with '' quote"), "}'".into(),
+            "'{dynamic: ".into(), dynamic("with '' quote"), "}'".into(),
         ]),
     )]
     #[case::error(json!("{{ w }}"), error("Error").into())]
@@ -831,7 +868,7 @@ mod tests {
     #[case::array(
         json!(["dynamic {{ 'string' }}", "error {{ w }}", null]),
         vec![
-            vec!["- dynamic ".into(), rendered("string")].into(),
+            vec!["- dynamic ".into(), dynamic("string")].into(),
             vec!["- error ".into(), error("Error")].into(),
             "- null".into(),
         ].into(),
@@ -855,19 +892,19 @@ mod tests {
             "    - 3".into(),
             "    - 4".into(),
             "    - 5".into(),
-            vec!["  d: dynamic ".into(), rendered("string")].into(),
+            vec!["  d: dynamic ".into(), dynamic("string")].into(),
             vec!["  e: error ".into(), error("Error")].into(),
         ].into(),
     )]
     #[case::stream(
         json!("stream: {{ command(['echo', 'test']) }}"),
         line(vec![
-            "'stream: ".into(), rendered("<command `echo test`>"), "'".into(),
+            "'stream: ".into(), dynamic("<command `echo test`>"), "'".into(),
         ]),
     )]
     #[case::stream_unpacked(
         json!("{{ command(['echo', 'test']) }}"),
-        rendered("<command `echo test`>").into()
+        dynamic("<command `echo test`>").into()
     )]
     // This is broken because the YAML serializer seems to buffer its output
     // before passing it to the writer. This means the thread-local styling
@@ -879,8 +916,8 @@ mod tests {
         // The entire value is styled as dynamic
         vec![
             "double_dynamic:".into(),
-            rendered("  a: 1").into(),
-            rendered("  b: 2").into(),
+            dynamic("  a: 1").into(),
+            dynamic("  b: 2").into(),
         ].into()
     )]
     #[tokio::test]
@@ -896,6 +933,7 @@ mod tests {
 
         let profile = Profile {
             data: indexmap! {
+                "invalid_utf8".into() => "{{ b'\\xc3\\x28' }}".into(),
                 "object".into() => vec![("a", 1), ("b", 2)].into(),
             },
             ..Profile::factory(())
@@ -910,8 +948,8 @@ mod tests {
         "\"".into()
     }
 
-    /// Style some text as rendered
-    fn rendered(text: &str) -> Span<'_> {
+    /// Style some text as dynamic
+    fn dynamic(text: &str) -> Span<'_> {
         Span::styled(text, ViewContext::styles().template_preview.dynamic)
     }
 

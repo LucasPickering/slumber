@@ -30,7 +30,6 @@ use std::{
 };
 use strum::{EnumDiscriminants, EnumIter, IntoEnumIterator};
 use thiserror::Error;
-use tracing::error;
 use uuid::Uuid;
 
 /// Unique ID for a single request. Can also be used to refer to the

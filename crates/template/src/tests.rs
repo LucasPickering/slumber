@@ -1,6 +1,6 @@
 use crate::{
-    Arguments, Context, Identifier, RenderError, Template, Value, ValueStream,
-    value::StreamSource,
+    Arguments, Context, Identifier, RenderError, RenderedChunk, Template,
+    Value, ValueStream, value::StreamSource,
 };
 use bytes::{Bytes, BytesMut};
 use futures::{StreamExt, TryFutureExt, TryStreamExt};
@@ -29,39 +29,8 @@ use tokio_util::io::ReaderStream;
 #[tokio::test]
 async fn test_expression(#[case] template: Template, #[case] expected: Value) {
     assert_eq!(
-        template
-            .render_chunks(&TestContext)
-            .await
-            .try_into_value()
-            .unwrap(),
-        expected
-    );
-}
-
-/// Render to a value. Templates with a single dynamic chunk are allowed to
-/// produce non-string values. This is specifically testing the behavior
-/// of [Template::render_value], rather than expression evaluation.
-#[rstest]
-#[case::unpack("{{ array }}", vec!["a", "b", "c"].into())]
-#[case::string("my name is {{ name }}", "my name is Mike".into())]
-#[case::bytes(
-    "my name is {{ invalid_utf8 }}",
-    Value::Bytes(b"my name is \xc3\x28".as_slice().into(),
-))]
-// Stream gets resolved to bytes, then converted to a string
-#[case::stream("{{ file('data.json') }}", "{ \"a\": 1, \"b\": 2 }".into())]
-#[tokio::test]
-async fn test_render_value(
-    #[case] template: Template,
-    #[case] expected: Value,
-) {
-    assert_eq!(
-        template
-            .render_chunks(&TestContext)
-            .await
-            .try_into_value()
-            .unwrap(),
-        expected
+        template.render_chunks(&TestContext).await.into_chunks(),
+        vec![RenderedChunk::Dynamic(expected)]
     );
 }
 

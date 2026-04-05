@@ -19,12 +19,12 @@ pub use error::{
 };
 pub use expression::{Expression, FunctionCall, Identifier, Literal};
 pub use value::{
-    Arguments, FunctionOutput, StreamSource, TryFromValue, Value, ValueStream,
+    Arguments, FunctionOutput, RenderValue, StreamSource, TryFromValue, Value,
+    ValueStream,
 };
 
-use crate::value::RenderValue;
-use bytes::{Bytes, BytesMut};
-use futures::{Stream, StreamExt, TryStreamExt, future, stream};
+use bytes::Bytes;
+use futures::{Stream, StreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
@@ -113,6 +113,11 @@ impl Template {
             Please report it. {NEW_ISSUE_LINK}"
         );
         Self { chunks }
+    }
+
+    /// Get the contained template chunks
+    pub fn into_chunks(self) -> Vec<TemplateChunk> {
+        self.chunks
     }
 
     /// Create a new template from a raw string, without parsing it at all.
@@ -338,47 +343,10 @@ impl<V: RenderValue> RenderedChunks<V> {
     pub fn iter(&self) -> impl Iterator<Item = &RenderedChunk<V>> {
         self.0.iter()
     }
-
-    /// Unpack this output into a single value
-    ///
-    /// If the output is a single dynamic chunk, unpack it into a scalar value.
-    /// Otherwise, return `Err(self)`.
-    pub fn unpack(self) -> Result<V, Self> {
-        match <[_; 1]>::try_from(self.0) {
-            // If we have a single dynamic chunk, return its value directly
-            Ok([RenderedChunk::Dynamic(value)]) => Ok(value),
-            // Unpack failed
-            Ok(chunks @ [RenderedChunk::Raw(_) | RenderedChunk::Error(_)]) => {
-                Err(Self(chunks.into()))
-            }
-            Err(chunks) => Err(Self(chunks)),
-        }
-    }
 }
 
 // Non-stream functions
 impl RenderedChunks<Value> {
-    /// Collect the rendered chunks into a [Value] by these rules:
-    /// - If the template is a single dynamic chunk, return the output of that
-    ///   chunk, which may be any type of [Value]
-    /// - Any other template will be rendered to a string by stringifying each
-    ///   dynamic chunk and concatenating them all together
-    /// - If rendering to a string fails because the bytes are not valid UTF-8,
-    ///   concatenate into a bytes object instead
-    pub fn try_into_value(self) -> Result<Value, RenderError> {
-        // If we only have one chunk, unpack it into a value
-        let value = match self.unpack() {
-            Ok(value) => value,
-            Err(chunks) => {
-                // Render to bytes
-                let bytes = chunks.try_into_bytes()?;
-                Value::Bytes(bytes)
-            }
-        };
-
-        Ok(value.decode_bytes())
-    }
-
     /// Collect the rendered chunks into a byte string
     ///
     /// If any chunk is an error, return an error.
@@ -408,45 +376,6 @@ impl RenderedChunks<ValueStream> {
         } else {
             None
         }
-    }
-
-    /// Does this output contain *any* stream chunks?
-    pub fn has_stream(&self) -> bool {
-        self.0.iter().any(|chunk| match chunk {
-            RenderedChunk::Raw(_)
-            | RenderedChunk::Dynamic(ValueStream::Value(_))
-            | RenderedChunk::Error(_) => false,
-            RenderedChunk::Dynamic(ValueStream::Stream { .. }) => true,
-        })
-    }
-
-    /// Collect the rendered chunks into a [Value] by these rules:
-    /// - If the template is a single dynamic chunk, return the output of that
-    ///   chunk, which may be any type of [Value]
-    /// - If there are any streams, resolve them to bytes
-    /// - Any other template will be rendered to a string by stringifying each
-    ///   dynamic chunk and concatenating them all together
-    /// - If rendering to a string fails because the bytes are not valid UTF-8,
-    ///   concatenate into a bytes object instead
-    pub async fn try_collect_value(self) -> Result<Value, RenderError> {
-        // If we only have one chunk, unpack it into a value
-        let value = match self.unpack() {
-            Ok(ValueStream::Value(value)) => value,
-            Ok(stream @ ValueStream::Stream { .. }) => stream.resolve().await?,
-            Err(chunks) => {
-                // Render to bytes
-                let bytes = chunks
-                    .try_into_stream()?
-                    .try_collect::<BytesMut>()
-                    .await?
-                    .into();
-                Value::Bytes(bytes)
-            }
-        };
-
-        // Try to convert bytes to string, because that's generally more
-        // useful to the consumer
-        Ok(value.decode_bytes())
     }
 
     /// Convert this output into a byte stream. Each chunk will be yielded as a
@@ -483,24 +412,6 @@ impl RenderedChunks<ValueStream> {
 
         // If none of the chunks failed, we can chain all the streams together
         Ok(stream::iter(chunks).flatten())
-    }
-}
-
-/// Create render output of a single chunk with a value
-impl<V: From<Value>> From<Value> for RenderedChunks<V> {
-    fn from(value: Value) -> Self {
-        Self(vec![RenderedChunk::Dynamic(value.into())])
-    }
-}
-
-/// Create render output of a single chunk that may have failed
-impl<V: From<Value>> From<Result<Value, RenderError>> for RenderedChunks<V> {
-    fn from(result: Result<Value, RenderError>) -> Self {
-        let chunk = match result {
-            Ok(value) => RenderedChunk::Dynamic(value.into()),
-            Err(error) => RenderedChunk::Error(error),
-        };
-        Self(vec![chunk])
     }
 }
 

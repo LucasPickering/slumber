@@ -11,7 +11,7 @@ mod value_template;
 pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
-pub use value_template::ValueTemplate;
+pub use value_template::{RenderedValue, ValueTemplate};
 
 use itertools::Itertools;
 use std::{

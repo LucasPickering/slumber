@@ -148,6 +148,11 @@
           "format": "double"
         },
         {
+          "description": "An unpacked single-chunk template",
+          "type": "string"
+        },
+        {
+          "description": "A template that has not been unpacked\n\nThis is either a single raw chunk or a multi-chunk template",
           "$ref": "#/$defs/Template"
         },
         {

@@ -27,6 +27,8 @@ clap = {workspace = true, features = ["derive"]}
 fuser = "0.17.0"
 futures = {workspace = true}
 indexmap = {workspace = true}
+mime = {workspace = true}
+reqwest = {workspace = true}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 serde_yaml = {workspace = true}
@@ -36,3 +38,6 @@ slumber_template = {workspace = true}
 slumber_util = {workspace = true}
 tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
 tracing = {workspace = true}
+
+[dev-dependencies]
+rstest = {workspace = true}

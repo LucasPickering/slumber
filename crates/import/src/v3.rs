@@ -241,7 +241,7 @@ impl IntoV4 for v3::JsonTemplate {
                 Ok(v4::ValueTemplate::from_json_number(number))
             }
             Self::String(template) => {
-                template.into_v4(chains).map(v4::ValueTemplate::String)
+                template.into_v4(chains).map(v4::ValueTemplate::from)
             }
             Self::Array(array) => {
                 array.into_v4(chains).map(v4::ValueTemplate::Array)

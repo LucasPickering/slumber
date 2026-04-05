@@ -766,7 +766,7 @@ impl Recipe {
             | (Some(RecipeBody::Json(_)), Some(BodyOverride::Json(json))) => {
                 // Render the value
                 let rendered_value = json
-                    .render_chunks(context)
+                    .render_value(context)
                     .await
                     .try_into_value()
                     .map_err(RequestBuildErrorKind::BodyRender)?;

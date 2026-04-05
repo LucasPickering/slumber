@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Set extension on temporary file when editing recipe body in TUI
   - When editing a JSON body in the TUI, the created temp file will have `.json` as the extension, so your editor can use syntax highlighting and other language-specific features.
 
+### Fixed
+
+- Fix crash when previewing a profile value that returns a binary value
+
 ## [5.2.4] - 2026-03-30
 
 <!-- ANCHOR: changelog -->

@@ -66,7 +66,7 @@ impl TryFrom<serde_json::Value> for ValueTemplate {
                 ValueTemplate::from_raw_json(primitive)
             }
             // These values could all potentially be dynamic
-            serde_json::Value::String(s) => Self::String(s.parse()?),
+            serde_json::Value::String(s) => s.parse()?,
             serde_json::Value::Array(values) => Self::Array(
                 values
                     .into_iter()
@@ -105,7 +105,7 @@ impl TryFrom<serde_yaml::Value> for ValueTemplate {
                     unreachable!("serde_yaml doesn't support >64-bit numbers");
                 }
             }
-            serde_yaml::Value::String(s) => Self::String(s.parse()?),
+            serde_yaml::Value::String(s) => s.parse()?,
             serde_yaml::Value::Sequence(values) => Self::Array(
                 values
                     .into_iter()

@@ -247,10 +247,6 @@ pub enum StreamSource {
 }
 
 /// An abstraction for cases that support both [Value] and [ValueStream]
-///
-/// External-facing functions distinguish explicitly between the two value
-/// types, but within the template crate this trait allows depulication of
-/// evaluation/rendering code.
 pub trait RenderValue: Sized {
     /// Convert from a [Value] infallibly
     fn from_value(value: Value) -> Self;

@@ -43,8 +43,8 @@ pub enum Expression {
 }
 
 impl Expression {
-    /// Render this expression to bytes
-    pub(crate) async fn render<Ctx, V>(&self, context: &Ctx) -> RenderResult<V>
+    /// Render this expression to a value
+    pub async fn render<Ctx, V>(&self, context: &Ctx) -> RenderResult<V>
     where
         Ctx: Context<V>,
         V: RenderValue,

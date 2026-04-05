@@ -10,7 +10,9 @@ mod util;
 #[cfg(any(test, feature = "test"))]
 use crate::collection::Recipe;
 use crate::{
-    collection::{Collection, Profile, ProfileId, RecipeId, ValueTemplate},
+    collection::{
+        Collection, Profile, ProfileId, RecipeId, RenderedValue, ValueTemplate,
+    },
     http::{
         Exchange, RequestSeed, ResponseRecord, StoredRequestError,
         TriggeredRequestError,
@@ -222,7 +224,7 @@ impl Context<Value> for TemplateContext {
             FieldCacheOutcome::Miss(guard) => guard,
         };
         let template = self.get_field_template(field)?;
-        let chunks = template.render_chunks(self).await; // Render the nested template
+        let chunks = template.render_value(self).await; // Render the nested template
         let value = chunks
             .try_into_value()
             .map_err(|error| field_error(error, field))?;
@@ -253,21 +255,21 @@ impl Context<ValueStream> for TemplateContext {
         let template = self.get_field_template(field)?;
 
         // Render the nested template
-        let chunks = template.render_chunks_stream(self).await;
+        let output = template.render_value_stream(self).await;
 
         // If the output is a value, we can cache it. If it's a stream, it can't
         // be cloned so it can't be cached. In practice there's probably no
         // reason to include the same stream field twice in a single body, but
         // if that happens we'll have to compute it twice. This saves us a lot
         // of annoying machinery though.
-        if chunks.has_stream() {
+        if output.has_stream() {
             // If the nested template rendered to a single chunk, we can unpack
             // it out of its chunk list. If it had multiple chunks, we need to
             // keep all of them to provide both a correct preview and the final
             // stream
-            match chunks.unpack() {
-                Ok(stream) => Ok(stream),
-                Err(chunks) => {
+            match output {
+                RenderedValue::Value(result) => result,
+                RenderedValue::Chunks(chunks) => {
                     let stream = chunks
                         .try_into_stream()
                         .map_err(|error| field_error(error, field))?;
@@ -278,7 +280,7 @@ impl Context<ValueStream> for TemplateContext {
                 }
             }
         } else {
-            let value = chunks
+            let value = output
                 .try_collect_value()
                 .await
                 .map_err(|error| field_error(error, field))?;

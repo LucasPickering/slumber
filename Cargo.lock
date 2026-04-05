@@ -3482,6 +3482,7 @@ dependencies = [
  "fuser",
  "futures",
  "indexmap",
+ "itertools",
  "mime",
  "reqwest",
  "rstest",

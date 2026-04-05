@@ -23,6 +23,7 @@ tag = false
 [dependencies]
 anyhow = {workspace = true}
 bytes = {workspace = true}
+chrono = {workspace = true}
 clap = {workspace = true, features = ["derive"]}
 fuser = "0.17.0"
 futures = {workspace = true}

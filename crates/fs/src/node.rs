@@ -19,21 +19,25 @@
 //!         preview.yml
 //!         go.sh
 //!         history/
-//!           2026-02-28T112233_guid/
-//!             request.txt
-//!             request_body.json
-//!             response.txt
-//!             response_body.json
+//!           20260228_112233_guid/
+//!             request_metadata.txt
+//!             request.json
+//!             response_metadata.txt
+//!             response.json
 //! ```
 
 use crate::{Context, Message, socket_path, util::mime_to_extension};
 use bytes::{Bytes, BytesMut};
+use chrono::Local;
 use fuser::{Errno, FileAttr, FileType, INodeNo};
 use reqwest::header::HeaderMap;
 use slumber_core::{
     collection::{ProfileId, RecipeId, RecipeNode as RecipeTreeNode},
     database::ProfileFilter,
-    http::{Exchange, RequestBody, RequestId, RequestRecord, ResponseRecord},
+    http::{
+        Exchange, ExchangeSummary, RequestBody, RequestId, RequestRecord,
+        ResponseRecord,
+    },
 };
 use std::{
     borrow::Cow,
@@ -512,19 +516,35 @@ impl FileNode for RecipeHistoryDirectory {
         };
         exchanges
             .into_iter()
-            .map(|exchange| ExchangeDirectory(exchange.id).boxed())
+            .map(|exchange| ExchangeDirectory::new(&exchange).boxed())
             .collect()
     }
 }
 
 /// Request/response for a single historical exchange
 #[derive(Debug)]
-struct ExchangeDirectory(RequestId);
+struct ExchangeDirectory {
+    id: RequestId,
+    directory_name: String,
+}
+
+impl ExchangeDirectory {
+    fn new(exchange: &ExchangeSummary) -> Self {
+        let id = exchange.id;
+        let datetime = exchange
+            .start_time
+            .with_timezone(&Local)
+            .format("%Y%m%d_%H%M%S");
+        Self {
+            id,
+            directory_name: format!("{datetime}_{id}"),
+        }
+    }
+}
 
 impl FileNode for ExchangeDirectory {
     fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
-        // TODO include the timestamp in here
-        Cow::Owned(self.0.to_string().into())
+        to_cow(&self.directory_name)
     }
 
     fn file_type(&self) -> FileType {
@@ -532,9 +552,8 @@ impl FileNode for ExchangeDirectory {
     }
 
     fn children(&self, context: &Context) -> Vec<Box<dyn FileNode>> {
-        let request_id = self.0;
-        let Ok(Some(exchange)) = context.database.get_request(request_id)
-        else {
+        let id = self.id;
+        let Ok(Some(exchange)) = context.database.get_request(id) else {
             return vec![];
         };
         let Exchange {

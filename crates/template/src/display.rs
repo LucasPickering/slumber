@@ -80,11 +80,6 @@ impl Template {
 
         buf
     }
-
-    /// Stringify an expression as a single-chunk template
-    pub fn display_expression(expression: &Expression) -> String {
-        format!("{EXPRESSION_OPEN} {expression} {EXPRESSION_CLOSE}")
-    }
 }
 
 impl Display for Expression {

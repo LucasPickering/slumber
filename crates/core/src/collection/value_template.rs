@@ -4,8 +4,7 @@ use futures::{FutureExt, TryStreamExt, future};
 use serde::{Serialize, Serializer};
 use slumber_template::{
     Context, Expression, RenderError, RenderValue, RenderedChunk,
-    RenderedChunks, Template, TemplateChunk, TemplateParseError, Value,
-    ValueStream,
+    RenderedChunks, Template, TemplateParseError, Value, ValueStream,
 };
 use std::str::FromStr;
 
@@ -22,13 +21,11 @@ pub enum ValueTemplate {
     Boolean(bool),
     Integer(i64),
     Float(f64),
-    /// An unpacked single-chunk template
+    /// TODO
     #[serde(serialize_with = "serialize_expression")]
     #[cfg_attr(feature = "schema", schemars(with = "String"))]
     Expression(Expression),
-    /// A template that has not been unpacked
-    ///
-    /// This is either a single raw chunk or a multi-chunk template
+    /// A template string
     #[from(ignore)]
     String(Template),
     #[from(ignore)]
@@ -273,19 +270,6 @@ impl<V: RenderValue> From<Result<Value, RenderError>> for RenderedValue<V> {
     }
 }
 
-impl From<Template> for ValueTemplate {
-    fn from(template: Template) -> Self {
-        // Single dynamic chunk is unpacked
-        match <[_; 1]>::try_from(template.into_chunks()) {
-            Ok([TemplateChunk::Expression(expression)]) => {
-                Self::Expression(expression)
-            }
-            Ok(chunks) => Self::String(Template::from_chunks(chunks.into())),
-            Err(chunks) => Self::String(Template::from_chunks(chunks)),
-        }
-    }
-}
-
 /// Parse a template string to [ValueTemplate]
 ///
 /// This will unpack the template to an expression if possible.
@@ -298,10 +282,11 @@ impl FromStr for ValueTemplate {
     }
 }
 
-/// Serialize an expression as `{{ expression }}`
+/// Serialize an expression as `*expression`
 fn serialize_expression<S: Serializer>(
     expression: &Expression,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&Template::display_expression(expression))
+    // TODO use const
+    serializer.serialize_str(&format!("*{expression}"))
 }

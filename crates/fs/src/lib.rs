@@ -1,5 +1,9 @@
 //! TODO
 
+mod filesystem;
+mod node;
+mod util;
+
 use crate::filesystem::{CollectionFilesystem, Context};
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
@@ -13,9 +17,6 @@ use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
 };
 use tracing::{debug, error, info};
-
-mod filesystem;
-mod node;
 
 type MessagesTx = UnboundedSender<Message>;
 type MessagesRx = UnboundedReceiver<Message>;

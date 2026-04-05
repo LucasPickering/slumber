@@ -3488,7 +3488,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_fs"
-version = "5.2.0"
+version = "5.2.4"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3496,6 +3496,9 @@ dependencies = [
  "fuser",
  "futures",
  "indexmap",
+ "mime",
+ "reqwest",
+ "rstest",
  "serde",
  "serde_json",
  "serde_yaml",

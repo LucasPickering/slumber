@@ -26,13 +26,14 @@
 //!             response_body.json
 //! ```
 
-use crate::{Context, Message, socket_path};
+use crate::{Context, Message, socket_path, util::mime_to_extension};
 use bytes::{Bytes, BytesMut};
 use fuser::{Errno, FileAttr, FileType, INodeNo};
+use reqwest::header::HeaderMap;
 use slumber_core::{
     collection::{ProfileId, RecipeId, RecipeNode as RecipeTreeNode},
     database::ProfileFilter,
-    http::{Exchange, RequestBody, RequestId, RequestRecord},
+    http::{Exchange, RequestBody, RequestId, RequestRecord, ResponseRecord},
 };
 use std::{
     borrow::Cow,
@@ -536,18 +537,18 @@ impl FileNode for ExchangeDirectory {
         else {
             return vec![];
         };
-        let Exchange { request, .. } = exchange;
+        let Exchange {
+            request, response, ..
+        } = exchange;
 
-        let mut children = vec![RequestMetadataFile::new(&request).boxed()];
+        let mut children = vec![
+            RequestMetadataFile::new(&request).boxed(),
+            ResponseMetadataFile::new(&response).boxed(),
+            ResponseBodyFile::new(&response).boxed(),
+        ];
         // Only include the request body if it has content
-        if let RequestBody::Some(bytes) = &request.body {
-            children.push(
-                RequestBodyFile {
-                    // Bytes uses refcounting so this is cheap
-                    bytes: bytes.clone(),
-                }
-                .boxed(),
-            );
+        if let RequestBody::Some(_) = &request.body {
+            children.push(RequestBodyFile::new(&request).boxed());
         }
         children
     }
@@ -574,15 +575,7 @@ impl RequestMetadataFile {
             url = request.url
         )
         .unwrap();
-
-        // Headers
-        for (name, value) in &request.headers {
-            // <https://www.rfc-editor.org/rfc/rfc9110.html#name-field-values>
-            content.extend(name.as_str().as_bytes());
-            content.extend(b": ");
-            content.extend(value.as_bytes());
-            content.extend(b"\n");
-        }
+        write_headers(&mut content, &request.headers);
 
         Self {
             content: content.into(),
@@ -609,6 +602,7 @@ impl FileNode for RequestMetadataFile {
 /// This is only included if the request had a body
 #[derive(Debug)]
 struct RequestBodyFile {
+    file_name: String,
     /// Body content
     ///
     /// The body has to be loaded from the DB when creating this node to see if
@@ -616,10 +610,95 @@ struct RequestBodyFile {
     bytes: Bytes,
 }
 
+impl RequestBodyFile {
+    /// Build a file node for a request's body
+    ///
+    /// If the request doesn't have a body, this will make an empty file. The
+    /// caller should omit the file entirely if that's the case.
+    fn new(request: &RequestRecord) -> Self {
+        let extension = mime_to_extension(request.mime().as_ref());
+        let body = match &request.body {
+            // Make sure to clone the Bytes object so it just uses refcounting
+            RequestBody::Some(bytes) => bytes.clone(),
+            _ => Bytes::new(),
+        };
+        Self {
+            file_name: format!("request.{extension}"),
+            bytes: body,
+        }
+    }
+}
+
 impl FileNode for RequestBodyFile {
     fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
-        // TODO set file name dynamically based on content type
-        to_cow("request_body.txt")
+        to_cow(&self.file_name)
+    }
+
+    fn file_type(&self) -> FileType {
+        FileType::RegularFile
+    }
+
+    fn content(&self, _context: &Context) -> Bytes {
+        self.bytes.clone()
+    }
+}
+
+/// Response metadata (status code + headers) for a response
+#[derive(Debug)]
+struct ResponseMetadataFile {
+    content: Bytes,
+}
+
+impl ResponseMetadataFile {
+    fn new(response: &ResponseRecord) -> Self {
+        // Pre-load the contents, since the response is already in memory
+        let mut content = BytesMut::new();
+        writeln!(&mut content, "{status}", status = response.status).unwrap();
+        write_headers(&mut content, &response.headers);
+        Self {
+            content: content.into(),
+        }
+    }
+}
+
+impl FileNode for ResponseMetadataFile {
+    fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
+        to_cow("response_metadata.txt")
+    }
+
+    fn file_type(&self) -> FileType {
+        FileType::RegularFile
+    }
+
+    fn content(&self, _context: &Context) -> Bytes {
+        self.content.clone()
+    }
+}
+
+/// Body for a response
+#[derive(Debug)]
+struct ResponseBodyFile {
+    file_name: String,
+    /// Body content
+    ///
+    /// The body has to be loaded from the DB when creating this node to see if
+    /// it exists, so we might as well store it instead of fetching it lazily.
+    bytes: Bytes,
+}
+
+impl ResponseBodyFile {
+    fn new(response: &ResponseRecord) -> Self {
+        let extension = mime_to_extension(response.mime().as_ref());
+        Self {
+            file_name: format!("response.{extension}"),
+            bytes: response.body.bytes().clone(),
+        }
+    }
+}
+
+impl FileNode for ResponseBodyFile {
+    fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
+        to_cow(&self.file_name)
     }
 
     fn file_type(&self) -> FileType {
@@ -644,5 +723,16 @@ fn recipe_to_file(node: &RecipeTreeNode) -> Box<dyn FileNode> {
         RecipeTreeNode::Recipe(recipe) => {
             RecipeDirectory(recipe.id.clone()).boxed()
         }
+    }
+}
+
+/// Write request/response headers to a byte buffer
+fn write_headers(buf: &mut BytesMut, headers: &HeaderMap) {
+    for (name, value) in headers {
+        // <https://www.rfc-editor.org/rfc/rfc9110.html#name-field-values>
+        buf.extend(name.as_str().as_bytes());
+        buf.extend(b": ");
+        buf.extend(value.as_bytes());
+        buf.extend(b"\n");
     }
 }

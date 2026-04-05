@@ -27,6 +27,7 @@ clap = {workspace = true, features = ["derive"]}
 fuser = "0.17.0"
 futures = {workspace = true}
 indexmap = {workspace = true}
+itertools = {workspace = true}
 mime = {workspace = true}
 reqwest = {workspace = true}
 serde = {workspace = true, features = ["derive"]}

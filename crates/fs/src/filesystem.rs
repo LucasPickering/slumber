@@ -1,8 +1,9 @@
 use crate::node::NodeMap;
 use anyhow::Context as _;
 use fuser::{
-    Errno, FileHandle, FileType, Filesystem, INodeNo, LockOwner, MountOption,
-    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry,
+    BackgroundSession, Errno, FileHandle, FileType, Filesystem, INodeNo,
+    LockOwner, MountOption, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory,
+    ReplyEntry,
 };
 use slumber_core::{
     collection::{Collection, CollectionFile},
@@ -18,7 +19,6 @@ use std::{
     process::Command,
     time::Duration,
 };
-use tokio::task;
 use tracing::info;
 
 const TTL: Duration = Duration::from_secs(1);
@@ -52,8 +52,11 @@ impl CollectionFilesystem {
         Ok(Self { context, nodes })
     }
 
-    /// TODO
-    pub async fn spawn(self) -> anyhow::Result<()> {
+    /// Spawn the filesystem in a background thread
+    ///
+    /// This returns a handle for the background thread. To unmount the
+    /// filesystem and stop the thread, just drop the handle.
+    pub fn spawn(self) -> anyhow::Result<BackgroundSession> {
         let mount_path = self.context.mount_path.clone();
         info!(?mount_path, "Starting filesystem server");
 
@@ -74,14 +77,9 @@ impl CollectionFilesystem {
         config.mount_options.push(MountOption::DefaultPermissions);
 
         // Spawn the fuse server in a background thread, since it's synchronous
-        task::spawn_blocking(move || {
-            fuser::mount2(self, &mount_path, &config).with_context(|| {
-                format!("Error mounting filesystem at {}", mount_path.display())
-            })
+        fuser::spawn_mount2(self, &mount_path, &config).with_context(|| {
+            format!("Error mounting filesystem at {}", mount_path.display())
         })
-        .await
-        .context("Filesystem thread panicked")
-        .flatten()
     }
 }
 
@@ -212,23 +210,16 @@ impl Filesystem for CollectionFilesystem {
     }
 }
 
-impl Drop for CollectionFilesystem {
-    fn drop(&mut self) {
-        // Unmount on exit
-        let _ = unmount(&self.context.mount_path).traced();
-    }
-}
-
-/// TODO
+/// Data available to all filesystem operations
 #[derive(Debug)]
 pub struct Context {
-    /// TODO
+    /// Path where the filesystem is mounted
     pub mount_path: PathBuf,
-    /// TODO
+    /// Path to the loaded collection file
     pub collection_file: CollectionFile,
-    /// TODO
+    /// Loaded Slumber collection
     pub collection: Collection,
-    /// TODO
+    /// Loaded database for the collection
     pub database: CollectionDatabase,
 }
 

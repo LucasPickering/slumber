@@ -28,12 +28,24 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let (tx, rx) = mpsc::unbounded_channel::<Message>();
     let filesystem = CollectionFilesystem::new(collection_path, mount_path)?;
+    // Spawn the filesystem in a background thread. Once the handle is dropped,
+    // it will be unmounted.
+    let fs_handle = filesystem.spawn()?;
 
-    select! {
+    let result = select! {
+        // These futures all run indefinitely. If any terminates, exit the
+        // process.
+        // TODO use an actor setup for these? Should be non-lethal
         result = handle_messages(rx) => result,
         result = listen_todo(tx) => result,
-        result = filesystem.spawn() => result,
-    }
+        result = util::signals() => result, // Listen for exit signal
+    };
+    // Dropping the filesystem future will trigger graceful cleanup
+    info!("Exiting...");
+    fs_handle
+        .umount_and_join()
+        .context("Error unmounting filesystem")?;
+    result
 }
 
 /// TODO

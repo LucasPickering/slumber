@@ -3,28 +3,7 @@
 //! The primary type in this module is [NodeMap], which holds the structure of
 //! the filesystem. The various node types are implemented in this module, but
 //! they aren't exposed directory. The [Node] type exposes the functionality
-//! implemented by each node type. The file structure looks like this:
-//!
-//! ```notrust
-//! mount_dir/
-//!   slumber.yml
-//!   profiles/
-//!     profile1/
-//!       profile.yml
-//!       preview.yml
-//!   requests/
-//!     folder1/
-//!       request1/
-//!         recipe.yml
-//!         preview.yml
-//!         go
-//!         history/
-//!           20260228_112233_guid/
-//!             request_metadata.txt
-//!             request.json
-//!             response_metadata.txt
-//!             response.json
-//! ```
+//! implemented by each node type.
 
 use crate::{Context, util::mime_to_extension};
 use bytes::{Bytes, BytesMut};

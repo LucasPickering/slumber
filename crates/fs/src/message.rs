@@ -10,6 +10,7 @@ use futures::{SinkExt as _, Stream, StreamExt as _};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::RecipeId,
+    database::CollectionId,
     http::{ExchangeSummary, RequestId},
     util::MaybeStr,
 };
@@ -84,6 +85,7 @@ pub trait MessageHandler: 'static + Clone {
     /// asynchronously pass updates via the stream.
     fn send_request(
         self,
+        collection_id: CollectionId,
         recipe_id: RecipeId,
     ) -> impl Stream<Item = RequestStateSummary>;
 }
@@ -98,7 +100,10 @@ pub trait MessageHandler: 'static + Clone {
 #[derive(Debug, Serialize, Deserialize)]
 enum ClientMessage {
     /// Trigger an HTTP request
-    SendRequest { recipe_id: RecipeId },
+    SendRequest {
+        collection_id: CollectionId,
+        recipe_id: RecipeId,
+    },
 }
 
 /// The server end of a UDS connection
@@ -138,9 +143,13 @@ impl<MH: MessageHandler> ServerStream<MH, StateNew> {
 
         // Call the appropriate receiver based on the message type
         match message {
-            ClientMessage::SendRequest { recipe_id } => {
+            ClientMessage::SendRequest {
+                collection_id,
+                recipe_id,
+            } => {
                 // Forward state updates back over the socket to the client
-                let mut stream = pin!(self.handler.send_request(recipe_id));
+                let mut stream =
+                    pin!(self.handler.send_request(collection_id, recipe_id));
                 while let Some(message) = stream.next().await {
                     self.stream.write(message).await.expect("TODO");
                 }
@@ -186,9 +195,13 @@ impl ClientStream<StateNew> {
     /// the request, and the client can respond to prompts as needed.
     pub async fn send_request(
         mut self,
+        collection_id: CollectionId,
         recipe_id: RecipeId,
     ) -> anyhow::Result<ClientStream<StateRequest>> {
-        let message = ClientMessage::SendRequest { recipe_id };
+        let message = ClientMessage::SendRequest {
+            collection_id,
+            recipe_id,
+        };
         self.stream.write(message).await?;
         Ok(self.into_state())
     }

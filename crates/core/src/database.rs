@@ -13,6 +13,7 @@ use crate::{
 };
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, named_params};
+use serde::{Deserialize, Serialize};
 use slumber_util::{ResultTraced, paths};
 use std::{
     borrow::Cow,
@@ -861,12 +862,24 @@ impl CollectionDatabase {
     }
 }
 
-/// A unique ID for a collection. This is generated when the collection is
-/// inserted into the DB.
+/// A unique ID for a collection
+///
+/// This is generated when the collection is inserted into the DB. It uniquely
+/// identifies a known collection. Collection paths can have aliases (e.g.
+/// symlinks) and can change over time, but IDs are stable.
 #[derive(
-    Copy, Clone, Debug, derive_more::Display, derive_more::FromStr, PartialEq,
+    Copy,
+    Clone,
+    Debug,
+    derive_more::Display,
+    derive_more::FromStr,
+    Eq,
+    Hash,
+    PartialEq,
+    Serialize,
+    Deserialize,
 )]
-#[cfg_attr(any(test, feature = "test"), derive(Eq, Hash))]
+#[serde(transparent)]
 pub struct CollectionId(Uuid);
 
 impl CollectionId {

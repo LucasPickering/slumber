@@ -7,7 +7,7 @@ use fuser::{
 };
 use slumber_core::{
     collection::{Collection, CollectionFile},
-    database::{CollectionDatabase, Database},
+    database::CollectionDatabase,
 };
 use slumber_util::ResultTracedAnyhow;
 use std::{
@@ -17,46 +17,116 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::Arc,
     time::Duration,
 };
 use tracing::info;
 
 const TTL: Duration = Duration::from_secs(1);
 
-/// TODO
+/// A FUSE filesystem for a Slumber request collection
+///
+/// This mounts a virtual filesystem at the requested mount point with this
+/// structure:
+///
+/// ```notrust
+/// mount_dir/
+///   slumber.yml
+///   profiles/
+///     profile1/
+///       profile.yml
+///       preview.yml
+///   requests/
+///     folder1/
+///       request1/
+///         recipe.yml
+///         preview.yml
+///         go
+///         history/
+///           20260228_112233_guid/
+///             request_metadata.txt
+///             request.json
+///             response_metadata.txt
+///             response.json
+/// ```
 #[derive(Debug)]
 pub struct CollectionFilesystem {
-    /// TODO
-    context: Context,
-    /// TODO
-    nodes: NodeMap,
+    /// Join handle for the filesystem's background thread
+    handle: BackgroundSession,
+    /// The path... where it's mounted...
+    mount_path: PathBuf,
 }
 
 impl CollectionFilesystem {
-    /// TODO
-    pub fn new(
-        collection_path: Option<PathBuf>,
+    /// Build a new filesystem for a collection and mount it
+    ///
+    /// The FUSE server runs on a background thread. Use [Self::unmount] to
+    /// stop the thread and unmount the filesystem.
+    pub fn mount(
+        collection_file: CollectionFile,
+        database: CollectionDatabase,
         mount_path: PathBuf,
     ) -> anyhow::Result<Self> {
-        let collection_file = CollectionFile::new(collection_path)?;
-        let collection = collection_file.load()?;
-        let database = Database::load()?.into_collection(&collection_file)?;
+        let collection = Arc::new(collection_file.load()?);
         let mount_path = env::current_dir()?.join(mount_path);
         let context = Context {
-            mount_path,
+            mount_path: mount_path.clone(),
             collection_file,
             collection,
             database,
         };
         let nodes = NodeMap::new(&context);
-        Ok(Self { context, nodes })
+        let inner = FilesystemInner { context, nodes };
+
+        let handle = inner.mount()?;
+
+        Ok(Self { handle, mount_path })
     }
 
-    /// Spawn the filesystem in a background thread
+    /// Stop the filesystem thread and unmount it
+    ///
+    /// Waits until the thread has been stopped.
+    pub fn unmount(self) -> anyhow::Result<()> {
+        self.handle.umount_and_join().with_context(|| {
+            format!("Error unmounting filesystem {}", self.mount_path.display())
+        })
+    }
+}
+
+/// TODO
+macro_rules! get_node {
+    ($map:expr, $inode:expr, $reply:expr) => {
+        match $map.get($inode) {
+            Ok(node) => node,
+            Err(error) => {
+                $reply.error(error);
+                return;
+            }
+        }
+    };
+}
+
+/// Internal implementation of the filesystem
+///
+/// `fuser` requires an owned object for the filesystem, so this is the value
+/// passed along. Externally, [CollectionFilesystem] represents a mounted
+/// filesystem.
+struct FilesystemInner {
+    /// Data passed to all fs operations
+    context: Context,
+    /// A map of all nodes in the filesystem, keyed by inode
+    ///
+    /// This is populated lazily as nodes are built out.
+    nodes: NodeMap,
+}
+
+impl FilesystemInner {
+    /// Mount the filesystem and spawn a background thread to run the server
     ///
     /// This returns a handle for the background thread. To unmount the
-    /// filesystem and stop the thread, just drop the handle.
-    pub fn spawn(self) -> anyhow::Result<BackgroundSession> {
+    /// filesystem and stop the thread, call
+    /// [BackgroundSession::umount_and_join].
+    fn mount(self) -> anyhow::Result<BackgroundSession> {
         let mount_path = self.context.mount_path.clone();
         info!(?mount_path, "Starting filesystem server");
 
@@ -83,20 +153,7 @@ impl CollectionFilesystem {
     }
 }
 
-/// TODO
-macro_rules! get_node {
-    ($map:expr, $inode:expr, $reply:expr) => {
-        match $map.get($inode) {
-            Ok(node) => node,
-            Err(error) => {
-                $reply.error(error);
-                return;
-            }
-        }
-    };
-}
-
-impl Filesystem for CollectionFilesystem {
+impl Filesystem for FilesystemInner {
     fn flush(
         &self,
         _req: &fuser::Request,
@@ -211,6 +268,7 @@ impl Filesystem for CollectionFilesystem {
 }
 
 /// Data available to all filesystem operations
+/// TODO make private after moving node.rs under filesystem.rs
 #[derive(Debug)]
 pub struct Context {
     /// Path where the filesystem is mounted
@@ -218,7 +276,7 @@ pub struct Context {
     /// Path to the loaded collection file
     pub collection_file: CollectionFile,
     /// Loaded Slumber collection
-    pub collection: Collection,
+    pub collection: Arc<Collection>,
     /// Loaded database for the collection
     pub database: CollectionDatabase,
 }

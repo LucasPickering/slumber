@@ -504,14 +504,37 @@ impl slumber_util::Factory<RequestId> for Exchange {
 
 /// Metadata about an exchange. Useful in lists where request/response content
 /// isn't needed.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExchangeSummary {
     pub id: RequestId,
     pub recipe_id: RecipeId,
     pub profile_id: Option<ProfileId>,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
+    #[serde(with = "serde_status_code")]
     pub status: StatusCode,
+}
+
+mod serde_status_code {
+    use reqwest::StatusCode;
+    use serde::{
+        Deserialize, Deserializer, Serialize, Serializer, de::Error as _,
+    };
+
+    #[expect(clippy::trivially_copy_pass_by_ref)]
+    pub fn serialize<S: Serializer>(
+        status: &StatusCode,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        u16::from(*status).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<StatusCode, D::Error> {
+        let code = u16::deserialize(deserializer)?;
+        StatusCode::from_u16(code).map_err(D::Error::custom)
+    }
 }
 
 /// Data for an HTTP request. This is similar to [reqwest::Request], but differs

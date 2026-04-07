@@ -17,7 +17,7 @@
 //!       request1/
 //!         recipe.yml
 //!         preview.yml
-//!         go.sh
+//!         go
 //!         history/
 //!           20260228_112233_guid/
 //!             request_metadata.txt
@@ -26,7 +26,7 @@
 //!             response.json
 //! ```
 
-use crate::{Context, Message, socket_path, util::mime_to_extension};
+use crate::{Context, util::mime_to_extension};
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
 use fuser::{Errno, FileAttr, FileType, INodeNo};
@@ -468,7 +468,7 @@ struct RecipeSendFile(RecipeId);
 
 impl FileNode for RecipeSendFile {
     fn name<'a>(&'a self, _context: &'a Context) -> Cow<'a, OsStr> {
-        to_cow("go.sh")
+        to_cow("go")
     }
 
     fn permissions(&self) -> u16 {
@@ -480,14 +480,15 @@ impl FileNode for RecipeSendFile {
     }
 
     fn content(&self, _context: &Context) -> Bytes {
-        let message = Message::SendRequest {
-            recipe_id: self.0.clone(),
+        let command = if cfg!(debug_assertions) {
+            "cargo run -p slumber_fs --"
+        } else {
+            // TODO make this more portable - find the full path somehow safely
+            "slumber"
         };
-        let socket_path = socket_path();
-        let data = serde_json::to_string(&message).expect("TODO");
         format!(
-            "#!/bin/sh\necho '{data}' | nc -U {socket_path}\n",
-            socket_path = socket_path.display()
+            "#!/bin/sh\n{command} request {recipe_id}\n",
+            recipe_id = self.0
         )
         .into()
     }

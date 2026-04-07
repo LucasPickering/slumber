@@ -3494,6 +3494,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "dialoguer",
  "fuser",
  "futures",
  "indexmap",
@@ -3509,6 +3510,7 @@ dependencies = [
  "slumber_template",
  "slumber_util",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

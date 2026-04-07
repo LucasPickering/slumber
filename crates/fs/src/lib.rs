@@ -1,141 +1,170 @@
 //! TODO
 
 mod filesystem;
+mod message;
 mod node;
 mod util;
 
-use crate::filesystem::{CollectionFilesystem, Context};
-use anyhow::Context as _;
-use serde::{Deserialize, Serialize};
-use slumber_core::collection::RecipeId;
-use slumber_util::{ResultTracedAnyhow, paths};
-use std::{error::Error, fs, path::PathBuf};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{UnixListener, UnixStream},
-    select,
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+use crate::{
+    filesystem::{CollectionFilesystem, Context},
+    message::{
+        ClientStream, MessageHandler, RequestStateSummary, ServerListener,
+    },
 };
-use tracing::{debug, error, info};
-
-type MessagesTx = UnboundedSender<Message>;
-type MessagesRx = UnboundedReceiver<Message>;
+use anyhow::Context as _;
+use chrono::Utc;
+use clap::Parser;
+use futures::{Stream, stream};
+use reqwest::StatusCode;
+use slumber_core::{
+    collection::RecipeId,
+    http::{ExchangeSummary, RequestId},
+};
+use std::path::PathBuf;
+use tokio::{select, task};
+use tracing::{debug, info, level_filters::LevelFilter};
 
 /// TODO
-pub async fn run(
+#[derive(Debug, Parser)]
+pub struct Args {
+    /// TODO
+    #[clap(long, default_value_t = LevelFilter::OFF)]
+    pub log_level: LevelFilter,
+    #[command(subcommand)]
+    pub subcommand: FilesystemCommand,
+}
+
+/// TODO
+#[derive(Clone, Debug, clap::Subcommand)]
+pub enum FilesystemCommand {
+    /// Run the filesystem server
+    Run {
+        #[clap(long = "file", short = 'f')]
+        collection_path: Option<PathBuf>,
+        #[clap(long = "mount")]
+        mount_path: PathBuf,
+    },
+    /// Send an HTTP request
+    Request { recipe_id: RecipeId },
+}
+
+/// TODO
+pub async fn run(args: Args) -> anyhow::Result<()> {
+    match args.subcommand {
+        FilesystemCommand::Run {
+            collection_path,
+            mount_path,
+        } => run_server(collection_path, mount_path).await,
+        FilesystemCommand::Request { recipe_id } => {
+            send_request(recipe_id).await
+        }
+    }
+}
+
+/// Run the filesystem server
+async fn run_server(
     collection_path: Option<PathBuf>,
     mount_path: PathBuf,
 ) -> anyhow::Result<()> {
-    let (tx, rx) = mpsc::unbounded_channel::<Message>();
     let filesystem = CollectionFilesystem::new(collection_path, mount_path)?;
-    // Spawn the filesystem in a background thread. Once the handle is dropped,
-    // it will be unmounted.
+    // Spawn the filesystem in a background thread. Once the handle is
+    // dropped, it will be unmounted.
     let fs_handle = filesystem.spawn()?;
 
-    let result = select! {
-        // These futures all run indefinitely. If any terminates, exit the
-        // process.
-        // TODO use an actor setup for these? Should be non-lethal
-        result = handle_messages(rx) => result,
-        result = listen_todo(tx) => result,
-        result = util::signals() => result, // Listen for exit signal
-    };
-    // Dropping the filesystem future will trigger graceful cleanup
+    // Open a UDS socket
+    let socket = ServerListener::bind()?;
+
+    // Run in a local set so all tasks can be spawned on the main
+    // thread. This server does very little CPU work (I think) so it
+    // should all be able to run on one thread. The FUSE server runs on
+    // a background thread, so there's not much for the main thread to
+    // do.
+    let local = task::LocalSet::new();
+    let result = local
+        .run_until(async move {
+            select! {
+                // These futures all run indefinitely. If any terminates, exit
+                // the process.
+                // TODO use an actor setup for these? Should be non-lethal
+                () = socket.listen(TodoHandler {}) => Ok(()),
+                result = util::signals() => result, // Listen for exit signal
+            }
+        })
+        .await;
+
+    // Unmount the file system
     info!("Exiting...");
     fs_handle
         .umount_and_join()
         .context("Error unmounting filesystem")?;
+
     result
 }
 
-/// TODO
-pub async fn send_message(message: Message) -> anyhow::Result<()> {
-    let socket_path = socket_path();
-    let mut stream =
-        UnixStream::connect(&socket_path).await.with_context(|| {
-            format!("Error connecting to socket {}", socket_path.display())
-        })?;
-    let data = serde_json::to_vec(&message).expect("TODO");
-    stream.write_all(&data).await.context("TODO")
-}
-
-/// TODO
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Message {
-    /// Trigger an HTTP request
-    SendRequest { recipe_id: RecipeId },
-}
-
-/// TODO
-async fn listen_todo(messages_tx: MessagesTx) -> anyhow::Result<()> {
-    let socket_path = paths::data_directory().join("slumber.sock");
-    // Delete the file if it's already in place
-    // TODO what happens if another instance of the fs server is running? we
-    // should detect and exit. THERE CAN ONLY BE ONE
-    let _ = fs::remove_file(&socket_path).context("TODO").traced();
-    let listener = UnixListener::bind(&socket_path).with_context(|| {
-        format!("Error binding to socket {}", socket_path.display())
-    })?;
-    info!(?socket_path, "Socket: listening for clients");
+/// Client command to send an HTTP request
+///
+/// Open a connection with the filesystem server to initiate a request, then
+/// listen for state updates.
+async fn send_request(recipe_id: RecipeId) -> anyhow::Result<()> {
+    let mut client = ClientStream::connect()
+        .await?
+        .send_request(recipe_id)
+        .await?;
     loop {
-        match listener.accept().await {
-            Ok((stream, addr)) => {
-                info!(?addr, "Socket: client connected");
-                listen_stream(stream, messages_tx.clone()).await;
-            }
-            Err(_) => {} // TODO log error
-        }
-    }
-}
-
-/// TODO
-async fn listen_stream(mut socket: UnixStream, messages_tx: MessagesTx) {
-    let mut buf = [0; 1024]; // TODO shrink this probably
-    loop {
-        match socket.read(&mut buf).await {
-            Ok(0) => {
-                info!("Client disconnected");
-                return;
-            }
-            // Messages are small enough that they're always sent in a single
-            // packet
-            Ok(n) => {
-                let data = &buf[0..n];
-                match serde_json::from_slice::<Message>(data) {
-                    Ok(message) => {
-                        info!(?message, "Received message");
-                        messages_tx.send(message).expect("TODO");
-                    }
-                    Err(error) => {
-                        error!(
-                            error = &error as &dyn Error,
-                            ?data,
-                            "Invalid message"
-                        );
-                    }
-                }
-            }
-            Err(error) => {
-                error!(
-                    error = &error as &dyn Error,
-                    "Error reading message from client"
-                );
-            }
-        }
-    }
-}
-
-async fn handle_messages(mut rx: MessagesRx) -> anyhow::Result<()> {
-    loop {
-        let Some(message) = rx.recv().await else {
-            return Ok(());
+        let Some(message) = client.listen().await? else {
+            break Ok(());
         };
-        debug!(?message, "Received message");
-        // TODO use message
+        match message {
+            RequestStateSummary::Building { .. } => {
+                println!("Building...");
+            }
+            RequestStateSummary::BuildCancelled { .. } => println!("Cancelled"),
+            // TODO show errors
+            RequestStateSummary::BuildError { .. } => println!("Build error"),
+            RequestStateSummary::Loading { .. } => {
+                println!("Loading...");
+            }
+            RequestStateSummary::LoadingCancelled { .. } => {
+                println!("Cancelled");
+            }
+            RequestStateSummary::Response(_) => println!("Done"),
+            RequestStateSummary::RequestError { .. } => {
+                println!("Request error");
+            }
+        }
     }
 }
 
-/// TODO
-fn socket_path() -> PathBuf {
-    paths::data_directory().join("slumber.sock")
+/// Receiver for all messages from clients
+#[derive(Clone, Debug)]
+struct TodoHandler {}
+
+impl MessageHandler for TodoHandler {
+    fn send_request(
+        self,
+        recipe_id: RecipeId,
+    ) -> impl Stream<Item = RequestStateSummary> {
+        // Fake a response for now
+        debug!("Faking request for {recipe_id}");
+        let id = RequestId::new();
+        let now = Utc::now();
+        stream::iter([
+            RequestStateSummary::Building {
+                id,
+                start_time: now,
+            },
+            RequestStateSummary::Loading {
+                id,
+                start_time: now,
+            },
+            RequestStateSummary::Response(ExchangeSummary {
+                id,
+                recipe_id,
+                profile_id: None,
+                start_time: now,
+                end_time: now,
+                status: StatusCode::OK,
+            }),
+        ])
+    }
 }

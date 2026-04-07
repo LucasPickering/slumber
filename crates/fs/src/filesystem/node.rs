@@ -5,7 +5,7 @@
 //! they aren't exposed directory. The [Node] type exposes the functionality
 //! implemented by each node type.
 
-use crate::{Context, util::mime_to_extension};
+use crate::{filesystem::Context, util::mime_to_extension};
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
 use fuser::{Errno, FileAttr, FileType, INodeNo};
@@ -458,7 +458,7 @@ impl FileNode for RecipeSendFile {
         FileType::RegularFile
     }
 
-    fn content(&self, _context: &Context) -> Bytes {
+    fn content(&self, context: &Context) -> Bytes {
         let command = if cfg!(debug_assertions) {
             "cargo run -p slumber_fs --"
         } else {
@@ -466,7 +466,8 @@ impl FileNode for RecipeSendFile {
             "slumber"
         };
         format!(
-            "#!/bin/sh\n{command} request {recipe_id}\n",
+            "#!/bin/sh\n{command} request {collection_id} {recipe_id}\n",
+            collection_id = context.database.collection_id(),
             recipe_id = self.0
         )
         .into()

@@ -4,9 +4,10 @@
 //! mounting new collections. Server and client communicate over a two-way UDS
 //! socket.
 
+use crate::FilesystemServer;
 use anyhow::Context as _;
 use chrono::{DateTime, Utc};
-use futures::{SinkExt as _, Stream, StreamExt as _};
+use futures::{SinkExt as _, StreamExt as _};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::RecipeId,
@@ -48,7 +49,7 @@ impl ServerListener {
     ///
     /// For each client that connects, spawn a subtask to handle its
     /// communication. This method never returns.
-    pub async fn listen<MH: MessageHandler>(self, handler: MH) {
+    pub async fn listen(self, handler: FilesystemServer) {
         // TODO use a tracing span.
         info!("Socket: listening for clients");
         loop {
@@ -71,25 +72,6 @@ impl ServerListener {
     }
 }
 
-/// TODO
-///
-/// This handles all the external logic triggered by messages, such as sending
-/// HTTP requests or mounting new file systems.
-///
-/// TODO explain Clone and owned receivers
-pub trait MessageHandler: 'static + Clone {
-    /// Send an HTTP request and return a stream of state updates
-    ///
-    /// Each state update will be forwarded to the client to present the
-    /// current state to the user. This should return immediately and
-    /// asynchronously pass updates via the stream.
-    fn send_request(
-        self,
-        collection_id: CollectionId,
-        recipe_id: RecipeId,
-    ) -> impl Stream<Item = RequestStateSummary>;
-}
-
 /// A message that can be sent from client to server over the UDS socket
 ///
 /// This is the initial message received from a client. As such, we have no
@@ -108,20 +90,18 @@ enum ClientMessage {
 
 /// The server end of a UDS connection
 ///
-/// `Handler` is the state updater from the program root. See [MessageHandler].
-///
 /// `State` is a type state parameter denoting the kind of conversation being
 /// had. It starts as [StateNew], meaning no open conversation. The initial
 /// message sent defines the types of messages that can be sent/received
 /// subsequently.
-pub struct ServerStream<Handler, State> {
+pub struct ServerStream<State> {
     stream: SocketStream,
-    handler: Handler,
+    handler: FilesystemServer,
     type_state: PhantomData<State>,
 }
 
-impl<MH: MessageHandler> ServerStream<MH, StateNew> {
-    fn new(stream: UnixStream, handler: MH) -> Self {
+impl ServerStream<StateNew> {
+    fn new(stream: UnixStream, handler: FilesystemServer) -> Self {
         Self {
             stream: SocketStream::new(stream),
             handler,

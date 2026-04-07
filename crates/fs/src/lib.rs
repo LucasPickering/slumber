@@ -1,15 +1,13 @@
 //! TODO
 
+mod client;
 mod filesystem;
 mod message;
-mod node;
 mod util;
 
 use crate::{
-    filesystem::{CollectionFilesystem, Context},
-    message::{
-        ClientStream, MessageHandler, RequestStateSummary, ServerListener,
-    },
+    filesystem::CollectionFilesystem,
+    message::{RequestStateSummary, ServerListener},
 };
 use chrono::Utc;
 use clap::Parser;
@@ -21,7 +19,7 @@ use slumber_core::{
     http::{ExchangeSummary, RequestId},
 };
 use slumber_util::ResultTracedAnyhow;
-use std::{collections::HashMap, path::PathBuf};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc};
 use tokio::{select, task};
 use tracing::{debug, info, level_filters::LevelFilter};
 
@@ -56,7 +54,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         FilesystemCommand::Request {
             collection_id,
             recipe_id,
-        } => send_request(collection_id, recipe_id).await,
+        } => client::send_request(collection_id, recipe_id).await,
     }
 }
 
@@ -75,11 +73,20 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 /// - Expose collection and request data as one or more FUSE filesystems
 /// - Listen for client messages via a global UDS. These messages trigger
 ///   actions such as mounting/unmounting filesystems or sending requests.
+///
+/// Each FUSE system runs on its own background thread. The UDS operations all
+/// run on background tasks within the main tokio thread (via a [LocalSet]).
+/// To share data across tasks on the main thread, this struct uses interior
+/// mutability. This type implements `Clone` so it can be shared between those
+/// tasks within the main thread.
+#[derive(Clone, Debug)]
 struct FilesystemServer {
     /// SQLite DB for all collections
     database: Database,
     /// A map of all collections actively mounted
-    collections: HashMap<CollectionId, CollectionFilesystem>,
+    ///
+    /// TODO explain interior mutability
+    collections: Rc<RefCell<HashMap<CollectionId, CollectionFilesystem>>>,
 }
 
 impl FilesystemServer {
@@ -87,7 +94,7 @@ impl FilesystemServer {
         let database = Database::load()?;
         Ok(Self {
             database,
-            collections: HashMap::new(),
+            collections: Default::default(),
         })
     }
 
@@ -105,17 +112,18 @@ impl FilesystemServer {
 
         // Run in a local set so all tasks can be spawned on the main
         // thread. This server does very little CPU work (I think) so it
-        // should all be able to run on one thread. The FUSE server runs on
-        // a background thread, so there's not much for the main thread to
+        // should all be able to run on one thread. The FUSE servers run on
+        // background threads, so there's not much for the main thread to
         // do.
         let local = task::LocalSet::new();
+        let handler = self.clone();
         let result = local
             .run_until(async move {
                 select! {
                     // These futures all run indefinitely. If any terminates, exit
                     // the process.
                     // TODO use an actor setup for these? Should be non-lethal
-                    () = socket.listen(TodoHandler {}) => Ok(()),
+                    () = socket.listen(handler) => Ok(()),
                     result = util::signals() => result, // Listen for exit signal
                 }
             })
@@ -140,7 +148,9 @@ impl FilesystemServer {
         let collection_id = database.collection_id();
         let filesystem =
             CollectionFilesystem::mount(collection_file, database, mount_path)?;
-        self.collections.insert(collection_id, filesystem);
+        self.collections
+            .borrow_mut()
+            .insert(collection_id, filesystem);
 
         Ok(())
     }
@@ -149,61 +159,18 @@ impl FilesystemServer {
     ///
     /// If any unmount fails, log it and move on.
     fn unmount_all(self) {
-        for fs in self.collections.into_values() {
+        for (_, fs) in self.collections.borrow_mut().drain() {
             let _ = fs.unmount().traced();
         }
     }
-}
 
-/// Client command to send an HTTP request
-///
-/// Open a connection with the filesystem server to initiate a request, then
-/// listen for state updates.
-async fn send_request(
-    collection_id: CollectionId,
-    recipe_id: RecipeId,
-) -> anyhow::Result<()> {
-    let mut client = ClientStream::connect()
-        .await?
-        .send_request(collection_id, recipe_id)
-        .await?;
-    loop {
-        let Some(message) = client.listen().await? else {
-            break Ok(());
-        };
-        match message {
-            RequestStateSummary::Building { .. } => {
-                println!("Building...");
-            }
-            RequestStateSummary::BuildCancelled { .. } => println!("Cancelled"),
-            // TODO show errors
-            RequestStateSummary::BuildError { .. } => println!("Build error"),
-            RequestStateSummary::Loading { .. } => {
-                println!("Loading...");
-            }
-            RequestStateSummary::LoadingCancelled { .. } => {
-                println!("Cancelled");
-            }
-            RequestStateSummary::Response(_) => println!("Done"),
-            RequestStateSummary::RequestError { .. } => {
-                println!("Request error");
-            }
-        }
-    }
-}
-
-/// Receiver for all messages from clients
-#[derive(Clone, Debug)]
-struct TodoHandler {}
-
-impl MessageHandler for TodoHandler {
     fn send_request(
         self,
         collection_id: CollectionId,
         recipe_id: RecipeId,
     ) -> impl Stream<Item = RequestStateSummary> {
         // Fake a response for now
-        debug!("Faking request for {recipe_id}");
+        debug!("Faking request for {collection_id}/{recipe_id}");
         let id = RequestId::new();
         let now = Utc::now();
         stream::iter([

@@ -1,4 +1,6 @@
-use crate::node::NodeMap;
+mod node;
+
+use crate::filesystem::node::NodeMap;
 use anyhow::Context as _;
 use fuser::{
     BackgroundSession, Errno, FileHandle, FileType, Filesystem, INodeNo,
@@ -268,17 +270,16 @@ impl Filesystem for FilesystemInner {
 }
 
 /// Data available to all filesystem operations
-/// TODO make private after moving node.rs under filesystem.rs
 #[derive(Debug)]
-pub struct Context {
+struct Context {
     /// Path where the filesystem is mounted
-    pub mount_path: PathBuf,
+    mount_path: PathBuf,
     /// Path to the loaded collection file
-    pub collection_file: CollectionFile,
+    collection_file: CollectionFile,
     /// Loaded Slumber collection
-    pub collection: Arc<Collection>,
+    collection: Arc<Collection>,
     /// Loaded database for the collection
-    pub database: CollectionDatabase,
+    database: CollectionDatabase,
 }
 
 /// TODO

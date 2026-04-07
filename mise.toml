@@ -21,7 +21,7 @@ run = '''
 watchexec --on-busy-update=restart --shell=none \
     --watch=Cargo.toml --watch=Cargo.lock --watch=crates/ \
     cargo run --package slumber_fs -- \
-    --log-level $usage_log_level run --mount myfs
+    --log-level $usage_log_level run
 '''
 
 [tasks.rustdoc]

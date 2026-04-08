@@ -20,10 +20,10 @@ use slumber_core::{
         RequestBody, RequestRecord, RequestSeed, ResponseRecord,
         StoredRequestError, TriggeredRequestError,
     },
-    render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
+    render::{HttpProvider, Prompter, SelectOption, TemplateContext},
     util::MaybeStr,
 };
-use slumber_template::{Expression, Template};
+use slumber_template::{Expression, Template, Value};
 use slumber_util::{OptionExt, ResultTracedAnyhow};
 use std::{
     error::Error,
@@ -518,13 +518,15 @@ impl HttpProvider for CliHttpProvider {
 #[derive(Debug)]
 struct CliPrompter;
 
-impl CliPrompter {
-    /// Ask the user for text input
-    fn text(
+#[async_trait(?Send)]
+
+impl Prompter for CliPrompter {
+    async fn prompt_text(
+        &self,
         message: String,
         default: Option<String>,
         sensitive: bool,
-    ) -> anyhow::Result<String> {
+    ) -> Option<String> {
         // This will implicitly queue the prompts by blocking the main thread.
         // Since the CLI has nothing else to do while waiting on a response,
         // that's fine.
@@ -551,13 +553,14 @@ impl CliPrompter {
         // If we failed to read the value, print an error and report nothing
         .context("Error reading value from prompt")
         .traced()
+        .ok()
     }
 
-    /// Ask the user to select a value from a list. Return the selected value.
-    fn select(
+    async fn prompt_select(
+        &self,
         message: String,
         mut options: Vec<SelectOption>,
-    ) -> anyhow::Result<slumber_template::Value> {
+    ) -> Option<Value> {
         let index = DialoguerSelect::new()
             .with_prompt(message)
             .items(&options)
@@ -565,34 +568,9 @@ impl CliPrompter {
             .interact()
             // If we failed to read the value, print an error and report nothing
             .context("Error reading value from select")
-            .traced()?;
-        Ok(options.swap_remove(index).value)
-    }
-}
-
-impl Prompter for CliPrompter {
-    fn prompt(&self, prompt: Prompt) {
-        match prompt {
-            Prompt::Text {
-                message,
-                default,
-                sensitive,
-                channel,
-            } => {
-                if let Ok(response) = Self::text(message, default, sensitive) {
-                    channel.reply(response);
-                }
-            }
-            Prompt::Select {
-                message,
-                options,
-                channel,
-            } => {
-                if let Ok(response) = Self::select(message, options) {
-                    channel.reply(response);
-                }
-            }
-        }
+            .traced()
+            .ok()?;
+        Some(options.swap_remove(index).value)
     }
 }
 

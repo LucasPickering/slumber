@@ -7,14 +7,14 @@ use crate::{
         Exchange, HttpEngine, RequestSeed, StoredRequestError,
         TriggeredRequestError,
     },
-    render::{HttpProvider, Prompt, Prompter, TemplateContext},
+    render::{HttpProvider, Prompter, SelectOption, TemplateContext},
 };
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use slumber_config::HttpEngineConfig;
-use slumber_template::Template;
+use slumber_template::{Template, Value};
 use std::{
     hash::Hash,
     sync::atomic::{AtomicUsize, Ordering},
@@ -104,25 +104,27 @@ impl TestPrompter {
     }
 }
 
+#[async_trait(?Send)]
 impl Prompter for TestPrompter {
-    fn prompt(&self, prompt: Prompt) {
-        match prompt {
-            Prompt::Text {
-                default, channel, ..
-            } => {
-                // Grab the next value in the sequence. If we're all out, don't
-                // respond
-                let index = self.index.fetch_add(1, Ordering::Relaxed);
-                if let Some(value) = self.responses.get(index) {
-                    channel.reply(value.clone());
-                } else if let Some(default) = default {
-                    channel.reply(default);
-                }
-            }
-            Prompt::Select { .. } => {
-                unimplemented!("TestPrompter does not support selects")
-            }
-        }
+    async fn prompt_text(
+        &self,
+        _message: String,
+        default: Option<String>,
+        _sensitive: bool,
+    ) -> Option<String> {
+        // Grab the next value in the sequence. If we're all out, don't
+        // respond
+        let index = self.index.fetch_add(1, Ordering::Relaxed);
+
+        self.responses.get(index).cloned().or(default)
+    }
+
+    async fn prompt_select(
+        &self,
+        _message: String,
+        _options: Vec<SelectOption>,
+    ) -> Option<Value> {
+        unimplemented!("TestPrompter does not support selects")
     }
 }
 
@@ -144,23 +146,27 @@ impl TestSelectPrompter {
     }
 }
 
+#[async_trait(?Send)]
+
 impl Prompter for TestSelectPrompter {
-    fn prompt(&self, prompt: Prompt) {
-        match prompt {
-            Prompt::Text { .. } => unimplemented!(
-                "TestSelectPrompter does not support text prompts"
-            ),
-            Prompt::Select {
-                mut options,
-                channel,
-                ..
-            } => {
-                let index = self.index.fetch_add(1, Ordering::Relaxed);
-                if let Some(value_index) = self.responses.get(index) {
-                    channel.reply(options.swap_remove(*value_index).value);
-                }
-            }
-        }
+    async fn prompt_text(
+        &self,
+        _message: String,
+        _default: Option<String>,
+        _sensitive: bool,
+    ) -> Option<String> {
+        unimplemented!("TestSelectPrompter does not support text prompts")
+    }
+
+    async fn prompt_select(
+        &self,
+        _message: String,
+        mut options: Vec<SelectOption>,
+    ) -> Option<Value> {
+        let index = self.index.fetch_add(1, Ordering::Relaxed);
+        self.responses
+            .get(index)
+            .map(|value_index| options.swap_remove(*value_index).value)
     }
 }
 

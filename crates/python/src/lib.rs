@@ -14,9 +14,9 @@ use slumber_core::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
         ResponseRecord, StoredRequestError, TriggeredRequestError,
     },
-    render::{HttpProvider, Prompt, Prompter, SelectOption, TemplateContext},
+    render::{HttpProvider, Prompter, SelectOption, TemplateContext},
 };
-use slumber_template::Template;
+use slumber_template::{Template, Value};
 use std::{
     error::Error,
     fmt::{self, Display},
@@ -281,13 +281,15 @@ impl HttpProvider for PythonHttpProvider {
 #[derive(Debug)]
 struct PythonPrompter;
 
-impl PythonPrompter {
-    /// Ask the user for text input
-    fn text(
+#[async_trait(?Send)]
+
+impl Prompter for PythonPrompter {
+    async fn prompt_text(
+        &self,
         message: String,
         default: Option<String>,
         sensitive: bool,
-    ) -> Result<String, dialoguer::Error> {
+    ) -> Option<String> {
         // This will implicitly queue the prompts by blocking the only worker
         // thread. Since the library has nothing to do while waiting on a
         // response, that's fine
@@ -296,53 +298,29 @@ impl PythonPrompter {
                 .with_prompt(message)
                 .allow_empty_password(true)
                 .interact()
+                .ok()
         } else {
             let mut input = Input::new().with_prompt(message).allow_empty(true);
             if let Some(default) = default {
                 input = input.default(default);
             }
-            input.interact()
+            input.interact().ok()
         }
     }
 
-    /// Ask the user to select a value from a list. Return the selected value.
-    fn select(
+    async fn prompt_select(
+        &self,
         message: String,
         mut options: Vec<SelectOption>,
-    ) -> Result<slumber_template::Value, dialoguer::Error> {
+    ) -> Option<Value> {
         let index = DialoguerSelect::new()
             .with_prompt(message)
             .items(&options)
             .default(0)
-            .interact()?;
+            .interact()
+            .ok()?;
 
-        Ok(options.swap_remove(index).value)
-    }
-}
-
-impl Prompter for PythonPrompter {
-    fn prompt(&self, prompt: Prompt) {
-        match prompt {
-            Prompt::Text {
-                message,
-                default,
-                sensitive,
-                channel,
-            } => {
-                if let Ok(response) = Self::text(message, default, sensitive) {
-                    channel.reply(response);
-                }
-            }
-            Prompt::Select {
-                message,
-                options,
-                channel,
-            } => {
-                if let Ok(response) = Self::select(message, options) {
-                    channel.reply(response);
-                }
-            }
-        }
+        Some(options.swap_remove(index).value)
     }
 }
 

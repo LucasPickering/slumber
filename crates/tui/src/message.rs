@@ -4,7 +4,7 @@
 use crate::{
     input::InputEvent,
     util::{ResultReported, TempFile},
-    view::{Event, Question},
+    view::{Event, Prompt, Question, ReplyChannel},
 };
 use anyhow::Context;
 use futures::{FutureExt, future::LocalBoxFuture};
@@ -15,7 +15,7 @@ use slumber_core::{
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
-    render::{Prompt, ReplyChannel, TemplateContext},
+    render::TemplateContext,
 };
 use slumber_util::yaml::SourceLocation;
 use std::{

@@ -24,7 +24,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use derive_more::{From, derive::Display};
+use derive_more::derive::Display;
 use futures::{StreamExt, TryFutureExt};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -37,7 +37,6 @@ use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
 };
 use thiserror::Error;
-use tokio::sync::oneshot;
 use tracing::error;
 
 /// A little container struct for all the data that the user can access via
@@ -441,39 +440,28 @@ pub trait HttpProvider: Debug {
 /// multiple templates with prompts are being rendered simultaneously. The
 /// implementor is responsible for queueing prompts to show to the user one at a
 /// time.
+#[async_trait(?Send)]
 pub trait Prompter: Debug {
-    /// Ask the user a question, and use the given channel to return a response.
-    /// To indicate "no response", simply drop the returner.
+    /// Ask the user a textual question and wait for a response.
     ///
-    /// If an error occurs while prompting the user, just drop the returner.
-    /// The implementor is responsible for logging the error as appropriate.
-    fn prompt(&self, prompt: Prompt);
-}
-
-/// Data defining a prompt which should be presented to the user
-#[derive(Debug)]
-pub enum Prompt {
-    /// Ask the user for text input
-    Text {
-        /// Tell the user what we're asking for
+    /// Return `None` if there is no response, e.g. if the user closes the
+    /// prompt without responding.
+    async fn prompt_text(
+        &self,
         message: String,
-        /// Value used to pre-populate the text box
         default: Option<String>,
-        /// Should the value the user is typing be masked? E.g. password input
         sensitive: bool,
-        /// How the prompter will pass the answer back
-        channel: ReplyChannel<String>,
-    },
-    /// Ask the user to pick a value from a list
-    Select {
-        /// Tell the user what we're asking for
+    ) -> Option<String>;
+
+    /// Ask the user a multiple-choice question and wait for a response.
+    ///
+    /// Return `None` if there is no response, e.g. if the user closes the
+    /// prompt without responding.
+    async fn prompt_select(
+        &self,
         message: String,
-        /// List of choices the user can pick from. This will never be empty.
         options: Vec<SelectOption>,
-        /// How the prompter will pass the answer back. The returned value is
-        /// the `value` field from the selected [SelectOption]
-        channel: ReplyChannel<Value>,
-    },
+    ) -> Option<Value>;
 }
 
 /// An entry in a `select()` list
@@ -485,22 +473,6 @@ pub struct SelectOption {
     /// Underlying value to return if this option is selected. This will be the
     /// same as the label if the input was a single string.
     pub value: Value,
-}
-
-/// Channel used to return a reply to a one-time request. This is its own type
-/// so we can provide wrapping functionality
-#[derive(Debug, From)]
-pub struct ReplyChannel<T>(oneshot::Sender<T>);
-
-impl<T> ReplyChannel<T> {
-    /// Return the value that the user gave
-    pub fn reply(self, reply: T) {
-        // This error *shouldn't* ever happen, because the templating task
-        // stays open until it gets a reply
-        if self.0.send(reply).is_err() {
-            error!("Reply listener dropped");
-        }
-    }
 }
 
 /// An error that can occur within a template function

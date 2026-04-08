@@ -8,20 +8,24 @@ use crate::{
     util::{ResultReported, TempFile, syntax::SyntaxType},
     view::ViewContext,
 };
+use async_trait::async_trait;
 use chrono::{
     DateTime, Duration, Local, Utc,
     format::{DelayedFormat, StrftimeItems},
 };
+use derive_more::From;
 use itertools::Itertools;
 use mime::Mime;
 use ratatui::text::{Line, Text};
 use slumber_core::{
     collection::{CollectionError, CollectionFile, RecipeId},
     http::RequestId,
-    render::{Prompt, Prompter, ReplyChannel},
+    render::{Prompter, SelectOption},
 };
+use slumber_template::Value;
 use std::{io::Write, sync::Arc};
-use tracing::trace;
+use tokio::sync::oneshot;
+use tracing::{error, trace};
 
 /// Container for the state the view needs to show a collection load error
 #[derive(Debug)]
@@ -82,13 +86,46 @@ impl TuiPrompter {
     }
 }
 
+#[async_trait(?Send)]
 impl Prompter for TuiPrompter {
-    fn prompt(&self, prompt: Prompt) {
+    async fn prompt_text(
+        &self,
+        message: String,
+        default: Option<String>,
+        sensitive: bool,
+    ) -> Option<String> {
+        let (tx, rx) = oneshot::channel();
+        let prompt = Prompt::Text {
+            message,
+            default,
+            sensitive,
+            channel: ReplyChannel(tx),
+        };
         self.messages_tx.send(HttpMessage::Prompt {
             recipe_id: self.recipe_id.clone(),
             request_id: self.request_id,
             prompt,
         });
+        rx.await.ok()
+    }
+
+    async fn prompt_select(
+        &self,
+        message: String,
+        options: Vec<SelectOption>,
+    ) -> Option<Value> {
+        let (tx, rx) = oneshot::channel();
+        let prompt = Prompt::Select {
+            message,
+            options,
+            channel: ReplyChannel(tx),
+        };
+        self.messages_tx.send(HttpMessage::Prompt {
+            recipe_id: self.recipe_id.clone(),
+            request_id: self.request_id,
+            prompt,
+        });
+        rx.await.ok()
     }
 }
 
@@ -97,18 +134,64 @@ impl Prompter for TuiPrompter {
 #[derive(Debug)]
 pub struct PreviewPrompter;
 
+#[async_trait(?Send)]
+
 impl Prompter for PreviewPrompter {
-    fn prompt(&self, prompt: Prompt) {
-        match prompt {
-            Prompt::Text {
-                default, channel, ..
-            } => {
-                let value = default.unwrap_or_else(|| "<prompt>".into());
-                channel.reply(value);
-            }
-            Prompt::Select { channel, .. } => {
-                channel.reply("<select>".into());
-            }
+    async fn prompt_text(
+        &self,
+        _message: String,
+        default: Option<String>,
+        _sensitive: bool,
+    ) -> Option<String> {
+        Some(default.unwrap_or_else(|| "<prompt>".into()))
+    }
+
+    async fn prompt_select(
+        &self,
+        _message: String,
+        _options: Vec<SelectOption>,
+    ) -> Option<Value> {
+        Some("<select>".into())
+    }
+}
+
+/// Data defining a prompt to be presented to the user
+#[derive(Debug)]
+pub enum Prompt {
+    /// Ask the user for text input
+    Text {
+        /// Tell the user what we're asking for
+        message: String,
+        /// Value used to pre-populate the text box
+        default: Option<String>,
+        /// Should the value the user is typing be masked? E.g. password input
+        sensitive: bool,
+        /// How the prompter will pass the answer back
+        channel: ReplyChannel<String>,
+    },
+    /// Ask the user to pick a value from a list
+    Select {
+        /// Tell the user what we're asking for
+        message: String,
+        /// List of choices the user can pick from. This will never be empty.
+        options: Vec<SelectOption>,
+        /// How the prompter will pass the answer back. The returned value is
+        /// the `value` field from the selected [SelectOption]
+        channel: ReplyChannel<Value>,
+    },
+}
+
+/// Channel used to return a reply to a one-time request
+#[derive(Debug, From)]
+pub struct ReplyChannel<T>(oneshot::Sender<T>);
+
+impl<T> ReplyChannel<T> {
+    /// Return the value that the user gave
+    pub fn reply(self, reply: T) {
+        // This error *shouldn't* ever happen, because the templating task
+        // stays open until it gets a reply
+        if self.0.send(reply).is_err() {
+            error!("Reply listener dropped");
         }
     }
 }

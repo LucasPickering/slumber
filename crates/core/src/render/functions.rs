@@ -2,7 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    render::{FunctionError, Prompt, SelectOption, TemplateContext},
+    render::{FunctionError, SelectOption, TemplateContext},
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
@@ -24,7 +24,6 @@ use tokio::{
     fs::File,
     io::{AsyncRead, AsyncWriteExt},
     process::Command,
-    sync::oneshot,
 };
 use tokio_util::io::ReaderStream;
 use tracing::{Instrument, debug, debug_span};
@@ -872,14 +871,11 @@ pub async fn prompt(
     #[kwarg] default: Option<String>,
     #[kwarg] sensitive: bool,
 ) -> Result<String, FunctionError> {
-    let (tx, rx) = oneshot::channel();
-    context.prompter.prompt(Prompt::Text {
-        message: message.unwrap_or_default(),
-        default,
-        sensitive,
-        channel: tx.into(),
-    });
-    let chunks = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
+    let reply = context
+        .prompter
+        .prompt_text(message.unwrap_or_default(), default, sensitive)
+        .await
+        .ok_or(FunctionError::PromptNoReply)?;
 
     // If the input was sensitive, we should mask the output as well. This only
     // impacts previews as show_sensitive is enabled for request renders. This
@@ -888,9 +884,9 @@ pub async fn prompt(
     // "<prompt>", we show "••••••••". It's "technically" right and plays well
     // in tests. Also it reminds users that a prompt is sensitive in the TUI
     if sensitive {
-        Ok(mask_sensitive(context, chunks))
+        Ok(mask_sensitive(context, reply))
     } else {
-        Ok(chunks)
+        Ok(reply)
     }
 }
 
@@ -1063,13 +1059,11 @@ pub async fn select(
         return Err(FunctionError::SelectNoOptions);
     }
 
-    let (tx, rx) = oneshot::channel();
-    context.prompter.prompt(Prompt::Select {
-        message: message.unwrap_or_default(),
-        options,
-        channel: tx.into(),
-    });
-    rx.await.map_err(|_| FunctionError::PromptNoReply)
+    context
+        .prompter
+        .prompt_select(message.unwrap_or_default(), options)
+        .await
+        .ok_or(FunctionError::PromptNoReply)
 }
 
 /// A select option can be given as an object of `{value, label}` or a single

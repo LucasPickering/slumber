@@ -1,5 +1,5 @@
 use crate::view::{
-    Generate, UpdateContext, ViewContext,
+    Generate, Prompt, ReplyChannel, UpdateContext, ViewContext,
     common::{
         component_select::{
             ComponentSelect, ComponentSelectProps, SelectStyles,
@@ -24,7 +24,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Recipe, RecipeId},
     http::RequestId,
-    render::{Prompt, ReplyChannel, SelectOption},
+    render::SelectOption,
 };
 use slumber_template::Value;
 use std::{borrow::Cow, cmp, mem};

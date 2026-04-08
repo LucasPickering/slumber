@@ -12,7 +12,10 @@ mod util;
 pub use component::ComponentMap;
 pub use context::UpdateContext;
 pub use event::Event;
-pub use util::{InvalidCollection, PreviewPrompter, Question, TuiPrompter};
+pub use util::{
+    InvalidCollection, PreviewPrompter, Prompt, Question, ReplyChannel,
+    TuiPrompter,
+};
 
 use crate::{
     http::{RequestConfig, RequestState, RequestStore},
@@ -30,7 +33,6 @@ use slumber_core::{
     collection::{Collection, ProfileId, RecipeId, ValueTemplate},
     database::CollectionDatabase,
     http::RequestId,
-    render::Prompt,
 };
 use std::{
     fmt::{Debug, Display},

@@ -53,6 +53,9 @@ const TTL: Duration = Duration::from_secs(1);
 /// ```
 #[derive(Debug)]
 pub struct CollectionFilesystem {
+    collection_file: CollectionFile,
+    collection: Arc<Collection>,
+    database: CollectionDatabase,
     /// Join handle for the filesystem's background thread
     handle: BackgroundSession,
     /// The path... where it's mounted...
@@ -72,17 +75,26 @@ impl CollectionFilesystem {
         let collection = Arc::new(collection_file.load()?);
         let mount_path = env::current_dir()?.join(mount_path);
         let context = Context {
+            // This all has to get cloned because it gets passed into the fs
+            // impl, but we also hang onto them so they can be exposed for
+            // other operations
             mount_path: mount_path.clone(),
-            collection_file,
-            collection,
-            database,
+            collection_file: collection_file.clone(),
+            collection: Arc::clone(&collection),
+            database: database.clone(),
         };
         let nodes = NodeMap::new(&context);
         let inner = FilesystemInner { context, nodes };
 
         let handle = inner.mount()?;
 
-        Ok(Self { handle, mount_path })
+        Ok(Self {
+            collection_file,
+            collection,
+            database,
+            handle,
+            mount_path,
+        })
     }
 
     /// Stop the filesystem thread and unmount it
@@ -92,6 +104,18 @@ impl CollectionFilesystem {
         self.handle.umount_and_join().with_context(|| {
             format!("Error unmounting filesystem {}", self.mount_path.display())
         })
+    }
+
+    pub fn collection_file(&self) -> &CollectionFile {
+        &self.collection_file
+    }
+
+    pub fn collection(&self) -> &Arc<Collection> {
+        &self.collection
+    }
+
+    pub fn database(&self) -> &CollectionDatabase {
+        &self.database
     }
 }
 

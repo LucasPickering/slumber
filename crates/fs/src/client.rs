@@ -5,7 +5,7 @@
 //! communicates with the fs server via a Unix Domain Socket. Once the operation
 //! is complete, the client exits and the server lives on.
 
-use crate::message::{ClientStream, RequestStateSummary};
+use crate::{http::RequestState, message::ClientStream};
 use slumber_core::{collection::RecipeId, database::CollectionId};
 
 /// Client command to send an HTTP request
@@ -25,21 +25,20 @@ pub async fn send_request(
             break Ok(());
         };
         match message {
-            RequestStateSummary::Building { .. } => {
-                println!("Building...");
+            RequestState::Building { .. } => {
+                eprintln!("Building...");
             }
-            RequestStateSummary::BuildCancelled { .. } => println!("Cancelled"),
-            // TODO show errors
-            RequestStateSummary::BuildError { .. } => println!("Build error"),
-            RequestStateSummary::Loading { .. } => {
-                println!("Loading...");
+            RequestState::BuildError { message, .. } => {
+                eprintln!("{message}");
             }
-            RequestStateSummary::LoadingCancelled { .. } => {
-                println!("Cancelled");
+            RequestState::Loading { .. } => {
+                eprintln!("Loading...");
             }
-            RequestStateSummary::Response(_) => println!("Done"),
-            RequestStateSummary::RequestError { .. } => {
-                println!("Request error");
+            RequestState::Response(summary) => {
+                eprintln!("{}", summary.status);
+            }
+            RequestState::RequestError { message, .. } => {
+                eprintln!("{message}");
             }
         }
     }

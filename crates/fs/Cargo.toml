@@ -22,10 +22,11 @@ tag = false
 
 [dependencies]
 anyhow = {workspace = true}
+async-trait = {workspace = true}
 bytes = {workspace = true}
 chrono = {workspace = true}
 clap = {workspace = true, features = ["derive"]}
-dialoguer = {workspace = true}
+dialoguer = {workspace = true, features = ["password"]}
 fuser = "0.17.0"
 futures = {workspace = true}
 indexmap = {workspace = true}

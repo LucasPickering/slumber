@@ -4,21 +4,15 @@
 //! mounting new collections. Server and client communicate over a two-way UDS
 //! socket.
 
-use crate::FilesystemServer;
+use crate::{FilesystemServer, http::RequestState};
 use anyhow::Context as _;
-use chrono::{DateTime, Utc};
 use futures::{SinkExt as _, StreamExt as _};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
-    collection::RecipeId,
-    database::CollectionId,
-    http::{ExchangeSummary, RequestId},
-    util::MaybeStr,
+    collection::RecipeId, database::CollectionId, util::MaybeStr,
 };
 use slumber_util::{ResultTracedAnyhow, paths};
-use std::{
-    error::Error, fmt::Debug, fs, marker::PhantomData, path::PathBuf, pin::pin,
-};
+use std::{error::Error, fmt::Debug, fs, marker::PhantomData, path::PathBuf};
 use tokio::{
     net::{UnixListener, UnixStream},
     task,
@@ -128,11 +122,11 @@ impl ServerStream<StateNew> {
                 recipe_id,
             } => {
                 // Forward state updates back over the socket to the client
-                let mut stream =
-                    pin!(self.handler.send_request(collection_id, recipe_id));
-                while let Some(message) = stream.next().await {
-                    self.stream.write(message).await.expect("TODO");
-                }
+                self.handler
+                    .send_request(collection_id, recipe_id, async |message| {
+                        self.stream.write(message).await.expect("TODO");
+                    })
+                    .await;
             }
         }
     }
@@ -203,45 +197,9 @@ impl ClientStream<StateRequest> {
     ///
     /// Blocks until a message is received from the server. Return `Ok(None)`
     /// if the stream is closed.
-    pub async fn listen(
-        &mut self,
-    ) -> anyhow::Result<Option<RequestStateSummary>> {
-        self.stream.read::<RequestStateSummary>().await
+    pub async fn listen(&mut self) -> anyhow::Result<Option<RequestState>> {
+        self.stream.read::<RequestState>().await
     }
-}
-
-/// TODO dedupe w/ TUI
-#[derive(Debug, Serialize, Deserialize)]
-pub enum RequestStateSummary {
-    Building {
-        id: RequestId,
-        start_time: DateTime<Utc>,
-    },
-    BuildCancelled {
-        id: RequestId,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>,
-    },
-    BuildError {
-        id: RequestId,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>,
-    },
-    Loading {
-        id: RequestId,
-        start_time: DateTime<Utc>,
-    },
-    LoadingCancelled {
-        id: RequestId,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>,
-    },
-    Response(ExchangeSummary),
-    RequestError {
-        id: RequestId,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>,
-    },
 }
 
 /// Wrapper for [UnixStream] to handle encoding/decoding of messages

@@ -56,6 +56,7 @@ serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
 slumber_cli = {path = "./crates/cli", version = "5.2.4" }
 slumber_config = {path = "./crates/config", version = "5.2.4", default-features = false }
+slumber_console = {path = "./crates/console", version = "5.2.4"}
 slumber_core = {path = "./crates/core", version = "5.2.4" }
 slumber_import = {path = "./crates/import", version = "5.2.4" }
 slumber_macros = {path = "./crates/macros", version = "5.2.4" }

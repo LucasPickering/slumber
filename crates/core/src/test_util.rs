@@ -147,7 +147,6 @@ impl TestSelectPrompter {
 }
 
 #[async_trait(?Send)]
-
 impl Prompter for TestSelectPrompter {
     async fn prompt_text(
         &self,

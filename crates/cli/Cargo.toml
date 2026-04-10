@@ -20,7 +20,6 @@ async-trait = {workspace = true}
 chrono = {workspace = true}
 clap = {workspace = true, features = ["derive"]}
 clap_complete = {version = "4.5.29", features = ["unstable-dynamic"]}
-dialoguer = {workspace = true, features = ["password"]}
 indexmap = {workspace = true}
 itertools = {workspace = true}
 reqwest = {workspace = true}
@@ -29,6 +28,7 @@ serde = {workspace = true}
 serde_json = {workspace = true, optional = true}
 serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
+slumber_console = {workspace = true}
 slumber_core = {workspace = true}
 slumber_import = {workspace = true, optional = true}
 slumber_template = {workspace = true}

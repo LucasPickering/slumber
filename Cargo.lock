@@ -3300,7 +3300,6 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
- "dialoguer",
  "env-lock",
  "indexmap",
  "itertools",
@@ -3314,6 +3313,7 @@ dependencies = [
  "serde_urlencoded",
  "serde_yaml",
  "slumber_config",
+ "slumber_console",
  "slumber_core",
  "slumber_import",
  "slumber_template",
@@ -3347,6 +3347,20 @@ dependencies = [
  "slumber_util",
  "terminput",
  "thiserror 2.0.17",
+ "tracing",
+]
+
+[[package]]
+name = "slumber_console"
+version = "5.2.4"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "dialoguer",
+ "slumber_core",
+ "slumber_template",
+ "slumber_util",
+ "tokio",
  "tracing",
 ]
 
@@ -3444,10 +3458,10 @@ name = "slumber_python"
 version = "5.2.4"
 dependencies = [
  "async-trait",
- "dialoguer",
  "indexmap",
  "pyo3",
  "slumber_config",
+ "slumber_console",
  "slumber_core",
  "slumber_template",
  "tokio",

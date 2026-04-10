@@ -8,11 +8,14 @@ mod util;
 
 use crate::{
     filesystem::CollectionFilesystem,
-    http::{FilesystemHttpProvider, FilesystemPrompter, RequestState},
-    message::ServerListener,
+    http::{FilesystemHttpProvider, FilesystemPrompter},
+    message::{
+        RequestServerMessage, ServerListener, ServerStream, StateRequest,
+    },
 };
 use chrono::Utc;
 use clap::Parser;
+use futures::{FutureExt, future};
 use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, HasId, Profile, RecipeId},
@@ -181,60 +184,88 @@ impl FilesystemServer {
         self,
         collection_id: CollectionId,
         recipe_id: RecipeId,
-        mut reply: impl AsyncFnMut(RequestState),
+        mut stream: ServerStream<StateRequest>,
     ) {
         debug!("Sending request for {collection_id}/{recipe_id}");
 
+        // TODO explain promptery
+        let (prompter, prompt_mux) = http::prompter();
         let (context, database) = {
             // Ensure the refcell is dropped immediately when we're done with it
             let collections = self.collections.borrow();
             let collection_fs = collections.get(&collection_id).expect("TODO");
             (
-                self.template_context(collection_fs),
+                self.template_context(collection_fs, prompter),
                 collection_fs.database().clone(),
             )
         };
         let http_engine = self.http_engine.clone();
 
         let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-        reply(RequestState::Building {
-            id: seed.id,
-            start_time: Utc::now(),
-        })
-        .await;
+        stream
+            .send(RequestServerMessage::Building {
+                start_time: Utc::now(),
+            })
+            .await
+            .traced();
 
-        let ticket = match http_engine.build(seed, &context).await {
+        // Run the build. Prompts require sending messages back to the client
+        // over the socket to get answers. That is handled by the multiplexer,
+        // which has to run concurrently.
+        let result = select! {
+            result = http_engine.build(seed, &context) => result,
+            // Generally the multiplexer will run until the build is complete
+            // (when the context is dropped), but if it exits early we *don't*
+            // want to kill the build.
+            //
+            // This is structually similar to a background task, but this
+            // future isn't 'static so we can't spawn it in another task.
+            () = async {
+                prompt_mux.multiplex(&mut stream).await;
+                // Await forever so we don't kill the build
+                future::pending::<()>().await;
+            } => unreachable!(),
+        };
+        let ticket = match result {
             Ok(ticket) => ticket,
             Err(error) => {
-                reply(RequestState::BuildError {
-                    id: error.id,
-                    start_time: error.start_time,
-                    end_time: error.end_time,
-                    message: format!("{error:#}"),
-                })
-                .await;
+                stream
+                    .send(RequestServerMessage::BuildError {
+                        start_time: error.start_time,
+                        end_time: error.end_time,
+                        // TODO include error chain
+                        message: format!("{error:#}"),
+                    })
+                    .await
+                    .traced();
                 return;
             }
         };
-        reply(RequestState::Loading {
-            id: ticket.record().id,
-            start_time: Utc::now(),
-        })
-        .await;
+        stream
+            .send(RequestServerMessage::Loading {
+                start_time: Utc::now(),
+            })
+            .await
+            .traced();
 
         // Send the request
         match ticket.send(Some(database)).await {
             Ok(exchange) => {
-                reply(RequestState::Response(exchange.summary())).await;
+                stream
+                    .send(RequestServerMessage::Response(exchange.summary()))
+                    .await
+                    .traced();
             }
             Err(error) => {
-                reply(RequestState::RequestError {
-                    id: error.request.id,
-                    start_time: error.start_time,
-                    end_time: error.end_time,
-                    message: format!("{error:#}"),
-                })
-                .await;
+                stream
+                    .send(RequestServerMessage::RequestError {
+                        start_time: error.start_time,
+                        end_time: error.end_time,
+                        // TODO include error chain
+                        message: format!("{error:#}"),
+                    })
+                    .await
+                    .traced();
             }
         }
     }
@@ -242,6 +273,7 @@ impl FilesystemServer {
     fn template_context(
         &self,
         collection_fs: &CollectionFilesystem,
+        prompter: FilesystemPrompter,
     ) -> TemplateContext {
         let collection = collection_fs.collection();
         let database = collection_fs.database().clone();
@@ -257,7 +289,7 @@ impl FilesystemServer {
                 self.http_engine.clone(),
             )),
             overrides: Default::default(),
-            prompter: Box::new(FilesystemPrompter),
+            prompter: Box::new(prompter),
             show_sensitive: true,
             root_dir: collection_fs.collection_file().parent().to_owned(),
             state: Default::default(),

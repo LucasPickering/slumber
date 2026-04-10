@@ -43,6 +43,7 @@ slumber_util = {workspace = true}
 tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
 tokio-util = {workspace = true, features = ["codec"]}
 tracing = {workspace = true}
+uuid = {workspace = true, features = ["serde", "v4"]}
 
 [dev-dependencies]
 rstest = {workspace = true}

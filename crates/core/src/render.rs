@@ -28,7 +28,7 @@ use derive_more::derive::Display;
 use futures::{StreamExt, TryFutureExt};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use slumber_template::{
     Arguments, Context, Identifier, RenderError, StreamSource, Value,
     ValueStream,
@@ -465,7 +465,7 @@ pub trait Prompter: Debug {
 }
 
 /// An entry in a `select()` list
-#[derive(Clone, Debug, Display, Deserialize)]
+#[derive(Clone, Debug, Display, Serialize, Deserialize)]
 #[display("{label}")]
 pub struct SelectOption {
     /// Label to display to the user for this option

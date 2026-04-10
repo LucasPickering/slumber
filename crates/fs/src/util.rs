@@ -1,4 +1,8 @@
 use mime::Mime;
+use std::{
+    pin::{Pin, pin},
+    task::{self, Poll},
+};
 use tracing::info;
 
 /// Get a file extension for a MIME type
@@ -70,6 +74,43 @@ pub async fn signals() -> anyhow::Result<()> {
     info!("Received exit signal");
     Ok(())
 }
+
+/* /// TODO
+pub async fn yes_and<Fut1, Fut2>(fut1: Fut1, fut2: Fut2) -> Fut1::Output
+where
+    Fut1: Future,
+    Fut2: Future,
+{
+    struct YesAnd<Fut1, Fut2> {
+        fut1: Fut1,
+        fut2: Fut2,
+    }
+
+    impl<Fut1, Fut2> Future for YesAnd<Fut1, Fut2>
+    where
+        Fut1: Future,
+        Fut2: Future,
+    {
+        type Output = Fut1::Output;
+
+        fn poll(
+            self: Pin<&mut Self>,
+            cx: &mut task::Context<'_>,
+        ) -> Poll<Self::Output> {
+            // Poll until fut1 is done
+            let fut1 = pin!(self.fut1);
+            let poll1 = fut1.poll(cx);
+            if poll1.is_pending() {
+                // Only poll fut2 if fut1 is still going
+                let fut2 = pin!(self.fut2);
+                fut2.poll(cx);
+            }
+            poll1
+        }
+    }
+
+    YesAnd { fut1, fut2 }.await
+} */
 
 #[cfg(test)]
 mod tests {

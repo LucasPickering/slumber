@@ -5,10 +5,10 @@ use crate::{
 use anyhow::{Context, anyhow, bail};
 use async_trait::async_trait;
 use clap::{Parser, ValueHint};
-use dialoguer::{Input, Password, Select as DialoguerSelect};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
+use slumber_console::ConsolePrompter;
 use slumber_core::{
     collection::{
         Authentication, ProfileId, QueryParameterValue, Recipe, RecipeBody,
@@ -20,11 +20,11 @@ use slumber_core::{
         RequestBody, RequestRecord, RequestSeed, ResponseRecord,
         StoredRequestError, TriggeredRequestError,
     },
-    render::{HttpProvider, Prompter, SelectOption, TemplateContext},
+    render::{HttpProvider, TemplateContext},
     util::MaybeStr,
 };
-use slumber_template::{Expression, Template, Value};
-use slumber_util::{OptionExt, ResultTracedAnyhow};
+use slumber_template::{Expression, Template};
+use slumber_util::OptionExt;
 use std::{
     error::Error,
     fs::OpenOptions,
@@ -32,7 +32,6 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
 };
-use tracing::warn;
 
 /// Exit code to return when `exit_status` flag is set and the HTTP response has
 /// an error status code
@@ -386,7 +385,7 @@ impl BuildRequestCommand {
                 // CLI only supports string overrides
                 .map(|(key, template)| (key, ValueTemplate::String(template)))
                 .collect(),
-            prompter: Box::new(CliPrompter),
+            prompter: Box::new(ConsolePrompter),
             show_sensitive: true,
             root_dir: collection_file.parent().to_owned(),
             state: Default::default(),
@@ -511,66 +510,6 @@ impl HttpProvider for CliHttpProvider {
         } else {
             Err(TriggeredRequestError::NotAllowed)
         }
-    }
-}
-
-/// Prompt the user for input on the CLI
-#[derive(Debug)]
-struct CliPrompter;
-
-#[async_trait(?Send)]
-
-impl Prompter for CliPrompter {
-    async fn prompt_text(
-        &self,
-        message: String,
-        default: Option<String>,
-        sensitive: bool,
-    ) -> Option<String> {
-        // This will implicitly queue the prompts by blocking the main thread.
-        // Since the CLI has nothing else to do while waiting on a response,
-        // that's fine.
-        if sensitive {
-            // Dialoguer doesn't support default values here so there's nothing
-            // we can do
-            if default.is_some() {
-                warn!(
-                    "Default value not supported for sensitive prompts in CLI"
-                );
-            }
-
-            Password::new()
-                .with_prompt(message)
-                .allow_empty_password(true)
-                .interact()
-        } else {
-            let mut input = Input::new().with_prompt(message).allow_empty(true);
-            if let Some(default) = default {
-                input = input.default(default);
-            }
-            input.interact()
-        }
-        // If we failed to read the value, print an error and report nothing
-        .context("Error reading value from prompt")
-        .traced()
-        .ok()
-    }
-
-    async fn prompt_select(
-        &self,
-        message: String,
-        mut options: Vec<SelectOption>,
-    ) -> Option<Value> {
-        let index = DialoguerSelect::new()
-            .with_prompt(message)
-            .items(&options)
-            .default(0)
-            .interact()
-            // If we failed to read the value, print an error and report nothing
-            .context("Error reading value from select")
-            .traced()
-            .ok()?;
-        Some(options.swap_remove(index).value)
     }
 }
 

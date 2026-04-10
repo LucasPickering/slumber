@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use dialoguer::{Input, Password, Select as DialoguerSelect};
 use indexmap::IndexMap;
 use pyo3::{
     PyErr, PyResult,
@@ -7,6 +6,7 @@ use pyo3::{
     pyclass, pymethods, pymodule,
 };
 use slumber_config::Config;
+use slumber_console::ConsolePrompter;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
@@ -14,9 +14,9 @@ use slumber_core::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
         ResponseRecord, StoredRequestError, TriggeredRequestError,
     },
-    render::{HttpProvider, Prompter, SelectOption, TemplateContext},
+    render::{HttpProvider, TemplateContext},
 };
-use slumber_template::{Template, Value};
+use slumber_template::Template;
 use std::{
     error::Error,
     fmt::{self, Display},
@@ -278,52 +278,6 @@ impl HttpProvider for PythonHttpProvider {
     }
 }
 
-#[derive(Debug)]
-struct PythonPrompter;
-
-#[async_trait(?Send)]
-
-impl Prompter for PythonPrompter {
-    async fn prompt_text(
-        &self,
-        message: String,
-        default: Option<String>,
-        sensitive: bool,
-    ) -> Option<String> {
-        // This will implicitly queue the prompts by blocking the only worker
-        // thread. Since the library has nothing to do while waiting on a
-        // response, that's fine
-        if sensitive {
-            Password::new()
-                .with_prompt(message)
-                .allow_empty_password(true)
-                .interact()
-                .ok()
-        } else {
-            let mut input = Input::new().with_prompt(message).allow_empty(true);
-            if let Some(default) = default {
-                input = input.default(default);
-            }
-            input.interact().ok()
-        }
-    }
-
-    async fn prompt_select(
-        &self,
-        message: String,
-        mut options: Vec<SelectOption>,
-    ) -> Option<Value> {
-        let index = DialoguerSelect::new()
-            .with_prompt(message)
-            .items(&options)
-            .default(0)
-            .interact()
-            .ok()?;
-
-        Some(options.swap_remove(index).value)
-    }
-}
-
 /// Wrapper to stringify an error and convert it to Python. This is clumsy
 /// because it converts everything to a `RuntimeError`, but it's simple and
 /// effective.
@@ -395,7 +349,7 @@ impl Request {
             selected_profile,
             http_provider: Box::new(http_provider),
             overrides,
-            prompter: Box::new(PythonPrompter),
+            prompter: Box::new(ConsolePrompter),
             show_sensitive: true,
             root_dir: self.root_dir,
             state: Default::default(),

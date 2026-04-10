@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Fix crash when previewing a profile value that returns a binary value
+- Prompts in CLI/Python frontend no longer block other request building tasks
 
 ## [5.2.4] - 2026-03-30
 

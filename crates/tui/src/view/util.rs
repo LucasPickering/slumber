@@ -135,7 +135,6 @@ impl Prompter for TuiPrompter {
 pub struct PreviewPrompter;
 
 #[async_trait(?Send)]
-
 impl Prompter for PreviewPrompter {
     async fn prompt_text(
         &self,

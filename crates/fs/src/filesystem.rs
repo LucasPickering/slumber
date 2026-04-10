@@ -186,9 +186,10 @@ impl Filesystem for FilesystemInner {
         _ino: INodeNo,
         _fh: FileHandle,
         _lock_owner: LockOwner,
-        _reply: fuser::ReplyEmpty,
+        reply: fuser::ReplyEmpty,
     ) {
         // Nothing to flush...
+        reply.ok();
     }
 
     fn getattr(
@@ -200,6 +201,46 @@ impl Filesystem for FilesystemInner {
     ) {
         let node = get_node!(self.nodes, inode, reply);
         reply.attr(&TTL, &node.attr(&self.context));
+    }
+
+    fn listxattr(
+        &self,
+        _req: &fuser::Request,
+        inode: INodeNo,
+        size: u32,
+        reply: fuser::ReplyXattr,
+    ) {
+        let node = get_node!(self.nodes, inode, reply);
+
+        // It'd be great if we could get file size without getting the full
+        // content, but alas, I've built an inferior API
+        let content = node.content(&self.context);
+        let len = content.len() as u32;
+
+        // See listxattr docs for the description of this behavior
+        if size == 0 {
+            reply.size(len);
+        } else if len <= size {
+            reply.data(&content);
+        } else {
+            reply.error(Errno::ERANGE);
+        }
+    }
+
+    fn ioctl(
+        &self,
+        _req: &fuser::Request,
+        _ino: INodeNo,
+        _fh: FileHandle,
+        _flags: fuser::IoctlFlags,
+        _cmd: u32,
+        _in_data: &[u8],
+        _out_size: u32,
+        reply: fuser::ReplyIoctl,
+    ) {
+        // I don't really know what ioctl is meant to do but I don't feel like
+        // implementing it.
+        reply.error(Errno::EINVAL);
     }
 
     fn lookup(

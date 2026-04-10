@@ -5,19 +5,14 @@
 //! communicates with the fs server via a Unix Domain Socket. Once the operation
 //! is complete, the client exits and the server lives on.
 
-use crate::{
-    http::{PromptSelect, PromptText},
-    message::{
-        ClientStream, RequestClientMessage, RequestServerMessage, StateRequest,
-    },
+use crate::message::{
+    ClientStream, RequestClientMessage, RequestServerMessage, StateRequest,
 };
-use anyhow::Context as _;
-use dialoguer::{Input, Password, Select};
-use slumber_core::{collection::RecipeId, database::CollectionId};
-use slumber_template::Value;
+use slumber_console::ConsolePrompter;
+use slumber_core::{
+    collection::RecipeId, database::CollectionId, render::Prompter,
+};
 use slumber_util::ResultTracedAnyhow;
-use tokio::task;
-use tracing::warn;
 
 /// Client command to send an HTTP request
 ///
@@ -38,13 +33,21 @@ pub async fn send_request(
                 Ok(())
             }
             RequestServerMessage::PromptText { id, prompt } => {
-                let reply = prompt_text(prompt).await;
+                let reply = ConsolePrompter
+                    .prompt_text(
+                        prompt.message,
+                        prompt.default,
+                        prompt.sensitive,
+                    )
+                    .await;
                 client
                     .send(RequestClientMessage::PromptTextReply { id, reply })
                     .await
             }
             RequestServerMessage::PromptSelect { id, prompt } => {
-                let reply = prompt_select(prompt).await;
+                let reply = ConsolePrompter
+                    .prompt_select(prompt.message, prompt.options)
+                    .await;
                 client
                     .send(RequestClientMessage::PromptSelectReply { id, reply })
                     .await
@@ -77,56 +80,4 @@ pub async fn send_request(
         let _ = handle_message(&mut client, result).await.traced();
     }
     Ok(())
-}
-
-/// Prompt the user for some text input
-async fn prompt_text(prompt: PromptText) -> Option<String> {
-    // dialoguer is blocking so do it in a background thread
-    task::spawn_blocking(move || {
-        if prompt.sensitive {
-            // Dialoguer doesn't support default values here so there's nothing
-            // we can do
-            if prompt.default.is_some() {
-                warn!(
-                    "Default value not supported for sensitive prompts in CLI"
-                );
-            }
-
-            Password::new()
-                .with_prompt(prompt.message)
-                .allow_empty_password(true)
-                .interact()
-        } else {
-            let mut input =
-                Input::new().with_prompt(prompt.message).allow_empty(true);
-            if let Some(default) = prompt.default {
-                input = input.default(default);
-            }
-            input.interact()
-        }
-        .ok()
-    })
-    .await
-    .context("Prompt thread panicked")
-    .traced()
-    .ok()
-    .flatten()
-}
-
-/// Prompt the user to select an item from a list
-async fn prompt_select(mut prompt: PromptSelect) -> Option<Value> {
-    task::spawn_blocking(move || {
-        let index = Select::new()
-            .with_prompt(prompt.message)
-            .items(&prompt.options)
-            .default(0)
-            .interact()
-            .ok()?;
-        Some(prompt.options.swap_remove(index).value)
-    })
-    .await
-    .context("Prompt thread panicked")
-    .traced()
-    .ok()
-    .flatten()
 }

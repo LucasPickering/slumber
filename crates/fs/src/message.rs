@@ -18,7 +18,14 @@ use slumber_core::{
 };
 use slumber_template::Value;
 use slumber_util::{ResultTracedAnyhow, paths};
-use std::{error::Error, fmt::Debug, fs, marker::PhantomData, path::PathBuf};
+use std::{
+    error::Error,
+    fmt::Debug,
+    fs,
+    marker::PhantomData,
+    path::PathBuf,
+    sync::atomic::{AtomicU32, Ordering},
+};
 use tokio::{
     net::{
         UnixListener, UnixStream,
@@ -27,7 +34,7 @@ use tokio::{
     task,
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-use tracing::{error, info};
+use tracing::{Instrument, info, info_span, instrument};
 
 /// TODO
 pub struct ServerListener {
@@ -52,25 +59,31 @@ impl ServerListener {
     ///
     /// For each client that connects, spawn a subtask to handle its
     /// communication. This method never returns.
+    #[instrument(level = "info", name = "socket", skip_all)]
     pub async fn listen(self, handler: FilesystemServer) {
-        // TODO use a tracing span.
-        info!("Socket: listening for clients");
+        /// Each client gets a unique ID for logging purposes
+        static NEXT_CLIENT_ID: AtomicU32 = AtomicU32::new(0);
+
+        info!("Listening for clients");
         loop {
-            match self.listener.accept().await {
-                Ok((stream, addr)) => {
-                    // Communicate in a subtask so we can handle multiple
-                    // clients simultaneously
-                    info!(?addr, "Socket: client connected");
-                    let stream = ServerStream::new(stream, handler.clone());
-                    task::spawn_local(stream.handle());
-                }
-                Err(error) => {
-                    error!(
-                        error = &error as &dyn Error,
-                        "Socket: error connecting to client"
-                    );
-                }
-            }
+            let result = self.listener.accept().await;
+            let Ok((stream, _)) =
+                result.context("Error connecting to client").traced()
+            else {
+                continue;
+            };
+
+            // Generate a unique ID for each client so they can be grouped in
+            // tracing easily
+            let id = NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed);
+            let stream = ServerStream::new(stream, handler.clone());
+            let future = stream
+                .handle_messages()
+                .instrument(info_span!("client", id));
+
+            // Communicate in a subtask so we can handle multiple
+            // clients simultaneously
+            task::spawn_local(future);
         }
     }
 }
@@ -138,7 +151,7 @@ impl ServerStream<StateInit> {
     ///
     /// This will read the initial message, initiate some action in the service,
     /// and continue the conversation as needed.
-    async fn handle(mut self) {
+    async fn handle_messages(mut self) {
         // Read the initial message to determine the scope of the conversation
         let Some(result) = self.stream.read.read().await else {
             return;

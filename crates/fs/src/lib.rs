@@ -15,7 +15,7 @@ use crate::{
 };
 use chrono::Utc;
 use clap::Parser;
-use futures::{FutureExt, future};
+use futures::future;
 use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, HasId, Profile, RecipeId},

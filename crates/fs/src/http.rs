@@ -247,6 +247,7 @@ pub struct PromptText {
     pub message: String,
     /// Value used to pre-populate the text box
     pub default: Option<String>,
+    // TODO don't log sensitive responses. Or maybe just make logging debug?
     /// Should the value the user is typing be masked? E.g. password input
     pub sensitive: bool,
 }

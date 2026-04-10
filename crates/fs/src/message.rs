@@ -19,7 +19,6 @@ use slumber_core::{
 use slumber_template::Value;
 use slumber_util::{ResultTracedAnyhow, paths};
 use std::{
-    error::Error,
     fmt::Debug,
     fs,
     marker::PhantomData,
@@ -124,7 +123,8 @@ impl<State: StreamState> ServerStream<State> {
         &mut self,
         message: State::ServerMessage,
     ) -> anyhow::Result<()> {
-        self.stream.write.write(message).await
+        // TODO trace errors in write() instead
+        self.stream.write.write(message).await.traced()
     }
 
     /// TODO

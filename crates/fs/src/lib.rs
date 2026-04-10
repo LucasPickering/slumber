@@ -202,12 +202,11 @@ impl FilesystemServer {
         let http_engine = self.http_engine.clone();
 
         let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-        stream
+        let _ = stream
             .send(RequestServerMessage::Building {
                 start_time: Utc::now(),
             })
-            .await
-            .traced();
+            .await;
 
         // Run the build. Prompts require sending messages back to the client
         // over the socket to get answers. That is handled by the multiplexer,
@@ -229,43 +228,39 @@ impl FilesystemServer {
         let ticket = match result {
             Ok(ticket) => ticket,
             Err(error) => {
-                stream
+                let _ = stream
                     .send(RequestServerMessage::BuildError {
                         start_time: error.start_time,
                         end_time: error.end_time,
                         // TODO include error chain
                         message: format!("{error:#}"),
                     })
-                    .await
-                    .traced();
+                    .await;
                 return;
             }
         };
-        stream
+        let _ = stream
             .send(RequestServerMessage::Loading {
                 start_time: Utc::now(),
             })
-            .await
-            .traced();
+            .await;
 
         // Send the request
         match ticket.send(Some(database)).await {
             Ok(exchange) => {
-                stream
+                let _ = stream
                     .send(RequestServerMessage::Response(exchange.summary()))
-                    .await
-                    .traced();
+                    .await;
             }
             Err(error) => {
-                stream
+                let _ = stream
                     .send(RequestServerMessage::RequestError {
                         start_time: error.start_time,
                         end_time: error.end_time,
                         // TODO include error chain
                         message: format!("{error:#}"),
                     })
-                    .await
-                    .traced();
+                    .await;
             }
         }
     }

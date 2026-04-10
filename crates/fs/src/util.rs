@@ -1,8 +1,4 @@
 use mime::Mime;
-use std::{
-    pin::{Pin, pin},
-    task::{self, Poll},
-};
 use tracing::info;
 
 /// Get a file extension for a MIME type

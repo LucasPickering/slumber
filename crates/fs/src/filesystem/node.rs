@@ -58,9 +58,11 @@ impl NodeMap {
 
     /// Get a node by inode
     ///
-    /// If the node isn't in the filesystem, return [Errno::ENOENT]
+    /// If the node isn't in the filesystem, return [Errno::EBADF]
     pub fn get(&self, inode: INodeNo) -> Result<&Node, Errno> {
-        self.nodes.get(&inode).ok_or(Errno::ENOENT)
+        // Seems like ENOENT is for when a path is given. We already have an
+        // inode here, so we return EBADF for missing
+        self.nodes.get(&inode).ok_or(Errno::EBADF)
     }
 
     /// TODO

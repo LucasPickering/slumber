@@ -40,6 +40,7 @@ slumber_console = {workspace = true}
 slumber_core = {workspace = true}
 slumber_template = {workspace = true}
 slumber_util = {workspace = true}
+thiserror = {workspace = true}
 tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
 tokio-util = {workspace = true, features = ["codec"]}
 tracing = {workspace = true}

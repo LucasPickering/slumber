@@ -117,6 +117,11 @@ impl CollectionFilesystem {
     pub fn database(&self) -> &CollectionDatabase {
         &self.database
     }
+
+    /// Get the path this filesystem is mounted at
+    pub fn mount_path(&self) -> &Path {
+        &self.mount_path
+    }
 }
 
 /// TODO

@@ -13,7 +13,9 @@ use chrono::{DateTime, Utc};
 use futures::{SinkExt as _, StreamExt as _};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use slumber_core::{
-    collection::RecipeId, database::CollectionId, http::ExchangeSummary,
+    collection::{CollectionError, RecipeId},
+    database::{CollectionId, DatabaseError},
+    http::ExchangeSummary,
     util::MaybeStr,
 };
 use slumber_template::Value;
@@ -25,6 +27,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU32, Ordering},
 };
+use thiserror::Error;
 use tokio::{
     net::{
         UnixListener, UnixStream,
@@ -96,10 +99,21 @@ impl ServerListener {
 /// conversation to only the available message types.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
+    /// Mount a new collection
+    Mount {
+        collection_path: Option<PathBuf>,
+        mount_path: PathBuf,
+    },
     /// Trigger an HTTP request
     SendRequest {
         collection_id: CollectionId,
         recipe_id: RecipeId,
+    },
+    /// Unmount a mounted collection
+    Unmount {
+        // TODO support mount path instead of collection ID
+        /// TODO explain
+        collection_id: CollectionId,
     },
 }
 
@@ -159,15 +173,43 @@ impl ServerStream<StateInit> {
         let message = result.expect("TODO");
 
         // Call the appropriate receiver based on the message type
+        let handler = self.handler.clone();
         match message {
+            ClientMessage::Mount {
+                collection_path,
+                mount_path,
+            } => {
+                let mut stream = self.into_state::<StateMount>();
+                let result = handler.mount(collection_path, mount_path.clone());
+                let message = match result {
+                    Ok(collection_path) => MountServerMessage::Ok {
+                        collection_path,
+                        mount_path,
+                    },
+                    Err(MountError::AlreadyMounted {
+                        collection_path,
+                        mount_path,
+                    }) => MountServerMessage::AlreadyMounted {
+                        collection_path,
+                        already_at: mount_path,
+                    },
+                    Err(error) => MountServerMessage::Error {
+                        // TODO include full error chain
+                        message: format!("{error:#}"),
+                    },
+                };
+                stream.send(message).await;
+            }
             ClientMessage::SendRequest {
                 collection_id,
                 recipe_id,
             } => {
                 // TODO explain
-                let handler = self.handler.clone();
                 let stream = self.into_state::<StateRequest>();
                 handler.send_request(collection_id, recipe_id, stream).await;
+            }
+            ClientMessage::Unmount { collection_id } => {
+                todo!()
             }
         }
     }
@@ -251,6 +293,20 @@ impl ClientStream<StateInit> {
         })
     }
 
+    /// Tell the server to mount a new collection
+    pub async fn mount(
+        mut self,
+        collection_path: Option<PathBuf>,
+        mount_path: PathBuf,
+    ) -> anyhow::Result<ClientStream<StateMount>> {
+        self.send(ClientMessage::Mount {
+            collection_path,
+            mount_path,
+        })
+        .await?;
+        Ok(self.into_state())
+    }
+
     /// Tell the server to send a request
     ///
     /// This begins a conversation where the server sends state updates about
@@ -275,6 +331,60 @@ impl ClientStream<StateInit> {
             type_state: PhantomData,
         }
     }
+}
+
+/// TODO
+pub struct StateMount;
+
+impl StreamState for StateMount {
+    type ClientMessage = ();
+    /// Success or error message
+    type ServerMessage = MountServerMessage;
+}
+
+/// Server -> client message for [StateMount]
+#[derive(Debug, Serialize, Deserialize)]
+pub enum MountServerMessage {
+    /// Collection was mounted successfully
+    Ok {
+        collection_path: PathBuf,
+        mount_path: PathBuf,
+    },
+    /// Collection couldn't be mounted because it's already mounted
+    AlreadyMounted {
+        collection_path: PathBuf,
+        already_at: PathBuf,
+    },
+    /// Unspecified error case
+    Error { message: String },
+}
+
+/// Error than can occur while mounting a filesystem
+///
+/// TODO move this somewhere better
+#[derive(Debug, Error)]
+pub enum MountError {
+    /// Requested collection is already mounted at a different path
+    #[error(
+        "Collection {} already mounted at {}",
+        collection_path.display(),
+        mount_path.display(),
+    )]
+    AlreadyMounted {
+        /// Path to the collection file
+        collection_path: PathBuf,
+        /// Path that the collection is already mounted at
+        mount_path: PathBuf,
+    },
+    /// Error finding the collection file
+    #[error(transparent)]
+    Collection(#[from] CollectionError),
+    /// Error connecting to the database to get the collection ID
+    #[error(transparent)]
+    Database(#[from] DatabaseError),
+    /// Error mounting the filesystem
+    #[error(transparent)]
+    Mount(anyhow::Error),
 }
 
 /// Type state for [ServerStream]/[ClientStream] when sending an HTTP request

@@ -3510,6 +3510,7 @@ dependencies = [
  "slumber_core",
  "slumber_template",
  "slumber_util",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-util",
  "tracing",

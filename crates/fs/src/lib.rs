@@ -7,12 +7,15 @@ mod message;
 mod util;
 
 use crate::{
+    client::FilesystemCommand,
     filesystem::CollectionFilesystem,
     http::{FilesystemHttpProvider, FilesystemPrompter},
     message::{
-        RequestServerMessage, ServerListener, ServerStream, StateRequest,
+        MountError, RequestServerMessage, ServerListener, ServerStream,
+        StateRequest,
     },
 };
+use anyhow::bail;
 use chrono::Utc;
 use clap::Parser;
 use futures::future;
@@ -25,7 +28,11 @@ use slumber_core::{
 };
 use slumber_util::ResultTracedAnyhow;
 use std::{
-    cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc, sync::Arc,
+    cell::RefCell,
+    collections::{HashMap, hash_map::Entry},
+    path::PathBuf,
+    rc::Rc,
+    sync::Arc,
 };
 use tokio::{select, task};
 use tracing::{debug, info, level_filters::LevelFilter};
@@ -37,31 +44,14 @@ pub struct Args {
     #[clap(long, default_value_t = LevelFilter::OFF)]
     pub log_level: LevelFilter,
     #[command(subcommand)]
-    pub subcommand: FilesystemCommand,
-}
-
-/// TODO
-#[derive(Clone, Debug, clap::Subcommand)]
-pub enum FilesystemCommand {
-    /// Run the filesystem server
-    ///
-    /// Only one instance of the server can be running at a time.
-    Run,
-    /// Send an HTTP request
-    Request {
-        collection_id: CollectionId,
-        recipe_id: RecipeId,
-    },
+    pub subcommand: Option<FilesystemCommand>,
 }
 
 /// TODO
 pub async fn run(args: Args) -> anyhow::Result<()> {
     match args.subcommand {
-        FilesystemCommand::Run => FilesystemServer::new()?.run().await,
-        FilesystemCommand::Request {
-            collection_id,
-            recipe_id,
-        } => client::send_request(collection_id, recipe_id).await,
+        None => FilesystemServer::new()?.run().await,
+        Some(subcommand) => subcommand.run().await,
     }
 }
 
@@ -118,8 +108,7 @@ impl FilesystemServer {
         // In dev, mount the default collection
         // TODO do this differently like
         if cfg!(debug_assertions) {
-            let file = CollectionFile::new(None)?;
-            self.mount(file, "myfs".into())?;
+            self.mount(None, "myfs".into())?;
         }
 
         // Run in a local set so all tasks can be spawned on the main
@@ -149,22 +138,47 @@ impl FilesystemServer {
     }
 
     /// Mount a filesystem for a collection
+    ///
+    /// If mounted successfully, return the path of the **collection file**.
     fn mount(
-        &mut self,
-        collection_file: CollectionFile,
+        &self,
+        collection_path: Option<PathBuf>,
         mount_path: PathBuf,
-    ) -> anyhow::Result<()> {
+    ) -> Result<PathBuf, MountError> {
         // Get a scoped DB handle just for this collection
+        let collection_file = CollectionFile::new(collection_path)?;
+        let collection_path = collection_file.path().to_owned();
         let database =
             self.database.clone().into_collection(&collection_file)?;
         let collection_id = database.collection_id();
-        let filesystem =
-            CollectionFilesystem::mount(collection_file, database, mount_path)?;
-        self.collections
-            .borrow_mut()
-            .insert(collection_id, filesystem);
+        let mut collections = self.collections.borrow_mut();
 
-        Ok(())
+        // Make sure it's not already mounted first, or we would lose the old
+        // handle
+        match collections.entry(collection_id) {
+            Entry::Occupied(entry) => {
+                return Err(MountError::AlreadyMounted {
+                    collection_path,
+                    mount_path: entry.get().mount_path().to_owned(),
+                });
+            }
+            Entry::Vacant(entry) => {
+                let filesystem = CollectionFilesystem::mount(
+                    collection_file,
+                    database,
+                    mount_path,
+                )
+                .map_err(MountError::Mount)?;
+                entry.insert(filesystem);
+            }
+        }
+
+        Ok(collection_path)
+    }
+
+    /// TODO
+    fn unmount(&self, collection_id: CollectionId) -> anyhow::Result<()> {
+        todo!()
     }
 
     /// Unmount all filesystems, waiting for each one to unmount

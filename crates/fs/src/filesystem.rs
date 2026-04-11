@@ -101,9 +101,15 @@ impl CollectionFilesystem {
     ///
     /// Waits until the thread has been stopped.
     pub fn unmount(self) -> anyhow::Result<()> {
-        self.handle.umount_and_join().with_context(|| {
-            format!("Error unmounting filesystem {}", self.mount_path.display())
-        })
+        self.handle
+            .umount_and_join()
+            .and_then(|()| fs::remove_dir(&self.mount_path))
+            .with_context(|| {
+                format!(
+                    "Error unmounting filesystem {}",
+                    self.mount_path.display()
+                )
+            })
     }
 
     pub fn collection_file(&self) -> &CollectionFile {

@@ -14,6 +14,7 @@ pub use recipe_tree::*;
 pub use value_template::{RenderedValue, ValueTemplate};
 
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use std::{
     env,
     fmt::{self, Debug, Display},
@@ -38,7 +39,7 @@ const CONFIG_FILES: &[&str] = &[
 /// Invariants:
 /// - The path exists
 /// - The path points to a file
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CollectionFile(PathBuf);
 
 impl CollectionFile {

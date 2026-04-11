@@ -109,7 +109,7 @@ impl FilesystemServer {
         // In dev, mount the default collection
         // TODO do this differently like
         if cfg!(debug_assertions) {
-            self.mount(None, "myfs".into())?;
+            self.mount(CollectionFile::new(None)?, "myfs".into())?;
         }
 
         // Run in a local set so all tasks can be spawned on the main
@@ -139,16 +139,11 @@ impl FilesystemServer {
     }
 
     /// Mount a filesystem for a collection
-    ///
-    /// If mounted successfully, return the path of the **collection file**.
     fn mount(
         &self,
-        collection_path: Option<PathBuf>,
+        collection_file: CollectionFile,
         mount_path: PathBuf,
-    ) -> Result<PathBuf, anyhow::Error> {
-        // Get a scoped DB handle just for this collection
-        let collection_file = CollectionFile::new(collection_path)?;
-        let collection_path = collection_file.path().to_owned();
+    ) -> Result<(), anyhow::Error> {
         let database =
             self.database.clone().into_collection(&collection_file)?;
         let collection_id = database.collection_id();
@@ -157,14 +152,12 @@ impl FilesystemServer {
         // Make sure it's not already mounted first, or we would lose the old
         // handle
         match collections.entry(collection_id) {
-            Entry::Occupied(entry) => {
-                return Err(AlreadyMounted {
-                    collection_path,
-                    already_at: entry.get().mount_path().to_owned(),
-                    requested_at: mount_path,
-                }
-                .into());
+            Entry::Occupied(entry) => Err(AlreadyMounted {
+                collection_path: collection_file.path().to_owned(),
+                already_at: entry.get().mount_path().to_owned(),
+                requested_at: mount_path,
             }
+            .into()),
             Entry::Vacant(entry) => {
                 let filesystem = CollectionFilesystem::mount(
                     collection_file,
@@ -172,10 +165,33 @@ impl FilesystemServer {
                     mount_path,
                 )?;
                 entry.insert(filesystem);
+                Ok(())
             }
         }
+    }
 
-        Ok(collection_path)
+    /// TODO
+    fn unmount(
+        &self,
+        collection_file: CollectionFile,
+    ) -> anyhow::Result<PathBuf> {
+        let collection_id =
+            self.database.get_collection_id(collection_file.path())?;
+        let mut collections = self.collections.borrow_mut();
+
+        match collections.entry(collection_id) {
+            Entry::Occupied(entry) => {
+                let filesystem = entry.remove();
+                let mount_path = filesystem.mount_path().to_owned();
+                // TODO this blocks - bad!!
+                filesystem.unmount()?;
+                Ok(mount_path)
+            }
+            Entry::Vacant(_) => Err(NotMounted {
+                collection_path: collection_file.path().to_owned(),
+            }
+            .into()),
+        }
     }
 
     /// Unmount all filesystems, waiting for each one to unmount
@@ -334,4 +350,12 @@ If you want it accessible at both locations, try a symlink:
             requested_at = self.requested_at.display(),
         )
     }
+}
+
+/// Error: attempted to unmount a collection that isn't mounted
+#[derive(Debug, Error)]
+#[error("Collection {} is not mounted", collection_path.display())]
+struct NotMounted {
+    /// TODO
+    collection_path: PathBuf,
 }

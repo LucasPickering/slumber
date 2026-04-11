@@ -9,7 +9,9 @@ use crate::rpc::{RequestClientMessage, RequestServerMessage, RpcClient};
 use futures::{SinkExt, StreamExt};
 use slumber_console::ConsolePrompter;
 use slumber_core::{
-    collection::RecipeId, database::CollectionId, render::Prompter,
+    collection::{CollectionFile, RecipeId},
+    database::CollectionId,
+    render::Prompter,
 };
 use slumber_util::ResultTracedAnyhow;
 use std::path::PathBuf;
@@ -59,7 +61,7 @@ impl FilesystemCommand {
                 collection_id,
                 recipe_id,
             } => send_request(collection_id, recipe_id).await,
-            FilesystemCommand::Unmount => todo!(),
+            FilesystemCommand::Unmount => unmount(None).await,
         }
     }
 }
@@ -70,14 +72,26 @@ async fn mount(
     mount_path: PathBuf,
 ) -> anyhow::Result<()> {
     let mut client = RpcClient::connect().await?;
-    let mounted = client.mount(collection_path, mount_path.clone()).await?;
-
+    let file = CollectionFile::new(collection_path)?;
+    let paths = client.mount(file, mount_path.clone()).await?;
     println!(
         "Mounted {collection_path} at {mount_path}",
-        collection_path = mounted.collection_path.display(),
-        mount_path = mounted.mount_path.display()
+        collection_path = paths.collection_path.display(),
+        mount_path = paths.mount_path.display()
     );
+    Ok(())
+}
 
+/// Unmount a mounted collection
+async fn unmount(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
+    let mut client = RpcClient::connect().await?;
+    let file = CollectionFile::new(collection_path)?;
+    let paths = client.unmount(file).await?;
+    println!(
+        "Mounted {collection_path} at {mount_path}",
+        collection_path = paths.collection_path.display(),
+        mount_path = paths.mount_path.display()
+    );
     Ok(())
 }
 

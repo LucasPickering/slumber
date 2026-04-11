@@ -12,7 +12,9 @@ use chrono::{DateTime, Utc};
 use futures::{Sink, SinkExt as _, Stream, StreamExt as _, sink, stream};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
-    collection::RecipeId, database::CollectionId, http::ExchangeSummary,
+    collection::{CollectionFile, RecipeId},
+    database::CollectionId,
+    http::ExchangeSummary,
     util::MaybeStr,
 };
 use slumber_template::Value;
@@ -96,7 +98,12 @@ impl ServerListener {
 pub enum ClientMessage {
     /// Mount a new collection
     Mount {
-        collection_path: Option<PathBuf>,
+        /// Collection file to mount
+        ///
+        /// Path has to be resolved by the client because it's relative to
+        /// the invocation cwd
+        collection_file: CollectionFile,
+        /// Path to mount to
         mount_path: PathBuf,
     },
     /// Trigger an HTTP request
@@ -106,9 +113,12 @@ pub enum ClientMessage {
     },
     /// Unmount a mounted collection
     Unmount {
-        // TODO support mount path instead of collection ID
-        /// TODO explain
-        collection_id: CollectionId,
+        // TODO support mount path too
+        /// Collection file to unmount
+        ///
+        /// Path has to be resolved by the client because it's relative to
+        /// the invocation cwd
+        collection_file: CollectionFile,
     },
 }
 
@@ -148,18 +158,17 @@ impl RpcServer {
         let handler = self.handler.clone();
         match message {
             ClientMessage::Mount {
-                collection_path,
+                collection_file,
                 mount_path,
             } => {
-                let result = handler.mount(collection_path, mount_path.clone());
+                let collection_path = collection_file.path().to_owned();
+                let result = handler.mount(collection_file, mount_path.clone());
                 let message = result
-                    .map(|collection_path| Mounted {
+                    .map(|()| MountPaths {
                         collection_path,
                         mount_path,
                     })
                     .map_err(StringError::from);
-                // If there's an error here, there's nothing we can do. Job's
-                // already done.
                 let _ = self.socket.write(message).await;
             }
             ClientMessage::SendRequest {
@@ -171,8 +180,16 @@ impl RpcServer {
                     .send_request(collection_id, recipe_id, stream, sink)
                     .await;
             }
-            ClientMessage::Unmount { .. } => {
-                todo!()
+            ClientMessage::Unmount { collection_file } => {
+                let collection_path = collection_file.path().to_owned();
+                let result = handler.unmount(collection_file);
+                let message = result
+                    .map(|mount_path| MountPaths {
+                        collection_path,
+                        mount_path,
+                    })
+                    .map_err(StringError::from);
+                let _ = self.socket.write(message).await;
             }
         }
     }
@@ -200,21 +217,37 @@ impl RpcClient {
     /// Tell the server to mount a new collection
     pub async fn mount(
         &mut self,
-        collection_path: Option<PathBuf>,
+        collection_file: CollectionFile,
         mount_path: PathBuf,
-    ) -> anyhow::Result<Mounted> {
+    ) -> anyhow::Result<MountPaths> {
         self.socket
             .write(ClientMessage::Mount {
-                collection_path,
+                collection_file,
                 mount_path,
             })
             .await?;
-        let mounted = self
+        let paths = self
             .socket
             .read::<MountServerMessage>()
             .await
             .ok_or(SocketClosed)???; // ???
-        Ok(mounted)
+        Ok(paths)
+    }
+
+    /// Tell the server to unmount a mounted collection
+    pub async fn unmount(
+        &mut self,
+        collection_file: CollectionFile,
+    ) -> anyhow::Result<MountPaths> {
+        self.socket
+            .write(ClientMessage::Unmount { collection_file })
+            .await?;
+        let paths = self
+            .socket
+            .read::<MountServerMessage>()
+            .await
+            .ok_or(SocketClosed)???; // ???
+        Ok(paths)
     }
 
     /// Tell the server to send a request
@@ -243,9 +276,9 @@ impl RpcClient {
     }
 }
 
-/// Information about a mounted filesystem
+/// Information about a mounted/unmounted filesystem
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Mounted {
+pub struct MountPaths {
     /// Full path to the mounted collection file
     pub collection_path: PathBuf,
     /// Path where the filesystem was mounted to
@@ -253,7 +286,7 @@ pub struct Mounted {
 }
 
 /// TODO
-type MountServerMessage = Result<Mounted, StringError>;
+type MountServerMessage = Result<MountPaths, StringError>;
 
 /// Server -> client message for [StateRequest]
 ///

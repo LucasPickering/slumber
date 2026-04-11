@@ -1,12 +1,11 @@
 //! Utilities for building and sending HTTP requests
 
-use crate::message::{
-    RequestClientMessage, RequestServerMessage, ServerStream, SocketRead,
-    SocketWrite, StateRequest,
+use crate::rpc::{
+    RequestClientMessage, RequestServerMessage, RpcSink, RpcStream,
 };
 use anyhow::{Context as _, anyhow, bail};
 use async_trait::async_trait;
-use futures::future;
+use futures::{SinkExt, StreamExt, future};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{ProfileId, RecipeId},
@@ -86,11 +85,14 @@ pub struct PromptMultiplexer {
 
 impl PromptMultiplexer {
     /// TODO
-    pub async fn multiplex(mut self, socket: &mut ServerStream<StateRequest>) {
-        let (socket_rx, socket_tx) = socket.split();
+    pub async fn multiplex(
+        mut self,
+        socket_read: &mut RpcStream<'_, RequestClientMessage>,
+        socket_write: &mut RpcSink<'_, RequestServerMessage>,
+    ) {
         future::join(
-            Self::server_to_client(socket_tx, &mut self.rx, &self.tx),
-            Self::client_to_server(socket_rx, &self.tx),
+            Self::server_to_client(socket_write, &mut self.rx, &self.tx),
+            Self::client_to_server(socket_read, &self.tx),
         )
         .await;
     }
@@ -98,7 +100,7 @@ impl PromptMultiplexer {
     /// Receive messages from the template engine prompter via the mpsc channel
     /// and forward them to the client over the socket
     async fn server_to_client(
-        stream: &mut SocketWrite<RequestServerMessage>,
+        socket_write: &mut RpcSink<'_, RequestServerMessage>,
         mpsc_rx: &mut mpsc::UnboundedReceiver<PromptChannel>,
         tx: &Mutex<HashMap<PromptId, PromptReplyChannel>>,
     ) {
@@ -121,19 +123,19 @@ impl PromptMultiplexer {
                     RequestServerMessage::PromptSelect { id, prompt }
                 }
             };
-            let _ = stream.write(message).await.traced();
+            let _ = socket_write.send(message).await;
         }
     }
 
     /// Receive messages from the client over the socket and forward them back
     /// to the template prompter via the stored oneshot channels
     async fn client_to_server(
-        stream: &mut SocketRead<RequestClientMessage>,
+        socket_read: &mut RpcStream<'_, RequestClientMessage>,
         tx_map: &Mutex<HashMap<PromptId, PromptReplyChannel>>,
     ) {
-        while let Some(result) = stream.read().await {
+        while let Some(message) = socket_read.next().await {
             let mut tx_map = tx_map.lock().await;
-            let _ = Self::handle_client_message(&mut tx_map, result)
+            let _ = Self::handle_client_message(&mut tx_map, message)
                 .context("Error handling client message")
                 .traced();
         }
@@ -142,9 +144,8 @@ impl PromptMultiplexer {
     /// TODO
     fn handle_client_message(
         tx_map: &mut HashMap<PromptId, PromptReplyChannel>,
-        result: anyhow::Result<RequestClientMessage>,
+        message: RequestClientMessage,
     ) -> anyhow::Result<()> {
-        let message = result?;
         let mut get_tx = |id| {
             tx_map
                 .remove(&id)

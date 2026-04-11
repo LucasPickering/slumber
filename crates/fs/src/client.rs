@@ -5,15 +5,11 @@
 //! communicates with the fs server via a Unix Domain Socket. Once the operation
 //! is complete, the client exits and the server lives on.
 
-use crate::message::{
-    ClientStream, MountServerMessage, RequestClientMessage,
-    RequestServerMessage, StateRequest,
-};
+use crate::rpc::{RequestClientMessage, RequestServerMessage, RpcClient};
+use futures::{SinkExt, StreamExt};
 use slumber_console::ConsolePrompter;
 use slumber_core::{
-    collection::{CollectionFile, RecipeId},
-    database::{CollectionId, Database},
-    render::Prompter,
+    collection::RecipeId, database::CollectionId, render::Prompter,
 };
 use slumber_util::ResultTracedAnyhow;
 use std::path::PathBuf;
@@ -73,43 +69,15 @@ async fn mount(
     collection_path: Option<PathBuf>,
     mount_path: PathBuf,
 ) -> anyhow::Result<()> {
-    let mut client = ClientStream::connect()
-        .await?
-        .mount(collection_path, mount_path.clone())
-        .await?;
+    let mut client = RpcClient::connect().await?;
+    let mounted = client.mount(collection_path, mount_path.clone()).await?;
 
-    // We only expect one message back, but use a loop anyway cause it's fun
-    while let Some(result) = client.listen().await {
-        match result? {
-            MountServerMessage::Ok {
-                collection_path,
-                mount_path,
-            } => println!(
-                "Mounted {} at {}",
-                collection_path.display(),
-                mount_path.display()
-            ),
-            MountServerMessage::AlreadyMounted {
-                collection_path,
-                already_at,
-            } => eprintln!(
-                "Collection `{collection_path}` already mounted at \
-                `{already_at}`. Each collection can only be mounted a single \
-                time. To unmount the old location first:
+    println!(
+        "Mounted {collection_path} at {mount_path}",
+        collection_path = mounted.collection_path.display(),
+        mount_path = mounted.mount_path.display()
+    );
 
-  slumber fs unmount {already_at}
-
-If you want it accessible at both locations, try a symlink:
-
-  ln -s {already_at} {requested_at}
-                ",
-                collection_path = collection_path.display(),
-                already_at = already_at.display(),
-                requested_at = mount_path.display(),
-            ),
-            MountServerMessage::Error { message } => eprintln!("{message}"),
-        }
-    }
     Ok(())
 }
 
@@ -122,14 +90,12 @@ async fn send_request(
     recipe_id: RecipeId,
 ) -> anyhow::Result<()> {
     async fn handle_message(
-        client: &mut ClientStream<StateRequest>,
-        result: anyhow::Result<RequestServerMessage>,
-    ) -> anyhow::Result<()> {
-        let message = result?;
+        message: RequestServerMessage,
+    ) -> Option<RequestClientMessage> {
         match message {
             RequestServerMessage::Building { .. } => {
                 eprintln!("Building...");
-                Ok(())
+                None
             }
             RequestServerMessage::PromptText { id, prompt } => {
                 let reply = ConsolePrompter
@@ -139,44 +105,41 @@ async fn send_request(
                         prompt.sensitive,
                     )
                     .await;
-                client
-                    .send(RequestClientMessage::PromptTextReply { id, reply })
-                    .await
+                Some(RequestClientMessage::PromptTextReply { id, reply })
             }
             RequestServerMessage::PromptSelect { id, prompt } => {
                 let reply = ConsolePrompter
                     .prompt_select(prompt.message, prompt.options)
                     .await;
-                client
-                    .send(RequestClientMessage::PromptSelectReply { id, reply })
-                    .await
+                Some(RequestClientMessage::PromptSelectReply { id, reply })
             }
             RequestServerMessage::BuildError { message, .. } => {
                 eprintln!("{message}");
-                Ok(())
+                None
             }
             RequestServerMessage::Loading { .. } => {
                 eprintln!("Loading...");
-                Ok(())
+                None
             }
             RequestServerMessage::Response(summary) => {
                 eprintln!("{}", summary.status);
-                Ok(())
+                None
             }
             RequestServerMessage::RequestError { message, .. } => {
                 eprintln!("{message}");
-                Ok(())
+                None
             }
         }
     }
 
-    let mut client = ClientStream::connect()
-        .await?
-        .send_request(collection_id, recipe_id)
-        .await?;
-    while let Some(result) = client.listen().await {
-        // Errors aren't fatal
-        let _ = handle_message(&mut client, result).await.traced();
+    let mut client = RpcClient::connect().await?;
+    let (mut rx, mut tx) =
+        client.send_request(collection_id, recipe_id).await?;
+    while let Some(message) = rx.next().await {
+        if let Some(reply) = handle_message(message).await {
+            // Errors aren't fatal, just log em
+            let _ = tx.send(reply).await.traced();
+        }
     }
     Ok(())
 }

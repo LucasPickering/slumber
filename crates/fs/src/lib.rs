@@ -3,22 +3,21 @@
 mod client;
 mod filesystem;
 mod http;
-mod message;
+mod rpc;
 mod util;
 
 use crate::{
     client::FilesystemCommand,
     filesystem::CollectionFilesystem,
     http::{FilesystemHttpProvider, FilesystemPrompter},
-    message::{
-        MountError, RequestServerMessage, ServerListener, ServerStream,
-        StateRequest,
+    rpc::{
+        RequestClientMessage, RequestServerMessage, RpcSink, RpcStream,
+        ServerListener,
     },
 };
-use anyhow::bail;
 use chrono::Utc;
 use clap::Parser;
-use futures::future;
+use futures::{SinkExt, future};
 use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, HasId, Profile, RecipeId},
@@ -30,10 +29,12 @@ use slumber_util::ResultTracedAnyhow;
 use std::{
     cell::RefCell,
     collections::{HashMap, hash_map::Entry},
+    fmt::{self, Display},
     path::PathBuf,
     rc::Rc,
     sync::Arc,
 };
+use thiserror::Error;
 use tokio::{select, task};
 use tracing::{debug, info, level_filters::LevelFilter};
 
@@ -101,7 +102,7 @@ impl FilesystemServer {
     }
 
     /// Spawn the filesystem server
-    async fn run(mut self) -> anyhow::Result<()> {
+    async fn run(self) -> anyhow::Result<()> {
         // Open a UDS socket
         let socket = ServerListener::bind()?;
 
@@ -144,7 +145,7 @@ impl FilesystemServer {
         &self,
         collection_path: Option<PathBuf>,
         mount_path: PathBuf,
-    ) -> Result<PathBuf, MountError> {
+    ) -> Result<PathBuf, anyhow::Error> {
         // Get a scoped DB handle just for this collection
         let collection_file = CollectionFile::new(collection_path)?;
         let collection_path = collection_file.path().to_owned();
@@ -157,28 +158,24 @@ impl FilesystemServer {
         // handle
         match collections.entry(collection_id) {
             Entry::Occupied(entry) => {
-                return Err(MountError::AlreadyMounted {
+                return Err(AlreadyMounted {
                     collection_path,
-                    mount_path: entry.get().mount_path().to_owned(),
-                });
+                    already_at: entry.get().mount_path().to_owned(),
+                    requested_at: mount_path,
+                }
+                .into());
             }
             Entry::Vacant(entry) => {
                 let filesystem = CollectionFilesystem::mount(
                     collection_file,
                     database,
                     mount_path,
-                )
-                .map_err(MountError::Mount)?;
+                )?;
                 entry.insert(filesystem);
             }
         }
 
         Ok(collection_path)
-    }
-
-    /// TODO
-    fn unmount(&self, collection_id: CollectionId) -> anyhow::Result<()> {
-        todo!()
     }
 
     /// Unmount all filesystems, waiting for each one to unmount
@@ -198,7 +195,8 @@ impl FilesystemServer {
         self,
         collection_id: CollectionId,
         recipe_id: RecipeId,
-        mut stream: ServerStream<StateRequest>,
+        mut socket_read: RpcStream<'_, RequestClientMessage>,
+        mut socket_write: RpcSink<'_, RequestServerMessage>,
     ) {
         debug!("Sending request for {collection_id}/{recipe_id}");
 
@@ -216,7 +214,7 @@ impl FilesystemServer {
         let http_engine = self.http_engine.clone();
 
         let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-        let _ = stream
+        let _ = socket_write
             .send(RequestServerMessage::Building {
                 start_time: Utc::now(),
             })
@@ -234,7 +232,7 @@ impl FilesystemServer {
             // This is structually similar to a background task, but this
             // future isn't 'static so we can't spawn it in another task.
             () = async {
-                prompt_mux.multiplex(&mut stream).await;
+                prompt_mux.multiplex(&mut socket_read, &mut socket_write).await;
                 // Await forever so we don't kill the build
                 future::pending::<()>().await;
             } => unreachable!(),
@@ -242,7 +240,7 @@ impl FilesystemServer {
         let ticket = match result {
             Ok(ticket) => ticket,
             Err(error) => {
-                let _ = stream
+                let _ = socket_write
                     .send(RequestServerMessage::BuildError {
                         start_time: error.start_time,
                         end_time: error.end_time,
@@ -253,7 +251,7 @@ impl FilesystemServer {
                 return;
             }
         };
-        let _ = stream
+        let _ = socket_write
             .send(RequestServerMessage::Loading {
                 start_time: Utc::now(),
             })
@@ -262,12 +260,12 @@ impl FilesystemServer {
         // Send the request
         match ticket.send(Some(database)).await {
             Ok(exchange) => {
-                let _ = stream
+                let _ = socket_write
                     .send(RequestServerMessage::Response(exchange.summary()))
                     .await;
             }
             Err(error) => {
-                let _ = stream
+                let _ = socket_write
                     .send(RequestServerMessage::RequestError {
                         start_time: error.start_time,
                         end_time: error.end_time,
@@ -303,5 +301,37 @@ impl FilesystemServer {
             root_dir: collection_fs.collection_file().parent().to_owned(),
             state: Default::default(),
         }
+    }
+}
+
+/// Error: attempted to mount a collection that is already mounted
+#[derive(Debug, Error)]
+struct AlreadyMounted {
+    /// Path to the collection file
+    collection_path: PathBuf,
+    /// Path that the collection is already mounted at
+    already_at: PathBuf,
+    /// Path the user tried to mount it at
+    requested_at: PathBuf,
+}
+
+impl Display for AlreadyMounted {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO is this too verbose in logging?
+        write!(
+            f,
+            "Collection `{collection_path}` already mounted at `{already_at}`. \
+            Each collection can only be mounted a single time. To unmount the \
+            old location first:
+
+  slumber fs unmount {already_at}
+
+If you want it accessible at both locations, try a symlink:
+
+  ln -s {already_at} {requested_at}",
+            collection_path = self.collection_path.display(),
+            already_at = self.already_at.display(),
+            requested_at = self.requested_at.display(),
+        )
     }
 }

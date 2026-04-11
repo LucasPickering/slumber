@@ -4,8 +4,10 @@ use slumber_util::initialize_tracing;
 
 /// DEVELOPMENT ONLY: Run the filesystem frontend
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let args = Args::parse();
     initialize_tracing(args.log_level, true);
-    slumber_fs::run(args).await
+    if let Err(error) = slumber_fs::run(args).await {
+        eprintln!("{error}");
+    }
 }

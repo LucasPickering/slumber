@@ -61,7 +61,7 @@ impl Component for Help {
 impl Draw for Help {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let block = Pane {
-            title: "Help",
+            title: "Help".into(),
             has_focus: true,
         }
         .generate()
@@ -198,8 +198,10 @@ fn input_groups() -> impl IntoIterator<Item = (&'static str, Vec<Action>)> {
             vec![
                 Action::PreviousPane,
                 Action::NextPane,
-                Action::TopPane,
-                Action::BottomPane,
+                Action::One,
+                Action::Two,
+                Action::Three,
+                Action::Four,
                 Action::Fullscreen,
                 Action::ToggleSidebar,
                 Action::ProfileList,

@@ -7,22 +7,24 @@ use crate::{
     message::{HttpMessage, Message},
     util::ResultReported,
     view::{
-        Component, RequestDisposition, ViewContext,
-        common::{actions::MenuItem, modal::ModalQueue},
+        Component, Generate, RequestDisposition, ViewContext,
+        common::{Pane, actions::MenuItem, modal::ModalQueue},
         component::{
             Canvas, Child, ComponentExt, ComponentId, Draw, DrawMetadata,
             ToChild,
-            exchange_pane::ExchangePane,
             history::History,
             misc::{SidebarEvent, SidebarProps},
             primary::view_state::{
-                PrimaryLayout, PrimaryPane, SelectedState, Sidebar, ViewState,
+                Main, PrimaryLayout, PrimaryPane, SelectedState, Sidebar,
+                ViewState,
             },
             profile_detail::ProfileDetail,
             profile_list::ProfileList,
             prompt_form::PromptForm,
             recipe_detail::RecipeDetail,
             recipe_list::RecipeList,
+            request_pane::RequestPane,
+            response_pane::ResponsePane,
         },
         context::UpdateContext,
         event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
@@ -30,9 +32,12 @@ use crate::{
     },
 };
 use indexmap::IndexMap;
+use itertools::Itertools;
 use ratatui::{
     layout::{Layout, Offset, Rect, Spacing},
     prelude::Constraint,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
 };
 use serde::Serialize;
 use slumber_config::Action;
@@ -62,11 +67,14 @@ pub struct PrimaryView {
     profile_list: ProfileList,
     /// Profile preview/detail pane
     profile_detail: ProfileDetail,
+    /// TODO
+    request_pane: RequestPane,
     /// The exchange pane shows a particular request/response. The entire
     /// component is rebuilt whenever the selected request changes. Internally
     /// it handles non-recipe selections (empty recipe list, folder selected,
     /// etc.) so we don't need to handle that here.
-    exchange_pane: ExchangePane,
+    /// TODO update comment
+    response_pane: ResponsePane,
     /// List of all past requests for the current recipe/profile
     history: History,
     /// Modals for answering prompts that build requests
@@ -92,7 +100,8 @@ impl PrimaryView {
         // We don't have the request store here and there aren't any requests
         // loaded into it yet anyway, so we can't fill out the request yet.
         // There will be a message to load it immediately after though
-        let exchange_pane = ExchangePane::new(None, recipe_node_type);
+        let request_pane = RequestPane::new(None, recipe_node_type);
+        let response_pane = ResponsePane::new(None, recipe_node_type);
 
         let history = History::new(
             profile_list.selected_id().cloned(),
@@ -107,7 +116,8 @@ impl PrimaryView {
             recipe_detail,
             profile_list,
             profile_detail,
-            exchange_pane,
+            request_pane,
+            response_pane,
             history,
             prompt_forms: ModalQueue::default(),
 
@@ -241,11 +251,11 @@ impl PrimaryView {
 
     /// Update the Exchange pane with the selected request. Call this whenever
     /// a new request is selected or the selected request changes.
+    /// TODO update doc comment
     fn set_request(&mut self, selected_request: Option<&RequestState>) {
-        self.exchange_pane = ExchangePane::new(
-            selected_request,
-            self.selected_recipe_node().map(|(_, node_type)| node_type),
-        );
+        let kind = self.selected_recipe_node().map(|(_, node_type)| node_type);
+        self.request_pane = RequestPane::new(selected_request, kind);
+        self.response_pane = ResponsePane::new(selected_request, kind);
     }
 
     fn build_recipe_detail(recipe_id: Option<&RecipeId>) -> RecipeDetail {
@@ -274,18 +284,14 @@ impl PrimaryView {
         &self,
         canvas: &mut Canvas,
         area: Rect,
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
+        main: SelectedState<Main>,
     ) {
         let headers: &[&dyn Draw<_>] = &[&self.profile_list, &self.recipe_list];
 
-        let [headers_area, top_area, bottom_area] = Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-        ])
-        .spacing(Spacing::Overlap(1))
-        .areas(area);
+        let [headers_area, main_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Fill(1)])
+                .spacing(Spacing::Overlap(1))
+                .areas(area);
         let headers_areas = Layout::horizontal(iter::repeat_n(
             Constraint::Fill(1),
             headers.len(),
@@ -300,8 +306,7 @@ impl PrimaryView {
         }
 
         // Panes
-        self.draw_pane(canvas, top_area, top);
-        self.draw_pane(canvas, bottom_area, bottom);
+        self.draw_main(canvas, main_area, main);
     }
 
     /// Draw the sidebar layout
@@ -320,8 +325,7 @@ impl PrimaryView {
         canvas: &mut Canvas,
         area: Rect,
         sidebar: SelectedState<Sidebar>,
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
+        main: SelectedState<Main>,
     ) {
         let headers: &[&dyn Draw<_>] = match sidebar.value {
             Sidebar::Profile => &[&self.recipe_list],
@@ -334,13 +338,10 @@ impl PrimaryView {
             Layout::horizontal([Constraint::Length(30), Constraint::Fill(1)])
                 .spacing(Spacing::Overlap(1))
                 .areas(area);
-        let [headers_area, top_area, bottom_area] = Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-        ])
-        .spacing(Spacing::Overlap(1))
-        .areas(rest);
+        let [headers_area, main_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Fill(1)])
+                .spacing(Spacing::Overlap(1))
+                .areas(rest);
         let headers_areas = Layout::horizontal(iter::repeat_n(
             Constraint::Fill(1),
             headers.len(),
@@ -355,8 +356,7 @@ impl PrimaryView {
         }
 
         self.draw_sidebar(canvas, sidebar_area, sidebar);
-        self.draw_pane(canvas, top_area, top);
-        self.draw_pane(canvas, bottom_area, bottom);
+        self.draw_main(canvas, main_area, main);
     }
 
     /// Draw a primary pane to the given area
@@ -367,14 +367,15 @@ impl PrimaryView {
         pane: SelectedState<PrimaryPane>,
     ) {
         match pane.value {
-            PrimaryPane::Recipe => {
-                canvas.draw(&self.recipe_detail, (), area, pane.selected);
-            }
-            PrimaryPane::Exchange => {
-                canvas.draw(&self.exchange_pane, (), area, pane.selected);
-            }
-            PrimaryPane::Profile => {
-                canvas.draw(&self.profile_detail, (), area, pane.selected);
+            PrimaryPane::Main(main) => {
+                self.draw_main(
+                    canvas,
+                    area,
+                    SelectedState {
+                        value: main,
+                        selected: pane.selected,
+                    },
+                );
             }
             PrimaryPane::Sidebar(sidebar) => self.draw_sidebar(
                 canvas,
@@ -384,6 +385,70 @@ impl PrimaryView {
                     selected: pane.selected,
                 },
             ),
+        }
+    }
+
+    /// Draw a main content pane to the given area
+    fn draw_main(
+        &self,
+        canvas: &mut Canvas,
+        area: Rect,
+        pane: SelectedState<Main>,
+    ) {
+        // Draw surrounding frame and title
+        // TODO include ctrl-h History hint when available
+        let titles = [
+            // TODO dynamic if folder is selected
+            (Main::Recipe, "Recipe", Action::One),
+            (Main::Request, "Request", Action::Two),
+            (Main::Response, "Response", Action::Three),
+            (Main::Profile, "Profile", Action::Four),
+        ];
+        let styles = ViewContext::styles();
+        #[expect(unstable_name_collisions)]
+        let title: Line = titles
+            .into_iter()
+            .map(|(id, title, action)| {
+                // TODO move to styles.rs
+                let is_selected = id == pane.value;
+                let style = if is_selected {
+                    styles
+                        .text
+                        .primary
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                } else {
+                    Style::new()
+                };
+                Span::styled(
+                    ViewContext::add_binding_hint(title, action),
+                    style,
+                )
+            })
+            .intersperse(" / ".into())
+            .collect::<Line>()
+            .style(Color::Reset);
+        // Render outermost block
+        let block = Pane {
+            title,
+            has_focus: pane.selected,
+        }
+        .generate();
+        canvas.render_widget(&block, area);
+        let area = block.inner(area);
+
+        match pane.value {
+            Main::Recipe => {
+                canvas.draw(&self.recipe_detail, (), area, pane.selected);
+            }
+            Main::Request => {
+                canvas.draw(&self.request_pane, (), area, pane.selected);
+            }
+            Main::Response => {
+                canvas.draw(&self.response_pane, (), area, pane.selected);
+            }
+            Main::Profile => {
+                canvas.draw(&self.profile_detail, (), area, pane.selected);
+            }
         }
     }
 
@@ -441,11 +506,11 @@ impl Component for PrimaryView {
             .m()
             .click(|position, _| {
                 if self.recipe_detail.contains(context, position) {
-                    self.view.select_recipe_pane();
+                    self.view.select_recipe();
                 } else if self.profile_detail.contains(context, position) {
-                    self.view.select_profile_pane();
-                } else if self.exchange_pane.contains(context, position) {
-                    self.view.select_exchange_pane();
+                    self.view.select_profile();
+                } else if self.response_pane.contains(context, position) {
+                    self.view.select_request();
                 }
             })
             .action(|action, propagate| match action {
@@ -459,8 +524,10 @@ impl Component for PrimaryView {
                 Action::ProfileList => self.view.open_sidebar(Sidebar::Profile),
                 Action::RecipeList => self.view.open_sidebar(Sidebar::Recipe),
                 Action::ToggleSidebar => self.view.toggle_sidebar(),
-                Action::TopPane => self.view.select_top_pane(),
-                Action::BottomPane => self.view.select_bottom_pane(),
+                Action::One => self.view.select_recipe(),
+                Action::Two => self.view.select_request(),
+                Action::Three => self.view.select_response(),
+                Action::Four => self.view.select_profile(),
 
                 // Toggle fullscreen
                 Action::Fullscreen => self.view.toggle_fullscreen(),
@@ -573,7 +640,8 @@ impl Component for PrimaryView {
             self.recipe_detail.to_child(),
             self.profile_list.to_child(),
             self.profile_detail.to_child(),
-            self.exchange_pane.to_child(),
+            self.request_pane.to_child(),
+            self.response_pane.to_child(),
             self.history.to_child(),
         ]
     }
@@ -584,14 +652,12 @@ impl Draw for PrimaryView {
         let area = metadata.area();
 
         match self.view.layout() {
-            PrimaryLayout::Wide { top, bottom } => {
-                self.draw_wide_layout(canvas, area, top, bottom);
+            PrimaryLayout::Wide { main } => {
+                self.draw_wide_layout(canvas, area, main);
             }
-            PrimaryLayout::Sidebar {
-                sidebar,
-                top,
-                bottom,
-            } => self.draw_sidebar_layout(canvas, area, sidebar, top, bottom),
+            PrimaryLayout::Sidebar { sidebar, main } => {
+                self.draw_sidebar_layout(canvas, area, sidebar, main);
+            }
             PrimaryLayout::Fullscreen { pane } => {
                 self.draw_pane(canvas, area, pane);
             }
@@ -679,7 +745,7 @@ mod tests {
     #[rstest]
     fn test_pane_persistence(mut harness: TestHarness) {
         let mut view = ViewState::default();
-        view.select_exchange_pane();
+        view.select_exchange();
         view.toggle_fullscreen();
         harness.set_persistent(&ViewStateKey, &view);
 

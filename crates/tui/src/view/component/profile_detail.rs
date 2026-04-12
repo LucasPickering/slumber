@@ -1,9 +1,8 @@
 use crate::{
     util::ResultReported,
     view::{
-        Generate, ViewContext,
+        ViewContext,
         common::{
-            Pane,
             component_select::{
                 ComponentSelect, ComponentSelectProps, SelectStyles,
             },
@@ -25,7 +24,6 @@ use ratatui::{
     style::Styled,
 };
 use serde::Serialize;
-use slumber_config::Action;
 use slumber_core::collection::{ProfileId, ValueTemplate};
 use std::iter;
 use unicode_width::UnicodeWidthStr;
@@ -119,16 +117,6 @@ impl Component for ProfileDetail {
 
 impl Draw for ProfileDetail {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let title =
-            ViewContext::add_binding_hint("Profile", Action::BottomPane);
-        let block = Pane {
-            title: &title,
-            has_focus: metadata.has_focus(),
-        }
-        .generate();
-        let area = block.inner(metadata.area());
-        canvas.render_widget(block, metadata.area());
-
         // Find the widest field so we know how to size the field column
         let field_column_width = iter::once("Field")
             .chain(self.select.items().map(|row| row.field.as_str()))
@@ -139,7 +127,7 @@ impl Draw for ProfileDetail {
 
         let [header_area, rows_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-                .areas(area);
+                .areas(metadata.area());
         let [key_header_area, value_header_area] = Layout::horizontal([
             Constraint::Length(field_column_width),
             Constraint::Min(1),

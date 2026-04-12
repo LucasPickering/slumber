@@ -4,13 +4,10 @@ use crate::{
     util::TickLoop,
     view::{
         Generate, RequestState, ViewContext,
-        common::{
-            Pane, actions::MenuItem, fixed_select::FixedSelect, tabs::Tabs,
-        },
+        common::{actions::MenuItem, fixed_select::FixedSelect, tabs::Tabs},
         component::{
             Canvas, Component, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
-            request_view::RequestView,
             response_view::{ResponseBodyView, ResponseHeadersView},
         },
         context::UpdateContext,
@@ -27,21 +24,21 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::collection::RecipeNodeType;
+use slumber_core::{collection::RecipeNodeType, http::RequestId};
 use std::{error::Error, sync::Arc};
 use strum::{EnumCount, EnumIter};
 
-/// Display for a request/response exchange. This allows the user to switch
-/// between request and response. This is bound to a particular [RequestState],
-/// and should be recreated whenever the selected request changes state, or a
-/// new request is selected.
+/// Display for a response
+///
+/// This is bound to a particular [RequestState]. It should be recreated
+/// whenever the selected request changes state or a new request is selected.
 #[derive(Debug)]
-pub struct ExchangePane {
+pub struct ResponsePane {
     id: ComponentId,
     state: State,
 }
 
-impl ExchangePane {
+impl ResponsePane {
     pub fn new(
         selected_request: Option<&RequestState>,
         selected_recipe_kind: Option<RecipeNodeType>,
@@ -53,7 +50,7 @@ impl ExchangePane {
     }
 }
 
-impl Component for ExchangePane {
+impl Component for ResponsePane {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -70,27 +67,9 @@ impl Component for ExchangePane {
     }
 }
 
-impl Draw for ExchangePane {
+impl Draw for ResponsePane {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let title = ViewContext::add_binding_hint(
-            "Request / Response",
-            Action::BottomPane,
-        );
-        let mut block = Pane {
-            title: &title,
-            has_focus: metadata.has_focus(),
-        }
-        .generate();
-
-        // If a recipe is selected, history is available so show the hint
-        if matches!(self.state, State::Content { .. }) {
-            let text =
-                ViewContext::add_binding_hint("History", Action::History);
-            block = block.title(Line::from(text).alignment(Alignment::Right));
-        }
-        canvas.render_widget(&block, metadata.area());
-        let area = block.inner(metadata.area());
-
+        let area = metadata.area();
         match &self.state {
             // Recipe pane will show a note about how to add a recipe, so we
             // don't need anything here
@@ -131,8 +110,8 @@ enum State {
     NoHistory,
     /// We have a real bonafide request state available
     Content {
-        metadata: ExchangePaneMetadata,
-        content: ExchangePaneContent,
+        metadata: ResponsePaneMetadata,
+        content: ResponsePaneContent,
     },
 }
 
@@ -144,12 +123,12 @@ impl State {
         if let Some(request_state) = selected_request {
             // If we have a request, then there must be a recipe selected
             Self::Content {
-                metadata: ExchangePaneMetadata {
+                metadata: ResponsePaneMetadata {
                     id: ComponentId::default(),
                     request: request_state.request_metadata(),
                     response: request_state.response_metadata(),
                 },
-                content: ExchangePaneContent::new(request_state),
+                content: ResponsePaneContent::new(request_state),
             }
         } else {
             // Without a request, show some sort of empty state
@@ -164,19 +143,19 @@ impl State {
 
 /// Top bar of the exchange pane, above the tabs
 #[derive(Debug)]
-struct ExchangePaneMetadata {
+struct ResponsePaneMetadata {
     id: ComponentId,
     request: RequestMetadata,
     response: Option<ResponseMetadata>,
 }
 
-impl Component for ExchangePaneMetadata {
+impl Component for ResponsePaneMetadata {
     fn id(&self) -> ComponentId {
         self.id
     }
 }
 
-impl Draw for ExchangePaneMetadata {
+impl Draw for ResponsePaneMetadata {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
         let config = ViewContext::config();
         let styles = ViewContext::styles();
@@ -218,9 +197,9 @@ impl Draw for ExchangePaneMetadata {
 
 /// Persistence key for selected tab
 #[derive(Debug, Serialize)]
-struct ExchangeTabKey;
+struct ResponseTabKey;
 
-impl PersistentKey for ExchangeTabKey {
+impl PersistentKey for ResponseTabKey {
     type Value = Tab;
 }
 
@@ -237,19 +216,17 @@ impl PersistentKey for ExchangeTabKey {
     Deserialize,
 )]
 enum Tab {
-    Request,
+    Headers,
     #[default]
     Body,
-    Headers,
 }
 
 /// Content under the tab bar. Only rendered when a request state is present
 #[derive(Debug)]
-struct ExchangePaneContent {
+struct ResponsePaneContent {
     id: ComponentId,
-    actions_emitter: Emitter<ExchangePaneMenuAction>,
-    tabs: Tabs<ExchangeTabKey, Tab>,
-    state: ExchangePaneContentState,
+    actions_emitter: Emitter<ResponsePaneMenuAction>,
+    state: ResponsePaneContentState,
     /// In-progress requests spawn a task that periodically updates the UI.
     /// This ensures the timer is ticked correctly. There should never be more
     /// than one of these tick loops running at a time.
@@ -258,31 +235,32 @@ struct ExchangePaneContent {
     _tick_loop: Option<TickLoop>,
 }
 
-impl ExchangePaneContent {
+impl ResponsePaneContent {
     fn new(request_state: &RequestState) -> Self {
         let state = match request_state {
-            RequestState::Building { .. } => ExchangePaneContentState::Building,
+            RequestState::Building { .. } => ResponsePaneContentState::Building,
             RequestState::BuildCancelled { .. } => {
-                ExchangePaneContentState::BuildCancelled
+                ResponsePaneContentState::BuildCancelled
             }
             RequestState::BuildError { error } => {
-                ExchangePaneContentState::BuildError {
+                ResponsePaneContentState::BuildError {
                     error: (error as &dyn Error).generate(),
                 }
             }
             RequestState::Loading { request, .. } => {
-                ExchangePaneContentState::Loading {
-                    request: RequestView::new(Arc::clone(request)),
+                ResponsePaneContentState::Loading {
+                    request_id: request.id,
                 }
             }
             RequestState::LoadingCancelled { request, .. } => {
-                ExchangePaneContentState::LoadingCancelled {
-                    request: RequestView::new(Arc::clone(request)),
+                ResponsePaneContentState::LoadingCancelled {
+                    request_id: request.id,
                 }
             }
             RequestState::Response { exchange } => {
-                ExchangePaneContentState::Response {
-                    request: RequestView::new(Arc::clone(&exchange.request)),
+                ResponsePaneContentState::Response {
+                    request_id: exchange.id,
+                    tabs: Tabs::new(ResponseTabKey, FixedSelect::builder()),
                     response_headers: ResponseHeadersView::new(Arc::clone(
                         &exchange.response,
                     )),
@@ -293,8 +271,8 @@ impl ExchangePaneContent {
                 }
             }
             RequestState::RequestError { error } => {
-                ExchangePaneContentState::RequestError {
-                    request: RequestView::new(Arc::clone(&error.request)),
+                ResponsePaneContentState::RequestError {
+                    request_id: error.request.id,
                     error: (error as &dyn Error).generate(),
                 }
             }
@@ -305,8 +283,8 @@ impl ExchangePaneContent {
         // timer will update.
         let tick_loop = if matches!(
             state,
-            ExchangePaneContentState::Building
-                | ExchangePaneContentState::Loading { .. }
+            ResponsePaneContentState::Building
+                | ResponsePaneContentState::Loading { .. }
         ) {
             Some(TickLoop::new(&ViewContext::messages_tx()))
         } else {
@@ -316,46 +294,34 @@ impl ExchangePaneContent {
         Self {
             id: Default::default(),
             actions_emitter: Default::default(),
-            tabs: Tabs::new(ExchangeTabKey, FixedSelect::builder()),
             state,
             _tick_loop: tick_loop,
         }
     }
 
-    fn handle_menu_action(&mut self, menu_action: ExchangePaneMenuAction) {
+    fn handle_menu_action(&mut self, menu_action: ResponsePaneMenuAction) {
         match menu_action {
             // Generally if we get an action the corresponding
             // request/response will be present, but we double check in
             // case the action got delayed in being
             // handled somehow
-            ExchangePaneMenuAction::CopyUrl => {
-                self.state.request().map(RequestView::copy_url);
-            }
-            ExchangePaneMenuAction::ViewRequestBody => {
-                self.state.request().map(RequestView::view_body);
-            }
-            ExchangePaneMenuAction::CopyRequestBody => {
-                self.state.request().map(RequestView::copy_body);
-            }
-            ExchangePaneMenuAction::CopyResponseBody => {
+            ResponsePaneMenuAction::CopyBody => {
                 self.state.response().map(ResponseBodyView::copy_body);
             }
-            ExchangePaneMenuAction::ViewResponseBody => {
+            ResponsePaneMenuAction::ViewBody => {
                 self.state.response().map(ResponseBodyView::view_body);
             }
-            ExchangePaneMenuAction::SaveResponseBody => {
+            ResponsePaneMenuAction::SaveBody => {
                 self.state
                     .response()
                     .map(ResponseBodyView::save_response_body);
             }
-            ExchangePaneMenuAction::ResendRequest => {
-                self.state.request().inspect(|request| {
-                    ViewContext::push_message(HttpMessage::Resend(
-                        request.request_id(),
-                    ));
-                });
+            ResponsePaneMenuAction::ResendRequest => {
+                if let Some(id) = self.state.request_id() {
+                    ViewContext::push_message(HttpMessage::Resend(id));
+                }
             }
-            ExchangePaneMenuAction::DeleteRequest => {
+            ResponsePaneMenuAction::DeleteRequest => {
                 ViewContext::push_message(Event::DeleteRequests(
                     DeleteTarget::Request,
                 ));
@@ -364,7 +330,7 @@ impl ExchangePaneContent {
     }
 }
 
-impl Component for ExchangePaneContent {
+impl Component for ResponsePaneContent {
     fn id(&self) -> ComponentId {
         self.id
     }
@@ -373,7 +339,7 @@ impl Component for ExchangePaneContent {
         event
             .m()
             .action(|action, propagate| match action {
-                Action::Delete if self.state.request().is_some() => {
+                Action::Delete if self.state.request_id().is_some() => {
                     // Root handles deletion so it can show a confirm modal
                     ViewContext::push_message(Event::DeleteRequests(
                         DeleteTarget::Request,
@@ -388,71 +354,34 @@ impl Component for ExchangePaneContent {
 
     fn menu(&self) -> Vec<MenuItem> {
         let emitter = self.actions_emitter;
-        let request = self.state.request();
-        let has_request = request.is_some();
-        let has_request_body = request.is_some_and(RequestView::has_body);
+        let has_request = self.state.request_id().is_some();
         let has_response_body = match self.state {
-            ExchangePaneContentState::Building
-            | ExchangePaneContentState::BuildCancelled
-            | ExchangePaneContentState::BuildError { .. }
-            | ExchangePaneContentState::Loading { .. }
-            | ExchangePaneContentState::LoadingCancelled { .. }
-            | ExchangePaneContentState::RequestError { .. } => false,
-            ExchangePaneContentState::Response { .. } => true,
+            ResponsePaneContentState::Building
+            | ResponsePaneContentState::BuildCancelled
+            | ResponsePaneContentState::BuildError { .. }
+            | ResponsePaneContentState::Loading { .. }
+            | ResponsePaneContentState::LoadingCancelled { .. }
+            | ResponsePaneContentState::RequestError { .. } => false,
+            // All responses have a body
+            ResponsePaneContentState::Response { .. } => true,
         };
-        let selected_tab = self.tabs.selected();
 
         vec![
-            MenuItem::Group {
-                name: "Request".into(),
-                children: vec![
-                    emitter
-                        .menu(ExchangePaneMenuAction::CopyUrl, "Copy URL")
-                        .enable(has_request)
-                        .into(),
-                    emitter
-                        .menu(
-                            ExchangePaneMenuAction::CopyRequestBody,
-                            "Copy Body",
-                        )
-                        .enable(has_request_body)
-                        .into(),
-                    emitter
-                        .menu(
-                            ExchangePaneMenuAction::ViewRequestBody,
-                            "View Body",
-                        )
-                        .enable(has_request_body)
-                        .shortcut(
-                            (selected_tab == Tab::Request)
-                                .then_some(Action::View),
-                        )
-                        .into(),
-                ],
-            },
             MenuItem::Group {
                 name: "Response".into(),
                 children: vec![
                     emitter
-                        .menu(
-                            ExchangePaneMenuAction::CopyResponseBody,
-                            "Copy Body",
-                        )
+                        .menu(ResponsePaneMenuAction::CopyBody, "Copy Body")
                         .enable(has_response_body)
                         .into(),
                     emitter
-                        .menu(
-                            ExchangePaneMenuAction::ViewResponseBody,
-                            "View Body",
-                        )
+                        .menu(ResponsePaneMenuAction::ViewBody, "View Body")
                         .enable(has_response_body)
-                        .shortcut(
-                            (selected_tab == Tab::Body).then_some(Action::View),
-                        )
+                        .shortcut(Some(Action::View))
                         .into(),
                     emitter
                         .menu(
-                            ExchangePaneMenuAction::SaveResponseBody,
+                            ResponsePaneMenuAction::SaveBody,
                             "Save Body as File",
                         )
                         .enable(has_response_body)
@@ -460,14 +389,14 @@ impl Component for ExchangePaneContent {
                 ],
             },
             emitter
-                .menu(ExchangePaneMenuAction::ResendRequest, "Resend Request")
+                .menu(ResponsePaneMenuAction::ResendRequest, "Resend Request")
                 // It's possible the resend fails because the request had no
                 // body. Until we have disabled reasons on these menus, that's
                 // better because we can show an explanation to the user
                 .enable(has_request)
                 .into(),
             emitter
-                .menu(ExchangePaneMenuAction::DeleteRequest, "Delete Request")
+                .menu(ResponsePaneMenuAction::DeleteRequest, "Delete Request")
                 .enable(has_request)
                 .shortcut(Some(Action::Delete))
                 .into(),
@@ -475,92 +404,70 @@ impl Component for ExchangePaneContent {
     }
 
     fn children(&mut self) -> Vec<Child<'_>> {
-        // Add tab content
-        let mut children = match &mut self.state {
-            ExchangePaneContentState::Building
-            | ExchangePaneContentState::BuildCancelled
-            | ExchangePaneContentState::BuildError { .. } => vec![],
-            ExchangePaneContentState::Loading { request }
-            | ExchangePaneContentState::LoadingCancelled { request } => {
-                vec![request.to_child()]
-            }
-            ExchangePaneContentState::Response {
-                request,
+        match &mut self.state {
+            ResponsePaneContentState::Building
+            | ResponsePaneContentState::BuildCancelled
+            | ResponsePaneContentState::BuildError { .. }
+            | ResponsePaneContentState::Loading { .. }
+            | ResponsePaneContentState::LoadingCancelled { .. }
+            | ResponsePaneContentState::RequestError { .. } => vec![],
+            ResponsePaneContentState::Response {
+                tabs,
                 response_headers,
                 response_body,
+                ..
             } => vec![
-                request.to_child(),
+                // Tabs go last so the query text box eats left/right first
                 response_headers.to_child(),
                 response_body.to_child(),
+                tabs.to_child(),
             ],
-            ExchangePaneContentState::RequestError { request, .. } => {
-                vec![request.to_child()]
-            }
-        };
-
-        // Content before tabs so the query text box gets priority on left/right
-        // arrow keys
-        children.push(self.tabs.to_child());
-        children
+        }
     }
 }
 
-impl Draw for ExchangePaneContent {
+impl Draw for ResponsePaneContent {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let [tabs_area, content_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-                .areas(metadata.area());
-        canvas.draw(&self.tabs, (), tabs_area, true);
+        let area = metadata.area();
         match &self.state {
-            ExchangePaneContentState::Building => {
-                canvas.render_widget("Initializing request...", content_area);
+            ResponsePaneContentState::Building => {
+                canvas.render_widget("Initializing request...", area);
             }
-            ExchangePaneContentState::BuildCancelled => {
-                canvas.render_widget("Build cancelled", content_area);
+            ResponsePaneContentState::BuildCancelled => {
+                canvas.render_widget("Build cancelled", area);
             }
-            ExchangePaneContentState::BuildError { error } => {
-                canvas.render_widget(error, content_area);
+            ResponsePaneContentState::BuildError { error } => {
+                canvas.render_widget(error, area);
             }
-            ExchangePaneContentState::Loading { request } => {
-                match self.tabs.selected() {
-                    Tab::Request => {
-                        canvas.draw(request, (), content_area, true);
-                    }
-                    Tab::Body | Tab::Headers => {
-                        canvas.render_widget("Loading...", content_area);
-                    }
-                }
+            ResponsePaneContentState::Loading { .. } => {
+                canvas.render_widget("Loading...", area);
             }
-            ExchangePaneContentState::LoadingCancelled { request } => {
-                match self.tabs.selected() {
-                    Tab::Request => {
-                        canvas.draw(request, (), content_area, true);
-                    }
-                    Tab::Body | Tab::Headers => {
-                        canvas.render_widget("Request cancelled", content_area);
-                    }
-                }
+            ResponsePaneContentState::LoadingCancelled { .. } => {
+                canvas.render_widget("Request cancelled", area);
             }
-            ExchangePaneContentState::Response {
-                request,
+            ResponsePaneContentState::Response {
+                tabs,
                 response_body,
                 response_headers,
-            } => match self.tabs.selected() {
-                Tab::Request => canvas.draw(request, (), content_area, true),
-                Tab::Body => canvas.draw(response_body, (), content_area, true),
-                Tab::Headers => {
-                    canvas.draw(response_headers, (), content_area, true);
-                }
-            },
-            ExchangePaneContentState::RequestError { request, error } => {
-                match self.tabs.selected() {
-                    Tab::Request => {
-                        canvas.draw(request, (), content_area, true);
+                ..
+            } => {
+                let [tabs_area, content_area] = Layout::vertical([
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ])
+                .areas(area);
+                canvas.draw(tabs, (), tabs_area, true);
+                match tabs.selected() {
+                    Tab::Body => {
+                        canvas.draw(response_body, (), content_area, true);
                     }
-                    Tab::Body | Tab::Headers => {
-                        canvas.render_widget(error, content_area);
+                    Tab::Headers => {
+                        canvas.draw(response_headers, (), content_area, true);
                     }
                 }
+            }
+            ResponsePaneContentState::RequestError { error, .. } => {
+                canvas.render_widget(error, area);
             }
         }
     }
@@ -568,39 +475,42 @@ impl Draw for ExchangePaneContent {
 
 /// Various request states that can appear under the tab bar
 #[derive(Debug)]
-enum ExchangePaneContentState {
+enum ResponsePaneContentState {
     Building,
     BuildCancelled,
     BuildError {
         error: Text<'static>,
     },
     Loading {
-        request: RequestView,
+        request_id: RequestId,
     },
     LoadingCancelled {
-        request: RequestView,
+        request_id: RequestId,
     },
     Response {
-        request: RequestView,
+        request_id: RequestId,
+        tabs: Tabs<ResponseTabKey, Tab>,
         response_headers: ResponseHeadersView,
         response_body: ResponseBodyView,
     },
     RequestError {
-        request: RequestView,
+        request_id: RequestId,
         error: Text<'static>,
     },
 }
 
-impl ExchangePaneContentState {
-    fn request(&self) -> Option<&RequestView> {
+impl ResponsePaneContentState {
+    fn request_id(&self) -> Option<RequestId> {
         match self {
-            Self::Building | Self::BuildCancelled | Self::BuildError { .. } => {
-                None
+            ResponsePaneContentState::Building
+            | ResponsePaneContentState::BuildCancelled
+            | ResponsePaneContentState::BuildError { .. } => None,
+            ResponsePaneContentState::Loading { request_id }
+            | ResponsePaneContentState::LoadingCancelled { request_id }
+            | ResponsePaneContentState::Response { request_id, .. }
+            | ResponsePaneContentState::RequestError { request_id, .. } => {
+                Some(*request_id)
             }
-            Self::Loading { request }
-            | Self::LoadingCancelled { request }
-            | Self::Response { request, .. }
-            | Self::RequestError { request, .. } => Some(request),
         }
     }
 
@@ -619,13 +529,10 @@ impl ExchangePaneContentState {
 
 /// Items in the actions popup menu for the Body
 #[derive(Copy, Clone, Debug)]
-enum ExchangePaneMenuAction {
-    CopyUrl,
-    CopyRequestBody,
-    ViewRequestBody,
-    CopyResponseBody,
-    ViewResponseBody,
-    SaveResponseBody,
+enum ResponsePaneMenuAction {
+    CopyBody,
+    ViewBody,
+    SaveBody,
     ResendRequest,
     DeleteRequest,
 }

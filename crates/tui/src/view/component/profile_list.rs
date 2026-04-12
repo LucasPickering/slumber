@@ -138,7 +138,7 @@ impl Draw<SidebarProps> for ProfileList {
         let title =
             ViewContext::add_binding_hint("Profile", Action::ProfileList);
         let block = Pane {
-            title: &title,
+            title: title.into(),
             has_focus: metadata.has_focus(),
         }
         .generate();

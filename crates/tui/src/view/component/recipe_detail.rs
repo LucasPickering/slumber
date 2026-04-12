@@ -7,8 +7,8 @@ mod url;
 use crate::{
     message::{Message, RecipeCopyTarget},
     view::{
-        Component, Generate, ViewContext,
-        common::{Pane, actions::MenuItem},
+        Component, ViewContext,
+        common::actions::MenuItem,
         component::{
             Canvas, ComponentId, Draw, DrawMetadata,
             internal::{Child, ToChild},
@@ -20,12 +20,10 @@ use crate::{
 };
 use itertools::{Itertools, Position};
 use ratatui::{
-    layout::Alignment,
     prelude::{Buffer, Rect},
     text::{Line, Text},
     widgets::Widget,
 };
-use slumber_config::Action;
 use slumber_core::{
     collection::{Folder, RecipeId, RecipeNode},
     http::BuildOptions,
@@ -112,44 +110,15 @@ impl Component for RecipeDetail {
 
 impl Draw for RecipeDetail {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        // Render outermost block
-        let title = ViewContext::add_binding_hint(
-            match &self.state {
-                RecipeNodeState::Folder { .. } => "Folder",
-                RecipeNodeState::Recipe { .. } | RecipeNodeState::None => {
-                    "Recipe"
-                }
-            },
-            Action::TopPane,
-        );
-        let mut block = Pane {
-            title: &title,
-            has_focus: metadata.has_focus(),
-        }
-        .generate();
-        let inner_area = block.inner(metadata.area());
-
-        // Include the folder/recipe ID in the header
-        match &self.state {
-            RecipeNodeState::None => {}
-            RecipeNodeState::Folder { id, .. }
-            | RecipeNodeState::Recipe { id, .. } => {
-                block = block.title(
-                    Line::from(id.to_string())
-                        .alignment(Alignment::Right)
-                        .style(ViewContext::styles().text.title),
-                );
-            }
-        }
-        canvas.render_widget(block, metadata.area());
-
+        // TODO include recipe ID somewhere
+        let area = metadata.area();
         match &self.state {
             RecipeNodeState::None => canvas.render_widget(
                 Text::from(vec![
                     "No recipes defined; add one to your collection".into(),
                     doc_link("api/request_collection/request_recipe").into(),
                 ]),
-                inner_area,
+                area,
             ),
             RecipeNodeState::Folder { id } => {
                 // Folder *should* always be defined
@@ -158,11 +127,11 @@ impl Draw for RecipeDetail {
                 {
                     // Recompute the text on every render. This is a bit simpler
                     // than storing it, and shouldn't be too expensive
-                    canvas.render_widget(FolderTree { folder }, inner_area);
+                    canvas.render_widget(FolderTree { folder }, area);
                 }
             }
             RecipeNodeState::Recipe { display, .. } => {
-                canvas.draw(display, (), inner_area, true);
+                canvas.draw(display, (), area, true);
             }
         }
     }

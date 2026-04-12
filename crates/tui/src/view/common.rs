@@ -26,7 +26,7 @@ use itertools::{Itertools, Position};
 use ratatui::{
     prelude::{Buffer, Rect},
     symbols::merge::MergeStrategy,
-    text::{Span, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Widget},
 };
 use reqwest::{StatusCode, header::HeaderValue};
@@ -36,7 +36,7 @@ use unicode_width::UnicodeWidthStr;
 
 /// A container with a title and border
 pub struct Pane<'a> {
-    pub title: &'a str,
+    pub title: Line<'a>,
     pub has_focus: bool,
 }
 

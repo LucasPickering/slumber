@@ -12,6 +12,8 @@ pub struct ViewState {
     // layout. The goal of the layout is to directly mirror what is currently
     // visible, so it has some duplicative information. This internal state is
     // as minimal as possible to eliminate impossible states.
+    /// TODO
+    main: Main,
     /// Which pane has focus?
     ///
     /// Not all selected panes are valid in all states. The sidebar can't be
@@ -32,18 +34,10 @@ pub struct ViewState {
 impl ViewState {
     /// Get the current sidebar/pane layout
     pub fn layout(&self) -> PrimaryLayout {
-        let top_pane = PrimaryPane::Recipe;
-        // Bottom pane depends on the sidebar
-        let bottom_pane = match self.sidebar {
-            Sidebar::Profile => PrimaryPane::Profile,
-            Sidebar::Recipe | Sidebar::History => PrimaryPane::Exchange,
-        };
-
         if self.fullscreen {
             let pane = match self.selected_pane {
                 SelectedPane::Sidebar => PrimaryPane::Sidebar(self.sidebar),
-                SelectedPane::Top => top_pane,
-                SelectedPane::Bottom => bottom_pane,
+                SelectedPane::Main => PrimaryPane::Main(self.main),
             };
             PrimaryLayout::Fullscreen {
                 pane: SelectedState {
@@ -51,30 +45,25 @@ impl ViewState {
                     selected: true,
                 },
             }
-        } else {
-            // Multiple panes are visible
-            let top = SelectedState {
-                value: top_pane,
-                selected: self.selected_pane == SelectedPane::Top,
-            };
-            let bottom = SelectedState {
-                value: bottom_pane,
-                selected: self.selected_pane == SelectedPane::Bottom,
-            };
-            if self.sidebar_open {
-                // Sidebar is open
-                let sidebar = SelectedState {
+        } else if self.sidebar_open {
+            // Sidebar is open
+            PrimaryLayout::Sidebar {
+                sidebar: SelectedState {
                     value: self.sidebar,
                     selected: self.selected_pane == SelectedPane::Sidebar,
-                };
-                PrimaryLayout::Sidebar {
-                    sidebar,
-                    top,
-                    bottom,
-                }
-            } else {
-                // Sidebar closed
-                PrimaryLayout::Wide { top, bottom }
+                },
+                main: SelectedState {
+                    value: self.main,
+                    selected: self.selected_pane == SelectedPane::Main,
+                },
+            }
+        } else {
+            // Main content is visible *with headers*, but sidebar is closed
+            PrimaryLayout::Wide {
+                main: SelectedState {
+                    value: self.main,
+                    selected: self.selected_pane == SelectedPane::Main,
+                },
             }
         }
     }
@@ -100,7 +89,7 @@ impl ViewState {
         // sidebar. When re-opening, we want to re-show the same sidebar.
         self.sidebar_open ^= true;
         if !self.sidebar_open && self.selected_pane == SelectedPane::Sidebar {
-            self.selected_pane = SelectedPane::Top;
+            self.selected_pane = SelectedPane::Main;
         }
     }
 
@@ -121,46 +110,39 @@ impl ViewState {
     /// Get the set of selectable panes for the current state
     fn selectable_panes(&self) -> &'static [SelectedPane] {
         if self.sidebar_open {
-            &[
-                SelectedPane::Sidebar,
-                SelectedPane::Top,
-                SelectedPane::Bottom,
-            ]
+            &[SelectedPane::Sidebar, SelectedPane::Main]
         } else {
-            &[SelectedPane::Top, SelectedPane::Bottom]
+            &[SelectedPane::Main]
         }
     }
 
-    /// Move focus to the upper pane in the layout
-    pub fn select_top_pane(&mut self) {
-        self.selected_pane = SelectedPane::Top;
+    /// Move focus to the main content pane in the layout
+    pub fn select_main_pane(&mut self) {
+        self.selected_pane = SelectedPane::Main;
     }
 
-    /// Move focus to the lower pane in the layout
-    pub fn select_bottom_pane(&mut self) {
-        self.selected_pane = SelectedPane::Bottom;
+    /// Move focus to the Recipe tab
+    pub fn select_recipe(&mut self) {
+        self.select_main_pane();
+        self.main = Main::Recipe;
     }
 
-    /// Move focus to the Recipe pane
-    pub fn select_recipe_pane(&mut self) {
-        // Recipe pane is visible on top in all views
-        self.select_top_pane();
+    /// Move focus to the Request tab
+    pub fn select_request(&mut self) {
+        self.select_main_pane();
+        self.main = Main::Request;
     }
 
-    /// Move focus to the Profile pane. If it's not in this view, do nothing
-    pub fn select_profile_pane(&mut self) {
-        // If the profile pane isn't visible, do nothing
-        if self.sidebar_open && self.sidebar == Sidebar::Profile {
-            self.select_bottom_pane();
-        }
+    /// Move focus to the Response tab
+    pub fn select_response(&mut self) {
+        self.select_main_pane();
+        self.main = Main::Response;
     }
 
-    /// Move focus to the Exchange pane. If it's not in this view, do nothing
-    pub fn select_exchange_pane(&mut self) {
-        // If the Exchange pane isn't visible, do nothing
-        if !self.sidebar_open || self.sidebar != Sidebar::Profile {
-            self.select_bottom_pane();
-        }
+    /// Move focus to the Profile tab
+    pub fn select_profile(&mut self) {
+        self.select_main_pane();
+        self.main = Main::Profile;
     }
 
     /// Is the selected pane fullscreened?
@@ -182,10 +164,11 @@ impl ViewState {
 impl Default for ViewState {
     fn default() -> Self {
         Self {
+            main: Main::Recipe,
             sidebar: Sidebar::Recipe,
             sidebar_open: true,
             fullscreen: false,
-            selected_pane: SelectedPane::Top,
+            selected_pane: SelectedPane::Main,
         }
     }
 }
@@ -199,15 +182,11 @@ impl Default for ViewState {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PrimaryLayout {
     /// Layout with no sidebar visible. The primary panes are *wider*.
-    Wide {
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
-    },
+    Wide { main: SelectedState<Main> },
     /// Layout with the sidebar open and two panes visible
     Sidebar {
         sidebar: SelectedState<Sidebar>,
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
+        main: SelectedState<Main>,
     },
     /// A single pane is visible (could be the sidebar pane)
     Fullscreen { pane: SelectedState<PrimaryPane> },
@@ -223,11 +202,19 @@ pub struct SelectedState<T> {
 /// A selectable pane in the primary view
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PrimaryPane {
-    Recipe,
-    Exchange,
-    Profile,
+    /// TODO
+    Main(Main),
     /// Tall skinny guy
     Sidebar(Sidebar),
+}
+
+/// TODO
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Main {
+    Recipe,
+    Request,
+    Response,
+    Profile,
 }
 
 /// Internal state for which pane is selected
@@ -237,8 +224,7 @@ pub enum PrimaryPane {
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 enum SelectedPane {
     Sidebar,
-    Top,
-    Bottom,
+    Main,
 }
 
 /// List content that can be displayed in the sidebar
@@ -489,9 +475,9 @@ mod tests {
             ViewState::next_pane,
             ViewState::select_top_pane,
             ViewState::select_bottom_pane,
-            ViewState::select_recipe_pane,
+            ViewState::select_recipe,
             ViewState::select_profile_pane,
-            ViewState::select_exchange_pane,
+            ViewState::select_exchange,
         ];
 
         // I hate the proptest! macro, prefer manual

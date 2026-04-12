@@ -1,7 +1,6 @@
 mod collection_select;
 mod command_text_box;
 mod editable_template;
-mod exchange_pane;
 mod footer;
 mod help;
 mod history;
@@ -14,7 +13,8 @@ mod prompt_form;
 mod queryable_body;
 mod recipe_detail;
 mod recipe_list;
-mod request_view;
+mod request_pane;
+mod response_pane;
 mod response_view;
 mod root;
 

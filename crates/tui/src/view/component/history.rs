@@ -206,7 +206,7 @@ impl Draw for History {
         let title =
             ViewContext::add_binding_hint("Request History", Action::History);
         let block = Pane {
-            title: &title,
+            title: title.into(),
             has_focus: metadata.has_focus(),
         }
         .generate();

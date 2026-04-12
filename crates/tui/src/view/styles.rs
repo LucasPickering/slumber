@@ -216,8 +216,7 @@ impl Styles {
                     .fg(theme.border_color.into())
                     .remove_modifier(Modifier::BOLD),
                 border_selected: Style::default()
-                    .fg(theme.primary_color.into())
-                    .add_modifier(Modifier::BOLD),
+                    .fg(theme.primary_color.into()),
                 border_type: BorderType::Rounded,
                 border_type_selected: BorderType::Double,
                 default: Style::default().fg(theme.text_color.into()),

@@ -173,11 +173,14 @@ pub enum Action {
     RecipeList,
     /// Select the upper pane in the current layout
     #[serde(alias = "select_recipe")] // Backward compatibility
-    TopPane,
+    One,
     /// Select the lower pane in the current layout
     // Aliases for backward compatibility
     #[serde(alias = "select_request", alias = "select_response")]
-    BottomPane,
+    Two,
+    // TODO comments
+    Three,
+    Four,
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }
 
@@ -512,8 +515,10 @@ impl Default for InputMap {
             (Action::ToggleSidebar, KeyCode::Char('s').into()),
             (Action::ProfileList, KeyCode::Char('p').into()),
             (Action::RecipeList, KeyCode::Char('r').into()),
-            (Action::TopPane, KeyCode::Char('1').into()),
-            (Action::BottomPane, KeyCode::Char('2').into()),
+            (Action::One, KeyCode::Char('1').into()),
+            (Action::Two, KeyCode::Char('2').into()),
+            (Action::Three, KeyCode::Char('3').into()),
+            (Action::Four, KeyCode::Char('4').into()),
             // ^^^^^ If making changes, make sure to update the docs ^^^^^
         ]))
     }

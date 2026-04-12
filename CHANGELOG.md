@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [5.2.5] - 2026-04-12
+
+<!-- ANCHOR: changelog -->
+
 ### Changed
 
 - Set extension on temporary file when editing recipe body in TUI

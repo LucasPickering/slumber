@@ -1,0 +1,257 @@
+let base_profile_data = {
+  username = `xX{command(['whoami'])| trim() | sensitive() }Xx`
+  fish_id = (response('list_fish', trigger='no_history')
+    | jq('[.[] | { label: .name, value: .id }]')
+    | select(message='Fish ID'))
+  stream_compound = `command: {command(['echo','test']) }\nfile: {file('Cargo.toml')}`}
+  large_body_command = `head -c {prompt(message='Bytes', default=500000)} < /dev/urandom | base64`
+  weights = [1.2, 3.4, 5.6]
+  fish = {
+    name = (prompt(message='Name', default='Fishy'))
+    species = (select(['Sunfish', 'baby fuckin wheel'], message='Species'))
+    age = (prompt(message='Age', default=3) | integer())
+    weight_kg = (select(profile.weights, message='Weight (kg)'))
+  }
+}
+
+profile prd {
+  name = "Production"
+  default = true
+  data = {
+    ..base_profile_data
+    host = "https://shoal.lucaspickering.me"
+  }
+}
+
+profile local {
+  name = "Local"
+  data = {
+    ..base_profile_data
+    host = "http://localhost:3000"
+  }
+}
+
+profile init_fails {
+  name = "Request Init Fails"
+  data = {
+    ..base_profile_data
+  }
+}
+
+profile request_fails {
+  name = "Request Fails"
+  data = {
+    ..base_profile_data
+    host = "http://localhost:5000"
+  }
+}
+
+let base_recipe = {
+  headers = {
+    Accept = "application/json"
+  }
+}
+let authenticated = {
+  ..base_recipe
+  authentication = bearer {
+    token = (response('new_session', trigger='1h') | jsonpath('$.id'))
+  }
+}
+
+recipe new_session {
+  ..base_recipe
+  name = "New Session"
+  method = "POST"
+  url = `{profile.host}/login`
+}
+
+folder fish {
+  name = "Fish"
+
+  recipe list_fish {
+    ..authenticated
+    name = "List Fish"
+    method = "GET"
+    url = `{profile.host}/fish`
+    query = {
+      foo = "bar"
+    }
+  }
+
+  recipe get_fish {
+    ..authenticated
+    name = "Get Fish"
+    method = "GET"
+    url = `{profile.host}/fish/{profile.fish_id}`
+    query = {
+      select = (select(
+        ['foo', 'bar', 'baz', 'a really really really really long option', profile.username],
+        message='Select a value'
+      ))
+    }
+  }
+
+  recipe create_fish {
+    ..authenticated
+    name = "Create Fish"
+    method = "POST"
+    url = `{profile.host}/fish`
+    body = json (profile.fish)
+  }
+
+  recipe modify_fish {
+    ..authenticated
+    name = "Modify Fish"
+    method = "PATCH"
+    url = `{profile.host}/fish/{profile.fish_id}`
+    body = json {
+      age = (profile.fish.age)
+      # Prompt is deferred until it's selected
+      weight_kg = ([..profile.weights, (prompt(message="Weight (kg)") | integer())])
+    }
+  }
+
+  recipe delete {
+    ..authenticated
+    name = "Delete Fish"
+    method = "DELETE"
+    url = `{profile.host}/fish/{profile.fish_id}`
+  }
+}
+
+folder authentication {
+  name = "Authentication"
+
+  # Common bindings that can be reused in each sub-recipe
+  let common = {
+    ..base_recipe
+    method = "POST"
+    url = `{profile.host}/anything/login`
+    persist = false
+    query = {
+      sudo = "yes_please"
+      fast = ["no_thanks", "actually_maybe"]
+    }
+    headers = {
+      Accept = "application/json"
+    }
+  }
+
+  recipe basic_auth {
+    ..common
+    authentication = basic {
+      username = (profile.username)
+      password = (prompt(message='Password'))
+    }
+  }
+
+  recipe bearer_auth {
+    ..common
+    method = "POST"
+    url = `{profile.host}/anything/login`
+    authentication = bearer {
+      token = "auth_token"
+    }
+  }
+}
+
+folder bodies {
+  name = "Misc Bodies"
+
+  let common = {
+    ..base_recipe
+    method = "POST"
+    url = `{profile.host}/anything`
+  }
+
+  recipe stream_file {
+    ..common
+    name = "Stream File"
+    body = stream (file('Cargo.toml'))
+  }
+
+  recipe stream_command {
+    ..common
+    name = "Stream Command"
+    body = stream (command(['cat', 'Cargo.toml']))
+  }
+
+  recipe stream_compound {
+    ..common
+    name = "Stream Compound"
+    body = stream (profile.stream_compound)
+  }
+
+  recipe form_urlencoded {
+    ..common
+    body = form_urlencoded {
+      username = (profile.username)
+      password = (prompt(message='Password', default='hunter2', sensitive=true))
+    }
+  }
+
+  recipe form_multipart {
+    ..common
+    body = form_multipart {
+      image = (prompt(message='Path', default='static/slumber.png') | file())
+    }
+  }
+
+  recipe raw_json {
+    ..common
+    name = "Raw JSON"
+    headers = {
+      Content-Type = application/json
+    }
+    body = '{
+      "location": "boston",
+      "size": "HUGE"
+    }'
+  }
+
+  recipe large_json {
+    ..common
+    name = "Large JSON"
+    body = json {
+      # TODO: support non-string keys?
+      null = null
+      int = 3
+      float = 4.32
+      bool = false
+      string = "hello"
+      expression = (profile.username)
+      template = `{profile.username}`
+      object = {
+        a = 1
+        nested = {
+          b = 2
+          # Single-entry maps can be a single line
+          nested = { c = [3, 4, 5] }
+        }
+      }
+    }
+  }
+
+  recipe large_body {
+    ..common
+    name = "Large Body"
+    body = stream (command(['sh', '-c', profile.large_body_command]))
+  }
+}
+
+recipe delay {
+  ..base_recipe
+  name = "Delay"
+  method = "GET"
+  url = `{profile.host}/delay/5`
+}
+
+recipe redirect {
+  ..base_recipe
+  name = "Redirect"
+  method = "GET"
+  url = `{profile.host}/redirect-to`
+  query = {
+    url = `{profile.host}/get`
+  }
+}

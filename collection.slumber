@@ -1,10 +1,10 @@
 let base_profile_data = {
-  username = `xX{command(['whoami'])| trim() | sensitive() }Xx`
+  username = (`xX{command(['whoami'])| trim() | sensitive() }Xx`)
   fish_id = (response('list_fish', trigger='no_history')
     | jq('[.[] | { label: .name, value: .id }]')
     | select(message='Fish ID'))
-  stream_compound = `command: {command(['echo','test']) }\nfile: {file('Cargo.toml')}`}
-  large_body_command = `head -c {prompt(message='Bytes', default=500000)} < /dev/urandom | base64`
+  stream_compound = (`command: {command(['echo','test']) }\nfile: {file('Cargo.toml')}`)}
+  large_body_command = (`head -c {prompt(message='Bytes', default=500000)} < /dev/urandom | base64`)
   weights = [1.2, 3.4, 5.6]
   fish = {
     name = (prompt(message='Name', default='Fishy'))
@@ -12,6 +12,11 @@ let base_profile_data = {
     age = (prompt(message='Age', default=3) | integer())
     weight_kg = (select(profile.weights, message='Weight (kg)'))
   }
+
+  # https://github.com/LucasPickering/slumber/issues/646#issuecomment-3573505869
+  model_list = ['abc', 'def']
+  model_id = (`"{profile.model_name}"` | jq('ascii_downcase | gsub(" "; "_")'))
+  model_id = (model_list | jsonpath(`$[?@.name=="{model_name}")].id`))
 }
 
 profile prd {
@@ -62,7 +67,7 @@ recipe new_session {
   ..base_recipe
   name = "New Session"
   method = "POST"
-  url = `{profile.host}/login`
+  url = (`{profile.host}/login`)
 }
 
 folder fish {
@@ -72,7 +77,7 @@ folder fish {
     ..authenticated
     name = "List Fish"
     method = "GET"
-    url = `{profile.host}/fish`
+    url = (`{profile.host}/fish`)
     query = {
       foo = "bar"
     }
@@ -82,7 +87,7 @@ folder fish {
     ..authenticated
     name = "Get Fish"
     method = "GET"
-    url = `{profile.host}/fish/{profile.fish_id}`
+    url = (`{profile.host}/fish/{profile.fish_id}`)
     query = {
       select = (select(
         ['foo', 'bar', 'baz', 'a really really really really long option', profile.username],
@@ -95,7 +100,7 @@ folder fish {
     ..authenticated
     name = "Create Fish"
     method = "POST"
-    url = `{profile.host}/fish`
+    url = (`{profile.host}/fish`)
     body = json (profile.fish)
   }
 
@@ -103,7 +108,7 @@ folder fish {
     ..authenticated
     name = "Modify Fish"
     method = "PATCH"
-    url = `{profile.host}/fish/{profile.fish_id}`
+    url = (`{profile.host}/fish/{profile.fish_id}`)
     body = json {
       age = (profile.fish.age)
       # Prompt is deferred until it's selected
@@ -115,7 +120,7 @@ folder fish {
     ..authenticated
     name = "Delete Fish"
     method = "DELETE"
-    url = `{profile.host}/fish/{profile.fish_id}`
+    url = (`{profile.host}/fish/{profile.fish_id}`)
   }
 }
 
@@ -126,7 +131,7 @@ folder authentication {
   let common = {
     ..base_recipe
     method = "POST"
-    url = `{profile.host}/anything/login`
+    url = (`{profile.host}/anything/login`)
     persist = false
     query = {
       sudo = "yes_please"
@@ -148,7 +153,7 @@ folder authentication {
   recipe bearer_auth {
     ..common
     method = "POST"
-    url = `{profile.host}/anything/login`
+    url = (`{profile.host}/anything/login`)
     authentication = bearer {
       token = "auth_token"
     }
@@ -161,25 +166,25 @@ folder bodies {
   let common = {
     ..base_recipe
     method = "POST"
-    url = `{profile.host}/anything`
+    url = (`{profile.host}/anything`)
   }
 
   recipe stream_file {
     ..common
     name = "Stream File"
-    body = stream (file('Cargo.toml'))
+    body = !stream (file('Cargo.toml'))
   }
 
   recipe stream_command {
     ..common
     name = "Stream Command"
-    body = stream (command(['cat', 'Cargo.toml']))
+    body = !stream (command(['cat', 'Cargo.toml']))
   }
 
   recipe stream_compound {
     ..common
     name = "Stream Compound"
-    body = stream (profile.stream_compound)
+    body = !stream (profile.stream_compound)
   }
 
   recipe form_urlencoded {
@@ -220,7 +225,7 @@ folder bodies {
       bool = false
       string = "hello"
       expression = (profile.username)
-      template = `{profile.username}`
+      template = (`{profile.username}`)
       object = {
         a = 1
         nested = {
@@ -243,15 +248,15 @@ recipe delay {
   ..base_recipe
   name = "Delay"
   method = "GET"
-  url = `{profile.host}/delay/5`
+  url = (`{profile.host}/delay/5`)
 }
 
 recipe redirect {
   ..base_recipe
   name = "Redirect"
   method = "GET"
-  url = `{profile.host}/redirect-to`
+  url = (`{profile.host}/redirect-to`)
   query = {
-    url = `{profile.host}/get`
+    url = (`{profile.host}/get`)
   }
 }

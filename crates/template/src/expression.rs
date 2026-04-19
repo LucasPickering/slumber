@@ -17,6 +17,12 @@ use std::borrow::Cow;
 
 type RenderResult<V> = Result<V, RenderError>;
 
+enum NewExpression {
+    Literal(Literal),
+    Template(TemplateLiteral),
+    Defer(Box<Self>),
+}
+
 /// A dynamic segment of a template that will be computed at render time.
 /// Expressions are derived from the template context and may include external
 /// data such as loading a file.

@@ -2,6 +2,7 @@ data/
 /target/
 /.vscode/
 /.zed/
+tree-sitter/src/
 .DS_Store
 *.sqlite
 *.prof

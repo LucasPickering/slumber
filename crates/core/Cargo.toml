@@ -24,6 +24,7 @@ jaq-core = "2.2.1"
 jaq-json = {version = "1.1.3", default-features = false, features = ["serde_json"]}
 jaq-std = "2.1.2"
 mime = {workspace = true}
+petitscript = {path = "../../../petitscript"}
 regex = {workspace = true}
 reqwest = {workspace = true, features = ["json", "form", "multipart", "query", "rustls", "stream"]}
 rstest = {workspace = true, optional = true}

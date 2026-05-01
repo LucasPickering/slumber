@@ -1,35 +1,34 @@
 profile prd {
   name = "Production"
   default = true
-  data = {
+  data = [
     host = "https://shoal.lucaspickering.me"
-  }
+  ]
 }
 
 profile local {
   name = "Local"
-  data = {
+  data = [
     host = "http://localhost:3000"
-  }
+  ]
 }
 
 profile init_fails {
   name = "Request Init Fails"
-  data = {
-  }
+  data = []
 }
 
 profile request_fails {
   name = "Request Fails"
-  data = {
+  data = [
     host = "http://localhost:5000"
-  }
+  ]
 }
 
 local base_recipe = {
-  headers = {
+  headers = [
     Accept = "application/json"
-  }
+  ]
 }
 local get_username = @() => {
   local username = command(['whoami']) | trim() | sensitive()

@@ -1,7 +1,7 @@
 data/
-/target/
-/.vscode/
-/.zed/
+target/
+.vscode/
+.zed/
 .DS_Store
 *.sqlite
 *.prof

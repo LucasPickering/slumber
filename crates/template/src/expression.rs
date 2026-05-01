@@ -3,7 +3,7 @@
 #[cfg(test)]
 use crate::test_util;
 use crate::{
-    Arguments, Context, RenderError, RenderValue, Value,
+    Arguments, Context, RenderError, RenderValue, Template, Value,
     error::RenderErrorContext,
 };
 use bytes::Bytes;
@@ -17,9 +17,51 @@ use std::borrow::Cow;
 
 type RenderResult<V> = Result<V, RenderError>;
 
+enum Statement {
+    /// `let identifier = expression`
+    Binding {
+        identifier: Identifier,
+        expression: Expression,
+    },
+    Profile {
+        identifier: Identifier,
+        block: Block,
+    },
+}
+
+struct Block(Vec<(Identifier, NewExpression)>);
+
+/// TODO
 enum NewExpression {
+    /// A literal value such as `3`, `false`, or `"hello"`
     Literal(Literal),
-    Template(TemplateLiteral),
+    /// TODO
+    Template(Template),
+    /// Array literal: `[1, "hello", f()]`
+    Array(Vec<Self>),
+    /// Object literal: `{"a": 1}`. Store a vec here instead of a map because
+    /// we don't want to deduplicate keys until after evaluating them
+    /// TODO rename to map?
+    Object(Vec<(Self, Self)>),
+    /// Access a binding by name
+    Identifier(Identifier),
+    /// Access a field on an object
+    Field {
+        /// TODO
+        expression: Box<Self>,
+        /// TODO
+        field: Identifier,
+    },
+    /// Call to a plain function (**not** a filter)
+    Call(FunctionCall),
+    /// Data piped to another function: `name | trim()`. The expression on the
+    /// left will be passed as the last positional argument to the function call
+    /// on the right
+    Pipe {
+        expression: Box<Self>,
+        call: FunctionCall,
+    },
+    /// TODO
     Defer(Box<Self>),
 }
 

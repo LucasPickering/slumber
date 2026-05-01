@@ -11,7 +11,7 @@ rust-version = {workspace = true}
 version = {workspace = true}
 
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "tree-sitter"]
 
 [workspace.package]
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]

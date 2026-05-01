@@ -11,7 +11,7 @@ rust-version = {workspace = true}
 version = {workspace = true}
 
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "tree-sitter"]
 
 [workspace.package]
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
@@ -54,15 +54,15 @@ serde_json = {version = "1.0.120", default-features = false, features = ["preser
 serde_json_path = "0.7.1"
 serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
-slumber_cli = {path = "./crates/cli", version = "5.2.5" }
-slumber_config = {path = "./crates/config", version = "5.2.5", default-features = false }
-slumber_console = {path = "./crates/console", version = "5.2.5" }
-slumber_core = {path = "./crates/core", version = "5.2.5" }
-slumber_import = {path = "./crates/import", version = "5.2.5" }
-slumber_macros = {path = "./crates/macros", version = "5.2.5" }
-slumber_template = {path = "./crates/template", version = "5.2.5" }
-slumber_tui = {path = "./crates/tui", version = "5.2.5" }
-slumber_util = {path = "./crates/util", version = "5.2.5" }
+slumber_cli = {path = "./crates/cli", version = "5.2.5"}
+slumber_config = {path = "./crates/config", version = "5.2.5", default-features = false}
+slumber_console = {path = "./crates/console", version = "5.2.5"}
+slumber_core = {path = "./crates/core", version = "5.2.5"}
+slumber_import = {path = "./crates/import", version = "5.2.5"}
+slumber_macros = {path = "./crates/macros", version = "5.2.5"}
+slumber_template = {path = "./crates/template", version = "5.2.5"}
+slumber_tui = {path = "./crates/tui", version = "5.2.5"}
+slumber_util = {path = "./crates/util", version = "5.2.5"}
 strum = {version = "0.27.0", default-features = false}
 syn = "2.0.101"
 terminput = "0.5.3"
@@ -134,7 +134,7 @@ lto = "thin"
 [package.metadata.release]
 pre-release-hook = ["mise", "run", "gifs", "--check"]
 pre-release-replacements = [
-    {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n<!-- ANCHOR: changelog -->\n\n## [{{version}}] - {{date}}"},
+  {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n<!-- ANCHOR: changelog -->\n\n## [{{version}}] - {{date}}"},
 ]
 
 # Config for 'dist'
@@ -149,14 +149,14 @@ installers = ["shell", "powershell", "homebrew"]
 tap = "LucasPickering/homebrew-tap"
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = [
-    "aarch64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "aarch64-unknown-linux-musl",
-    "aarch64-pc-windows-msvc",
-    "x86_64-apple-darwin",
-    "x86_64-unknown-linux-gnu",
-    "x86_64-unknown-linux-musl",
-    "x86_64-pc-windows-msvc",
+  "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-unknown-linux-musl",
+  "aarch64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "x86_64-pc-windows-msvc",
 ]
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]

@@ -1,0 +1,13 @@
+[tasks.dev]
+description = "Run the tree-sitter playground"
+outputs = ["src/*"]
+run = [
+  "tree-sitter generate",
+  "tree-sitter build --wasm",
+  "tree-sitter playground --quiet",
+]
+sources = ["grammar.js"]
+
+[tools]
+node = "20" # https://github.com/tree-sitter/node-tree-sitter/issues/238
+tree-sitter = "0.26"

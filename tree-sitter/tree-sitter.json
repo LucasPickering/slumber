@@ -1,0 +1,40 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "slumber",
+      "camelcase": "Slumber",
+      "title": "Slumber",
+      "scope": "source.slumber",
+      "file-types": [
+        "slumber"
+      ],
+      "injection-regex": "^slumber$",
+      "class-name": "TreeSitterSlumber"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Collection and template language for Slumber HTTP client",
+    "authors": [
+      {
+        "name": "Lucas Pickering",
+        "email": "lucas@lucaspickering.me"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/LucasPickering/slumber"
+    }
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "java": false,
+    "node": true,
+    "python": false,
+    "rust": true,
+    "swift": false,
+    "zig": false
+  }
+}

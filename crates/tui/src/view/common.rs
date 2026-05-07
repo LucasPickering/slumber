@@ -25,8 +25,9 @@ use chrono::{DateTime, Duration, Utc};
 use itertools::{Itertools, Position};
 use ratatui::{
     prelude::{Buffer, Rect},
+    style::Style,
     symbols::merge::MergeStrategy,
-    text::{Span, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Widget},
 };
 use reqwest::{StatusCode, header::HeaderValue};
@@ -52,13 +53,18 @@ impl Generate for Pane<'_> {
     {
         let styles = ViewContext::styles().pane;
         let (border_type, border_style) = styles.border(self.has_focus);
+        let title_style = if self.has_focus {
+            styles.title_selected
+        } else {
+            Style::default()
+        };
         Block::default()
             .borders(Borders::ALL)
             .border_type(border_type)
             .border_style(border_style)
             .merge_borders(MergeStrategy::Fuzzy)
             .style(styles.default)
-            .title(self.title)
+            .title(Line::styled(self.title, title_style))
     }
 }
 

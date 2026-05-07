@@ -178,6 +178,10 @@ pub enum Action {
     // Aliases for backward compatibility
     #[serde(alias = "select_request", alias = "select_response")]
     BottomPane,
+    /// Shift the moveable edge of the selected pane left/up
+    ResizeBack,
+    /// Shift the moveable edge of the selected pane right/down
+    ResizeForward,
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }
 
@@ -514,6 +518,8 @@ impl Default for InputMap {
             (Action::RecipeList, KeyCode::Char('r').into()),
             (Action::TopPane, KeyCode::Char('1').into()),
             (Action::BottomPane, KeyCode::Char('2').into()),
+            (Action::ResizeBack, KeyCode::Char('[').into()),
+            (Action::ResizeForward, KeyCode::Char(']').into()),
             // ^^^^^ If making changes, make sure to update the docs ^^^^^
         ]))
     }

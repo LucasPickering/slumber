@@ -37,7 +37,6 @@ use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
 };
 use thiserror::Error;
-use tracing::error;
 
 /// A little container struct for all the data that the user can access via
 /// templating. Unfortunately this has to own all data so templating can be

@@ -209,6 +209,10 @@ fn input_groups() -> impl IntoIterator<Item = (&'static str, Vec<Action>)> {
             ],
         ),
         (
+            "Layout Control",
+            vec![Action::ResizeBack, Action::ResizeForward],
+        ),
+        (
             "Interaction",
             vec![
                 Action::OpenActions,

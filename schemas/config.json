@@ -180,6 +180,12 @@
         ],
         "bottom_pane": [
           "2"
+        ],
+        "resize_back": [
+          "["
+        ],
+        "resize_forward": [
+          "]"
         ]
       }
     },
@@ -351,6 +357,12 @@
         ],
         "bottom_pane": [
           "2"
+        ],
+        "resize_back": [
+          "["
+        ],
+        "resize_forward": [
+          "]"
         ]
       },
       "theme": {

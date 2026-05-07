@@ -65,6 +65,8 @@ input_bindings:
 | `recipe_list`       | `r`                     | Select Recipe List pane                                                                                                           |
 | `top_pane`          | `1`                     | Select the upper pane (the recipe pane). Aliased to `select_recipe` for backward compatibility                                    |
 | `bottom_pane`       | `2`                     | Select the lower pane (Request/Response or Profile). Aliased to `select_request` and `select_response` for backward compatibility |
+| `resize_back`       | `[`                     | Shift the moveable edge of the selected pane left/up                                                                              |
+| `resize_forward`    | `]`                     | Shift the moveable edge of the selected pane right/down                                                                           |
 
 ## Key Combinations
 

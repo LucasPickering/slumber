@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Added
+
+- Resize panes dynamically with `[` and `]`
+  - [Rebind](https://slumber.lucaspickering.me/api/configuration/input_bindings.html) the actions `resize_back` and `resize_forward` to customize
+
 ### Changed
 
 - Exit fullscreen whenever changing panes

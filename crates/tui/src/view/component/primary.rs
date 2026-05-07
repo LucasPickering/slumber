@@ -292,7 +292,7 @@ impl PrimaryView {
         });
         canvas.render_widget(
             format!(
-                "Toggle Sidebar {binding}",
+                "Hide {binding}",
                 binding = ViewContext::binding_display(Action::ToggleSidebar),
             ),
             bottom_row,
@@ -369,6 +369,10 @@ impl Component for PrimaryView {
                 Action::Cancel if self.view.is_fullscreen() => {
                     self.view.exit_fullscreen();
                 }
+
+                Action::ResizeBack => self.view.resize_back(),
+                Action::ResizeForward => self.view.resize_forward(),
+
                 _ => propagate.set(),
             })
             .broadcast(|event| match event {

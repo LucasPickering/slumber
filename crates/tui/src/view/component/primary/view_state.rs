@@ -1,5 +1,6 @@
 use ratatui::layout::{Constraint, Layout, Rect, Spacing};
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 
 /// Which panes are visible in the primary view?
 ///
@@ -19,6 +20,8 @@ pub struct ViewState {
     /// focused when it's closed. Each state transition needs to ensure this
     /// remains valid.
     selected_pane: SelectedPane,
+    /// Adjustable height for the top pane
+    top_constraint: CustomConstraint,
     /// Selected sidebar. If the sidebar is closed, we still track this so we
     /// know which sidebar to show if it's toggled open
     sidebar: Sidebar,
@@ -26,6 +29,8 @@ pub struct ViewState {
     /// if a pane is fullscreened but the sidebar was visible in the last
     /// multi-pane layout.
     sidebar_open: bool,
+    /// Adjustable width for the sidebar pane
+    sidebar_constraint: CustomConstraint,
     /// Is the selected pane fullscreened?
     fullscreen: bool,
 }
@@ -72,14 +77,18 @@ impl ViewState {
 
             // Sidebar open
             let [sidebar_area, rest] = Layout::horizontal([
-                Constraint::Length(30),
+                self.sidebar_constraint
+                    .constraint()
+                    .unwrap_or(Constraint::Length(30)),
                 Constraint::Fill(1),
             ])
             .spacing(Spacing::Overlap(1))
             .areas(area);
             let [headers_area, top_area, bottom_area] = Layout::vertical([
                 Constraint::Length(3),
-                Constraint::Fill(1),
+                self.top_constraint
+                    .constraint()
+                    .unwrap_or(Constraint::Fill(1)),
                 Constraint::Fill(1),
             ])
             .spacing(Spacing::Overlap(1))
@@ -118,7 +127,9 @@ impl ViewState {
             // +---------+
             let [headers_area, top_area, bottom_area] = Layout::vertical([
                 Constraint::Length(3),
-                Constraint::Fill(1),
+                self.top_constraint
+                    .constraint()
+                    .unwrap_or(Constraint::Fill(1)),
                 Constraint::Fill(1),
             ])
             .spacing(Spacing::Overlap(1))
@@ -147,6 +158,29 @@ impl ViewState {
 
         // Put the selected pane last so its highlighted border goes on top
         areas.sort_by_key(|pane| pane.selected);
+
+        // Retain sizes for resizable constraints
+        for pane in &areas {
+            match pane.pane {
+                VisiblePane::Recipe => {
+                    self.top_constraint.set_draw_sizes(PaneSizes {
+                        pane: pane.area.height,
+                        parent: area.height - 2, // -2 for the header
+                    });
+                }
+                VisiblePane::Sidebar(_) => {
+                    self.sidebar_constraint.set_draw_sizes(PaneSizes {
+                        pane: pane.area.width,
+                        // Parent width is the full screen
+                        parent: area.width,
+                    });
+                }
+                VisiblePane::Exchange
+                | VisiblePane::Profile
+                | VisiblePane::Headers(_) => {}
+            }
+        }
+
         areas
     }
 
@@ -263,15 +297,47 @@ impl ViewState {
     pub fn exit_fullscreen(&mut self) {
         self.fullscreen = false;
     }
+
+    /// Move the movable edge of this pane up/left
+    pub fn resize_back(&mut self) {
+        if let Some(constraint) = self.active_constraint() {
+            constraint.resize(-1);
+        }
+    }
+
+    /// Move the movable edge of this pane down/right
+    pub fn resize_forward(&mut self) {
+        if let Some(constraint) = self.active_constraint() {
+            constraint.resize(1);
+        }
+    }
+
+    /// Get the current pane size constraint that can be modified
+    ///
+    /// Return None if in fullscreen mode, because there's no bounds to resize.
+    fn active_constraint(&mut self) -> Option<&mut CustomConstraint> {
+        if self.fullscreen {
+            None
+        } else {
+            Some(match self.selected_pane {
+                SelectedPane::Sidebar => &mut self.sidebar_constraint,
+                SelectedPane::Top | SelectedPane::Bottom => {
+                    &mut self.top_constraint
+                }
+            })
+        }
+    }
 }
 
 impl Default for ViewState {
     fn default() -> Self {
         Self {
+            selected_pane: SelectedPane::Top,
+            top_constraint: CustomConstraint::default(),
             sidebar: Sidebar::Recipe,
             sidebar_open: true,
+            sidebar_constraint: CustomConstraint::default(),
             fullscreen: false,
-            selected_pane: SelectedPane::Top,
         }
     }
 }
@@ -329,6 +395,71 @@ enum SelectedPane {
     Bottom,
 }
 
+/// A layout [Constraint] that can be resized
+///
+/// This is a very simple implementation of resizable panes that only works for
+/// for static groups of 2 panes.
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+struct CustomConstraint {
+    /// Custom size for this pane
+    ///
+    /// Cell is needed so it can be adjusted on resize
+    custom: Cell<Option<u16>>,
+    /// Pane and parent size on the most recent draw
+    draw_sizes: Cell<PaneSizes>,
+}
+
+impl CustomConstraint {
+    /// If there is a custom length, get a constraint specifying it
+    fn constraint(&self) -> Option<Constraint> {
+        self.custom.get().map(Constraint::Length)
+    }
+
+    /// Update the sizes for the pane/parent on draw
+    fn set_draw_sizes(&self, sizes: PaneSizes) {
+        self.draw_sizes.set(sizes);
+        // Reclamp in case the parent size changed
+        self.custom.update(|mut size| {
+            size.as_mut()
+                .map(|size| (*size).clamp(sizes.min(), sizes.max()))
+        });
+    }
+
+    /// Adjust the size of the constraint up or down
+    fn resize(&mut self, delta: i32) {
+        let sizes = self.draw_sizes.get();
+        let custom = self.custom.get_mut().get_or_insert(sizes.pane);
+        // Cast to signed int to prevent panics
+        *custom = (i32::from(*custom) + delta)
+            .clamp(sizes.min().into(), sizes.max().into())
+            as u16;
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct PaneSizes {
+    /// Width/height of the adjust container
+    pane: u16,
+    /// Width/height of the parent container. This it the size of the adjust
+    /// container plus its sibling
+    parent: u16,
+}
+
+impl PaneSizes {
+    /// Can't shrink a pane beyond this size
+    const MIN_PANE_SIZE: u16 = 3;
+
+    fn min(self) -> u16 {
+        Self::MIN_PANE_SIZE
+    }
+
+    fn max(self) -> u16 {
+        // Don't allow growing larger than the parent, minus some buffer
+        // space to let our sibling breathe
+        self.parent.saturating_sub(Self::MIN_PANE_SIZE)
+    }
+}
+
 /// Get a next/previous pane in the list based on the offset
 fn offset(
     all: &[SelectedPane],
@@ -361,6 +492,7 @@ mod tests {
             sidebar: Sidebar::Profile,
             sidebar_open: false,
             fullscreen: false,
+            ..Default::default()
         },
         ViewState::toggle_sidebar,
         // Selected pane is retained
@@ -369,6 +501,7 @@ mod tests {
             sidebar: Sidebar::Profile,
             sidebar_open: true,
             fullscreen: false,
+            ..Default::default()
         },
     )]
     #[case::toggle_sidebar_close(
@@ -377,6 +510,7 @@ mod tests {
             sidebar: Sidebar::Profile,
             sidebar_open: true,
             fullscreen: false,
+            ..Default::default()
         },
         ViewState::toggle_sidebar,
         // Selected pane is retained
@@ -385,6 +519,7 @@ mod tests {
             sidebar: Sidebar::Profile,
             sidebar_open: false,
             fullscreen: false,
+            ..Default::default()
         },
     )]
     #[case::toggle_sidebar_close_sidebar_selected(
@@ -393,6 +528,7 @@ mod tests {
             sidebar: Sidebar::Profile,
             sidebar_open: true,
             fullscreen: false,
+            ..Default::default()
         },
         ViewState::toggle_sidebar,
         // Can't keep the sidebar selected, so default to the top pane
@@ -401,6 +537,7 @@ mod tests {
             sidebar: Sidebar::Profile,
             sidebar_open: false,
             fullscreen: false,
+            ..Default::default()
         },
     )]
     #[case::reset_sidebar(
@@ -424,6 +561,7 @@ mod tests {
             sidebar: Sidebar::Recipe,
             sidebar_open: true,
             fullscreen: false,
+            ..Default::default()
         },
         ViewState::toggle_fullscreen,
         ViewState {
@@ -431,6 +569,7 @@ mod tests {
             sidebar: Sidebar::Recipe,
             sidebar_open: true,
             fullscreen: true,
+            ..Default::default()
         },
     )]
     #[case::toggle_fullscreen_close(
@@ -439,6 +578,7 @@ mod tests {
             sidebar: Sidebar::Recipe,
             sidebar_open: true,
             fullscreen: true,
+            ..Default::default()
         },
         ViewState::toggle_fullscreen,
         ViewState {
@@ -446,6 +586,7 @@ mod tests {
             sidebar: Sidebar::Recipe,
             sidebar_open: true,
             fullscreen: false,
+            ..Default::default()
         },
     )]
     #[case::toggle_fullscreen_open_wide(

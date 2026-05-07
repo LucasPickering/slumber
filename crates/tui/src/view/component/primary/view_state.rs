@@ -1,3 +1,4 @@
+use ratatui::layout::{Constraint, Layout, Rect, Spacing};
 use serde::{Deserialize, Serialize};
 
 /// Which panes are visible in the primary view?
@@ -30,53 +31,123 @@ pub struct ViewState {
 }
 
 impl ViewState {
-    /// Get the current sidebar/pane layout
-    pub fn layout(&self) -> PrimaryLayout {
-        let top_pane = PrimaryPane::Recipe;
+    /// Get the set of panes to be drawn to the primary view
+    pub fn layout(&self, area: Rect) -> Vec<PaneArea> {
+        let top_pane = VisiblePane::Recipe;
         // Bottom pane depends on the sidebar
         let bottom_pane = match self.sidebar {
-            Sidebar::Profile => PrimaryPane::Profile,
-            Sidebar::Recipe | Sidebar::History => PrimaryPane::Exchange,
+            Sidebar::Profile => VisiblePane::Profile,
+            Sidebar::Recipe | Sidebar::History => VisiblePane::Exchange,
         };
 
-        if self.fullscreen {
+        let mut areas = if self.fullscreen {
+            // Fullscreen
             let pane = match self.selected_pane {
-                SelectedPane::Sidebar => PrimaryPane::Sidebar(self.sidebar),
+                SelectedPane::Sidebar => VisiblePane::Sidebar(self.sidebar),
                 SelectedPane::Top => top_pane,
                 SelectedPane::Bottom => bottom_pane,
             };
-            PrimaryLayout::Fullscreen {
-                pane: SelectedState {
-                    value: pane,
-                    selected: true,
+            vec![PaneArea {
+                pane,
+                area,
+                selected: true,
+            }]
+        } else if self.sidebar_open {
+            // +---+---------+
+            // | S | HEADERS |
+            // | I +---------+
+            // | D |         |
+            // | E |   TOP   |
+            // | B +---------+
+            // | A |         |
+            // | R | BOTTOM  |
+            // +---+---------+
+            //
+            // Visible headers depend on the open sidebar
+            let headers: &[Header] = match self.sidebar {
+                Sidebar::Profile => &[Header::Recipe],
+                Sidebar::Recipe => &[Header::Profile],
+                Sidebar::History => &[Header::Profile, Header::Recipe],
+            };
+
+            // Sidebar open
+            let [sidebar_area, rest] = Layout::horizontal([
+                Constraint::Length(30),
+                Constraint::Fill(1),
+            ])
+            .spacing(Spacing::Overlap(1))
+            .areas(area);
+            let [headers_area, top_area, bottom_area] = Layout::vertical([
+                Constraint::Length(3),
+                Constraint::Fill(1),
+                Constraint::Fill(1),
+            ])
+            .spacing(Spacing::Overlap(1))
+            .areas(rest);
+            vec![
+                PaneArea {
+                    pane: VisiblePane::Headers(headers),
+                    selected: false, // This pane isn't selectable
+                    area: headers_area,
                 },
-            }
-        } else {
-            // Multiple panes are visible
-            let top = SelectedState {
-                value: top_pane,
-                selected: self.selected_pane == SelectedPane::Top,
-            };
-            let bottom = SelectedState {
-                value: bottom_pane,
-                selected: self.selected_pane == SelectedPane::Bottom,
-            };
-            if self.sidebar_open {
-                // Sidebar is open
-                let sidebar = SelectedState {
-                    value: self.sidebar,
+                PaneArea {
+                    pane: VisiblePane::Sidebar(self.sidebar),
                     selected: self.selected_pane == SelectedPane::Sidebar,
-                };
-                PrimaryLayout::Sidebar {
-                    sidebar,
-                    top,
-                    bottom,
-                }
-            } else {
-                // Sidebar closed
-                PrimaryLayout::Wide { top, bottom }
-            }
-        }
+                    area: sidebar_area,
+                },
+                PaneArea {
+                    pane: top_pane,
+                    selected: self.selected_pane == SelectedPane::Top,
+                    area: top_area,
+                },
+                PaneArea {
+                    pane: bottom_pane,
+                    selected: self.selected_pane == SelectedPane::Bottom,
+                    area: bottom_area,
+                },
+            ]
+        } else {
+            // +---------+
+            // | HEADERS |
+            // +---------+
+            // |         |
+            // |   TOP   |
+            // +---------+
+            // |         |
+            // | BOTTOM  |
+            // +---------+
+            let [headers_area, top_area, bottom_area] = Layout::vertical([
+                Constraint::Length(3),
+                Constraint::Fill(1),
+                Constraint::Fill(1),
+            ])
+            .spacing(Spacing::Overlap(1))
+            .areas(area);
+            vec![
+                PaneArea {
+                    pane: VisiblePane::Headers(&[
+                        Header::Profile,
+                        Header::Recipe,
+                    ]),
+                    selected: false, // This pane isn't selectable
+                    area: headers_area,
+                },
+                PaneArea {
+                    pane: top_pane,
+                    selected: self.selected_pane == SelectedPane::Top,
+                    area: top_area,
+                },
+                PaneArea {
+                    pane: bottom_pane,
+                    selected: self.selected_pane == SelectedPane::Bottom,
+                    area: bottom_area,
+                },
+            ]
+        };
+
+        // Put the selected pane last so its highlighted border goes on top
+        areas.sort_by_key(|pane| pane.selected);
+        areas
     }
 
     /// Open the sidebar with specific content
@@ -190,44 +261,46 @@ impl Default for ViewState {
     }
 }
 
-/// User-facing pane state. This maps 1:1 with what will be rendered.
-///
-/// Any state this represents should be theoretically drawable, but won't
-/// necessarily be a valid state that the user can get into. The goal of this
-/// is to minimize the work that `PrimaryView` has to do during the draw. So
-/// this represents exactly what should be drawn with minimal interpretation.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum PrimaryLayout {
-    /// Layout with no sidebar visible. The primary panes are *wider*.
-    Wide {
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
-    },
-    /// Layout with the sidebar open and two panes visible
-    Sidebar {
-        sidebar: SelectedState<Sidebar>,
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
-    },
-    /// A single pane is visible (could be the sidebar pane)
-    Fullscreen { pane: SelectedState<PrimaryPane> },
-}
-
-/// A pane plus its focus state
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct SelectedState<T> {
-    pub value: T,
+/// Definition of a pane to be drawn
+#[derive(Debug, PartialEq)]
+pub struct PaneArea {
+    /// Which pane to draw
+    pub pane: VisiblePane,
+    /// Where to draw the pane
+    pub area: Rect,
+    /// Is the pane active?
     pub selected: bool,
 }
 
-/// A selectable pane in the primary view
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum PrimaryPane {
+/// Any pane that can be drawn
+#[derive(Debug, PartialEq)]
+pub enum VisiblePane {
     Recipe,
     Exchange,
     Profile,
     /// Tall skinny guy
     Sidebar(Sidebar),
+    /// Informational pane at the top
+    ///
+    /// The set of visible headers is dynamic, based on the sidebar.
+    Headers(&'static [Header]),
+}
+
+/// Part of the informational pane at the top
+#[derive(Debug, PartialEq)]
+pub enum Header {
+    /// Show selected profile
+    Profile,
+    /// Show selected recipe
+    Recipe,
+}
+
+/// List content that can be displayed in the sidebar
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Sidebar {
+    Profile,
+    Recipe,
+    History,
 }
 
 /// Internal state for which pane is selected
@@ -239,14 +312,6 @@ enum SelectedPane {
     Sidebar,
     Top,
     Bottom,
-}
-
-/// List content that can be displayed in the sidebar
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Sidebar {
-    Profile,
-    Recipe,
-    History,
 }
 
 /// Get a next/previous pane in the list based on the offset

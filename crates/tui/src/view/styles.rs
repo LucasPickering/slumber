@@ -83,6 +83,8 @@ pub struct PaneStyles {
     pub border_type_selected: BorderType,
     /// Pane generic style
     pub default: Style,
+    /// Title text when the pane is selected
+    pub title_selected: Style,
 }
 
 impl PaneStyles {
@@ -221,6 +223,8 @@ impl Styles {
                 border_type: BorderType::Rounded,
                 border_type_selected: BorderType::Double,
                 default: Style::default().fg(theme.text_color.into()),
+                title_selected: Style::default()
+                    .add_modifier(Modifier::UNDERLINED),
             },
             status_code: StatusCodeStyles {
                 success: Style::default()

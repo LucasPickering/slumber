@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Fixed
+
+- Border of the selected pane is always fully highlighted
+
 ## [5.2.5] - 2026-04-12
 
 <!-- ANCHOR: changelog -->

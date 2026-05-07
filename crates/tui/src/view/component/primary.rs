@@ -16,7 +16,7 @@ use crate::{
             history::History,
             misc::{SidebarEvent, SidebarProps},
             primary::view_state::{
-                PrimaryLayout, PrimaryPane, SelectedState, Sidebar, ViewState,
+                Header, PaneArea, Sidebar, ViewState, VisiblePane,
             },
             profile_detail::ProfileDetail,
             profile_list::ProfileList,
@@ -259,156 +259,29 @@ impl PrimaryView {
         RecipeDetail::new(node)
     }
 
-    /// Draw the layout with wide panes
-    ///
-    /// +---------+
-    /// | HEADERS |
-    /// +---------+
-    /// |         |
-    /// |   TOP   |
-    /// +---------+
-    /// |         |
-    /// | BOTTOM  |
-    /// +---------+
-    fn draw_wide_layout(
-        &self,
-        canvas: &mut Canvas,
-        area: Rect,
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
-    ) {
-        let headers: &[&dyn Draw<_>] = &[&self.profile_list, &self.recipe_list];
-
-        let [headers_area, top_area, bottom_area] = Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-        ])
-        .spacing(Spacing::Overlap(1))
-        .areas(area);
-        let headers_areas = Layout::horizontal(iter::repeat_n(
-            Constraint::Fill(1),
-            headers.len(),
-        ))
-        .spacing(Spacing::Overlap(1))
-        .split(headers_area);
-
-        // Header
-        for (header, area) in headers.iter().zip(&*headers_areas) {
-            let header_props = SidebarProps::header();
-            canvas.draw(*header, header_props, *area, false);
-        }
-
-        // Panes
-        self.draw_pane(canvas, top_area, top);
-        self.draw_pane(canvas, bottom_area, bottom);
-    }
-
-    /// Draw the sidebar layout
-    ///
-    /// +---+---------+
-    /// | S | HEADERS |
-    /// | I +---------+
-    /// | D |         |
-    /// | E |   TOP   |
-    /// | B +---------+
-    /// | A |         |
-    /// | R | BOTTOM  |
-    /// +---+---------+
-    fn draw_sidebar_layout(
-        &self,
-        canvas: &mut Canvas,
-        area: Rect,
-        sidebar: SelectedState<Sidebar>,
-        top: SelectedState<PrimaryPane>,
-        bottom: SelectedState<PrimaryPane>,
-    ) {
-        let headers: &[&dyn Draw<_>] = match sidebar.value {
-            Sidebar::Profile => &[&self.recipe_list],
-            Sidebar::Recipe => &[&self.profile_list],
-            Sidebar::History => &[&self.profile_list, &self.recipe_list],
-        };
-
-        // Split the areas
-        let [sidebar_area, rest] =
-            Layout::horizontal([Constraint::Length(30), Constraint::Fill(1)])
-                .spacing(Spacing::Overlap(1))
-                .areas(area);
-        let [headers_area, top_area, bottom_area] = Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-        ])
-        .spacing(Spacing::Overlap(1))
-        .areas(rest);
-        let headers_areas = Layout::horizontal(iter::repeat_n(
-            Constraint::Fill(1),
-            headers.len(),
-        ))
-        .spacing(Spacing::Overlap(1))
-        .split(headers_area);
-
-        // Header
-        for (header, area) in headers.iter().zip(&*headers_areas) {
-            let header_props = SidebarProps::header();
-            canvas.draw(*header, header_props, *area, false);
-        }
-
-        self.draw_sidebar(canvas, sidebar_area, sidebar);
-        self.draw_pane(canvas, top_area, top);
-        self.draw_pane(canvas, bottom_area, bottom);
-    }
-
-    /// Draw a primary pane to the given area
-    fn draw_pane(
-        &self,
-        canvas: &mut Canvas,
-        area: Rect,
-        pane: SelectedState<PrimaryPane>,
-    ) {
-        match pane.value {
-            PrimaryPane::Recipe => {
-                canvas.draw(&self.recipe_detail, (), area, pane.selected);
-            }
-            PrimaryPane::Exchange => {
-                canvas.draw(&self.exchange_pane, (), area, pane.selected);
-            }
-            PrimaryPane::Profile => {
-                canvas.draw(&self.profile_detail, (), area, pane.selected);
-            }
-            PrimaryPane::Sidebar(sidebar) => self.draw_sidebar(
-                canvas,
-                area,
-                SelectedState {
-                    value: sidebar,
-                    selected: pane.selected,
-                },
-            ),
-        }
-    }
-
     /// Draw a sidebar pane
     fn draw_sidebar(
         &self,
         canvas: &mut Canvas,
+        sidebar: Sidebar,
         area: Rect,
-        sidebar: SelectedState<Sidebar>,
+        selected: bool,
     ) {
-        match sidebar.value {
+        match sidebar {
             Sidebar::Profile => canvas.draw(
                 &self.profile_list,
                 SidebarProps::list(),
                 area,
-                sidebar.selected,
+                selected,
             ),
             Sidebar::Recipe => canvas.draw(
                 &self.recipe_list,
                 SidebarProps::list(),
                 area,
-                sidebar.selected,
+                selected,
             ),
             Sidebar::History => {
-                canvas.draw(&self.history, (), area, sidebar.selected);
+                canvas.draw(&self.history, (), area, selected);
             }
         }
 
@@ -424,6 +297,34 @@ impl PrimaryView {
             ),
             bottom_row,
         );
+    }
+
+    /// Draw all boxes within the header area
+    fn draw_headers(
+        &self,
+        canvas: &mut Canvas,
+        headers: &[Header],
+        area: Rect,
+    ) {
+        let areas = Layout::horizontal(iter::repeat_n(
+            Constraint::Fill(1),
+            headers.len(),
+        ))
+        .spacing(Spacing::Overlap(1))
+        .split(area);
+
+        // Header
+        for (header, area) in headers.iter().zip(&*areas) {
+            let props = SidebarProps::header();
+            match header {
+                Header::Profile => {
+                    canvas.draw(&self.profile_list, props, *area, false);
+                }
+                Header::Recipe => {
+                    canvas.draw(&self.recipe_list, props, *area, false);
+                }
+            }
+        }
     }
 }
 
@@ -581,19 +482,28 @@ impl Component for PrimaryView {
 
 impl Draw for PrimaryView {
     fn draw(&self, canvas: &mut Canvas, (): (), metadata: DrawMetadata) {
-        let area = metadata.area();
-
-        match self.view.layout() {
-            PrimaryLayout::Wide { top, bottom } => {
-                self.draw_wide_layout(canvas, area, top, bottom);
-            }
-            PrimaryLayout::Sidebar {
-                sidebar,
-                top,
-                bottom,
-            } => self.draw_sidebar_layout(canvas, area, sidebar, top, bottom),
-            PrimaryLayout::Fullscreen { pane } => {
-                self.draw_pane(canvas, area, pane);
+        for pane in self.view.layout(metadata.area()) {
+            let PaneArea {
+                pane,
+                selected,
+                area,
+            } = pane;
+            match pane {
+                VisiblePane::Recipe => {
+                    canvas.draw(&self.recipe_detail, (), area, selected);
+                }
+                VisiblePane::Exchange => {
+                    canvas.draw(&self.exchange_pane, (), area, selected);
+                }
+                VisiblePane::Profile => {
+                    canvas.draw(&self.profile_detail, (), area, selected);
+                }
+                VisiblePane::Sidebar(sidebar) => {
+                    self.draw_sidebar(canvas, sidebar, area, selected);
+                }
+                VisiblePane::Headers(headers) => {
+                    self.draw_headers(canvas, headers, area);
+                }
             }
         }
 
@@ -626,6 +536,7 @@ mod tests {
         message::{Message, RecipeCopyTarget},
         view::test_util::{TestComponent, TestHarness, harness},
     };
+    use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::http::BuildOptions;
     use slumber_util::assert_matches;
@@ -634,21 +545,56 @@ mod tests {
     /// Test various workflows that modify the layout
     #[rstest]
     #[case::submit_sidebar(
+        // Open profile sidebar, then close it
         &[KeyCode::Char('p'), KeyCode::Enter],
-        PrimaryLayout::Sidebar {
-            sidebar: state(Sidebar::Recipe, true),
-            top: state(PrimaryPane::Recipe, false),
-            bottom: state(PrimaryPane::Exchange, false),
-        },
+        vec![
+            PaneArea {
+                pane: VisiblePane::Headers(&[Header::Profile]),
+                area: Rect::new(29, 0, 21, 3),
+                selected: false,
+            },
+            PaneArea {
+                pane: VisiblePane::Recipe,
+                area: Rect::new(29, 2, 21, 25),
+                selected: false,
+            },
+            PaneArea {
+                pane: VisiblePane::Exchange,
+                area: Rect::new(29, 26, 21, 24),
+                selected: false,
+            },
+            PaneArea {
+                pane: VisiblePane::Sidebar(Sidebar::Recipe),
+                area: Rect::new(0, 0, 30, 50),
+                selected: true,
+            },
+        ],
     )]
     #[case::cancel_sidebar(
         // Functionally the same as submitting the sidebar
         &[KeyCode::Char('p'), KeyCode::Esc],
-        PrimaryLayout::Sidebar {
-            sidebar: state(Sidebar::Recipe, true),
-            top: state(PrimaryPane::Recipe, false),
-            bottom: state(PrimaryPane::Exchange, false),
-        },
+        vec![
+            PaneArea {
+                pane: VisiblePane::Headers(&[Header::Profile]),
+                area: Rect::new(29, 0, 21, 3),
+                selected: false,
+            },
+            PaneArea {
+                pane: VisiblePane::Recipe,
+                area: Rect::new(29, 2, 21, 25),
+                selected: false,
+            },
+            PaneArea {
+                pane: VisiblePane::Exchange,
+                area: Rect::new(29, 26, 21, 24),
+                selected: false,
+            },
+            PaneArea {
+                pane: VisiblePane::Sidebar(Sidebar::Recipe),
+                area: Rect::new(0, 0, 30, 50),
+                selected: true,
+            },
+        ],
     )]
     #[case::fullscreen_exchange_after_profile(
         // There was a bug where this would fullscreen the Profile pane instead
@@ -659,12 +605,16 @@ mod tests {
             KeyCode::Char('f'), // Fullscreen it
         ],
         // Exchange pane should be fullscreened
-        PrimaryLayout::Fullscreen { pane: state(PrimaryPane::Exchange, true) },
+        vec![PaneArea {
+            pane: VisiblePane::Exchange,
+            area: Rect::new(0, 0, 50, 50),
+            selected: true,
+        }]
     )]
     fn test_layout_transitions(
         mut harness: TestHarness,
         #[case] keys: &[KeyCode],
-        #[case] expected: PrimaryLayout,
+        #[case] expected: Vec<PaneArea>,
     ) {
         let mut component = create_component(&mut harness);
         component
@@ -672,7 +622,13 @@ mod tests {
             .send_keys(keys.to_owned())
             .assert()
             .empty();
-        assert_eq!(component.view.layout(), expected);
+        let area = Rect {
+            width: 50,
+            height: 50,
+            x: 0,
+            y: 0,
+        };
+        assert_eq!(component.view.layout(area), expected);
     }
 
     /// Test selected pane and fullscreen mode loading from persistence
@@ -790,9 +746,5 @@ mod tests {
         // Clear template preview messages so we can test what we want
         harness.messages_rx().clear();
         component
-    }
-
-    fn state<T>(value: T, selected: bool) -> SelectedState<T> {
-        SelectedState { value, selected }
     }
 }

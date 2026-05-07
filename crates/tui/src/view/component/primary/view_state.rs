@@ -154,7 +154,7 @@ impl ViewState {
     pub fn open_sidebar(&mut self, sidebar: Sidebar) {
         self.sidebar = sidebar;
         self.sidebar_open = true;
-        self.selected_pane = SelectedPane::Sidebar;
+        self.select_pane(SelectedPane::Sidebar);
     }
 
     /// Reset to the recipe sidebar
@@ -171,22 +171,26 @@ impl ViewState {
         // sidebar. When re-opening, we want to re-show the same sidebar.
         self.sidebar_open ^= true;
         if !self.sidebar_open && self.selected_pane == SelectedPane::Sidebar {
-            self.selected_pane = SelectedPane::Top;
+            self.select_pane(SelectedPane::Top);
         }
     }
 
     /// Select the previous pane in the cycle
     pub fn previous_pane(&mut self) {
-        self.exit_fullscreen();
-        self.selected_pane =
-            offset(self.selectable_panes(), self.selected_pane, -1);
+        self.select_pane(offset(
+            self.selectable_panes(),
+            self.selected_pane,
+            -1,
+        ));
     }
 
     /// Select the next pane in the cycle
     pub fn next_pane(&mut self) {
-        self.exit_fullscreen();
-        self.selected_pane =
-            offset(self.selectable_panes(), self.selected_pane, 1);
+        self.select_pane(offset(
+            self.selectable_panes(),
+            self.selected_pane,
+            1,
+        ));
     }
 
     /// Get the set of selectable panes for the current state
@@ -204,12 +208,12 @@ impl ViewState {
 
     /// Move focus to the upper pane in the layout
     pub fn select_top_pane(&mut self) {
-        self.selected_pane = SelectedPane::Top;
+        self.select_pane(SelectedPane::Top);
     }
 
     /// Move focus to the lower pane in the layout
     pub fn select_bottom_pane(&mut self) {
-        self.selected_pane = SelectedPane::Bottom;
+        self.select_pane(SelectedPane::Bottom);
     }
 
     /// Move focus to the Recipe pane
@@ -231,6 +235,17 @@ impl ViewState {
         // If the Exchange pane isn't visible, do nothing
         if !self.sidebar_open || self.sidebar != Sidebar::Profile {
             self.select_bottom_pane();
+        }
+    }
+
+    /// Select a pane
+    ///
+    /// Always use this for changing the pane, because it exits fullscren too.
+    fn select_pane(&mut self, pane: SelectedPane) {
+        if pane != self.selected_pane {
+            self.selected_pane = pane;
+            // Changing pane always exits fullscreen
+            self.exit_fullscreen();
         }
     }
 
@@ -443,6 +458,46 @@ mod tests {
         ViewState {
             sidebar_open: false,
             fullscreen: true,
+            ..Default::default()
+        },
+    )]
+    // Select specific panes
+    #[case::select_top(
+        ViewState {
+            selected_pane: SelectedPane::Bottom,
+            fullscreen: true,
+            ..Default::default()
+        },
+        ViewState::select_top_pane,
+        ViewState {
+            selected_pane: SelectedPane::Top,
+            fullscreen: false, // Exits fullscreen
+            ..Default::default()
+        },
+    )]
+    #[case::select_bottom(
+        ViewState {
+            selected_pane: SelectedPane::Top,
+            fullscreen: true,
+            ..Default::default()
+        },
+        ViewState::select_bottom_pane,
+        ViewState {
+            selected_pane: SelectedPane::Bottom,
+            fullscreen: false, // Exits fullscreen
+            ..Default::default()
+        },
+    )]
+    #[case::select_same(
+        ViewState {
+            selected_pane: SelectedPane::Top,
+            fullscreen: true,
+            ..Default::default()
+        },
+        ViewState::select_top_pane,
+        ViewState {
+            selected_pane: SelectedPane::Top,
+            fullscreen: true, // Pane didn't change, so retain fullscreen
             ..Default::default()
         },
     )]

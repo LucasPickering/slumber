@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Changed
+
+- Exit fullscreen whenever changing panes
+  - With resizable panes, keeping fullscreen persistent ends up being more annoying than useful
+
 ### Fixed
 
 - Border of the selected pane is always fully highlighted

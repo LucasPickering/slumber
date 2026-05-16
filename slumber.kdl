@@ -1,0 +1,43 @@
+name Example
+profiles {
+    prd name=Production default=#true {
+        host "https://shoal.lucaspickering.me"
+    }
+    local name=Local {
+        host "http://localhost:3000"
+    }
+    init_fails name="Request Init Fails" {
+
+    }
+    request_fails name="Request Fails" {
+        host "http://localhost:3333"
+    }
+}
+// TODO share recipe config
+requests {
+    new_session {
+        name "New Session"
+        method POST
+        url "{{ host }}/login"
+    }
+    // TODO how indicate type?
+    fish name=Fish folder=#true {
+        list_fish {
+            name "List Fish"
+            method GET
+            url "{{ host }}/fish"
+            query {
+                foo bar
+            }
+        }
+
+        get_fish {
+            name "Get Fish"
+            method GET
+            url "{{ host }}/fish/{{ fish_id }}"
+            query {
+                select @select(["foo", "bar", "baz"], message="Select a value")
+            }
+        }
+    }
+}

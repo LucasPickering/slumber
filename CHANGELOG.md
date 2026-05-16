@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [5.3.0] - 2026-05-16
+
+<!-- ANCHOR: changelog -->
+
 ### Added
 
 - Resize panes dynamically with `[` and `]`

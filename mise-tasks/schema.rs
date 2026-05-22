@@ -19,7 +19,7 @@ serde_json = "1.0"
 use clap::{Parser, ValueEnum};
 use slumber_config::Config;
 use slumber_core::collection::Collection;
-use std::{fmt::Display, fs, path::Path};
+use std::{fmt::Display, fs, path::Path, process::ExitCode};
 
 #[derive(Debug, Parser)]
 #[clap(name = "slumber-schema")]
@@ -30,6 +30,9 @@ pub struct Args {
     /// Directory to output schema file(s) to. Pass `-` to print to stdout
     #[clap(long = "output", short = 'o', default_value = "schemas/")]
     output: String,
+    /// Check if the generated schema has changed compared to the output files
+    #[clap(long)]
+    check: bool,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -47,7 +50,7 @@ impl Display for SchemaTarget {
     }
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Args::parse();
 
     let targets = if args.schema.is_empty() {
@@ -55,6 +58,8 @@ fn main() {
     } else {
         args.schema
     };
+
+    let mut has_check_error = false;
     for schema_target in targets {
         // Generate the JSON content
         let schema = match schema_target {
@@ -63,14 +68,37 @@ fn main() {
         };
         let json = serde_json::to_string_pretty(&schema).unwrap();
 
-        // Print/write
+        // Either print the output or check it against the existing file
         if &args.output == "-" {
-            println!("{json}");
+            if args.check {
+                eprintln!("--check is not supported with stdout output");
+                return ExitCode::FAILURE;
+            } else {
+                println!("{json}");
+            }
         } else {
             let path =
                 Path::new(&args.output).join(format!("{schema_target}.json"));
-            println!("Writing to {}", path.display());
-            fs::write(&path, json).unwrap();
+            if args.check {
+                let current = fs::read_to_string(&path).unwrap();
+                if current != json {
+                    has_check_error = true;
+                    eprintln!(
+                        "{path} has changed; regenerate it with \
+                        `mise run schema {schema_target}`",
+                        path = path.display()
+                    );
+                }
+            } else {
+                println!("Writing to {}", path.display());
+                fs::write(&path, &json).unwrap();
+            }
         }
+    }
+
+    if has_check_error {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
     }
 }

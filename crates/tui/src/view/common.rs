@@ -73,12 +73,21 @@ pub struct Checkbox {
     pub checked: bool,
 }
 
+impl Checkbox {
+    const UNCHECKED: &str = "□";
+    const CHECKED: &str = "▣";
+}
+
 impl Widget for Checkbox {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        let s = if self.checked { "[x]" } else { "[ ]" };
+        let s = if self.checked {
+            Self::CHECKED
+        } else {
+            Self::UNCHECKED
+        };
         s.render(area, buf);
     }
 }

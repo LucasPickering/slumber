@@ -1,3 +1,13 @@
+[tasks.ci]
+description = "Run local CI commands"
+run = [
+  "cargo test --workspace",
+  "cargo clippy --all-targets --all-features",
+  "cargo fmt -- --check",
+  "mise rustdoc",
+  "mise schema --check",
+]
+
 [tasks.cli]
 description = "Run a CLI command"
 quiet = true
@@ -22,8 +32,8 @@ description = "Run the TUI with samply for profiling"
 env.CARGO_PROFILE_RELEASE_DEBUG = true # Include debug symbols
 env.SLUMBER_DATA_DIRECTORY = "{{ env.PWD }}/data/" # Use local config/data dir
 run = [
-    "cargo build --no-default-features --features=tui --bin=slumber --release",
-    "samply record ./target/release/slumber",
+  "cargo build --no-default-features --features=tui --bin=slumber --release",
+  "samply record ./target/release/slumber",
 ]
 tools."cargo:samply" = "0.13.1"
 

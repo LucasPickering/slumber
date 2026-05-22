@@ -85,16 +85,7 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       - name: Generate schemas
-        run: ./mise-tasks/schema.rs
-
-      - name: Check for uncommitted schema changes
-        run: |
-          git diff --exit-code schemas/
-          rc=$?
-          if [ $rc -ne 0 ]; then
-            echo "Uncommitted schema changes. Run `mise run schema` to update"
-            exit $rc
-          fi
+        run: ./mise-tasks/schema.rs --check
 
   test:
     name: Test - ${{ matrix.platform.name }}

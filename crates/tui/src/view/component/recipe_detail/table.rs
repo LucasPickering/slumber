@@ -130,13 +130,13 @@ where
             .chain(self.select.items().map(|row| Kind::key_as_str(&row.key)))
             .map(UnicodeWidthStr::width)
             .max()
-            .unwrap_or(0) as u16
-            + 1; // Padding!
+            .unwrap_or(0) as u16;
         let [_, key_header_area, value_header_area] = Layout::horizontal([
-            Constraint::Length(4), // Checkbox padding
+            Constraint::Length(1), // Checkbox
             Constraint::Length(key_column_width),
             Constraint::Min(1),
         ])
+        .spacing(1)
         .areas(header_area);
 
         // Draw header
@@ -268,10 +268,11 @@ impl<Kind: RecipeTableKind> Draw<RecipeTableRowProps> for RecipeTableRow<Kind> {
         }
 
         let [checkbox_area, key_area, value_area] = Layout::horizontal([
-            Constraint::Length(4),
+            Constraint::Length(1),
             Constraint::Length(props.key_column_width),
             Constraint::Min(1),
         ])
+        .spacing(1)
         .areas(metadata.area());
 
         // Render each cell

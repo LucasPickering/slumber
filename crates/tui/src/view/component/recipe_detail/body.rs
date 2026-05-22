@@ -288,9 +288,9 @@ mod tests {
             ("f".into(), "{{ string }} {{ stream }}".into()),
         ])),
         [
-            "    Field Value                             ".into(),
+            "  Field Value                               ".into(),
             // Streams are eagerly resolved
-            "[x] f     hello! stream!".into(),
+            "▣ f     hello! stream!".into(),
             "".into(),
             "".into(),
             "".into(),
@@ -301,9 +301,9 @@ mod tests {
             ("f".into(), "{{ string }} {{ stream }}".into()),
         ])),
         [
-            "    Field Value".into(),
+            "  Field Value                               ".into(),
             // Streams are *not* eagerly resolved
-            "[x] f     hello! <command `echo -n stream!`>".into(),
+            "▣ f     hello! <command `echo -n stream!`>".into(),
             "".into(),
             "".into(),
             "".into(),

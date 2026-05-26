@@ -26,7 +26,8 @@ thiserror = {workspace = true}
 tracing = {workspace = true}
 winnow = {workspace = true}
 
-[dev-dependencies]
+# Wasm doesn't use dev dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 pretty_assertions = {workspace = true}
 proptest = {workspace = true}
 proptest-derive = {workspace = true}
@@ -35,7 +36,7 @@ serde_json = {workspace = true}
 serde_yaml = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}
 tokio = {workspace = true, features = ["fs", "macros", "rt"]}
-tokio-util = {workspace = true, features=["io"]}
+tokio-util = {workspace = true, features = ["io"]}
 
 [features]
 schema = ["dep:schemars"]

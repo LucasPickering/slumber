@@ -23,12 +23,8 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
-use crossterm::{clipboard::CopyToClipboard, event::EventStream, execute};
 use futures::{Stream, StreamExt, future, pin_mut};
-use ratatui::{
-    Terminal,
-    prelude::{Backend, CrosstermBackend},
-};
+use ratatui::{Terminal, prelude::Backend};
 use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
@@ -37,15 +33,10 @@ use slumber_core::{
     render::{Prompter, TemplateContext},
 };
 use slumber_util::yaml::SourceLocation;
-use std::{
-    io::{self, Stdout},
-    ops::Deref,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{io::Stdout, path::PathBuf, sync::Arc};
 use tokio::{select, task};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, trace};
+use tracing::{info, trace};
 
 /// Main controller struct for the TUI. The app uses a React-ish architecture
 /// for the view, with a wrapping controller (this struct)
@@ -83,6 +74,7 @@ pub struct Tui<B: TerminalBackend> {
     terminal: Terminal<B>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Tui<CrosstermBackend<Stdout>> {
     /// Start the TUI on a real terminal. Any errors that occur during startup
     /// will be panics, because they prevent TUI execution.
@@ -304,13 +296,21 @@ where
             Message::Error { error } => self.state.view.error(error),
             Message::Event(event) => self.state.handle_event(event),
 
+            #[cfg(not(target_arch = "wasm32"))]
             Message::FileEdit { file, on_complete } => {
-                let editor = self.config.editor()?;
-                util::yield_terminal(
-                    editor.open(file.path()),
-                    &self.messages_tx,
-                )?;
-                on_complete(file);
+                cfg_select! {
+                    target_arch = "wasm32" => {
+                        todo!()
+                    }
+                    _ => {
+                        let editor = self.config.editor()?;
+                        util::yield_terminal(
+                            editor.open(file.path()),
+                            &self.messages_tx,
+                        )?;
+                        on_complete(file);
+                    }
+                }
             }
             Message::FileView { file, mime } => {
                 let pager = self.config.pager(mime.as_ref())?;
@@ -847,6 +847,7 @@ impl TerminalBackend for CrosstermBackend<Stdout> {
 }
 
 /// Restore terminal state during a panic
+#[cfg(not(target_arch = "wasm32"))]
 fn initialize_panic_handler() {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {

@@ -1469,25 +1469,24 @@ impl From<Sequence> for Value {
 /// Wrap a function call to return an error on Wasm targets
 ///
 /// Use this in the `call()` implementation for functions that are not supposed
-/// on Wasm (e.g. `file()`). The function definition should also be gated
-/// behind `cfg(not(target_arch = "wasm32"))` to prevent compilation of non-web
-/// code.
-#[cfg(not(target_arch = "wasm32"))]
+/// on Wasm (e.g. `file()`). The function definition should also be gated behind
+/// `cfg(not(target_arch = "wasm32"))` to prevent compilation of non-web code.
 macro_rules! no_wasm {
     ($fn_call:expr, $arguments:expr) => {
-        functions::file($arguments)
+        cfg_select! {
+            target_arch = "wasm32" => {
+                todo!()
+            }
+            _ => {
+                functions::file($arguments)
+            }
+        }
     };
 }
-#[cfg(target_arch = "wasm32")]
-macro_rules! no_wasm {
-    ($fn_call:expr, $arguments:expr) => {
-        todo!()
-    };
-}
-
 pub(super) use no_wasm;
 
 /// Create a stream from an `AsyncRead` value
+#[cfg(not(target_arch = "wasm32"))]
 fn reader_stream(
     reader: impl AsyncRead,
 ) -> impl Stream<Item = Result<Bytes, RenderError>> {

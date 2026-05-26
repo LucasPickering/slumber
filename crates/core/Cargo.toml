@@ -52,7 +52,8 @@ winnow = {workspace = true}
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = {workspace = true, features = ["fs", "process"]}
 
-[dev-dependencies]
+# Wasm doesn't use dev dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 proptest = {workspace = true}

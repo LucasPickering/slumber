@@ -7,10 +7,6 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use bytes::Bytes;
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-};
 use futures::{FutureExt, future};
 use slumber_util::{ResultTraced, ResultTracedAnyhow, paths::expand_home};
 use std::{
@@ -31,7 +27,7 @@ use tokio::{
     time::{self, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// Extension trait for [Result]
@@ -196,7 +192,8 @@ impl Drop for TickLoop {
 /// that block, but we'll just hope the command is fire-and-forget. If this
 /// becomes an issue we can try to detect if the subprocess took over the
 /// terminal and cut it loose if not, or add a config field for it.
-#[instrument(level = "info", skip(messages_tx))]
+#[cfg(not(target_arch = "wasm32"))]
+#[traching::instrument(level = "info", skip(messages_tx))]
 pub fn yield_terminal(
     mut command: Command,
     messages_tx: &MessageSender,
@@ -243,7 +240,12 @@ pub fn yield_terminal(
 }
 
 /// Set up terminal for TUI
+#[cfg(not(target_arch = "wasm32"))]
 pub fn initialize_terminal() -> anyhow::Result<()> {
+    use crossterm::{
+        event::EnableMouseCapture, terminal::EnterAlternateScreen,
+    };
+
     info!("Initializing terminal");
     crossterm::terminal::enable_raw_mode()?;
     crossterm::execute!(
@@ -255,7 +257,12 @@ pub fn initialize_terminal() -> anyhow::Result<()> {
 }
 
 /// Return terminal to initial state
+#[cfg(not(target_arch = "wasm32"))]
 pub fn restore_terminal() -> anyhow::Result<()> {
+    use crossterm::{
+        event::DisableMouseCapture, terminal::LeaveAlternateScreen,
+    };
+
     info!("Restoring terminal");
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
@@ -267,7 +274,10 @@ pub fn restore_terminal() -> anyhow::Result<()> {
 }
 
 /// Clear all input events in the terminal event buffer
+#[cfg(not(target_arch = "wasm32"))]
 pub fn clear_event_buffer() {
+    use crossterm::event;
+
     while let Ok(true) = event::poll(Duration::from_millis(0)) {
         let _ = event::read();
     }
@@ -462,7 +472,8 @@ pub async fn save_file(
 /// (e.g. `["sh", "-c"]`) to execute the command, or parse+run it natively if no
 /// shell is set. The shell should generally come from the config, but is
 /// taken as param for testing.
-#[instrument(level = "debug", skip(stdin))]
+#[cfg(not(target_arch = "wasm32"))]
+#[tracing::instrument(level = "debug", skip(stdin))]
 pub async fn run_command(
     shell: &[String],
     command_str: &str,
@@ -544,6 +555,21 @@ pub async fn confirm(
     // Error means we got ghosted :( RUDE!
     rx.await.unwrap_or_default()
 }
+
+/// TODO
+macro_rules! no_wasm {
+    ($($content:tt)*) => {
+        cfg_select! {
+            target_arch = "wasm32" => {
+                todo!()
+            }
+            _ => {
+                $($content)*
+            }
+        }
+    };
+}
+pub(super) use no_wasm;
 
 #[cfg(test)]
 mod tests {

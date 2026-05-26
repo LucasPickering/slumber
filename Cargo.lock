@@ -2535,6 +2535,7 @@ dependencies = [
  "instability",
  "ratatui-core",
  "ratatui-crossterm",
+ "ratatui-macros",
  "ratatui-termwiz",
  "ratatui-widgets",
 ]
@@ -2570,6 +2571,16 @@ dependencies = [
  "crossterm",
  "instability",
  "ratatui-core",
+]
+
+[[package]]
+name = "ratatui-macros"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7f1342a13e83e4bb9d0b793d0ea762be633f9582048c892ae9041ef39c936f4"
+dependencies = [
+ "ratatui-core",
+ "ratatui-widgets",
 ]
 
 [[package]]
@@ -3713,18 +3724,18 @@ dependencies = [
 
 [[package]]
 name = "terminput"
-version = "0.5.12"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb2e8e835e040588586eb480bd465b41e1164d507190cce0c7153bb56b27614d"
+checksum = "deb7aa689afcefce48546d7794bb5f6d1ff72cd41c255f39d2a83a158e0e99d8"
 dependencies = [
  "bitflags 2.10.0",
 ]
 
 [[package]]
 name = "terminput-crossterm"
-version = "0.4.8"
+version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7be7413ae59d7422b735668188a5ebc252ac29765e609fed1cd23b6039d40ef"
+checksum = "8e693d2259ed8e731182f717a22aa321008a6ccea4d186a8c81199529153d812"
 dependencies = [
  "crossterm",
  "terminput",

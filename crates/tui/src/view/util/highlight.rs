@@ -120,7 +120,9 @@ pub fn highlight_if(
 
 /// Map [SyntaxType] to a syntax highlighting language
 fn get_config(content_type: SyntaxType) -> HighlightConfiguration {
-    let mut config = match content_type {
+    let mut config: HighlightConfiguration = match content_type {
+        // TODO fix tree-sitter-json for wasm
+        #[cfg(not(target_arch = "wasm32"))]
         SyntaxType::Json => HighlightConfiguration::new(
             tree_sitter_json::LANGUAGE.into(),
             "json",
@@ -129,6 +131,8 @@ fn get_config(content_type: SyntaxType) -> HighlightConfiguration {
             "",
         )
         .expect("Error initializing JSON syntax highlighter"),
+        #[cfg(target_arch = "wasm32")]
+        SyntaxType::Json => todo!(),
     };
     config.configure(
         HighlightName::iter()

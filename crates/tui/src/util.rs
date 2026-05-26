@@ -7,10 +7,6 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use bytes::Bytes;
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-};
 use futures::{FutureExt, future};
 use slumber_util::{ResultTraced, ResultTracedAnyhow, paths::expand_home};
 use std::{
@@ -197,6 +193,7 @@ impl Drop for TickLoop {
 /// becomes an issue we can try to detect if the subprocess took over the
 /// terminal and cut it loose if not, or add a config field for it.
 #[instrument(level = "info", skip(messages_tx))]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn yield_terminal(
     mut command: Command,
     messages_tx: &MessageSender,
@@ -243,7 +240,12 @@ pub fn yield_terminal(
 }
 
 /// Set up terminal for TUI
+#[cfg(not(target_arch = "wasm32"))]
 pub fn initialize_terminal() -> anyhow::Result<()> {
+    use crossterm::{
+        event::EnableMouseCapture, terminal::EnterAlternateScreen,
+    };
+
     info!("Initializing terminal");
     crossterm::terminal::enable_raw_mode()?;
     crossterm::execute!(
@@ -255,7 +257,12 @@ pub fn initialize_terminal() -> anyhow::Result<()> {
 }
 
 /// Return terminal to initial state
+#[cfg(not(target_arch = "wasm32"))]
 pub fn restore_terminal() -> anyhow::Result<()> {
+    use crossterm::{
+        event::DisableMouseCapture, terminal::LeaveAlternateScreen,
+    };
+
     info!("Restoring terminal");
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
@@ -267,7 +274,10 @@ pub fn restore_terminal() -> anyhow::Result<()> {
 }
 
 /// Clear all input events in the terminal event buffer
+#[cfg(not(target_arch = "wasm32"))]
 pub fn clear_event_buffer() {
+    use crossterm::event;
+
     while let Ok(true) = event::poll(Duration::from_millis(0)) {
         let _ = event::read();
     }

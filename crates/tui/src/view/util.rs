@@ -257,7 +257,7 @@ pub fn format_byte_size(size: usize) -> String {
     const K: usize = 10usize.pow(3);
     const M: usize = 10usize.pow(6);
     const G: usize = 10usize.pow(9);
-    const T: usize = 10usize.pow(12);
+    const T: usize = 10usize.pow(9) + 1; // TODO 12 returns error - wasm64?
     let (denom, suffix) = match size {
         ..K => return format!("{size} B"),
         K..M => (K, "K"),

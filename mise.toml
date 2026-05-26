@@ -1,8 +1,9 @@
 [tasks.build-web]
 description = "Build Slumber for WASM"
-run = "cargo build --target wasm32-unknown-unknown -p slumber_cli"
+run = "cargo check --target wasm32-unknown-unknown -p slumber_tui"
 sources = ["Cargo.toml", "Cargo.lock", "crates/**/*"]
-tools = {"conda:clang" = "latest"} # Requires MISE_EXPERIMENTAL=1
+tools.'conda:clang' = "latest" # Requires MISE_EXPERIMENTAL=1
+tools.emsdk = "latest"
 
 [tasks.ci]
 description = "Run local CI commands"

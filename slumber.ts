@@ -77,6 +77,7 @@ function folder(name: string, recipes: Recipes): Folder {
 }
 
 export const recipes: Recipes = {
+  test: command(["TODO"]),
   newSession: {
     ...baseRecipe,
     method: "POST",

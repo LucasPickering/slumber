@@ -89,10 +89,6 @@ export function command(
   command: string[],
   kwargs: CommandKwargs & { output: "stream" },
 ): Stream;
-export function command(...args: unknown[]): unknown {
-  console.log(Deno.core.ops);
-  return Deno.core.ops.command(...args);
-}
 interface CommandKwargs {
   cwd?: string;
   output?: "string" | "bytes" | "stream";
@@ -102,15 +98,10 @@ interface CommandKwargs {
 export function file(path: string, kwargs?: { output?: "string" }): string;
 export function file(path: string, kwargs: { output: "bytes" }): Bytes;
 export function file(path: string, kwargs: { output: "stream" }): Stream;
-export function file(...args: unknown[]): unknown {
-  return Deno.core.ops.file(...args);
-}
 
 export function prompt(
   kwargs?: { message?: string; default?: string; sensitive?: boolean },
-): string {
-  return Deno.core.ops.prompt(options, kwargs);
-}
+): string;
 
 export function response<T>(
   recipeId: string,
@@ -125,9 +116,6 @@ export function response(
   recipeId: string,
   kwargs: ResponseKwargs & { output: "bytes" },
 ): Bytes;
-export function response(...args: unknown[]): unknown {
-  return Deno.core.ops.response(...args);
-}
 interface ResponseKwargs {
   trigger?: "never" | "noHistory" | "always" | string;
   output?: "todo" | "string" | "bytes";
@@ -143,19 +131,12 @@ export function responseHeader(
   header: string,
   kwargs?: ResponseKwargs & { output: "bytes" },
 ): Bytes;
-export function responseHeader(...args: unknown[]): unknown {
-  return Deno.core.ops.response_header(...args);
-}
 
 // Generics allows for type restriction when doing operations on the output
 export function select<T extends TemplateValue = TemplateValue>(
   options: SelectOption<T>[],
   kwargs?: { message?: string },
-): T {
-  return Deno.core.ops.select(options, kwargs);
-}
+): T;
 type SelectOption<T> = T | { label: string; value: T };
 
-export function sensitive<T>(value: T): T | string {
-  return Deno.core.ops.sensitive(options, kwargs);
-}
+export function sensitive<T>(value: T): T | string;

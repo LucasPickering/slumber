@@ -1,0 +1,20 @@
+[package]
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+name = "rustyscript-test"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+# rustyscript = {version = "0.12.3", default-features = false}
+# deno_core = "0.380.1"
+deno_core = "*"
+icu_calendar = "=2.1.1"
+rustyscript = {git = "https://github.com/rscarson/rustyscript", default-features = false, features = ["fs_import"]}
+
+[lints]
+workspace = true

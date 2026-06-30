@@ -91,3 +91,7 @@ Don't!
 ## Continuous Integration
 
 CI runs on Github Actions. Tests, linting, and documentation will be checked automatically.
+
+## AI Usage
+
+Contributions generated primarily by LLMs or other AI models are not accepted.

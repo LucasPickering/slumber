@@ -44,10 +44,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::{
-    select, task,
-    time::{self, MissedTickBehavior},
-};
+use tokio::{select, task};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, trace};
 
@@ -131,9 +128,6 @@ where
     B: 'static + TerminalBackend,
     B::Error: 'static + Send + Sync,
 {
-    /// Rough **maximum** time for each iteration of the main loop
-    const TICK_TIME: Duration = Duration::from_millis(250);
-
     /// Create a new TUI
     ///
     /// This will *not* start the TUI process. It initializes all needed state,
@@ -222,11 +216,6 @@ where
 
         self.state.draw(&mut self.terminal)?; // Initial draw
 
-        // This loop is limited by the rate that messages come in, with a
-        // minimum rate enforced by an interval. The loop terminates when the
-        // cancel token is set
-        let mut interval = time::interval(Self::TICK_TIME);
-        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             // ===== Message Phase =====
             // Wait for one of 2 things to happen:

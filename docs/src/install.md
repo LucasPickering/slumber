@@ -23,13 +23,13 @@ brew install LucasPickering/tap/slumber
 ### sh
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/LucasPickering/slumber/releases/download/v3.3.0/slumber-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/LucasPickering/slumber/releases/latest/download/slumber-installer.sh | sh
 ```
 
 ### powershell
 
 ```sh
-powershell -c "irm https://github.com/LucasPickering/slumber/releases/download/v3.3.0/slumber-installer.ps1 | iex"
+powershell -c "irm https://github.com/LucasPickering/slumber/releases/latest/download/slumber-installer.ps1 | iex"
 ```
 
 ## Shell Completions

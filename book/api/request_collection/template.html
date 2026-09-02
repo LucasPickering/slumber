@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Redirecting...</title>
+    <meta http-equiv="refresh" content="0; URL=/other/v4_migration.html">
+    <link rel="canonical" href="/other/v4_migration.html">
+  </head>
+  <body>
+      <p>Redirecting to... <a href="/other/v4_migration.html">/other/v4_migration.html</a>.</p>
+
+<script>
+    // This handles redirects that involve fragments.
+    document.addEventListener('DOMContentLoaded', function() {
+        const fragmentMap =
+            {}
+        ;
+        const fragment = window.location.hash;
+        if (fragment) {
+            let redirectUrl = "/other/v4_migration.html";
+            const target = fragmentMap[fragment];
+            if (target) {
+                let url = new URL(target, window.location.href);
+                redirectUrl = url.href;
+            } else {
+                let url = new URL(redirectUrl, window.location.href);
+                url.hash = window.location.hash;
+                redirectUrl = url.href;
+            }
+            window.location.replace(redirectUrl);
+        }
+        // else redirect handled by http-equiv
+    });
+</script>
+  </body>
+</html>

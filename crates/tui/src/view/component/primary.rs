@@ -288,7 +288,7 @@ impl PrimaryView {
         // Draw toggle hotkey hint
         let bottom_row = area.offset(Offset {
             x: 1,
-            y: (area.height - 1).into(),
+            y: area.height.saturating_sub(1).into(),
         });
         canvas.render_widget(
             format!(
@@ -541,6 +541,7 @@ mod tests {
         view::test_util::{TestComponent, TestHarness, harness},
     };
     use pretty_assertions::assert_eq;
+    use ratatui::buffer::Buffer;
     use rstest::rstest;
     use slumber_core::http::BuildOptions;
     use slumber_util::assert_matches;
@@ -633,6 +634,23 @@ mod tests {
             y: 0,
         };
         assert_eq!(component.view.layout(area), expected);
+    }
+
+    /// Regression test: drawing a zero-height sidebar used to panic on u16
+    /// underflow in `draw_sidebar` (`area.height - 1`)
+    #[rstest]
+    fn test_zero_height_sidebar_does_not_underflow(mut harness: TestHarness) {
+        let view = PrimaryView::new();
+        let area = Rect::new(0, 0, 50, 20);
+        let mut buffer = Buffer::empty(area);
+        let mut canvas =
+            Canvas::draw_all_area(&mut buffer, &view, (), area, false);
+        view.draw_sidebar(
+            &mut canvas,
+            Sidebar::Recipe,
+            Rect::new(0, 19, 50, 0),
+            false,
+        );
     }
 
     /// Test selected pane and fullscreen mode loading from persistence

@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- Fixed underflow in hotkey hint 
+- Fixed underflow in hotkey hint [#767](https://github.com/LucasPickering/slumber/pull/767) (@MichaelXavier)
 
 ## [5.3.0] - 2026-05-16
 

@@ -437,6 +437,19 @@ mod tests {
     use slumber_util::{Factory, assert_matches};
     use terminput::{KeyCode, KeyModifiers};
 
+    /// Render to a zero-size terminal and make sure it doesn't crash
+    ///
+    /// There's been a variety of panics in the past related to a zero-size
+    /// screen. This is a catch-all that won't cover every case but does
+    /// alright.
+    #[rstest]
+    fn test_empty_area(#[with(0, 0)] mut harness: TestHarness) {
+        let collection = Arc::clone(&harness.collection);
+        let mut component =
+            TestComponent::new(&mut harness, Root::new(Ok(collection)));
+        component.int(&mut harness).drain_draw().assert().empty();
+    }
+
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile
     #[rstest]

@@ -165,7 +165,8 @@ impl ViewState {
                 VisiblePane::Recipe => {
                     self.top_constraint.set_draw_sizes(PaneSizes {
                         pane: pane.area.height,
-                        parent: area.height - 2, // -2 for the header
+                        // -2 for the header
+                        parent: area.height.saturating_sub(2),
                     });
                 }
                 VisiblePane::Sidebar(_) => {

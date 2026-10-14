@@ -15,7 +15,7 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 use slumber_config::{Action, Config, InputBinding};
-use slumber_core::database::CollectionDatabase;
+use slumber_core::database::{CollectionDatabase, Database};
 use slumber_util::{doc_link, paths};
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -114,6 +114,7 @@ fn general_rows(styles: &Styles) -> Vec<[Span<'static>; 2]> {
     let doc_link = doc_link("");
     let config_path = Config::path().display().to_string();
     let log_path = paths::log_file().display().to_string();
+    let db_path = Database::path().display().to_string();
     let collection_path =
         ViewContext::with_database(CollectionDatabase::metadata)
             .map(|metadata| metadata.path.display().to_string())
@@ -123,6 +124,7 @@ fn general_rows(styles: &Styles) -> Vec<[Span<'static>; 2]> {
         [header(styles, "Docs"), doc_link.into()],
         [header(styles, "Configuration"), config_path.into()],
         [header(styles, "Log"), log_path.into()],
+        [header(styles, "Database"), db_path.into()],
         [header(styles, "Collection"), collection_path.into()],
     ]
 }

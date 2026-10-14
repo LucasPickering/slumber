@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Support compressed responses
   - brotli, deflate, gzip, and zstd content encodings are now supported
   - Slumber will not include a `Content-Encoding` header by default; if you want your responses to be compressed, you'll have to manually add the request header
+- Include database path in TUI Help page
 
 ### Fixed
 

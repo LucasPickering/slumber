@@ -6,10 +6,10 @@ edition = "2024"
 [dependencies]
 # Script doesn't support workspaces yet so we have to redefine deps
 clap = {version = "4", default-features = false, features = ["derive", "std"]}
-schemars = "1.0"
+schemars = {version = "1.0", features = ["preserve_order"]}
 slumber_config = {path = "../crates/config", features = ["schema", "tui"]}
 slumber_core = {path = "../crates/core", features = ["schema"]}
-serde_json = "1.0"
+serde_json = {version = "1.0", features = ["preserve_order"]}
 ---
 //! Script to generate JSON Schemas for Slumber entities. This is a separate
 //! script because:

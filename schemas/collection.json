@@ -450,6 +450,10 @@
           "description": "`Authorization: Basic {username:password | base64}`",
           "type": "object",
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "basic"
+            },
             "username": {
               "$ref": "#/$defs/Template"
             },
@@ -462,10 +466,6 @@
                   "type": "null"
                 }
               ]
-            },
-            "type": {
-              "type": "string",
-              "const": "basic"
             }
           },
           "required": [
@@ -477,12 +477,12 @@
           "description": "`Authorization: Bearer {token}`",
           "type": "object",
           "properties": {
-            "token": {
-              "$ref": "#/$defs/Template"
-            },
             "type": {
               "type": "string",
               "const": "bearer"
+            },
+            "token": {
+              "$ref": "#/$defs/Template"
             }
           },
           "required": [

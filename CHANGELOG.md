@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [5.4.0] - 2026-10-14
+
+<!-- ANCHOR: changelog -->
+
 ### Changed
 
 - Use a single unicode character for checkboxes

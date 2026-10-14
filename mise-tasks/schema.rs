@@ -19,7 +19,13 @@ serde_json = "1.0"
 use clap::{Parser, ValueEnum};
 use slumber_config::Config;
 use slumber_core::collection::Collection;
-use std::{fmt::Display, fs, path::Path, process::ExitCode};
+use std::{
+    fmt::Display,
+    fs, io,
+    io::Write,
+    path::Path,
+    process::{Command, ExitCode, Stdio},
+};
 
 #[derive(Debug, Parser)]
 #[clap(name = "slumber-schema")]
@@ -80,14 +86,19 @@ fn main() -> ExitCode {
             let path =
                 Path::new(&args.output).join(format!("{schema_target}.json"));
             if args.check {
-                let current = fs::read_to_string(&path).unwrap();
-                if current != json {
+                let old = fs::read_to_string(&path).unwrap();
+                if old != json {
                     has_check_error = true;
                     eprintln!(
                         "{path} has changed; regenerate it with \
                         `mise run schema {schema_target}`",
                         path = path.display()
                     );
+
+                    // Print a diff
+                    if let Err(error) = print_diff(&path, &json) {
+                        eprintln!("Error printing diff: {error}")
+                    }
                 }
             } else {
                 println!("Writing to {}", path.display());
@@ -101,4 +112,25 @@ fn main() -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// Print the diff between a file (old) and in-memory content (new)
+fn print_diff(file: &Path, new: &str) -> io::Result<()> {
+    // Using git is much easier than calculating it ourselves. The new version
+    // is piped in via stdin
+    let mut child = Command::new("git")
+        .args([
+            "diff".as_ref(),
+            "--no-index".as_ref(),
+            "--".as_ref(),
+            file.as_os_str(),
+            "-".as_ref(),
+        ])
+        .stdin(Stdio::piped())
+        .spawn()?;
+
+    let stdin = child.stdin.as_mut().unwrap();
+    stdin.write_all(new.as_bytes())?;
+    child.wait()?;
+    Ok(())
 }

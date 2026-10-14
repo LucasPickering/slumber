@@ -78,8 +78,18 @@ jobs:
   schema:
     name: Check JSON Schemas for Changes
     runs-on: ubuntu-latest
+    env:
+      # Cargo scripts are only supported on nightly. Version matches that from
+      # the fmt step
+      TOOLCHAIN: nightly-2026-02-20
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{env.TOOLCHAIN}}
+          components: rustfmt
+          cache: true
 
       - name: Cache Rust files
         uses: swatinem/rust-cache@v2

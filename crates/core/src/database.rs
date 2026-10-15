@@ -392,8 +392,8 @@ impl CollectionDatabase {
             .traced();
     }
 
-    /// Get a request by ID, or `None` if it does not exist in history.
-    pub fn get_request(
+    /// Get an exchange by ID, or `None` if not in the database
+    pub fn get_exchange(
         &self,
         request_id: RequestId,
     ) -> Result<Option<Exchange>, DatabaseError> {

@@ -281,7 +281,7 @@ impl RequestStore {
         let request = match self.requests.entry(id) {
             Entry::Occupied(entry) => Some(entry.into_mut()),
             Entry::Vacant(entry) => {
-                self.database.get_request(id)?.map(|exchange| {
+                self.database.get_exchange(id)?.map(|exchange| {
                     entry.insert(RequestState::new_response(exchange))
                 })
             }

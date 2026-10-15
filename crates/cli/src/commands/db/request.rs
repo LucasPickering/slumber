@@ -160,7 +160,7 @@ impl Subcommand for DbRequestCommand {
                             anyhow!("Recipe `{recipe_id}` has no history")
                         })?,
                     RecipeOrRequest::Request(request_id) => {
-                        database.get_request(request_id)?.ok_or_else(|| {
+                        database.get_exchange(request_id)?.ok_or_else(|| {
                             anyhow!("Request `{request_id}` not found")
                         })?
                     }

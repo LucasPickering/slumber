@@ -461,7 +461,7 @@ fn test_delete_recipe_requests(mut store: RequestStore) {
             // cache *and* the DB
             for id in all_ids {
                 let cached = store.get(id);
-                let db = store.database.get_request(id).unwrap();
+                let db = store.database.get_exchange(id).unwrap();
                 if expected_present.contains(&id) {
                     assert!(
                         cached.is_some(),
@@ -513,7 +513,7 @@ fn test_delete_request(mut store: RequestStore) {
 
     // It's gone
     assert_eq!(store.get(id), None);
-    assert_eq!(store.database.get_request(id).unwrap(), None);
+    assert_eq!(store.database.get_exchange(id).unwrap(), None);
 }
 
 #[fixture]

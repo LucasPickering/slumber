@@ -1082,7 +1082,7 @@ async fn test_send_request(http_engine: HttpEngine) {
     );
 
     // Ensure it was persisted
-    assert_eq!(database.get_request(exchange.id).unwrap(), Some(exchange));
+    assert_eq!(database.get_exchange(exchange.id).unwrap(), Some(exchange));
 }
 
 /// Leading/trailing newlines should be stripped from rendered header

@@ -293,7 +293,7 @@ fn test_request_body(#[case] body: RequestBody) {
     });
 
     database.insert_exchange(&exchange).unwrap();
-    let actual = database.get_request(exchange.id).unwrap().unwrap();
+    let actual = database.get_exchange(exchange.id).unwrap().unwrap();
 
     // What goes in is what comes out
     assert_eq!(actual.request.body, body);

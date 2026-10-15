@@ -143,11 +143,11 @@ where
 /// use slumber_util::doc_link;
 /// assert_eq!(
 ///     doc_link("api/chain"),
-///     "https://slumber.lucaspickering.me/api/chain.html",
+///     "https://slmbr.dev/api/chain.html",
 /// );
 /// ```
 pub fn doc_link(path: &str) -> String {
-    const ROOT: &str = "https://slumber.lucaspickering.me/";
+    const ROOT: &str = "https://slmbr.dev/";
     if path.is_empty() {
         ROOT.into()
     } else {

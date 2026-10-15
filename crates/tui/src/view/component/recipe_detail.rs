@@ -147,7 +147,7 @@ impl Draw for RecipeDetail {
             RecipeNodeState::None => canvas.render_widget(
                 Text::from(vec![
                     "No recipes defined; add one to your collection".into(),
-                    doc_link("api/request_collection/request_recipe").into(),
+                    doc_link("recipe").into(),
                 ]),
                 inner_area,
             ),

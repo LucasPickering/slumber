@@ -23,6 +23,8 @@ git-repository-url = "https://github.com/LucasPickering/slumber"
 preferred-dark-theme = "coal"
 
 [output.html.redirect]
+# Convenience/brevity redirects
+"/recipe.html" = "/api/request_collection/request_recipe.html"
 # Every page linked in the old oranda+mdbook world needs a redirect here. Sadly
 # mdbook doesn't support blanket redirects :(
 "/book/api/configuration/editor.html" = "/user_guide/tui/editor.html"

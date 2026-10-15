@@ -122,10 +122,10 @@ fn general_rows(styles: &Styles) -> Vec<[Span<'static>; 2]> {
     vec![
         [header(styles, "Version"), CRATE_VERSION.into()],
         [header(styles, "Docs"), doc_link.into()],
-        [header(styles, "Configuration"), config_path.into()],
-        [header(styles, "Log"), log_path.into()],
-        [header(styles, "Database"), db_path.into()],
         [header(styles, "Collection"), collection_path.into()],
+        [header(styles, "Configuration"), config_path.into()],
+        [header(styles, "Database"), db_path.into()],
+        [header(styles, "Log"), log_path.into()],
     ]
 }
 

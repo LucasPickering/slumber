@@ -212,6 +212,7 @@ impl TemplateContext {
     }
 }
 
+/// Template context when producing eager values (where streams aren't allowed)
 impl Context<Value> for TemplateContext {
     async fn get_field(
         &self,
@@ -241,11 +242,14 @@ impl Context<Value> for TemplateContext {
     }
 }
 
+/// Template context when producing lazy values (where streams are allowed)
 impl Context<ValueStream> for TemplateContext {
     async fn get_field(
         &self,
         field: &Identifier,
     ) -> Result<ValueStream, RenderError> {
+        // Streams can't be cached because they can only be resolved once. If
+        // the value is cached, it must be eager.
         let guard = match self.get_field_cache_guard(field).await {
             FieldCacheOutcome::Hit(value) => return Ok(value.into()),
             FieldCacheOutcome::Miss(guard) => guard,

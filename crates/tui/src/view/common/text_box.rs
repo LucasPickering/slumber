@@ -340,12 +340,7 @@ impl TextState {
 
     /// Is the cursor at the end of the text?
     fn is_at_end(&self) -> bool {
-        self.cursor == self.char_len()
-    }
-
-    /// Get the number of **characters* (not bytes) in the text
-    fn char_len(&self) -> usize {
-        self.text.chars().count()
+        self.cursor == self.text.len()
     }
 
     /// Move cursor to the beginning of text
@@ -367,32 +362,13 @@ impl TextState {
     /// Move cursor left one **character**. This may be multiple bytes, if the
     /// character to the left is multiple bytes.
     fn left(&mut self) {
-        if !self.is_at_home() {
-            // unstable: use floor_char_boundary
-            // https://github.com/rust-lang/rust/issues/93743
-            // We know there's a char to the left, but we don't know how long
-            // it is. Keep jumping left until we've hit a char boundary
-            self.cursor -= 1;
-            while !self.text.is_char_boundary(self.cursor) {
-                self.cursor -= 1;
-            }
-        }
+        self.cursor =
+            self.text.floor_char_boundary(self.cursor.saturating_sub(1));
     }
 
     /// Move cursor right one character
     fn right(&mut self) {
-        if !self.is_at_end() {
-            // unstable: use ceil_char_boundary
-            // https://github.com/rust-lang/rust/issues/93743
-            // We checked that we're not at the end of a string, and we know the
-            // cursor must be on a char boundary, so jump by the length of the
-            // next char
-            let next_char = self.text[self.cursor..]
-                .chars()
-                .next()
-                .expect("Another char (not at end of string yet)");
-            self.cursor += next_char.len_utf8();
-        }
+        self.cursor = self.text.ceil_char_boundary(self.cursor + 1);
     }
 
     /// Delete character immediately left of the cursor. Return `true` if text
@@ -488,6 +464,9 @@ mod tests {
     use crate::{
         message::Message,
         view::test_util::{TestComponent, TestHarness, harness},
+    };
+    use proptest::{
+        arbitrary::any, collection, sample, test_runner::TestRunner,
     };
     use ratatui::{layout::Margin, text::Span};
     use rstest::rstest;
@@ -888,5 +867,63 @@ mod tests {
         state.left();
         state.insert('ü');
         assert_state(&state, "ëüõ", 2);
+
+        // Go to the end of the string
+        state.right();
+        state.right();
+        assert_state(&state, "ëüõ", 3);
+    }
+
+    /// Test some properties of [TextState]:
+    /// - It never crashes
+    /// - The cursor is always in the range [0, text.len()]
+    /// - If all items are disabled, nothing can be selected
+    /// - If only one item is enabled, selection events are never emitted after
+    ///   init (because the selection never changes)
+    #[rstest]
+    fn test_state_prop() {
+        // These are needed to drop the bool returns from the methods
+        fn delete_left(state: &mut TextState) {
+            state.delete_left();
+        }
+        fn delete_right(state: &mut TextState) {
+            state.delete_right();
+        }
+
+        /// Possible actions to run
+        const ACTIONS: &[fn(&mut TextState)] = &[
+            TextState::left,
+            TextState::right,
+            TextState::home,
+            TextState::end,
+            delete_left,
+            delete_right,
+        ];
+
+        let strategy = (
+            any::<String>(),
+            collection::vec(sample::select(ACTIONS), 0..50usize),
+        );
+
+        // I think the proptest! macro is annoying so I prefer manual
+        let test = |(text, actions): (String, Vec<fn(&mut TextState)>)| {
+            let mut state = TextState {
+                text,
+                cursor: 0,
+                scroll_x: Cell::default(),
+            };
+
+            for action in actions {
+                action(&mut state);
+                assert!(
+                    state.cursor <= state.text.len(),
+                    "Cursor must be in [0, text.len()]"
+                );
+            }
+
+            Ok(())
+        };
+        let mut runner = TestRunner::default();
+        runner.run(&strategy, test).unwrap();
     }
 }

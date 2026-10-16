@@ -23,6 +23,7 @@ OUTPUT_REGEX = re.compile(r"^Output \"(?P<path>.*)\"$")
 GIF_MD_FILE = "gifs.md"
 SKIP_ENV_VAR = "SLUMBER_SKIP_GIF_CHECK"
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -62,8 +63,7 @@ def generate_all(tapes: list[str]) -> None:
 
     # Add the GIFs to a markdown file so we can check them in one spot
     with open(GIF_MD_FILE, "w") as f:
-        for gif in sorted(gifs):  # Determinism!
-            f.write(f"{gif}\n\n![]({gif})\n\n")
+        f.writelines(f"{gif}\n\n![]({gif})\n" for gif in sorted(gifs))
 
     print(f"Don't forget to check all GIFs in {GIF_MD_FILE} before pushing!")
 
@@ -95,7 +95,7 @@ def check_all(tapes: list[str]) -> None:
             failed.append(gif)
         print(f"  {tape} -> {gif}: {'PASS' if good else 'FAIL'}")
     if failed:
-        raise Exception(f"Some GIFs are outdated: {failed}")
+        raise OutdatedGifsException(failed)
     else:
         print("All GIFs are up to date")
 
@@ -133,6 +133,15 @@ def run(command: list[str], env: dict[str, str] | None = None) -> str:
         env = {}
     output = subprocess.check_output(command, env={**os.environ, **env})
     return output.decode().strip()
+
+
+class OutdatedGifsException(Exception):
+    def __init__(self, gifs: list[str]) -> None:
+        self.gifs = gifs
+
+    def __str__(self) -> str:
+
+        return f"Some GIFs are outdated: {self.gifs}"
 
 
 if __name__ == "__main__":

@@ -12,10 +12,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
-## [5.4.1] - 2026-10-16
-
-<!-- ANCHOR: changelog -->
-
 ## Changed
 
 - Upgrade to Rust 1.99
@@ -23,6 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Fixed
 
 - Fix crash when editing a string with multi-byte unicode characters [#770](https://github.com/LucasPickering/slumber/issues/770)
+
+## [5.4.1] - 2026-10-16
+
+<!-- ANCHOR: changelog -->
+
+Skipped (accidentally)
 
 ## [5.4.0] - 2026-10-14
 

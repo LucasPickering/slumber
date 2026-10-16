@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Upgrade to Rust 1.99
 
+## Fixed
+
+- Fix crash when editing a string with multi-byte unicode characters [#770](https://github.com/LucasPickering/slumber/issues/770)
+
 ## [5.4.0] - 2026-10-14
 
 <!-- ANCHOR: changelog -->

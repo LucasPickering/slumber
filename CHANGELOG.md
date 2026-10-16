@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## Changed
+
+- Upgrade to Rust 1.99
+
 ## [5.4.0] - 2026-10-14
 
 <!-- ANCHOR: changelog -->

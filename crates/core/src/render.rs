@@ -34,7 +34,14 @@ use slumber_template::{
     ValueStream,
 };
 use std::{
-    fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
+    fmt::Debug,
+    io, iter,
+    path::PathBuf,
+    process::ExitStatus,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use thiserror::Error;
 
@@ -409,6 +416,16 @@ pub struct RenderGroupState {
     /// guard without entering a result. This will kill the entire render so
     /// other renderers of that field will be cancelled.
     field_cache: FieldCache,
+    /// TODO
+    /// TODO needs to be independent for each recipe build
+    sensitive: AtomicBool,
+}
+
+impl RenderGroupState {
+    /// TODO
+    pub fn sensitive(&self) -> bool {
+        self.sensitive.load(Ordering::Relaxed)
+    }
 }
 
 /// An abstraction that provides behavior for chained HTTP requests. This

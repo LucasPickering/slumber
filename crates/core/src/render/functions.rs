@@ -18,7 +18,13 @@ use slumber_template::{
 };
 use slumber_util::{TimeSpan, paths::expand_home};
 use std::{
-    env, fmt::Debug, io, path::PathBuf, process::Stdio, str::FromStr, sync::Arc,
+    env,
+    fmt::Debug,
+    io,
+    path::PathBuf,
+    process::Stdio,
+    str::FromStr,
+    sync::{Arc, atomic::Ordering},
 };
 use tokio::{
     fs::File,
@@ -1302,6 +1308,9 @@ pub fn upper(value: String) -> String {
 }
 
 fn mask_sensitive(context: &TemplateContext, value: String) -> String {
+    // TODO
+    context.state.sensitive.store(true, Ordering::Relaxed);
+
     if context.show_sensitive {
         value
     } else {

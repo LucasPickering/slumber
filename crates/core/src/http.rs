@@ -193,6 +193,7 @@ impl HttpEngine {
             .into(),
             client: client.clone(),
             request,
+            sensitive: context.state.sensitive(),
         })
     }
 
@@ -266,6 +267,7 @@ impl HttpEngine {
             record: record.into(),
             client: client.clone(),
             request,
+            sensitive: todo!(),
         })
     }
 
@@ -514,6 +516,9 @@ impl RequestTicket {
 
                 // If a DB was provided, save the exchange to it
                 if let Some(database) = persist_to {
+                    if self.sensitive {
+                        todo!();
+                    }
                     // Error here shouldn't kill the response, just log it
                     let _ = database.insert_exchange(&exchange).traced();
                 }

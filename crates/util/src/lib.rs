@@ -414,7 +414,7 @@ mod tests {
     #[case::seconds_longer("100s", Duration::from_secs(100))]
     #[case::minutes("3m", Duration::from_secs(180))]
     #[case::hours("3h", Duration::from_secs(10_800))]
-    #[case::days("2d", Duration::from_secs(172_800))]
+    #[case::days("2d", Duration::from_hours(48))]
     #[case::composite("2d3h10m17s", Duration::from_secs(
         2 * 86400 + 3 * 3600 + 10 * 60 + 17
     ))]

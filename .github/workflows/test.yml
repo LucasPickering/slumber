@@ -14,7 +14,7 @@ jobs:
     env:
       # Rustfmt requires a nightly toolchain because we use unstable rules. The
       # chosen version is fairly arbitrary
-      TOOLCHAIN: nightly-2026-02-20
+      TOOLCHAIN: nightly-2026-10-16
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +81,7 @@ jobs:
     env:
       # Cargo scripts are only supported on nightly. Version matches that from
       # the fmt step
-      TOOLCHAIN: nightly-2026-02-20
+      TOOLCHAIN: nightly-2026-10-16
     steps:
       - uses: actions/checkout@v4
 

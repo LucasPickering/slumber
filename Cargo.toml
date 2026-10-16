@@ -103,6 +103,7 @@ needless_pass_by_value = "allow"
 similar_names = "allow"
 single_match = "allow"
 too_many_lines = "allow"
+unused_async_trait_impl = "allow"
 unused_self = "allow"
 used_underscore_binding = "allow"
 

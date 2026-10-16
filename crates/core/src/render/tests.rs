@@ -923,7 +923,7 @@ async fn test_response_header(
             ..ResponseRecord::factory(id)
         }
         .into(),
-        end_time: Utc::now() - Duration::from_secs(60 * 60),
+        end_time: Utc::now() - Duration::from_hours(1),
         ..Exchange::factory((id, None, recipe.id.clone()))
     };
     database.insert_exchange(&exchange).unwrap();

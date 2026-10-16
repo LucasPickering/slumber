@@ -329,7 +329,7 @@ impl<'a> LineBuilder<'a> {
         debug_assert!(
             self.patches.is_empty(),
             "Patches remaining in queue: {:?}",
-            &self.patches
+            self.patches
         );
         self.line
     }

@@ -353,7 +353,7 @@ impl FromSql for SqlWrap<Bytes> {
 impl FromSql for SqlWrap<StatusCode> {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         let code: u16 = value.as_i64()?.try_into().map_err(error_other)?;
-        let code = StatusCode::from_u16(code as u16).map_err(error_other)?;
+        let code = StatusCode::from_u16(code).map_err(error_other)?;
         Ok(Self(code))
     }
 }

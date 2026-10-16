@@ -174,7 +174,7 @@ impl Display for FunctionMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn fmt_parameters(parameters: &[ParameterMetadata]) -> String {
             // If the params get too long, overflow onto multiple lines
-            let one_line = parameters.iter().join(", ").to_string();
+            let one_line = parameters.iter().join(", ");
             if one_line.len() <= 60 {
                 one_line
             } else {

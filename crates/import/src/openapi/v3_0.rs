@@ -365,7 +365,7 @@ impl<'a> RecipeBuilder<'a> {
                 self.reference_resolver
                     .get_by_name::<SecurityScheme>(&scheme_name)
                     .with_context(|| {
-                        format!("{}.security.{scheme_name}", self.id,)
+                        format!("{}.security.{scheme_name}", self.id)
                     })
                     .traced()
                     .ok()

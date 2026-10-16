@@ -35,7 +35,7 @@ impl Footer {
 
     /// Display an informational message to the user
     pub fn notify(&mut self, message: String) {
-        let notification = Notification::new(message.to_string());
+        let notification = Notification::new(message);
         let id = notification.id;
         self.notification = Some(notification);
         let emitter = self.clear_emitter;

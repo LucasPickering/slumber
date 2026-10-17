@@ -39,7 +39,7 @@ async fn test_request() {
     // CLI requests are **not** persisted
     let database = Database::from_directory(&data_dir).unwrap();
     assert_eq!(
-        &database.get_all_requests().unwrap(),
+        &database.get_all_exchange_summaries().unwrap(),
         &[],
         "Expected request to not be persisted"
     );
@@ -435,7 +435,7 @@ async fn test_request_persist() {
 
     // Main request was persisted, triggered request was _not_
     let database = Database::from_directory(&data_dir).unwrap();
-    let requests = database.get_all_requests().unwrap();
+    let requests = database.get_all_exchange_summaries().unwrap();
     let (recipe_id, profile_id, status) = assert_matches!(
         requests.as_slice(),
         [ExchangeSummary {
@@ -475,7 +475,7 @@ async fn test_request_persist_disabled() {
 
     // Request was persisted
     let database = Database::from_directory(&data_dir).unwrap();
-    let requests = database.get_all_requests().unwrap();
+    let requests = database.get_all_exchange_summaries().unwrap();
     let (recipe_id, profile_id, status) = assert_matches!(
         requests.as_slice(),
         [ExchangeSummary {

@@ -349,7 +349,7 @@ impl RequestStore {
         // store, because they don't include request/response data
         let loaded = self
             .database
-            .get_recipe_requests(profile_id.into(), recipe_id)?;
+            .get_recipe_exchange_summaries(profile_id.into(), recipe_id)?;
 
         // Find what we have in memory already
         let iter = self

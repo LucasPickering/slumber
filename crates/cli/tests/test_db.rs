@@ -86,7 +86,7 @@ fn test_collection_migrate_paths() {
     let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 1);
     assert_eq!(collections[0].id, first_collection.id);
-    assert_eq!(database.get_all_requests().unwrap().len(), 4);
+    assert_eq!(database.get_all_exchange_summaries().unwrap().len(), 4);
 }
 
 /// `slumber db collection migrate` with IDs as arguments
@@ -118,7 +118,7 @@ fn test_collection_migrate_ids() {
     let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 1);
     assert_eq!(collections[0].id, id1);
-    assert_eq!(database.get_all_requests().unwrap().len(), 4);
+    assert_eq!(database.get_all_exchange_summaries().unwrap().len(), 4);
 }
 
 /// `slumber db collection delete`
@@ -131,7 +131,7 @@ fn test_collection_delete() {
     let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 2);
     let id = collections[0].id;
-    assert_eq!(database.get_all_requests().unwrap().len(), 4);
+    assert_eq!(database.get_all_exchange_summaries().unwrap().len(), 4);
 
     // Delete!!
     command
@@ -144,7 +144,7 @@ fn test_collection_delete() {
     let collections = database.get_collections().unwrap();
     assert_eq!(collections.len(), 1);
     assert_ne!(collections[0].id, id); // Deleted collection is NOT present
-    assert_eq!(database.get_all_requests().unwrap().len(), 1);
+    assert_eq!(database.get_all_exchange_summaries().unwrap().len(), 1);
 }
 
 /// Test collection deletion when the file is already gone. Should still work
@@ -263,7 +263,7 @@ fn test_request_delete() {
         .assert()
         .success();
     let remaining = database
-        .get_all_requests()
+        .get_all_exchange_summaries()
         .unwrap()
         .into_iter()
         .map(|exchange| exchange.id)

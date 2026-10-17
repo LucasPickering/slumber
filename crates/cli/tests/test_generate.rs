@@ -77,7 +77,7 @@ async fn test_generate_curl_execute_trigger() {
 
     // Executed request should not have been persisted
     let database = Database::from_directory(&data_dir).unwrap();
-    assert_eq!(&database.get_all_requests().unwrap(), &[]);
+    assert_eq!(&database.get_all_exchange_summaries().unwrap(), &[]);
 }
 
 // More detailed test cases for curl are defined in unit tests

@@ -242,6 +242,22 @@ impl TryFrom<String> for HttpMethod {
     }
 }
 
+impl PartialEq<reqwest::Method> for HttpMethod {
+    fn eq(&self, other: &reqwest::Method) -> bool {
+        match self {
+            Self::Connect => other == reqwest::Method::CONNECT,
+            Self::Delete => other == reqwest::Method::DELETE,
+            Self::Get => other == reqwest::Method::GET,
+            Self::Head => other == reqwest::Method::HEAD,
+            Self::Options => other == reqwest::Method::OPTIONS,
+            Self::Patch => other == reqwest::Method::PATCH,
+            Self::Post => other == reqwest::Method::POST,
+            Self::Put => other == reqwest::Method::PUT,
+            Self::Trace => other == reqwest::Method::TRACE,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 #[error(
     "Invalid HTTP method `{input}`. Must be one of: {}",

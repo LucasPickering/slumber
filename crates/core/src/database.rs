@@ -9,7 +9,7 @@ mod tests;
 use crate::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
     database::convert::{CollectionPath, SqlWrap},
-    http::{Exchange, ExchangeSummary, RequestId},
+    http::{Exchange, ExchangeSummary, HttpMethod, RequestId},
 };
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, named_params};
@@ -25,6 +25,7 @@ use std::{
 use strum::IntoDiscriminant;
 use thiserror::Error;
 use tracing::{debug, info};
+use url::Url;
 use uuid::Uuid;
 
 /// Maximum number of commands to store in history **per collection**. When we
@@ -268,8 +269,8 @@ impl Database {
         Ok(())
     }
 
-    /// Get all requests for all collections
-    pub fn get_all_requests(
+    /// Get all exchanges for all collections
+    pub fn get_all_exchange_summaries(
         &self,
     ) -> Result<Vec<ExchangeSummary>, DatabaseError> {
         // Wish we had try blocks ¯\_(ツ)_/¯
@@ -455,8 +456,8 @@ impl CollectionDatabase {
             .traced()
     }
 
-    /// Get a list of all requests for a profile+recipe combo
-    pub fn get_recipe_requests(
+    /// Get a list of all exchanges for a profile+recipe combo
+    pub fn get_recipe_exchange_summaries(
         &self,
         profile_filter: ProfileFilter,
         recipe_id: &RecipeId,
@@ -493,8 +494,8 @@ impl CollectionDatabase {
             .map_err(DatabaseError::add_context("Extracting request history"))
     }
 
-    /// Get all requests for this collection
-    pub fn get_all_requests(
+    /// Get all exchanges for this collection
+    pub fn get_all_exchange_summaries(
         &self,
     ) -> Result<Vec<ExchangeSummary>, DatabaseError> {
         self.database
@@ -513,6 +514,36 @@ impl CollectionDatabase {
             })
             .map_err(DatabaseError::add_context(format!(
                 "Querying all requests for collection `{}`",
+                self.collection_id
+            )))
+            .traced()
+    }
+
+    /// Get request data for all requests for this collection
+    pub fn get_all_requests(
+        &self,
+    ) -> Result<Vec<(RequestId, HttpMethod, Url)>, DatabaseError> {
+        self.database
+            .connection()
+            .prepare(
+                "SELECT id, method, url FROM requests_v2
+                WHERE collection_id = :collection_id ORDER BY start_time DESC",
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map(
+                    named_params! {":collection_id": self.collection_id},
+                    |row| {
+                        Ok((
+                            row.get("id")?,
+                            row.get("method")?,
+                            row.get::<_, SqlWrap<_>>("url")?.0,
+                        ))
+                    },
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .map_err(DatabaseError::add_context(format!(
+                "Error loading requests for collection `{}`",
                 self.collection_id
             )))
             .traced()

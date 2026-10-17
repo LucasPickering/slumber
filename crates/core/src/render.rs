@@ -38,10 +38,7 @@ use std::{
     io, iter,
     path::PathBuf,
     process::ExitStatus,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, atomic::AtomicBool},
 };
 use thiserror::Error;
 
@@ -324,7 +321,7 @@ impl Context<ValueStream> for TemplateContext {
             "response" => functions::response(arguments).await,
             "response_header" => functions::response_header(arguments).await,
             "select" => functions::select(arguments).await,
-            "sensitive" => functions::sensitive(arguments),
+            "sensitive" => functions::sensitive(arguments).await,
             "slice" => functions::slice(arguments),
             "split" => functions::split(arguments),
             "string" => functions::string(arguments),
@@ -419,13 +416,6 @@ pub struct RenderGroupState {
     /// TODO
     /// TODO needs to be independent for each recipe build
     sensitive: AtomicBool,
-}
-
-impl RenderGroupState {
-    /// TODO
-    pub fn sensitive(&self) -> bool {
-        self.sensitive.load(Ordering::Relaxed)
-    }
 }
 
 /// An abstraction that provides behavior for chained HTTP requests. This

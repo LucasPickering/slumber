@@ -890,7 +890,7 @@ pub async fn prompt(
     // "<prompt>", we show "••••••••". It's "technically" right and plays well
     // in tests. Also it reminds users that a prompt is sensitive in the TUI
     if sensitive {
-        Ok(mask_sensitive(context, reply))
+        mask_sensitive(context, reply).await
     } else {
         Ok(reply)
     }
@@ -1103,11 +1103,11 @@ impl TryFromValue for SelectOption {
 ///     output: "•••••••"
 /// ```
 #[template]
-pub fn sensitive(
+pub async fn sensitive(
     #[context] context: &TemplateContext,
     value: String,
-) -> String {
-    mask_sensitive(context, value)
+) -> Result<String, FunctionError> {
+    mask_sensitive(context, value).await
 }
 
 /// ```notrust
@@ -1307,14 +1307,38 @@ pub fn upper(value: String) -> String {
     value.to_uppercase()
 }
 
-fn mask_sensitive(context: &TemplateContext, value: String) -> String {
+async fn mask_sensitive(
+    context: &TemplateContext,
+    value: String,
+) -> Result<String, FunctionError> {
     // TODO
     context.state.sensitive.store(true, Ordering::Relaxed);
 
     if context.show_sensitive {
-        value
+        // TODO
+        let response = context
+            .prompter
+            .prompt_select(
+                "TODO".into(),
+                vec![
+                    SelectOption {
+                        label: "Yes".into(),
+                        value: true.into(),
+                    },
+                    SelectOption {
+                        label: "No".into(),
+                        value: false.into(),
+                    },
+                ],
+            )
+            .await;
+        if response == Some(true.into()) {
+            Ok(value)
+        } else {
+            Err(FunctionError::CommandEmpty) // TODO correct error
+        }
     } else {
-        "•".repeat(value.chars().count())
+        Ok("•".repeat(value.chars().count()))
     }
 }
 

@@ -389,8 +389,6 @@ pub struct RequestTicket {
     pub(super) client: Client,
     /// Our brave little astronaut, ready to be launched...
     pub(super) request: Request,
-    /// TODO
-    pub(super) sensitive: bool,
 }
 
 impl RequestTicket {

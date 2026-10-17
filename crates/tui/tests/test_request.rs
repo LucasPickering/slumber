@@ -242,7 +242,7 @@ fn url(server: &MockServer, path: &str) -> Template {
 #[track_caller]
 fn assert_persisted(database: &CollectionDatabase, expected: &[RecipeId]) {
     let actual = database
-        .get_all_requests()
+        .get_all_exchange_summaries()
         .unwrap()
         .into_iter()
         .map(|exchange| exchange.recipe_id)

@@ -101,15 +101,20 @@ impl Subcommand for DbRequestCommand {
                 let database = Database::load()?;
                 let exchanges = match (recipe, profile, all) {
                     // All requests for all collections
-                    (None, None, true) => database.get_all_requests()?,
+                    (None, None, true) => {
+                        database.get_all_exchange_summaries()?
+                    }
                     // All requests for the current collection
                     (None, None, false) => database
                         .into_collection(&global.collection_file()?)?
-                        .get_all_requests()?,
+                        .get_all_exchange_summaries()?,
                     // All requests for a single recipe in current collection
                     (Some(recipe_id), profile, false) => database
                         .into_collection(&global.collection_file()?)?
-                        .get_recipe_requests(profile.into(), &recipe_id)?,
+                        .get_recipe_exchange_summaries(
+                            profile.into(),
+                            &recipe_id,
+                        )?,
 
                     // Reject invalid arg groupings. This is a bit of a code
                     // stink because invalid states should generally be

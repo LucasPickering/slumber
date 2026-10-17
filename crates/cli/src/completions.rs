@@ -56,7 +56,7 @@ pub fn complete_recipe_or_request_id() -> ArgValueCompleter {
         // Suggestion request IDs
         completions.extend(
             Database::load()
-                .and_then(|db| db.get_all_requests())
+                .and_then(|db| db.get_all_exchange_summaries())
                 .map(|exchanges| {
                     get_candidates(
                         exchanges

@@ -112,7 +112,7 @@ fn test_collection_delete(collection_file: CollectionFile) {
     collection.insert_command("jq .").unwrap();
 
     // Sanity checks
-    assert_eq!(collection.get_all_requests().unwrap().len(), 1);
+    assert_eq!(collection.get_all_exchange_summaries().unwrap().len(), 1);
     assert_eq!(
         collection.get_ui(key_type, ui_key).unwrap(),
         Some("value1".into())
@@ -126,7 +126,7 @@ fn test_collection_delete(collection_file: CollectionFile) {
 
     // All gone!
     assert_eq!(database.get_collections().unwrap(), []);
-    assert_eq!(database.get_all_requests().unwrap(), []);
+    assert_eq!(database.get_all_exchange_summaries().unwrap(), []);
     assert_eq!(collection.get_ui(key_type, ui_key).unwrap(), None);
     assert_eq!(collection.get_commands("jq").unwrap(), [""; 0]);
 }
@@ -240,7 +240,14 @@ fn test_collection_merge(
 /// Test fetching all requests for the whole DB
 #[rstest]
 fn test_database_get_all_requests(request_db: RequestDb) {
-    assert_eq!(request_db.database.get_all_requests().unwrap().len(), 12);
+    assert_eq!(
+        request_db
+            .database
+            .get_all_exchange_summaries()
+            .unwrap()
+            .len(),
+        12
+    );
 }
 
 /// Test getting most recent request by recipe/profile
@@ -303,8 +310,8 @@ fn test_request_body(#[case] body: RequestBody) {
 #[rstest]
 fn test_collection_get_all_requests(request_db: RequestDb) {
     let [collection1, collection2] = request_db.collections;
-    assert_eq!(collection1.get_all_requests().unwrap().len(), 6);
-    assert_eq!(collection2.get_all_requests().unwrap().len(), 6);
+    assert_eq!(collection1.get_all_exchange_summaries().unwrap().len(), 6);
+    assert_eq!(collection2.get_all_exchange_summaries().unwrap().len(), 6);
 }
 
 /// Test fetching all requests for a single recipe
@@ -349,7 +356,10 @@ fn test_get_recipe_requests() {
             // Leave the Option here so a non-match will trigger a handy
             // assertion error
             let ids = database
-                .get_recipe_requests(profile_id.as_ref().into(), &recipe_id)
+                .get_recipe_exchange_summaries(
+                    profile_id.as_ref().into(),
+                    &recipe_id,
+                )
                 .unwrap()
                 .into_iter()
                 .map(|exchange| exchange.id)
@@ -370,7 +380,7 @@ fn test_get_recipe_requests() {
     // Load all requests for a recipe (across all profiles)
     let recipe_id = "recipe1".into();
     let ids = database
-        .get_recipe_requests(ProfileFilter::All, &recipe_id)
+        .get_recipe_exchange_summaries(ProfileFilter::All, &recipe_id)
         .unwrap()
         .into_iter()
         .map(|exchange| exchange.id)

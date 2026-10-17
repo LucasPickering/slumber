@@ -350,21 +350,12 @@ pub fn initialize_tracing(level_filter: LevelFilter, has_stderr: bool) {
             LevelFilter::OFF
         });
 
+    let registry = tracing_subscriber::registry()
+        .with(file_subscriber)
+        .with(stderr_subscriber);
     #[cfg(feature = "tokio_tracing")]
-    {
-        tracing_subscriber::registry()
-            .with(file_subscriber)
-            .with(stderr_subscriber)
-            .with(console_subscriber::spawn())
-            .init();
-    }
-    #[cfg(not(feature = "tokio_tracing"))]
-    {
-        tracing_subscriber::registry()
-            .with(file_subscriber)
-            .with(stderr_subscriber)
-            .init();
-    }
+    let registry = registry.with(console_subscriber::spawn());
+    registry.init();
 }
 
 /// Serialize a list of tuples as a mapping

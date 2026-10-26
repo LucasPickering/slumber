@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
-## Fixed
+### Fixed
 
 - Upgrade `rustls-webpki` to [disallow the eMudhra certificates](https://emudhra.we-have-a-problem.com/)
   - This is a critical security update!
@@ -26,11 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
-## Changed
+### Changed
 
 - Upgrade to Rust 1.99
 
-## Fixed
+### Fixed
 
 - Fix crash when editing a string with multi-byte unicode characters [#770](https://github.com/LucasPickering/slumber/issues/770)
 

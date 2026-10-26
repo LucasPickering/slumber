@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use pyo3::{
-    PyErr, PyResult,
-    exceptions::{PyRuntimeError, PyValueError},
+    Py, PyErr, PyResult, Python,
+    exceptions::{PyRuntimeError, PyUnicodeDecodeError, PyValueError},
     pyclass, pymethods, pymodule,
 };
 use slumber_config::Config;
@@ -21,7 +21,6 @@ use std::{
     error::Error,
     fmt::{self, Display},
     path::PathBuf,
-    str::Utf8Error,
     sync::{Arc, LazyLock},
 };
 use tokio::{
@@ -228,8 +227,11 @@ impl Response {
 
     /// Response content decoded as UTF-8
     #[getter]
-    fn text(&self) -> Result<&str, Utf8Error> {
-        std::str::from_utf8(self.response.body.bytes())
+    fn text(&self, py: Python<'_>) -> Result<&str, PyErr> {
+        let bytes = self.response.body.bytes();
+        std::str::from_utf8(bytes).map_err(|error| {
+            PyUnicodeDecodeError::new_err_from_utf8(py, bytes, error)
+        })
     }
 
     /// If the response status code is >= 400, raise an exception

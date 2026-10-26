@@ -17,13 +17,13 @@ release = false
 tag = false
 
 [lib]
-name = "slumber"
 crate-type = ["cdylib"]
+name = "slumber"
 
 [dependencies]
 async-trait = {workspace = true}
 indexmap = {workspace = true}
-pyo3 = {version = "0.27.2", features = ["experimental-async", "indexmap"]}
+pyo3 = {version = "0.30", features = ["experimental-async", "indexmap"]}
 slumber_config = {workspace = true}
 slumber_console = {workspace = true}
 slumber_core = {workspace = true}

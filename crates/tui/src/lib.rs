@@ -24,6 +24,8 @@ use crate::{
 use anyhow::{Context, anyhow};
 use futures::{Stream, StreamExt, future, pin_mut};
 use ratatui::{Terminal, prelude::Backend};
+#[cfg(web)]
+use ratzilla::backend::webgl2::WebGl2Backend;
 use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
@@ -178,6 +180,28 @@ impl Tui<CrosstermBackend<Stdout>> {
             default_path,
             data,
         ));
+        Ok(())
+    }
+}
+
+/// Web-based TUI
+#[cfg(web)]
+impl Tui<WebGl2Backend> {
+    /// TODO
+    pub async fn start() -> anyhow::Result<()> {
+        let app = Self::new(WebGl2Backend::new().expect("TODO"), None)?;
+        // Stream input from the terminal
+        let input_stream = EventStream::new().map(|event_result| {
+            let event = event_result.expect("Error reading terminal input");
+            // Convert from crossterm to the common terminput format. This
+            // enables support for multiple terminal backends
+            terminput_crossterm::to_terminput(event).unwrap()
+        });
+
+        let local = task::LocalSet::new();
+        local.spawn_local(app.run(input_stream));
+        local.await;
+
         Ok(())
     }
 }
@@ -855,6 +879,13 @@ impl TerminalBackend for CrosstermBackend<Stdout> {
         // https://docs.rs/ratatui-crossterm/0.1.0/ratatui_crossterm/struct.CrosstermBackend.html#method.writer_mut
         execute!(io::stdout(), CopyToClipboard::to_clipboard_from(text))
             .context("Error copying text")
+    }
+}
+
+#[cfg(web)]
+impl TerminalBackend for WebGl2Backend {
+    fn copy_to_clipboard(&mut self, text: String) -> anyhow::Result<()> {
+        todo!("copy text: {text}")
     }
 }
 

@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(LevelFilter::INFO);
     initialize_tracing(level, false);
     cfg_select! {
-        web => todo!(),
+        web => Tui::start().await,
         _ => {
             let collection_file = env::args().nth(1).map(String::into);
             Tui::start(collection_file).await

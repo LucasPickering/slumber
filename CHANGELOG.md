@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+## [5.4.4] - 2026-10-27
+
+<!-- ANCHOR: changelog -->
+
 ### Fixed
 
 - `slumber-python`: Update to PyO3 0.30 to support Python 3.15

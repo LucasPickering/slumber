@@ -192,7 +192,7 @@ impl Drop for TickLoop {
 /// that block, but we'll just hope the command is fire-and-forget. If this
 /// becomes an issue we can try to detect if the subprocess took over the
 /// terminal and cut it loose if not, or add a config field for it.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 #[traching::instrument(level = "info", skip(messages_tx))]
 pub fn yield_terminal(
     mut command: Command,
@@ -240,7 +240,7 @@ pub fn yield_terminal(
 }
 
 /// Set up terminal for TUI
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 pub fn initialize_terminal() -> anyhow::Result<()> {
     use crossterm::{
         event::EnableMouseCapture, terminal::EnterAlternateScreen,
@@ -257,7 +257,7 @@ pub fn initialize_terminal() -> anyhow::Result<()> {
 }
 
 /// Return terminal to initial state
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 pub fn restore_terminal() -> anyhow::Result<()> {
     use crossterm::{
         event::DisableMouseCapture, terminal::LeaveAlternateScreen,
@@ -274,7 +274,7 @@ pub fn restore_terminal() -> anyhow::Result<()> {
 }
 
 /// Clear all input events in the terminal event buffer
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 pub fn clear_event_buffer() {
     use crossterm::event;
 
@@ -472,7 +472,7 @@ pub async fn save_file(
 /// (e.g. `["sh", "-c"]`) to execute the command, or parse+run it natively if no
 /// shell is set. The shell should generally come from the config, but is
 /// taken as param for testing.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 #[tracing::instrument(level = "debug", skip(stdin))]
 pub async fn run_command(
     shell: &[String],
@@ -560,7 +560,7 @@ pub async fn confirm(
 macro_rules! no_wasm {
     ($($content:tt)*) => {
         cfg_select! {
-            target_arch = "wasm32" => {
+            wasm => {
                 todo!()
             }
             _ => {

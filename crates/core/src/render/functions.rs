@@ -7,19 +7,16 @@ use crate::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use derive_more::FromStr;
-use futures::{Stream, TryStreamExt};
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, de::IntoDeserializer};
 use slumber_macros::template;
 use slumber_template::{
-    Expected, RenderError, TryFromValue, Value, ValueError, WithValue,
+    Expected, TryFromValue, Value, ValueError, WithValue,
     impl_try_from_value_str,
 };
 use slumber_util::TimeSpan;
 use std::{env, fmt::Debug, str::FromStr, sync::Arc};
-use tokio::io::AsyncRead;
-use tokio_util::io::ReaderStream;
 
 // ===========================================================
 // Documentation for these functions is generated automatically by an mdbook
@@ -114,7 +111,7 @@ pub fn boolean(value: Value) -> bool {
 ///   - input: command(["grep","1"], stdin="line 1\nline2")
 ///     output: "line 1\n"
 /// ```
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 #[template]
 pub fn command(
     #[context] context: &TemplateContext,
@@ -304,7 +301,7 @@ pub fn env(variable: String, #[kwarg] default: String) -> String {
 ///   - input: file("config.json")
 ///     output: Contents of config.json file
 /// ```
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 #[template]
 pub fn file(
     #[context] context: &TemplateContext,
@@ -1466,27 +1463,26 @@ impl From<Sequence> for Value {
     }
 }
 
-/// Wrap a function call to return an error on Wasm targets
+/// Wrap a function call to return an error on web targets
 ///
 /// Use this in the `call()` implementation for functions that are not supposed
 /// on Wasm (e.g. `file()`). The function definition should also be gated behind
-/// `cfg(not(target_arch = "wasm32"))` to prevent compilation of non-web code.
-macro_rules! no_wasm {
+/// `cfg(not(web))` to prevent compilation of non-web code.
+macro_rules! no_web {
     ($fn_call:expr, $arguments:expr) => {
         cfg_select! {
-            target_arch = "wasm32" => {
+            web => {
                 todo!()
             }
-            _ => {
-                functions::file($arguments)
-            }
+            // TODO call the correct function
+            _ => functions::file($arguments),
         }
     };
 }
-pub(super) use no_wasm;
+pub(super) use no_web;
 
 /// Create a stream from an `AsyncRead` value
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 fn reader_stream(
     reader: impl AsyncRead,
 ) -> impl Stream<Item = Result<Bytes, RenderError>> {

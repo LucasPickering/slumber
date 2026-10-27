@@ -18,7 +18,7 @@ use crate::{
         TriggeredRequestError,
     },
     render::{
-        functions::{RequestTrigger, no_wasm},
+        functions::{RequestTrigger, no_web},
         util::{FieldCache, FieldCacheOutcome},
     },
 };
@@ -299,11 +299,11 @@ impl Context<ValueStream> for TemplateContext {
         match function_name.as_str() {
             "base64" => functions::base64(arguments),
             "boolean" => functions::boolean(arguments),
-            "command" => no_wasm!(functions::command, arguments),
+            "command" => no_web!(functions::command, arguments),
             "concat" => functions::concat(arguments),
             "debug" => functions::debug(arguments),
             "env" => functions::env(arguments),
-            "file" => no_wasm!(functions::file, arguments),
+            "file" => no_web!(functions::file, arguments),
             "float" => functions::float(arguments),
             "index" => functions::index(arguments),
             "integer" => functions::integer(arguments),

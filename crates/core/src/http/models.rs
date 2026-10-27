@@ -593,9 +593,9 @@ impl RequestRecord {
             profile_id,
             recipe_id,
             // version() isn't supposed on wasm
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(web))]
             http_version: request.version().into(),
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(web)]
             http_version: HttpVersion::Http11, // TODO is this right?
             method: request.method().into(),
             url: request.url().clone(),

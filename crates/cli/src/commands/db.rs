@@ -81,9 +81,9 @@ enum DbSubcommand {
 impl Subcommand for DbCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.subcommand {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(web))]
             None => self.sqlite_shell().await,
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(web)]
             None => todo!("error"),
             Some(DbSubcommand::Collection(command)) => {
                 command.execute(global).await
@@ -99,7 +99,7 @@ impl DbCommand {
     /// Open the sqlite shell
     ///
     /// Not supposed on the web because this uses a subprocess.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(web))]
     async fn sqlite_shell(self) -> anyhow::Result<ExitCode> {
         use anyhow::Context;
         use slumber_core::database::Database;

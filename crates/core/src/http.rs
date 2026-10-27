@@ -90,7 +90,7 @@ pub struct HttpEngine {
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
     pub fn new(config: &HttpEngineConfig) -> Self {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(web))]
         let build_client = |danger: bool| {
             use reqwest::redirect;
             let redirect_policy = if config.follow_redirects {
@@ -108,7 +108,7 @@ impl HttpEngine {
             builder.build().expect("Error building reqwest client")
         };
         // TODO error if redirect/danger are set
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(web)]
         let build_client = |_danger: bool| {
             Client::builder()
                 .user_agent(USER_AGENT)
@@ -870,12 +870,12 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => Ok(builder.body(bytes)),
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(web))]
             RenderedBody::Stream(stream) => {
                 let body = Body::wrap_stream(stream.stream);
                 Ok(builder.body(body))
             }
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(web)]
             RenderedBody::Stream(_) => todo!("error"),
             RenderedBody::Json(json) => Ok(builder.json(&json)),
             RenderedBody::FormUrlencoded(fields) => Ok(builder.form(&fields)),
@@ -890,7 +890,7 @@ impl RenderedBody {
                     tests::MULTIPART_BOUNDARY.set(form.boundary().to_owned());
                 }
 
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(not(web))]
                 for (field, stream) in fields {
                     // Convert the stream to a form part
                     let part = match stream.source {

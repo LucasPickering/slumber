@@ -74,7 +74,7 @@ pub struct Tui<B: TerminalBackend> {
     terminal: Terminal<B>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 impl Tui<CrosstermBackend<Stdout>> {
     /// Start the TUI on a real terminal. Any errors that occur during startup
     /// will be panics, because they prevent TUI execution.
@@ -296,10 +296,10 @@ where
             Message::Error { error } => self.state.view.error(error),
             Message::Event(event) => self.state.handle_event(event),
 
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(web))]
             Message::FileEdit { file, on_complete } => {
                 cfg_select! {
-                    target_arch = "wasm32" => {
+                    wasm => {
                         todo!()
                     }
                     _ => {
@@ -847,7 +847,7 @@ impl TerminalBackend for CrosstermBackend<Stdout> {
 }
 
 /// Restore terminal state during a panic
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(web))]
 fn initialize_panic_handler() {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {

@@ -218,7 +218,7 @@ impl<K> QueryableBody<K> {
 
     /// Run the current text as a shell command in a background task
     ///
-    /// Return a cancellation token that can be used to cancel the process
+    /// Return a cancellation token that can be used to cancel the process.
     fn spawn_command(
         &self,
         command: String,
@@ -226,6 +226,8 @@ impl<K> QueryableBody<K> {
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
     ) -> CancellationToken {
         let cancel_token = CancellationToken::new();
+
+        #[cfg(not(web))]
         let future = async move {
             // Store the command in history. Query and export commands are
             // stored together. We can toss the error; it gets traced by the DB
@@ -237,6 +239,13 @@ impl<K> QueryableBody<K> {
                 .with_context(|| format!("Error running `{command}`"));
             on_complete(command, result);
         };
+        // TODO how handle this on web? Probably need to disable the entire
+        // text box
+        #[cfg(web)]
+        let future = async {
+            let _ = (command, body, on_complete);
+        };
+
         ViewContext::spawn(util::cancellable(&cancel_token, future));
         cancel_token
     }

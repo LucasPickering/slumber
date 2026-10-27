@@ -16,6 +16,11 @@ async fn main() -> anyhow::Result<()> {
         .map(|value| value.parse().unwrap())
         .unwrap_or(LevelFilter::INFO);
     initialize_tracing(level, false);
-    let collection_file = env::args().nth(1).map(String::into);
-    Tui::start(collection_file).await
+    cfg_select! {
+        web => todo!(),
+        _ => {
+            let collection_file = env::args().nth(1).map(String::into);
+            Tui::start(collection_file).await
+        }
+    }
 }

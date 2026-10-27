@@ -36,7 +36,7 @@ slumber_template = {workspace = true}
 slumber_util = {workspace = true}
 strum = {workspace = true}
 terminput = {workspace = true}
-tokio = {workspace = true, features = ["macros", "tracing"]}
+tokio = {workspace = true, features = ["macros", "time", "tracing"]}
 tokio-util = {workspace = true}
 tracing = {workspace = true}
 tree-sitter-highlight = "0.26.0"

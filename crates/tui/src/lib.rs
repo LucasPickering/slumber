@@ -13,7 +13,7 @@ mod view;
 
 use crate::{
     collection_state::CollectionState,
-    http::{RequestConfig, RequestState, TuiHttpProvider},
+    http::{RequestConfig, TuiHttpProvider},
     input::{InputBindings, InputEvent},
     message::{
         HttpMessage, Message, MessageReceiver, MessageSender, RecipeCopyTarget,
@@ -21,8 +21,7 @@ use crate::{
     util::ResultReported,
     view::{Event, PreviewPrompter, RequestDisposition, TuiPrompter},
 };
-use anyhow::{Context, anyhow, bail};
-use bytes::Bytes;
+use anyhow::{Context, anyhow};
 use futures::{Stream, StreamExt, future, pin_mut};
 use ratatui::{Terminal, prelude::Backend};
 use slumber_config::{Action, Config};
@@ -32,8 +31,7 @@ use slumber_core::{
     http::{HttpEngine, RequestId, RequestSeed, RequestTicket},
     render::{Prompter, TemplateContext},
 };
-use slumber_util::yaml::SourceLocation;
-use std::{io::Stdout, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 use tokio::{select, task};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace};
@@ -110,6 +108,76 @@ impl Tui<CrosstermBackend<Stdout>> {
             error!(error = err.deref(), "Error restoring terminal, sorry!");
         }
 
+        Ok(())
+    }
+
+    // Non-web helpers
+
+    /// Spawn a task to listen in the background for quit signals
+    fn listen_for_signals(&self) {
+        let messages_tx = self.messages_tx.clone();
+        self.spawn(async move {
+            util::signals().await.reported(&messages_tx);
+            messages_tx.send(Message::Quit);
+        });
+    }
+
+    /// Spawn a task to watch the collection file for changes
+    fn watch_collection(&self) {
+        let path = self.state.collection_file.path().to_owned();
+        let messages_tx = self.messages_tx.clone();
+
+        self.spawn(util::watch_file(path, move || {
+            messages_tx.send(Message::CollectionStartReload);
+        }));
+    }
+
+    /// Open the collection file in the user's editor
+    fn edit_collection(
+        &self,
+        location: Option<SourceLocation>,
+    ) -> anyhow::Result<()> {
+        let editor = self.config.editor()?;
+        let command = if let Some(location) = location {
+            editor.open_at(location.source, location.line, location.column)
+        } else {
+            editor.open(self.state.collection_file.path())
+        };
+        util::yield_terminal(command, &self.messages_tx)
+    }
+
+    /// Save the body of a response to a file, prompting the user for a file
+    /// path
+    ///
+    /// If the body text is provided, that will be used. Useful when what's
+    /// being saved differs from the actual response body (because of
+    /// prettification/querying). If not provided, we'll pull the body from the
+    /// request store.
+    fn save_response_body(
+        &self,
+        request_id: RequestId,
+        text: Option<String>,
+    ) -> anyhow::Result<()> {
+        let Some(request_state) = self.state.request_store.get(request_id)
+        else {
+            bail!("Request not in store")
+        };
+        let RequestState::Response { exchange } = request_state else {
+            bail!("Request is not complete")
+        };
+        // Get a suggested file name from the response if possible
+        let default_path = exchange.response.file_name();
+
+        let data = text.map(Bytes::from).unwrap_or_else(|| {
+            // This is the path we hit for binary and/or large bodies that were
+            // never parsed. This clone is cheap so we're being efficient!
+            exchange.response.body.bytes().clone()
+        });
+        self.messages_tx.spawn_result(util::save_file(
+            self.messages_tx.clone(),
+            default_path,
+            data,
+        ));
         Ok(())
     }
 }
@@ -191,10 +259,12 @@ where
         mut self,
         input_stream: impl Stream<Item = terminput::Event>,
     ) -> anyhow::Result<Self> {
-        // Spawn background tasks
-        self.listen_for_signals();
-        self.watch_collection();
-
+        // Spawn background tasks. These don't apply to web targets
+        #[cfg(not(web))]
+        {
+            self.listen_for_signals();
+            self.watch_collection();
+        }
         let input_bindings =
             InputBindings::new(self.config.tui.input_bindings.clone());
         // Stream of terminal input events. Events that don't map to a message
@@ -286,6 +356,8 @@ where
                 );
             }
             Message::CollectionStartReload => self.state.reload_collection(),
+            // External editor isn't available on web
+            #[cfg(not(web))]
             Message::CollectionEdit { location } => {
                 self.edit_collection(location)?;
             }
@@ -298,20 +370,14 @@ where
 
             #[cfg(not(web))]
             Message::FileEdit { file, on_complete } => {
-                cfg_select! {
-                    wasm => {
-                        todo!()
-                    }
-                    _ => {
-                        let editor = self.config.editor()?;
-                        util::yield_terminal(
-                            editor.open(file.path()),
-                            &self.messages_tx,
-                        )?;
-                        on_complete(file);
-                    }
-                }
+                let editor = self.config.editor()?;
+                util::yield_terminal(
+                    editor.open(file.path()),
+                    &self.messages_tx,
+                )?;
+                on_complete(file);
             }
+            #[cfg(not(web))]
             Message::FileView { file, mime } => {
                 let pager = self.config.pager(mime.as_ref())?;
                 util::yield_terminal(
@@ -359,6 +425,7 @@ where
 
             Message::Notify(message) => self.state.view.notify(message),
             Message::Question(question) => self.state.view.question(question),
+            #[cfg(not(web))]
             Message::SaveResponseBody { request_id, data } => {
                 self.save_response_body(request_id, data).with_context(
                     || {
@@ -382,6 +449,16 @@ where
                 self.spawn(callback(context));
             }
             Message::Tick => {} // This just triggers a draw, no update needed
+
+            // All unsupported actions on web should be unreachable by disabling
+            // the triggering UI elements
+            #[cfg(web)]
+            Message::CollectionEdit { .. }
+            | Message::FileEdit { .. }
+            | Message::FileView { .. }
+            | Message::SaveResponseBody { .. } => {
+                unreachable!("TODO action should be disabled");
+            }
         }
         Ok(())
     }
@@ -464,39 +541,6 @@ where
             .refresh_request(&mut self.state.request_store, disposition);
 
         Ok(())
-    }
-
-    /// Spawn a task to listen in the background for quit signals
-    fn listen_for_signals(&self) {
-        let messages_tx = self.messages_tx.clone();
-        self.spawn(async move {
-            util::signals().await.reported(&messages_tx);
-            messages_tx.send(Message::Quit);
-        });
-    }
-
-    /// Spawn a task to watch the collection file for changes
-    fn watch_collection(&self) {
-        let path = self.state.collection_file.path().to_owned();
-        let messages_tx = self.messages_tx.clone();
-
-        self.spawn(util::watch_file(path, move || {
-            messages_tx.send(Message::CollectionStartReload);
-        }));
-    }
-
-    /// Open the collection file in the user's editor
-    fn edit_collection(
-        &self,
-        location: Option<SourceLocation>,
-    ) -> anyhow::Result<()> {
-        let editor = self.config.editor()?;
-        let command = if let Some(location) = location {
-            editor.open_at(location.source, location.line, location.column)
-        } else {
-            editor.open(self.state.collection_file.path())
-        };
-        util::yield_terminal(command, &self.messages_tx)
     }
 
     /// Spawn a task on the main thread
@@ -745,39 +789,6 @@ where
         Ok(())
     }
 
-    /// Save the body of a response to a file, prompting the user for a file
-    /// path. If the body text is provided, that will be used. Useful when
-    /// what's being saved differs from the actual response body (because of
-    /// prettification/querying). If not provided, we'll pull the body from the
-    /// request store.
-    fn save_response_body(
-        &self,
-        request_id: RequestId,
-        text: Option<String>,
-    ) -> anyhow::Result<()> {
-        let Some(request_state) = self.state.request_store.get(request_id)
-        else {
-            bail!("Request not in store")
-        };
-        let RequestState::Response { exchange } = request_state else {
-            bail!("Request is not complete")
-        };
-        // Get a suggested file name from the response if possible
-        let default_path = exchange.response.file_name();
-
-        let data = text.map(Bytes::from).unwrap_or_else(|| {
-            // This is the path we hit for binary and/or large bodies that were
-            // never parsed. This clone is cheap so we're being efficient!
-            exchange.response.body.bytes().clone()
-        });
-        self.messages_tx.spawn_result(util::save_file(
-            self.messages_tx.clone(),
-            default_path,
-            data,
-        ));
-        Ok(())
-    }
-
     /// Expose app state to the templater. Most of the data has to be cloned out
     /// to be passed across async boundaries. This is annoying but in reality
     /// it should be small data.
@@ -837,6 +848,7 @@ pub trait TerminalBackend: Backend {
     fn copy_to_clipboard(&mut self, text: String) -> anyhow::Result<()>;
 }
 
+#[cfg(not(web))]
 impl TerminalBackend for CrosstermBackend<Stdout> {
     fn copy_to_clipboard(&mut self, text: String) -> anyhow::Result<()> {
         // Use self.writer_mut() after stabilized

@@ -5,10 +5,8 @@ use crate::{
     util::syntax::SyntaxType,
     view::Question,
 };
-use anyhow::{Context, bail};
-use bytes::Bytes;
-use futures::{FutureExt, future};
-use slumber_util::{ResultTraced, ResultTracedAnyhow, paths::expand_home};
+use anyhow::Context;
+use slumber_util::{ResultTraced, ResultTracedAnyhow};
 use std::{
     env,
     fs::{self, File},
@@ -16,18 +14,15 @@ use std::{
     io::{self, Write},
     ops::Deref,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     time::{Duration, SystemTime},
 };
 use tokio::{
-    fs::OpenOptions,
-    io::AsyncWriteExt,
     select,
     sync::oneshot,
     time::{self, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 /// Extension trait for [Result]
@@ -396,11 +391,14 @@ pub fn cancellable(
 /// - Attempt to save a *new* file
 /// - If the file already exists, ask for confirmation
 /// - If confirmed, overwrite existing
+#[cfg(not(web))]
 pub async fn save_file(
     messages_tx: MessageSender,
     default_path: Option<String>,
     data: Bytes,
 ) -> anyhow::Result<()> {
+    use tokio::fs::OpenOptions;
+
     // If the user closed the prompt, just exit
     let Some(path) =
         text_question(&messages_tx, "Enter a path for the file", default_path)
@@ -555,21 +553,6 @@ pub async fn confirm(
     // Error means we got ghosted :( RUDE!
     rx.await.unwrap_or_default()
 }
-
-/// TODO
-macro_rules! no_wasm {
-    ($($content:tt)*) => {
-        cfg_select! {
-            wasm => {
-                todo!()
-            }
-            _ => {
-                $($content)*
-            }
-        }
-    };
-}
-pub(super) use no_wasm;
 
 #[cfg(test)]
 mod tests {

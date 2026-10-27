@@ -59,9 +59,9 @@ use futures::{
 };
 use indexmap::IndexMap;
 use reqwest::{
-    Body, Client, Request, RequestBuilder, Response, Url,
+    Client, Request, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
-    multipart::{Form, Part},
+    multipart::Form,
 };
 use slumber_config::HttpEngineConfig;
 use slumber_template::{RenderError, StreamSource, Template};
@@ -890,6 +890,7 @@ impl RenderedBody {
                     tests::MULTIPART_BOUNDARY.set(form.boundary().to_owned());
                 }
 
+                // TODO make this work on wasm. Needs a reqwest patch
                 #[cfg(not(web))]
                 for (field, stream) in fields {
                     // Convert the stream to a form part

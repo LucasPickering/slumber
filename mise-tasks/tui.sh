@@ -1,5 +1,6 @@
 #!/bin/sh
 #MISE description="Run the TUI and watch for changes"
+#MISE env.RUST_BACKTRACE=1
 #
 # The TUI bin doesn't have clap so it can't do its own arg parsing
 #USAGE flag "--file -f <file>" help="Collection file path"

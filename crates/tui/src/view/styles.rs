@@ -305,3 +305,14 @@ impl Styles {
         }
     }
 }
+
+/// Generate the default stylesheet based on the default theme
+///
+/// Available only in tests because in normal operation, the theme should
+/// always be pulled from the config.
+#[cfg(test)]
+impl Default for Styles {
+    fn default() -> Self {
+        Self::new(&Theme::default())
+    }
+}

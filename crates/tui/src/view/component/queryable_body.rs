@@ -15,7 +15,7 @@ use crate::{
         context::UpdateContext,
         event::{Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentKey, PersistentStore},
-        util::{highlight, str_to_text},
+        util::str_to_text,
     },
 };
 use anyhow::Context;
@@ -436,9 +436,11 @@ impl TextState {
                 (Cow::Borrowed(text), false)
             };
 
-            let text = highlight::highlight_if(syntax_type, str_to_text(&text));
             TextState {
-                text_window: TextWindow::new(text),
+                text_window: TextWindow::highlighted(
+                    str_to_text(&text),
+                    syntax_type,
+                ),
                 pretty,
             }
         } else {

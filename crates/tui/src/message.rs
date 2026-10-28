@@ -277,7 +277,9 @@ impl MessageSender {
     /// The output of the blocking work will be passed back to the main thread.
     /// It's then handed to the `into_message` function, which will pack the
     /// data into a [Message] so it can be sent back to the main TUI loop and
-    /// used to update state.
+    /// used to update state. `into_message` is a separate function because
+    /// `Message` is `!Send`, meaning the blocking task can't return a message
+    /// directly.
     pub fn spawn_blocking<T: 'static + Send>(
         &self,
         blocking: impl 'static + FnOnce() -> T + Send,

@@ -13,10 +13,10 @@ use crate::{
         },
         context::UpdateContext,
         event::{Event, EventMatch},
-        util::{format_byte_size, highlight, view_text},
+        util::{format_byte_size, view_text},
     },
 };
-use ratatui::{layout::Layout, prelude::Constraint, text::Text};
+use ratatui::{layout::Layout, prelude::Constraint};
 use slumber_config::Action;
 use slumber_core::{
     http::{RequestBody, RequestId, RequestRecord},
@@ -37,11 +37,11 @@ pub struct RequestView {
 
 impl RequestView {
     pub fn new(request: Arc<RequestRecord>) -> Self {
-        let text = init_body(&request);
+        let body_text_window = init_body(&request);
         Self {
             id: ComponentId::default(),
             request,
-            body_text_window: text.map(TextWindow::new),
+            body_text_window,
         }
     }
 
@@ -130,24 +130,27 @@ impl Draw for RequestView {
 
 /// Calculate body text, including syntax highlighting. We have to clone the
 /// body to prevent a self-reference. Return `None` if the request has no body
-fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
+fn init_body(request: &RequestRecord) -> Option<TextWindow> {
     let syntax_type = SyntaxType::from_headers(
         ViewContext::config().mime_overrides(),
         &request.headers,
     );
     match &request.body {
         RequestBody::None => None,
-        RequestBody::Stream => Some(Text::raw("<stream>")),
+        RequestBody::Stream => Some(TextWindow::new("<stream>".into())),
         RequestBody::TooLarge => {
             let config = &ViewContext::config();
-            Some(Text::raw(format!(
-                "Large body (bodies over {} are not saved)",
-                format_byte_size(config.http.large_body_size)
-            )))
+            Some(TextWindow::new(
+                format!(
+                    "Large body (bodies over {} are not saved)",
+                    format_byte_size(config.http.large_body_size)
+                )
+                .into(),
+            ))
         }
-        RequestBody::Some(bytes) => Some(highlight::highlight_if(
-            syntax_type,
+        RequestBody::Some(bytes) => Some(TextWindow::highlighted(
             format!("{:#}", MaybeStr(bytes)).into(),
+            syntax_type,
         )),
     }
 }

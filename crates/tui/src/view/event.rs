@@ -295,11 +295,16 @@ impl<T: ?Sized> Emitter<T> {
 impl<T: Sized + LocalEvent> Emitter<T> {
     /// Push an event onto the event queue
     pub fn emit(&self, event: T) {
-        ViewContext::push_message(Event::Emitted {
+        ViewContext::push_message(self.event(event));
+    }
+
+    /// Build an [Event::Emitted] from this emitter
+    pub fn event(&self, event: T) -> Event {
+        Event::Emitted {
             emitter_id: self.id,
             emitter_type: format_type_name(any::type_name::<T>()),
             event: Box::new(event),
-        });
+        }
     }
 
     /// Check if an event is an emitted event from this emitter, and return

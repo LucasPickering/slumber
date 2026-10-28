@@ -31,16 +31,17 @@ thread_local! {
 }
 
 impl SyntaxType {
-    /// Make a response body look pretty. If the input isn't valid for this
-    /// content type, return `None`
-    pub fn prettify(self, body: &str) -> Option<String> {
+    /// Parse and format text
+    ///
+    /// If the input isn't valid for this syntax type, return `None`
+    pub fn prettify(self, text: &str) -> Option<String> {
         match self {
-            SyntaxType::Json => {
+            Self::Json => {
                 // The easiest way to prettify is to parse and restringify.
                 // There's definitely faster ways that don't require building
                 // the whole data structure in memory, but not via serde
                 if let Ok(parsed) =
-                    serde_json::from_str::<serde_json::Value>(body)
+                    serde_json::from_str::<serde_json::Value>(text)
                 {
                     // serde_json shouldn't fail serializing its own Value type
                     serde_json::to_string_pretty(&parsed).ok()

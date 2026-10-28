@@ -78,10 +78,8 @@ impl TextWindow {
         mut text: Text<'static>,
         syntax_type: Option<SyntaxType>,
     ) -> Self {
-        // Any text with EITHER dimension over these threshols will be
-        // highlighted in a background task instead of inline.
-        const MAX_INLINE_WIDTH: usize = 100;
-        const MAX_INLINE_HEIGHT: usize = 100;
+        // Any text longer than this will be highlighted in the background
+        const MAX_INLINE_LENGTH: usize = 1000;
 
         let text_size = TextSize::new(&text);
 
@@ -91,9 +89,7 @@ impl TextWindow {
             // Do quick highlights in the main thread for minimal delay and
             // simpler testing, while long highlights are backgrounded to
             // prevent blocking the UI thread.
-            if text_size.width < MAX_INLINE_WIDTH
-                && text_size.height < MAX_INLINE_HEIGHT
-            {
+            if text_size.length < MAX_INLINE_LENGTH {
                 // We don't need to recalculate text size after highlighting
                 // because it can't change content, just styles.
                 text = syntax_type.highlight(text, styles, None);
@@ -497,6 +493,8 @@ struct TextSize {
     width: usize,
     /// Number of lines in the text
     height: usize,
+    /// Total number of characters in the text
+    length: usize,
 }
 
 /// Handle for highlighting running in a background thread
@@ -560,10 +558,18 @@ impl TextSize {
                 width = width.max(line.width());
             }
         }
-        let width = lines.iter().map(Line::width).max().unwrap_or_default();
+
+        let (width, length) = lines.iter().fold((0, 0), |(w, l), line| {
+            let line_width = line.width();
+            (w.max(line_width), l + line_width)
+        });
         // Assume no line wrapping when calculating line count
         let height = lines.len();
-        Self { width, height }
+        Self {
+            width,
+            height,
+            length,
+        }
     }
 }
 

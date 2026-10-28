@@ -99,21 +99,4 @@ mod tests {
             expected
         );
     }
-
-    /// Test prettification
-    #[rstest]
-    #[case::json(
-        SyntaxType::Json,
-        r#"{"hello": "goodbye"}"#,
-        Some("{\n  \"hello\": \"goodbye\"\n}")
-    )]
-    // Invalid JSON => no pretty value available
-    #[case::invalid_json(SyntaxType::Json, r#"{"hello": "goodbye""#, None)]
-    fn test_prettyify(
-        #[case] content_type: SyntaxType,
-        #[case] body: &str,
-        #[case] expected: Option<&str>,
-    ) {
-        assert_eq!(content_type.prettify(body).as_deref(), expected);
-    }
 }

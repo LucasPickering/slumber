@@ -2,10 +2,7 @@
 //!
 //! Warning: this thing is kinda fucked.
 
-use crate::{
-    util::syntax::SyntaxType,
-    view::{context::ViewContext, styles::SyntaxStyles},
-};
+use crate::{util::syntax::SyntaxType, view::styles::SyntaxStyles};
 use anyhow::Context;
 use itertools::Itertools;
 use ratatui::{
@@ -17,6 +14,7 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     collections::{HashMap, VecDeque},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use strum::{EnumIter, IntoEnumIterator};
 use tree_sitter_highlight::{
@@ -55,26 +53,56 @@ impl SyntaxType {
     }
 
     /// Apply syntax highlighting to some text
-    pub fn highlight(self, mut text: Text<'_>) -> Text<'_> {
+    ///
+    /// `cancellation_flag` is an atomic flag that can cancel the highlight
+    /// operation. Store any non-zero value (from another thread) and the
+    /// highlight operation will exit shortly thereafter. The text at the time
+    /// of cancellation will be returned, meaning it may be partially
+    /// highlighted.
+    pub fn highlight<'text>(
+        self,
+        mut text: Text<'text>,
+        styles: SyntaxStyles,
+        cancellation_flag: Option<&AtomicUsize>,
+    ) -> Text<'text> {
         HIGHLIGHTER.with_borrow_mut(|(highlighter, configs)| {
             let config =
                 configs.entry(self).or_insert_with(|| get_config(self));
 
-            let styles = ViewContext::styles().syntax;
-
             // Each line in the input corresponds to one line in the output, so
             // we can mutate each line inline
             for line in &mut text.lines {
+                // Checking the flag ourselves *probably* leads to faster
+                // cancellation than repeatedly calling down to tree-sitter and
+                // letting it check the flag. Not sure though!!
+                if cancellation_flag
+                    .is_some_and(|flag| flag.load(Ordering::SeqCst) != 0)
+                {
+                    break;
+                }
+
                 // Join the line into a single string so we can pass it to the
                 // highlighter. Unfortunately it can't handle subline parsing,
                 // it needs at least a line at a time
                 let joined = join_line(line);
-                let Ok(events) = highlighter
-                    .highlight(config, joined.as_bytes(), None, |_| None)
-                    .context("Syntax highlighting error")
-                    .traced()
-                else {
-                    continue; // Leave the line untouched
+                let result = highlighter.highlight(
+                    config,
+                    joined.as_bytes(),
+                    cancellation_flag,
+                    |_| None,
+                );
+                let events = match result {
+                    Ok(events) => events,
+                    // Cancellations are intentional, so don't log them
+                    Err(tree_sitter_highlight::Error::Cancelled) => break,
+                    // If we hit an error, return the text with whatever
+                    // highlighting we got through
+                    Err(_) => {
+                        let _ = result
+                            .context("Syntax highlighting error")
+                            .traced();
+                        break;
+                    }
                 };
 
                 let mut builder = LineBuilder::new(line);
@@ -102,19 +130,6 @@ impl SyntaxType {
 
             text
         })
-    }
-}
-
-/// Apply syntax highlighting if the content type is `Some`, otherwise just
-/// return the given text
-pub fn highlight_if(
-    syntax_type: Option<SyntaxType>,
-    text: Text<'_>,
-) -> Text<'_> {
-    if let Some(syntax_type) = syntax_type {
-        syntax_type.highlight(text)
-    } else {
-        text
     }
 }
 
@@ -405,7 +420,7 @@ fn split_cow(s: Cow<'_, str>, at: usize) -> (Cow<'_, str>, Cow<'_, str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::{TestHarness, harness};
+    use crate::view::styles::Styles;
     use pretty_assertions::assert_eq;
     use ratatui::style::Color;
     use rstest::rstest;
@@ -429,57 +444,54 @@ mod tests {
 
     /// Test that JSON is highlighted, but existing styling is retained
     #[rstest]
-    fn test_highlight(_harness: TestHarness) {
-        fn fg(color: Color) -> Style {
-            Style::default().fg(color)
-        }
-
+    fn test_highlight() {
         let text = vec![
             Line::from("{"),
             vec![
                 "  \"string\": \"".into(),
-                Span::styled("turkey", fg(Color::Blue)),
+                Span::styled("turkey", Color::Blue),
                 "🦃".into(), // Throw some multi-byte chars in for fun
-                Span::styled("day", fg(Color::Red)),
+                Span::styled("day", Color::Red),
                 "🦃\",".into(),
             ]
             .into(),
             "  \"number\": 3,".into(),
             // This whole thing should retain its style
-            Span::styled("  \"bool\": false", fg(Color::Red)).into(),
+            Span::styled("  \"bool\": false", Color::Red).into(),
             "}".into(),
         ]
         .into();
-        let highlighted = SyntaxType::Json.highlight(text);
+        let highlighted =
+            SyntaxType::Json.highlight(text, Styles::default().syntax, None);
         let expected = vec![
             Line::from("{"),
             vec![
                 "  ".into(),
-                Span::styled("\"string\"", fg(Color::LightGreen)),
+                Span::styled("\"string\"", Color::LightGreen),
                 ": ".into(),
-                Span::styled("\"", fg(Color::LightGreen)),
-                Span::styled("turkey", fg(Color::Blue)),
-                Span::styled("🦃", fg(Color::LightGreen)),
-                Span::styled("day", fg(Color::Red)),
-                Span::styled("🦃\"", fg(Color::LightGreen)),
+                Span::styled("\"", Color::LightGreen),
+                Span::styled("turkey", Color::Blue),
+                Span::styled("🦃", Color::LightGreen),
+                Span::styled("day", Color::Red),
+                Span::styled("🦃\"", Color::LightGreen),
                 ",".into(),
             ]
             .into(),
             vec![
                 "  ".into(),
-                Span::styled("\"number\"", fg(Color::LightGreen)),
+                Span::styled("\"number\"", Color::LightGreen),
                 ": ".into(),
-                Span::styled("3", fg(Color::Cyan)),
+                Span::styled("3", Color::Cyan),
                 ",".into(),
             ]
             .into(),
             // This whole line kept its styling, but it's broken up into spans
             // now for "technical" reasons
             vec![
-                Span::styled("  ", fg(Color::Red)),
-                Span::styled("\"bool\"", fg(Color::Red)),
-                Span::styled(": ", fg(Color::Red)),
-                Span::styled("false", fg(Color::Red)),
+                Span::styled("  ", Color::Red),
+                Span::styled("\"bool\"", Color::Red),
+                Span::styled(": ", Color::Red),
+                Span::styled("false", Color::Red),
             ]
             .into(),
             "}".into(),

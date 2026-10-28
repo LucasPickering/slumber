@@ -1,8 +1,11 @@
-use crate::view::{
-    common::scrollbar::Scrollbar,
-    component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
-    context::{UpdateContext, ViewContext},
-    event::{Event, EventMatch},
+use crate::{
+    util::syntax::SyntaxType,
+    view::{
+        common::scrollbar::Scrollbar,
+        component::{Canvas, Component, ComponentId, Draw, DrawMetadata},
+        context::{UpdateContext, ViewContext},
+        event::{Emitter, Event, EventMatch},
+    },
 };
 use ratatui::{
     buffer::Buffer,
@@ -12,7 +15,15 @@ use ratatui::{
     widgets::{ScrollbarOrientation, Widget},
 };
 use slumber_config::Action;
-use std::{cell::Cell, cmp};
+use std::{
+    cell::Cell,
+    cmp,
+    fmt::{self, Debug},
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 use terminput::ScrollDirection;
 use unicode_width::UnicodeWidthStr;
 
@@ -40,11 +51,75 @@ pub struct TextWindow {
     /// Some use cases want to disable arrow key scrolling because our friends
     /// need those keys (e.g. in a list).
     scroll_mode: ScrollMode,
+    /// Background task running syntax highlighting
+    ///
+    /// This is populated only for *large* text bodies that require syntax
+    /// highlighting, and only while the highlighting in running.
+    highlight_task: Option<HighlightTask>,
 }
 
 impl TextWindow {
+    /// Initialize a new view window for some immutable text
     pub fn new(text: Text<'static>) -> Self {
+        Self::highlighted(text, None)
+    }
+
+    /// Initialize a new text window with syntax highlighting
+    ///
+    ///
+    /// If `None` is given, this does nothing. Most highlighting applications
+    /// will only sometimes have a `syntax_type`, so accepting an option is more
+    /// ergonomic.
+    ///
+    /// For large text bodies, this will spawn the highlighter in a background
+    /// thread and update the text via message when the highlighting is done.
+    /// This prevents blocking the UI.
+    pub fn highlighted(
+        mut text: Text<'static>,
+        syntax_type: Option<SyntaxType>,
+    ) -> Self {
+        // Any text with EITHER dimension over these threshols will be
+        // highlighted in a background task instead of inline.
+        const MAX_INLINE_WIDTH: usize = 100;
+        const MAX_INLINE_HEIGHT: usize = 100;
+
         let text_size = TextSize::new(&text);
+
+        let highlight_task = if let Some(syntax_type) = syntax_type {
+            let styles = ViewContext::styles().syntax;
+
+            // Do quick highlights in the main thread for minimal delay and
+            // simpler testing, while long highlights are backgrounded to
+            // prevent blocking the UI thread.
+            if text_size.width < MAX_INLINE_WIDTH
+                && text_size.height < MAX_INLINE_HEIGHT
+            {
+                // We don't need to recalculate text size after highlighting
+                // because it can't change content, just styles.
+                text = syntax_type.highlight(text, styles, None);
+                None
+            } else {
+                let emitter = Emitter::default();
+                // Unfortunately the clone is unavoidable. The text has to be
+                // displayed in the main thread while the highlighter is
+                // modifying it in the background thread.
+                let text = text.clone();
+
+                let cancellation_flag = Arc::new(AtomicUsize::new(0));
+                let flag = Arc::clone(&cancellation_flag);
+                ViewContext::messages_tx().spawn_blocking(
+                    move || syntax_type.highlight(text, styles, Some(&flag)),
+                    // Push the new text back to ourselves via an emitted event
+                    move |text| emitter.event(HighlightEvent(text)).into(),
+                );
+                Some(HighlightTask {
+                    emitter,
+                    cancellation_flag,
+                })
+            }
+        } else {
+            None
+        };
 
         Self {
             id: ComponentId::new(),
@@ -53,6 +128,7 @@ impl TextWindow {
             window_size: Default::default(),
             offset: Default::default(),
             scroll_mode: Default::default(),
+            highlight_task,
         }
     }
 
@@ -169,6 +245,18 @@ impl Component for TextWindow {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> EventMatch {
         event
             .m()
+            .emitted_opt(
+                self.highlight_task
+                    .as_ref()
+                    .map(|highlight| highlight.emitter),
+                |text| {
+                    // If the highlighter is done, store its text. It's safe to
+                    // replace the text without changing scroll state because
+                    // the highlighting never changes content, just styling.
+                    self.text = text.0;
+                    self.highlight_task = None; // Don't need this anymore!
+                },
+            )
             // Scroll for scroll wheel OR keyboard inputs
             .scroll(|direction| match direction {
                 ScrollDirection::Up => self.scroll_up(1),
@@ -411,6 +499,50 @@ struct TextSize {
     height: usize,
 }
 
+/// Handle for highlighting running in a background thread
+///
+/// Highlighting is done in a background thread to prevent blocking. When
+/// the highlight is done, it pushes the highlighted text back to the component
+/// via the emitter.
+///
+/// The highlighting will automatically be cancelled on drop.
+#[derive(Debug)]
+struct HighlightTask {
+    /// Event emitter for completed highlighting
+    emitter: Emitter<HighlightEvent>,
+    /// Flag to cancel ongoing syntax highlighting
+    ///
+    /// The syntax highlighter constantly checks this flag for cancellation.
+    /// Setting any non-zero value is enough to kill the highlighter. It's set
+    /// automatically in `drop()`.
+    cancellation_flag: Arc<AtomicUsize>,
+}
+
+impl Drop for HighlightTask {
+    fn drop(&mut self) {
+        // Store any non-zero value to cancel. I didn't find that
+        // documented anywhere, but it's in the tree-sitter-highlight source
+        self.cancellation_flag.store(1, Ordering::Relaxed);
+    }
+}
+
+/// Local event type to transfer highlighted text from a background thread
+///
+/// This wrapper is needed to provide a sane `Debug` impl that won't detonate
+/// logs for large text.
+struct HighlightEvent(Text<'static>);
+
+/// Custom `Debug` impl protects against logging gigantic text bodies in event
+/// tracing
+///
+/// Generally the text content of the highlight isn't going to be useful in
+/// logs, so it's entirely hidden.
+impl Debug for HighlightEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Highlight").field(&"...").finish()
+    }
+}
+
 impl TextSize {
     /// Compute the size of the given text. This is an **expensive** operation,
     /// because it has to count the number of characters in each line
@@ -446,7 +578,7 @@ struct Offset {
 mod tests {
     use super::*;
     use crate::view::test_util::{TestComponent, TestHarness, harness};
-    use ratatui::text::Span;
+    use ratatui::{style::Color, text::Span};
     use rstest::rstest;
     use terminput::{KeyCode, KeyModifiers};
 
@@ -611,6 +743,62 @@ mod tests {
             .empty();
 
         assert_eq!(component.offset.get(), Offset { x: 8, y: 1 });
+    }
+
+    /// Test syntax highlighting
+    ///
+    /// This does *not* spawn the highlighting in the background because the
+    /// body is small. That would be nice to test, but it's much harder.
+    #[rstest]
+    fn test_highlight(#[with(18, 5)] mut harness: TestHarness) {
+        let text = Text::from(
+            "\
+{
+  \"string\": \"s\",
+  \"number\": 3,
+  \"bool\": false
+}
+",
+        );
+        let text_window = TextWindow::highlighted(text, Some(SyntaxType::Json));
+        TestComponent::builder(&mut harness, text_window)
+            .with_props(TextWindowProps {
+                // Don't overflow the frame
+                margins: ScrollbarMargins {
+                    right: 0,
+                    bottom: 0,
+                },
+                ..TextWindowProps::default()
+            })
+            .build();
+
+        harness.assert_buffer_lines([
+            vec![line_num(1), " {".into()],
+            vec![
+                line_num(2),
+                "   ".into(),
+                Span::styled("\"string\"", Color::LightGreen),
+                ": ".into(),
+                Span::styled("\"s\"", Color::LightGreen),
+                ",".into(),
+            ],
+            vec![
+                line_num(3),
+                "   ".into(),
+                Span::styled("\"number\"", Color::LightGreen),
+                ": ".into(),
+                Span::styled("3", Color::Cyan),
+                ",".into(),
+            ],
+            vec![
+                line_num(4),
+                "   ".into(),
+                Span::styled("\"bool\"", Color::LightGreen),
+                ": ".into(),
+                Span::styled("false", Color::Blue),
+            ],
+            vec![line_num(5), " }".into()],
+        ]);
     }
 
     /// Style some text as gutter line numbers

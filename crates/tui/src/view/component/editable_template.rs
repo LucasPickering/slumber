@@ -14,7 +14,7 @@ use crate::{
         },
         event::{BroadcastEvent, Emitter, Event, EventMatch, ToEmitter},
         persistent::{PersistentStore, SessionKey},
-        util::{highlight, preview::Preview, view_text},
+        util::{preview::Preview, view_text},
     },
 };
 use anyhow::Context;
@@ -86,7 +86,7 @@ pub struct EditableTemplate<PK, T: Preview = Template> {
     ///
     /// Use this for request bodies. When enabled:
     /// - External editor will *always* be used
-    /// - Line numbers are scrollbars are shown on the text window
+    /// - Line numbers and scrollbars are shown on the text window
     window_mode: bool,
 }
 
@@ -215,14 +215,13 @@ impl<PK, T: Preview> EditableTemplate<PK, T> {
         let syntax_type = self.mime.as_ref().and_then(|mime| {
             SyntaxType::from_mime(ViewContext::config().mime_overrides(), mime)
         });
-        let text = highlight::highlight_if(syntax_type, text);
 
         // In window mode, there's only one template shown so we can scroll
         // up/down with the arrow keys. In inline mode, we may be inside a list
         // so leave up/down for the Select. Never eat left/right arrow keys
         // because that's used for the recipe tab header.
-        self.text_window =
-            TextWindow::new(text).scroll_mode(if self.window_mode {
+        self.text_window = TextWindow::highlighted(text, syntax_type)
+            .scroll_mode(if self.window_mode {
                 ScrollMode::Vertical
             } else {
                 ScrollMode::None

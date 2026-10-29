@@ -5,7 +5,7 @@
 
 use crate::{
     collection::{
-        Authentication, ProfileId, RecipeId, UnknownRecipeError, ValueTemplate,
+        Authentication, ProfileId, RecipeId, Template, UnknownRecipeError,
     },
     util::json::JsonTemplateError,
 };
@@ -15,12 +15,12 @@ use derive_more::FromStr;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
+use petitscript::Value;
 use reqwest::{
     Body, Client, Request, StatusCode, Url,
     header::{self, HeaderMap, InvalidHeaderName, InvalidHeaderValue},
 };
 use serde::{Deserialize, Serialize};
-use slumber_template::{RenderError, Template};
 use std::{
     error::Error,
     fmt::{Debug, Display},
@@ -358,9 +358,9 @@ impl From<&'static str> for BuildFieldOverride {
 pub enum BodyOverride {
     /// Override with plain old bytes, or a stream if the recipe body is a
     /// stream
-    Raw(Template),
+    Raw(Value),
     /// Override with a JSON value
-    Json(ValueTemplate),
+    Json(Value),
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -930,13 +930,13 @@ impl PartialEq for RequestBuildError {
 pub enum RequestBuildErrorKind {
     /// Error rendering username in Basic auth
     #[error("Rendering password")]
-    AuthPasswordRender(#[source] RenderError),
+    AuthPasswordRender(#[source] petitscript::Error),
     /// Error rendering token in Bearer auth
     #[error("Rendering bearer token")]
-    AuthTokenRender(#[source] RenderError),
+    AuthTokenRender(#[source] petitscript::Error),
     /// Error rendering username in Basic auth
     #[error("Rendering username")]
-    AuthUsernameRender(#[source] RenderError),
+    AuthUsernameRender(#[source] petitscript::Error),
 
     /// Error streaming directly from a file to a request body (via reqwest)
     #[error("Streaming request body")]
@@ -946,7 +946,7 @@ pub enum RequestBuildErrorKind {
     BodyFormFieldRender {
         field: String,
         #[source]
-        error: RenderError,
+        error: petitscript::Error,
     },
     /// Attempted to build a new request from a previous request, but the old
     /// request doesn't have a body saved
@@ -961,10 +961,10 @@ pub enum RequestBuildErrorKind {
     BodyMissing { previous_request_id: RequestId },
     /// Error rendering a body to bytes/stream
     #[error("Rendering body")]
-    BodyRender(#[source] RenderError),
+    BodyRender(#[source] petitscript::Error),
     /// Error while streaming bytes for a body
     #[error("Streaming request body")]
-    BodyStream(#[source] RenderError),
+    BodyStream(#[source] petitscript::Error),
 
     /// Error assembling the final request
     #[error(transparent)]
@@ -994,7 +994,7 @@ pub enum RequestBuildErrorKind {
     HeaderRender {
         header: String,
         #[source]
-        error: RenderError,
+        error: petitscript::Error,
     },
 
     /// Error parsing JSON override template
@@ -1017,7 +1017,7 @@ pub enum RequestBuildErrorKind {
     QueryRender {
         parameter: String,
         #[source]
-        error: RenderError,
+        error: petitscript::Error,
     },
 
     /// Tried to build a recipe that doesn't exist
@@ -1033,7 +1033,7 @@ pub enum RequestBuildErrorKind {
     },
     /// Error rendering URL
     #[error("Rendering URL")]
-    UrlRender(#[source] RenderError),
+    UrlRender(#[source] petitscript::Error),
 }
 
 /// An error that can occur during a request. This does *not* including building

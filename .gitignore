@@ -1,5 +1,6 @@
 data/
 /target/
+/.helix/
 /.vscode/
 /.zed/
 .DS_Store

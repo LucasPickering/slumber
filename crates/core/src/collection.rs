@@ -1,17 +1,14 @@
 //! A request collection defines recipes, profiles, etc. that make requests
 //! possible
 
-mod cereal;
+// mod cereal;
 mod models;
 mod recipe_tree;
 #[cfg(feature = "schema")]
 mod schema;
-mod value_template;
 
-pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
-pub use value_template::{RenderedValue, ValueTemplate};
 
 use itertools::Itertools;
 use std::{
@@ -150,6 +147,16 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 
     // Walk *up* the tree until we've hit the root
     search_all(dir)
+}
+
+/// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
+/// project some day?
+pub trait HasId {
+    type Id;
+
+    fn id(&self) -> &Self::Id;
+
+    fn set_id(&mut self, id: Self::Id);
 }
 
 #[cfg(test)]
@@ -337,21 +344,22 @@ requests:
                     name: Some("Profile 1".into()),
                     default: false,
                     data: indexmap! {
-                        "host".into() => "https://httpbin.org".into(),
-                        "user_guid".into() => "abc123".into(),
-                        "username".into() =>
-                            "xX{{ command(['whoami']) | trim() }}Xx".into(),
-                        "null".into() => ValueTemplate::Null,
-                        "bool".into() => true.into(),
-                        "int".into() => 4.into(),
-                        "float".into() => 123.45.into(),
-                        "array".into() => ValueTemplate::Array(
-                            vec![1.into(), 2.into(), "test".into()]
-                        ),
-                        "object".into() => ValueTemplate::Object(vec![
-                            ("a".into(), 1.into()),
-                            ("b".into(), vec![1, 2, 7].into()),
-                        ]),
+                        // TODO
+                        // "host".into() => "https://httpbin.org".into(),
+                        // "user_guid".into() => "abc123".into(),
+                        // "username".into() =>
+                        //     "xX{{ command(['whoami']) | trim() }}Xx".into(),
+                        // "null".into() => ValueTemplate::Null,
+                        // "bool".into() => true.into(),
+                        // "int".into() => 4.into(),
+                        // "float".into() => 123.45.into(),
+                        // "array".into() => ValueTemplate::Array(
+                        //     vec![1.into(), 2.into(), "test".into()]
+                        // ),
+                        // "object".into() => ValueTemplate::Object(vec![
+                        //     ("a".into(), 1.into()),
+                        //     ("b".into(), vec![1, 2, 7].into()),
+                        // ]),
                     },
                     ..Profile::factory(())
                 },

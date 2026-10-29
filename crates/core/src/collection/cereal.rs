@@ -6,12 +6,14 @@
 //! This module only provides deserialization; serialization is still handled
 //! by serde/serde_yaml, because there's no need for error messages and the
 //! derive macros are sufficient to generate the corresponding YAML.
+//!
+//! TODO delete this
 
 use crate::{
     collection::{
         Authentication, Collection, Folder, Profile, ProfileId,
         QueryParameterValue, Recipe, RecipeBody, RecipeId, RecipeTree,
-        ValueTemplate, recipe_tree::RecipeNode,
+        recipe_tree::RecipeNode,
     },
     http::HttpMethod,
 };
@@ -124,7 +126,9 @@ impl DeserializeYaml for Profile {
             name: deserializer.get(Field::new("name").opt(), source_map)?,
             default: deserializer
                 .get(Field::new("default").opt(), source_map)?,
-            data: deserializer.get(Field::new("data").opt(), source_map)?,
+            // TODO delete
+            // data: deserializer.get(Field::new("data").opt(), source_map)?,
+            data: IndexMap::new(),
         };
         deserializer.done()?;
         Ok(profile)

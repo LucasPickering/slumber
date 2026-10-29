@@ -43,7 +43,7 @@ mod tests;
 pub use models::*;
 
 use crate::{
-    collection::{Authentication, Recipe, RecipeBody},
+    collection::{Authentication, Recipe, RecipeBody, Template},
     database::CollectionDatabase,
     http::curl::CurlBuilder,
     render::TemplateContext,
@@ -65,7 +65,6 @@ use reqwest::{
     redirect,
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::{RenderError, StreamSource, Template};
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error, hash::Hash};
 use tracing::{Instrument, error, info, info_span};

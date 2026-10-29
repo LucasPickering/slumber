@@ -28,6 +28,7 @@ use futures::{Stream, StreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
+use serde::Deserialize;
 use slumber_util::NEW_ISSUE_LINK;
 use std::{fmt::Debug, slice, sync::Arc};
 

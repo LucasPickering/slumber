@@ -2,33 +2,32 @@
 
 use crate::{
     collection::{
-        ValueTemplate, cereal,
+        HasId,
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::HttpMethod,
+    render::TemplateContext,
 };
 use derive_more::{Deref, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
+use petitscript::{
+    Engine, Exports, NativeModuleName, Source, Value, error::ValueError,
+};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
-use slumber_template::{Template, TemplateParseError};
-use slumber_util::{
-    ResultTraced, doc_link,
-    yaml::{self, SourceLocation, YamlError, YamlErrorKind},
-};
+use slumber_util::yaml::SourceLocation;
 use std::{
-    error::Error as StdError,
-    fmt::{self, Display},
     io, iter,
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
 use thiserror::Error;
 use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(
     feature = "schema",
@@ -43,14 +42,12 @@ use tracing::info;
 )]
 pub struct Collection {
     /// Descriptive name for the collection
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Map of profiles, keyed by their unique IDs
     pub profiles: IndexMap<ProfileId, Profile>,
     /// Map of requests and folders, keyed by their unique IDs. Folders allow
     /// for nested maps of more requests and folders. All IDs must be unique
     /// **throughout the entire tree**, not just at their level.
-    #[serde(rename = "requests")]
     pub recipes: RecipeTree,
 }
 
@@ -58,16 +55,47 @@ impl Collection {
     /// Load collection from a file
     pub fn load(path: &Path) -> Result<Self, CollectionError> {
         info!(?path, "Loading collection file");
-        yaml::deserialize_file(path)
-            .map_err(CollectionError::from)
-            .traced()
+        todo!()
+    }
+
+    /// TODO
+    pub fn load_ps(path: &Path) -> Result<Self, petitscript::Error> {
+        static ENGINE: LazyLock<Engine> = LazyLock::new(init_engine);
+
+        fn init_engine() -> Engine {
+            // TODO module name is clunky, shouldn't have to parse it
+            let module_name: NativeModuleName = "slumber".parse().unwrap();
+            let mut module = Exports::default();
+            module.export_fn("command", |_, args: Vec<Value>| dbg!(args));
+            Engine::builder()
+                .with_stdlib()
+                .with_module(module_name, module)
+                .build()
+        }
+
+        info!(?path, "Loading collection file");
+        let source = Source::file(path)
+            .expect("TODO make convertible to petitscript::Error");
+        let process = ENGINE.compile(source)?;
+
+        let exports = process.execute()?;
+
+        // Can't serialize directly to a collection because each field is
+        // declared/exported separately
+        let name = exports.get_deserialize("name")?;
+        let profiles = exports.get_deserialize("profiles")?;
+        let recipes = exports.get_deserialize("recipes")?;
+
+        Ok(Self {
+            name,
+            profiles,
+            recipes,
+        })
     }
 
     /// Load collection from a YAML string
     pub fn parse(input: &str) -> Result<Self, CollectionError> {
-        yaml::deserialize_str(input)
-            .map_err(CollectionError::from)
-            .traced()
+        todo!()
     }
 }
 
@@ -122,9 +150,7 @@ impl slumber_util::Factory for Collection {
 
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
-            body: Some(RecipeBody::Json(
-                json!({"message": "hello"}).try_into().unwrap(),
-            )),
+            body: Some(RecipeBody::json(json!({"message": "hello"})).unwrap()),
             ..Recipe::factory(())
         };
         let profile = Profile::factory(());
@@ -137,7 +163,7 @@ impl slumber_util::Factory for Collection {
 }
 
 /// Mutually exclusive hot-swappable config group
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(
     feature = "schema",
@@ -155,11 +181,11 @@ pub struct Profile {
     /// the TUI, select this profile by default from the list. Only one profile
     /// in the collection can be marked as default. This is enforced by a
     /// custom deserializer function.
-    #[serde(skip_serializing_if = "cereal::is_false")] // Skip if default
+    #[serde(default, skip_serializing_if = "is_false")] // Skip if default
     #[cfg_attr(feature = "schema", schemars(default))]
     pub default: bool,
     /// Arbitrary data that can be used in templates
-    pub data: IndexMap<String, ValueTemplate>,
+    pub data: IndexMap<String, serde_json::Value>,
 }
 
 impl Profile {
@@ -170,6 +196,18 @@ impl Profile {
 
     pub fn default(&self) -> bool {
         self.default
+    }
+}
+
+impl HasId for Profile {
+    type Id = ProfileId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn set_id(&mut self, id: Self::Id) {
+        self.id = id;
     }
 }
 
@@ -225,7 +263,7 @@ impl slumber_util::Factory for ProfileId {
 }
 
 /// A gathering of like-minded recipes and/or folders
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(
     feature = "schema",
@@ -272,7 +310,7 @@ impl slumber_util::Factory for Folder {
 /// A definition of how to build an HTTP request. This is also commonly called
 /// "request" throughout Slumber documentation because that term is more common
 /// and intuitive.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(
     feature = "schema",
@@ -289,7 +327,7 @@ pub struct Recipe {
     /// Slumber database?
     /// [See docs](https://slumber.lucaspickering.me/book/user_guide/database.html)
     /// for more info
-    #[serde(skip_serializing_if = "cereal::is_true")] // Skip if default
+    #[serde(skip_serializing_if = "is_true")] // Skip if default
     #[cfg_attr(feature = "schema", schemars(default = "persist_default"))]
     pub persist: bool,
     /// Display name
@@ -345,15 +383,17 @@ impl Recipe {
     }
 
     /// Guess the value that the `Content-Type` header will have for a generated
-    /// request. This will use the raw header if it's present and a valid MIME
-    /// type, otherwise it will fall back to the content type of the body, if
+    /// request
+    ///
+    /// This will use the raw header if it's present and a valid MIME type,
+    /// otherwise it will fall back to the content type of the body, if
     /// known (e.g. JSON). Otherwise, return `None`. If the header is a
     /// dynamic template, we will *not* attempt to render it, so MIME parsing
     /// will fail.
     pub fn mime(&self) -> Option<Mime> {
         self.headers
             .get(header::CONTENT_TYPE.as_str())
-            .and_then(|template| template.display().parse::<Mime>().ok())
+            .and_then(|template| template.to_string().parse::<Mime>().ok())
             .or_else(|| self.body.as_ref()?.mime())
     }
 
@@ -371,6 +411,18 @@ impl Recipe {
             };
             iter.enumerate().map(move |(i, v)| (k.as_str(), i, v))
         })
+    }
+}
+
+impl HasId for Recipe {
+    type Id = RecipeId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn set_id(&mut self, id: Self::Id) {
+        self.id = id;
     }
 }
 
@@ -462,7 +514,7 @@ impl slumber_util::Factory for RecipeId {
 ///
 /// Type parameter allows this to be re-used for post-render purposes (with
 /// `T=String`).
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -474,7 +526,7 @@ pub enum Authentication<T = Template> {
 }
 
 /// A value for a particular query parameter key
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(untagged)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -508,42 +560,44 @@ impl<const N: usize> From<[&'static str; N]> for QueryParameterValue {
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum RecipeBody {
     /// `application/json` body. Value can be any JSON value, with strings being
     /// interpreted as templates
-    Json(ValueTemplate),
+    Json(Value),
     /// `application/x-www-form-urlencoded` body. Value is a mapping of form
     /// field name to value. Values are templates while field names are not.
     /// Values must render to strings.
-    FormUrlencoded(IndexMap<String, Template>),
+    FormUrlencoded(IndexMap<String, Value>),
     /// `multipart/form-data` body. Value is a mapping of form field
     /// name to value. Values are templates while field names are not. Values
     /// can render to any bytes.
-    FormMultipart(IndexMap<String, Template>),
+    FormMultipart(IndexMap<String, Value>),
     /// Plain body, but the bytes will be streamed instead of being loaded
     /// into memory
-    Stream(Template),
+    Stream(Value),
     /// Plain string/bytes body. Must be the last variant to support untagged.
     /// This captures any value that doesn't fit one of the above variants.
     #[serde(untagged)]
-    Raw(Template),
+    Raw(Value),
 }
 
 impl RecipeBody {
     /// Build a JSON body, parsing the internal strings as templates.
     /// Useful for importing from external formats.
-    pub fn json(value: serde_json::Value) -> Result<Self, TemplateParseError> {
-        Ok(Self::Json(value.try_into()?))
+    pub fn json(value: serde_json::Value) -> Result<Self, ValueError> {
+        todo!()
+        // Ok(Self::Json(value.try_into()?))
     }
 
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
     pub fn untemplated_json(value: serde_json::Value) -> Self {
-        Self::Json(ValueTemplate::from_raw_json(value))
+        todo!()
+        // Self::Json(ValueTemplate::from_raw_json(value))
     }
 
     /// Get the anticipated MIME type that will appear in the `Content-Type`
@@ -569,6 +623,21 @@ impl From<&'static str> for RecipeBody {
     }
 }
 
+// TODO move this and make it its own enum
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Template(Value);
+
+impl Template {
+    /// TODo
+    pub fn render(
+        &self,
+        context: &TemplateContext,
+    ) -> Result<Value, petitscript::Error> {
+        todo!()
+    }
+}
+
 /// Error that can occur while loading a collection
 #[derive(Debug, Error)]
 pub enum CollectionError {
@@ -588,9 +657,9 @@ pub enum CollectionError {
     #[error("No collection file found in `{}` or its ancestors", path.display())]
     NoFile { path: PathBuf },
 
-    /// Error parsing/deserializing the YAML
+    /// Error parsing/executing the PetitScript
     #[error(transparent)]
-    Yaml(YamlCollectionError),
+    PetitScript(petitscript::Error),
 }
 
 impl CollectionError {
@@ -599,76 +668,21 @@ impl CollectionError {
     /// `None` if the error occurred while opening the file rather than parsing
     /// or deserializing.
     pub fn location(&self) -> Option<&SourceLocation> {
-        if let Self::Yaml(YamlCollectionError(error)) = self {
-            Some(&error.location)
-        } else {
-            None
-        }
+        // TODO this would be great!!
+        None
     }
 }
 
-impl From<YamlError> for CollectionError {
-    fn from(error: YamlError) -> Self {
-        Self::Yaml(YamlCollectionError(error))
-    }
+/// Predicate for skip_serializing_if
+#[expect(clippy::trivially_copy_pass_by_ref)]
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
-/// Wrapper around [YamlError] that adds additional context if the error
-/// suggests we deserialized a v3 collection. The [Display] impl will provide a
-/// hint on migrating to v4.
-///
-/// This has to be a separate error struct instead of just applying the
-/// formatting on [CollectionError::Yaml] because we need the [StdError::source]
-/// implementation to be transparent while the [Display] impl isn't. That isn't
-/// possible with `thiserror`.
-#[derive(Debug)]
-pub struct YamlCollectionError(YamlError);
-
-impl YamlCollectionError {
-    /// Does the deserialization error suggest that the collection is in the v3
-    /// format? If so we'll give the user an extra message suggesting an upgrade
-    /// to v4
-    fn is_v3_error(&self) -> bool {
-        match &self.0.kind {
-            // Look for:
-            // - `chains` field
-            // - `<<` merge key
-            // - `!tag`
-            // - `chains.` in a template
-            YamlErrorKind::UnexpectedField(field) => field == "chains",
-            YamlErrorKind::UnsupportedMerge => true,
-            YamlErrorKind::Unexpected { actual, .. } => {
-                actual.starts_with("tag")
-            }
-            YamlErrorKind::Other(error) => error
-                // Check if there's a template containing a chain reference
-                .downcast_ref::<TemplateParseError>()
-                .is_some_and(|error| error.to_string().contains("{{chains.")),
-            _ => false,
-        }
-    }
-}
-
-impl Display for YamlCollectionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-        if self.is_v3_error() {
-            write!(
-                f,
-                "\nThis looks like a collection from Slumber v3. \
-                Migrate to v4 or downgrade your installation to 3.x.\
-                \n{}",
-                doc_link("other/v4_migration")
-            )?;
-        }
-        Ok(())
-    }
-}
-
-impl StdError for YamlCollectionError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.0.source()
-    }
+/// Predicate for skip_serializing_if
+#[expect(clippy::trivially_copy_pass_by_ref)]
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 #[cfg(test)]
@@ -747,6 +761,21 @@ mod tests {
                 ("param1", 1, &"value1.2".into()),
                 ("param2", 0, &"value2.1".into()),
             ]
+        );
+    }
+
+    /// TODO
+    #[test]
+    fn test_js() {
+        let collection =
+            Collection::load_ps(Path::new("../../slumber.ts")).unwrap();
+        assert_eq!(
+            collection,
+            Collection {
+                name: Some("Example".into()),
+                profiles: IndexMap::new(),
+                recipes: RecipeTree::default(),
+            }
         );
     }
 }

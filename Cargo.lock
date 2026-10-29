@@ -1731,6 +1731,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonformat"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e9e814853c1f5f3d6b38bc08a304f2865a09f711b642f74956f394de37dd2c8"
+
+[[package]]
 name = "kasuari"
 version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3598,6 +3604,7 @@ dependencies = [
  "futures",
  "indexmap",
  "itertools",
+ "jsonformat",
  "mime",
  "pretty_assertions",
  "proptest",

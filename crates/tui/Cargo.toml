@@ -24,6 +24,7 @@ derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "dis
 futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
+jsonformat = "2.1.0"
 mime = {workspace = true}
 ratatui = {version = "0.30.0-alpha.5", default-features = false, features = ["crossterm", "underline-color"]}
 reqwest = {workspace = true}

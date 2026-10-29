@@ -5,6 +5,7 @@
 use crate::{util::syntax::SyntaxType, view::styles::SyntaxStyles};
 use anyhow::Context;
 use itertools::Itertools;
+use jsonformat::Indentation;
 use ratatui::{
     style::Style,
     text::{Line, Span, Text},
@@ -33,23 +34,11 @@ thread_local! {
 impl SyntaxType {
     /// Parse and format text
     ///
-    /// If the input isn't valid for this syntax type, return `None`
-    pub fn prettify(self, text: &str) -> Option<String> {
+    /// If the input isn't valid for this syntax type, the formatter will do
+    /// its best!
+    pub fn prettify(self, text: &str) -> String {
         match self {
-            Self::Json => {
-                // The easiest way to prettify is to parse and restringify.
-                // There's definitely faster ways that don't require building
-                // the whole data structure in memory, but not via serde
-                if let Ok(parsed) =
-                    serde_json::from_str::<serde_json::Value>(text)
-                {
-                    // serde_json shouldn't fail serializing its own Value type
-                    serde_json::to_string_pretty(&parsed).ok()
-                } else {
-                    // Not valid JSON
-                    None
-                }
-            }
+            Self::Json => jsonformat::format(text, Indentation::TwoSpace),
         }
     }
 
@@ -431,16 +420,20 @@ mod tests {
     #[case::json(
         SyntaxType::Json,
         r#"{"hello": "goodbye"}"#,
-        Some("{\n  \"hello\": \"goodbye\"\n}")
+        "{\n  \"hello\": \"goodbye\"\n}\n"
     )]
-    // Invalid JSON => no pretty value available
-    #[case::invalid_json(SyntaxType::Json, r#"{"hello": "goodbye""#, None)]
+    // Invalid JSON is still partially formatted
+    #[case::invalid_json(
+        SyntaxType::Json,
+        r#"{"hello": "goodbye""#,
+        "{\n  \"hello\": \"goodbye\"\n"
+    )]
     fn test_prettyify(
         #[case] content_type: SyntaxType,
         #[case] body: &str,
-        #[case] expected: Option<&str>,
+        #[case] expected: &str,
     ) {
-        assert_eq!(content_type.prettify(body).as_deref(), expected);
+        assert_eq!(content_type.prettify(body), expected);
     }
 
     /// Test that JSON is highlighted, but existing styling is retained

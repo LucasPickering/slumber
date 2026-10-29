@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Reduce UI delay when opening large response bodies
   - Syntax highlighting for large request/response bodies is now run in a background thread. Highlighting can be slow for very large bodies and previously it ran in the main thread, meaning the UI was completely blocking while highlighting. You'll notice that highlighting pops in a little _after_ opening a response now, instead of blocking. Small bodies (less than 100 columns+lines) are still highlighted in the main thread, for minimal delay/overhead.
+  - I switched from `serde_json` to `jsonformat` for the JSON formatting, which is 3-5x faster in my (very limited) benchmarking
 
 ## [5.4.4] - 2026-10-27
 

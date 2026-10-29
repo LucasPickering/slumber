@@ -420,18 +420,17 @@ impl TextState {
                 }
             }
         } else if let Some(text) = body.text() {
-            // Prettify for known syntax types. We _don't_ do this in a
-            // separate task because it's generally very fast. If this is slow
-            // enough that it affects the user, the "large" body size is
-            // probably too low
+            // Prettify for known syntax types. Unlike highlighting, this
+            // *isn't* done in a separate task. It's logistically annoying to
+            // make that work, and I don't think it's worth it. The JSON
+            // formatter is very fast. I haven't noticed a meaningful slowdown
+            // on large bodies because of this. Most of the time is spent on
+            // text splitting/drawing.
             let (text, pretty): (Cow<str>, bool) = if let Some(syntax_type) =
                 syntax_type
                 && prettify
             {
-                syntax_type
-                    .prettify(text)
-                    .map(|body| (Cow::Owned(body), true))
-                    .unwrap_or((Cow::Borrowed(text), false))
+                (Cow::Owned(syntax_type.prettify(text)), true)
             } else {
                 (Cow::Borrowed(text), false)
             };

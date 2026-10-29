@@ -4,7 +4,7 @@ use crate::collection::{Folder, HasId, Recipe, RecipeId};
 use derive_more::From;
 use indexmap::{IndexMap, map::Values};
 use itertools::Itertools;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use slumber_util::yaml::SourceLocation;
 use strum::EnumDiscriminants;
 use thiserror::Error;
@@ -15,7 +15,7 @@ use thiserror::Error;
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
-#[derive(derive_more::Debug, Default, Serialize)]
+#[derive(derive_more::Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RecipeTree {
@@ -225,7 +225,7 @@ impl IntoIterator for RecipeLookupKey {
 }
 
 /// A node in the recipe tree, either a folder or recipe
-#[derive(Debug, From, Serialize, EnumDiscriminants)]
+#[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(untagged)]

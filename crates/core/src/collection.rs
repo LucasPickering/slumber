@@ -337,21 +337,22 @@ requests:
                     name: Some("Profile 1".into()),
                     default: false,
                     data: indexmap! {
-                        "host".into() => "https://httpbin.org".into(),
-                        "user_guid".into() => "abc123".into(),
-                        "username".into() =>
-                            "xX{{ command(['whoami']) | trim() }}Xx".into(),
-                        "null".into() => ValueTemplate::Null,
-                        "bool".into() => true.into(),
-                        "int".into() => 4.into(),
-                        "float".into() => 123.45.into(),
-                        "array".into() => ValueTemplate::Array(
-                            vec![1.into(), 2.into(), "test".into()]
-                        ),
-                        "object".into() => ValueTemplate::Object(vec![
-                            ("a".into(), 1.into()),
-                            ("b".into(), vec![1, 2, 7].into()),
-                        ]),
+                        // TODO
+                        // "host".into() => "https://httpbin.org".into(),
+                        // "user_guid".into() => "abc123".into(),
+                        // "username".into() =>
+                        //     "xX{{ command(['whoami']) | trim() }}Xx".into(),
+                        // "null".into() => ValueTemplate::Null,
+                        // "bool".into() => true.into(),
+                        // "int".into() => 4.into(),
+                        // "float".into() => 123.45.into(),
+                        // "array".into() => ValueTemplate::Array(
+                        //     vec![1.into(), 2.into(), "test".into()]
+                        // ),
+                        // "object".into() => ValueTemplate::Object(vec![
+                        //     ("a".into(), 1.into()),
+                        //     ("b".into(), vec![1, 2, 7].into()),
+                        // ]),
                     },
                     ..Profile::factory(())
                 },

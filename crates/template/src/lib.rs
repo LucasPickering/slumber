@@ -28,6 +28,7 @@ use futures::{Stream, StreamExt, future, stream};
 use itertools::Itertools;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
+use serde::Deserialize;
 use slumber_util::NEW_ISSUE_LINK;
 use std::{fmt::Debug, slice, sync::Arc};
 
@@ -82,6 +83,16 @@ pub struct Template {
         )
     )]
     chunks: Vec<TemplateChunk>,
+}
+
+// TODO
+impl<'de> Deserialize<'de> for Template {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
+    }
 }
 
 impl Template {

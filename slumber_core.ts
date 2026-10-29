@@ -1,44 +1,41 @@
 // TODO doc comments on everything
 
-// TODO is it possible to statically type the available profile fields?
-// TODO rename the primtives - they're not templates
-type TemplatePrimitive = null | boolean | string | number;
-type Complex<T> =
+export type Primitive = null | boolean | string | number;
+export type Complex<T> =
   | T
   | Array<Complex<T>>
   | { [key: string]: Complex<T> };
-type TemplateValue = Complex<TemplatePrimitive>;
-// TODO rename: it's not necessarily a string template
-// TODO dedupe this stuff
-type Template<P extends ProfileData, T = TemplatePrimitive> =
+export type Value = Complex<Primitive>;
+// TODO is Dynamic the best name? maybe rename again
+export type Dynamic<P extends ProfileData, T = Primitive> =
   | T
-  // TODO explain why we don't return Template<T>
+  // TODO explain why we don't return Dynamic<T>
   | ((profile: P) => Complex<T>)
   // TODO explain
-  | Array<Template<P, T>>
-  | { [key: string]: Template<P, T> };
-type BinaryTemplate<P extends ProfileData> = Template<
+  | Array<Dynamic<P, T>>
+  | { [key: string]: Dynamic<P, T> };
+export type DynamicBinary<P extends ProfileData> = Dynamic<
   P,
-  TemplatePrimitive | Bytes
+  Primitive | Bytes
 >;
-type StreamTemplate<P extends ProfileData> = Template<
+export type DynamicStream<P extends ProfileData> = Dynamic<
   P,
-  TemplatePrimitive | Bytes | Stream
+  Primitive | Bytes | Stream
 >;
 
-type Profiles<D extends ProfileData = ProfileData> = {
+export type Profiles<D extends ProfileData = ProfileData> = {
   [id: string]: Profile<D>;
 };
-type ProfileData = { [field: string]: TemplateValue };
+export type ProfileData = { [field: string]: Value };
 
-interface Profile<D extends ProfileData = ProfileData> {
+export interface Profile<D extends ProfileData = ProfileData> {
   name?: string;
   default?: boolean;
   // Only static values are supported here; no templates
   data?: D;
 }
 
-type Recipes<P extends ProfileData = ProfileData> = {
+export type Recipes<P extends ProfileData = ProfileData> = {
   [id: string]: Folder<P> | Recipe<P>;
 };
 
@@ -51,17 +48,17 @@ export interface Recipe<P extends ProfileData = ProfileData> {
   name?: string;
   persist?: boolean;
   method: HttpMethod;
-  url: Template<P>;
-  query?: { [header: string]: Template<P> | Template<P>[] };
-  headers?: { [header: string]: BinaryTemplate<P> };
+  url: Dynamic<P>;
+  query?: { [header: string]: Dynamic<P> | Dynamic<P>[] };
+  headers?: { [header: string]: DynamicBinary<P> };
   body?:
-    | StreamTemplate<P>
-    | { type: "formUrlencoded"; data: { [field: string]: Template<P> } }
-    | { type: "formMultipart"; data: { [field: string]: StreamTemplate<P> } }
-    | { type: "json"; data: Template<P> };
+    | DynamicStream<P>
+    | { type: "formUrlencoded"; data: { [field: string]: Dynamic<P> } }
+    | { type: "formMultipart"; data: { [field: string]: DynamicStream<P> } }
+    | { type: "json"; data: Dynamic<P> };
   authentication?:
-    | { type: "basic"; username: Template<P>; password?: Template<P> }
-    | { type: "bearer"; token: Template<P> };
+    | { type: "basic"; username: Dynamic<P>; password?: Dynamic<P> }
+    | { type: "bearer"; token: Dynamic<P> };
 }
 
 type HttpMethod =
@@ -79,10 +76,17 @@ type HttpMethod =
 // returned
 
 export class Bytes {
-  $type: "bytes";
+  $type: "bytes" = "bytes";
 }
 export class Stream {
-  $type: "stream";
+  $type: "stream" = "stream";
+}
+
+export function folder<D extends ProfileData>(
+  name: string,
+  recipes: Recipes<D>,
+): Folder<D> {
+  return { name, recipes };
 }
 
 export function command(
@@ -97,6 +101,9 @@ export function command(
   command: string[],
   kwargs: CommandKwargs & { output: "stream" },
 ): Stream;
+export function command(...args: unknown[]): unknown {
+  return rustyscript.functions.command(...args);
+}
 interface CommandKwargs {
   cwd?: string;
   output?: "string" | "bytes" | "stream";
@@ -106,10 +113,16 @@ interface CommandKwargs {
 export function file(path: string, kwargs?: { output?: "string" }): string;
 export function file(path: string, kwargs: { output: "bytes" }): Bytes;
 export function file(path: string, kwargs: { output: "stream" }): Stream;
+export function file(...args: unknown[]): unknown {
+  return rustyscript.functions.command(...args);
+}
 
 export function prompt(
   kwargs?: { message?: string; default?: string; sensitive?: boolean },
 ): string;
+export function prompt(...args: unknown[]): unknown {
+  return rustyscript.functions.prompt(...args);
+}
 
 export function response<T>(
   recipeId: string,
@@ -124,6 +137,9 @@ export function response(
   recipeId: string,
   kwargs: ResponseKwargs & { output: "bytes" },
 ): Bytes;
+export function response(...args: unknown[]): unknown {
+  return rustyscript.functions.response(...args);
+}
 interface ResponseKwargs {
   trigger?: "never" | "noHistory" | "always" | string;
   output?: "todo" | "string" | "bytes";
@@ -139,12 +155,21 @@ export function responseHeader(
   header: string,
   kwargs?: ResponseKwargs & { output: "bytes" },
 ): Bytes;
+export function responseHeader(...args: unknown[]): unknown {
+  return rustyscript.functions.responseHeader(...args);
+}
 
 // Generics allows for type restriction when doing operations on the output
-export function select<T extends TemplateValue = TemplateValue>(
+export function select<T extends Value = Value>(
   options: SelectOption<T>[],
   kwargs?: { message?: string },
 ): T;
+export function select(...args: unknown[]): unknown {
+  return rustyscript.functions.select(...args);
+}
 type SelectOption<T> = T | { label: string; value: T };
 
 export function sensitive<T>(value: T): T | string;
+export function sensitive(...args: unknown[]): unknown {
+  return rustyscript.functions.sensitive(...args);
+}

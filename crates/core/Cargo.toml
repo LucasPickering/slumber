@@ -29,6 +29,7 @@ reqwest = {workspace = true, features = ["brotli", "deflate", "form", "gzip", "j
 rstest = {workspace = true, optional = true}
 rusqlite = {version = "0.38.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "2.4.0"
+rustyscript = {version = "0.12.3", default-features = false}
 saphyr = {workspace = true}
 schemars = {workspace = true, features = ["indexmap2"], optional = true}
 serde = {workspace = true, features = ["derive"]}

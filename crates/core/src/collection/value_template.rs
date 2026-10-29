@@ -1,7 +1,7 @@
 use crate::render::TemplateContext;
 use bytes::BytesMut;
 use futures::{FutureExt, TryStreamExt, future};
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use slumber_template::{
     Context, Expression, RenderError, RenderValue, RenderedChunk,
     RenderedChunks, Template, TemplateChunk, TemplateParseError, Value,
@@ -43,6 +43,16 @@ pub enum ValueTemplate {
         schemars(with = "std::collections::HashMap<Template, Self>")
     )]
     Object(Vec<(Template, Self)>),
+}
+
+// TODO
+impl<'de> Deserialize<'de> for ValueTemplate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
+    }
 }
 
 impl ValueTemplate {

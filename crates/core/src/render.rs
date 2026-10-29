@@ -111,7 +111,8 @@ impl TemplateContext {
             .or_else(|| {
                 // Check the current profile
                 let profile = self.current_profile()?;
-                profile.data.get(field.as_str())
+                // profile.data.get(field.as_str())
+                todo!()
             })
             .ok_or_else(|| {
                 FunctionError::UnknownField {

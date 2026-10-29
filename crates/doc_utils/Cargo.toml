@@ -23,11 +23,11 @@ clap = {workspace = true, features = ["derive"]}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mdbook-preprocessor = {version = "0.5", default-features = false}
+quote = {workspace = true}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 serde_yaml = {workspace = true}
 syn = {workspace = true, features = ["extra-traits", "full", "printing"]}
-quote = {workspace = true}
 
 [lints]
 workspace = true

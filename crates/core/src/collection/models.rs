@@ -11,6 +11,7 @@ use derive_more::{Deref, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::header;
+use rustyscript::{Module, Runtime};
 use serde::{Deserialize, Serialize};
 use slumber_template::{Template, TemplateParseError};
 use slumber_util::{
@@ -61,6 +62,32 @@ impl Collection {
         yaml::deserialize_file(path)
             .map_err(CollectionError::from)
             .traced()
+    }
+
+    /// TODO
+    pub fn load_js(path: &Path) -> Result<Self, rustyscript::Error> {
+        let mut runtime = Runtime::new(rustyscript::RuntimeOptions::default())?;
+
+        runtime.register_function("command", |args| {
+            dbg!(args);
+            Ok("test".into())
+        })?;
+
+        let handle = runtime.load_modules(
+            &Module::load(path)?,
+            vec![&Module::load("../../slumber_core.ts")?],
+        )?;
+        // Can't serialize directly to a collection because each field is
+        // declared/exported separately
+        let name = runtime.get_value(Some(&handle), "name")?;
+        let profiles = runtime.get_value(Some(&handle), "profiles")?;
+        let recipes = runtime.get_value(Some(&handle), "recipes")?;
+
+        Ok(Self {
+            name,
+            profiles,
+            recipes,
+        })
     }
 
     /// Load collection from a YAML string
@@ -137,7 +164,7 @@ impl slumber_util::Factory for Collection {
 }
 
 /// Mutually exclusive hot-swappable config group
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(
     feature = "schema",
@@ -155,11 +182,11 @@ pub struct Profile {
     /// the TUI, select this profile by default from the list. Only one profile
     /// in the collection can be marked as default. This is enforced by a
     /// custom deserializer function.
-    #[serde(skip_serializing_if = "cereal::is_false")] // Skip if default
+    #[serde(default, skip_serializing_if = "cereal::is_false")] // Skip if default
     #[cfg_attr(feature = "schema", schemars(default))]
     pub default: bool,
     /// Arbitrary data that can be used in templates
-    pub data: IndexMap<String, ValueTemplate>,
+    pub data: IndexMap<String, serde_json::Value>,
 }
 
 impl Profile {
@@ -225,7 +252,7 @@ impl slumber_util::Factory for ProfileId {
 }
 
 /// A gathering of like-minded recipes and/or folders
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(
     feature = "schema",
@@ -272,7 +299,7 @@ impl slumber_util::Factory for Folder {
 /// A definition of how to build an HTTP request. This is also commonly called
 /// "request" throughout Slumber documentation because that term is more common
 /// and intuitive.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[cfg_attr(
     feature = "schema",
@@ -462,7 +489,7 @@ impl slumber_util::Factory for RecipeId {
 ///
 /// Type parameter allows this to be re-used for post-render purposes (with
 /// `T=String`).
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -474,7 +501,7 @@ pub enum Authentication<T = Template> {
 }
 
 /// A value for a particular query parameter key
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(untagged)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -508,7 +535,7 @@ impl<const N: usize> From<[&'static str; N]> for QueryParameterValue {
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -747,6 +774,21 @@ mod tests {
                 ("param1", 1, &"value1.2".into()),
                 ("param2", 0, &"value2.1".into()),
             ]
+        );
+    }
+
+    /// TODO
+    #[test]
+    fn test_js() {
+        let collection =
+            Collection::load_js(Path::new("../../slumber.ts")).unwrap();
+        assert_eq!(
+            collection,
+            Collection {
+                name: Some("Example".into()),
+                profiles: IndexMap::new(),
+                recipes: RecipeTree::default(),
+            }
         );
     }
 }

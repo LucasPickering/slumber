@@ -2,6 +2,7 @@ import {
   command,
   file,
   Folder,
+  folder,
   Profiles,
   prompt,
   Recipe,
@@ -10,7 +11,7 @@ import {
   select,
   sensitive,
   TemplateValue,
-} from "./slumber.d.ts";
+} from "./slumber_core.ts";
 
 export const name = "Example";
 // TODO write an automatic extractor for this?
@@ -74,14 +75,6 @@ const authenticated: Partial<Recipe> = {
   },
 };
 const weights = [1.2, 3.4, 5.6];
-
-// TODO move this to common code somewhere
-function folder<D extends ProfileData>(
-  name: string,
-  recipes: Recipes<D>,
-): Folder<D> {
-  return { name, recipes };
-}
 
 // TODO how tf do we get profile/recipe source spans?
 export const recipes: Recipes<ProfileData> = {

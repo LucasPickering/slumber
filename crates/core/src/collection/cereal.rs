@@ -124,7 +124,9 @@ impl DeserializeYaml for Profile {
             name: deserializer.get(Field::new("name").opt(), source_map)?,
             default: deserializer
                 .get(Field::new("default").opt(), source_map)?,
-            data: deserializer.get(Field::new("data").opt(), source_map)?,
+            // TODO delete
+            // data: deserializer.get(Field::new("data").opt(), source_map)?,
+            data: IndexMap::new(),
         };
         deserializer.done()?;
         Ok(profile)

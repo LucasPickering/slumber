@@ -52,20 +52,20 @@ async fn test_profile(
     // Put some profile data in the context
     let profile_data = [
         // TODO
-        // ("null", ValueTemplate::Null),
-        // ("bool", true.into()),
-        // ("int", 4.into()), // chosen by fair dice roll
-        // ("float", 123.45.into()),
-        // ("string", "localhost".into()),
-        // ("array", vec![1, 2, 3].into()),
-        // ("object", vec![("{{ string }}", 1), ("raw", 2)].into()),
-        // ("int_deferred", "{{ int }}".into()), // Unpacked into an int
-        // ("file", "{{ file('first.txt') }}".into()),
-        // ("array_stream", vec!["{{ file }}"].into()),
+        ("null", Value::Null),
+        ("bool", true.into()),
+        ("int", 4.into()), // chosen by fair dice roll
+        ("float", 123.45.into()),
+        ("string", "localhost".into()),
+        ("array", vec![1, 2, 3].into()),
+        ("object", vec![("{{ string }}", 1), ("raw", 2)].into()),
+        ("int_deferred", "{{ int }}".into()), // Unpacked into an int
+        ("file", "{{ file('first.txt') }}".into()),
+        ("array_stream", vec!["{{ file }}"].into()),
     ]
     .into_iter()
-    .map(|(k, v): (&str, _)| (k.to_owned(), v))
-    .collect::<IndexMap<String, serde_json::Value>>();
+    .map(|(k, v)| (k.to_owned(), v))
+    .collect::<IndexMap<String, Value>>();
     let profile = Profile {
         data: profile_data,
         ..Profile::factory(())

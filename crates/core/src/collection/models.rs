@@ -11,9 +11,9 @@ use derive_more::{Deref, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::header;
-use rustyscript::{Module, Runtime};
-use serde::{Deserialize, Serialize};
-use slumber_template::{Template, TemplateParseError};
+use rustyscript::{Module, Runtime, js_value::Function};
+use serde::{Deserialize, Serialize, Serializer};
+use slumber_template::{Template, TemplateParseError, Value};
 use slumber_util::{
     ResultTraced, doc_link,
     yaml::{self, SourceLocation, YamlError, YamlErrorKind},
@@ -186,7 +186,7 @@ pub struct Profile {
     #[cfg_attr(feature = "schema", schemars(default))]
     pub default: bool,
     /// Arbitrary data that can be used in templates
-    pub data: IndexMap<String, serde_json::Value>,
+    pub data: IndexMap<String, Value>,
 }
 
 impl Profile {
@@ -542,18 +542,18 @@ impl<const N: usize> From<[&'static str; N]> for QueryParameterValue {
 pub enum RecipeBody {
     /// `application/json` body. Value can be any JSON value, with strings being
     /// interpreted as templates
-    Json(ValueTemplate),
+    Json(Dynamic), // TODO support nested functions within an arr/obj
     /// `application/x-www-form-urlencoded` body. Value is a mapping of form
     /// field name to value. Values are templates while field names are not.
     /// Values must render to strings.
-    FormUrlencoded(IndexMap<String, Template>),
+    FormUrlencoded(IndexMap<String, Dynamic>),
     /// `multipart/form-data` body. Value is a mapping of form field
     /// name to value. Values are templates while field names are not. Values
     /// can render to any bytes.
-    FormMultipart(IndexMap<String, Template>),
+    FormMultipart(IndexMap<String, DynamicStream>),
     /// Plain body, but the bytes will be streamed instead of being loaded
     /// into memory
-    Stream(Template),
+    Stream(DynamicStream),
     /// Plain string/bytes body. Must be the last variant to support untagged.
     /// This captures any value that doesn't fit one of the above variants.
     #[serde(untagged)]
@@ -564,14 +564,17 @@ impl RecipeBody {
     /// Build a JSON body, parsing the internal strings as templates.
     /// Useful for importing from external formats.
     pub fn json(value: serde_json::Value) -> Result<Self, TemplateParseError> {
-        Ok(Self::Json(value.try_into()?))
+        Ok(Self::Json(value.into()))
     }
 
+    /*
+    TODO
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
     pub fn untemplated_json(value: serde_json::Value) -> Self {
         Self::Json(ValueTemplate::from_raw_json(value))
     }
+    */
 
     /// Get the anticipated MIME type that will appear in the `Content-Type`
     /// header of a request containing this body. This is *not* necessarily
@@ -698,6 +701,38 @@ impl StdError for YamlCollectionError {
     }
 }
 
+/// TODO
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Dynamic<V = Value> {
+    /// TODO
+    Value(V),
+    /// TODO
+    Function(#[serde(serialize_with = "serialize_fn")] Function),
+}
+
+impl From<serde_json::Value> for Dynamic {
+    fn from(value: serde_json::Value) -> Self {
+        Self::Value(value.into())
+    }
+}
+
+fn serialize_fn<S: Serializer>(
+    _value: &Function,
+    _ser: S,
+) -> Result<S::Ok, S::Error> {
+    // TODO this isn't really possible... can we just eliminate all the
+    // Serialize impls? maybe collections don't need to be writable at all
+    // anymore?
+    todo!()
+}
+
+/// TODO
+pub type DynamicBinary = Dynamic; // TODO include bytes
+
+/// TODO
+pub type DynamicStream = Dynamic; // TODO include bytes+stream
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -708,6 +743,8 @@ mod tests {
 
     #[rstest]
     #[case::none(None, None, None)]
+    /*
+    TODO
     #[case::header(
         // Header takes precedence over body
         Some("text/plain"),
@@ -725,6 +762,7 @@ mod tests {
         Some(RecipeBody::untemplated_json("hi!".into())),
         Some("application/json")
     )]
+    */
     #[case::unknown_body(
         None,
         Some(RecipeBody::Raw("hi!".into())),

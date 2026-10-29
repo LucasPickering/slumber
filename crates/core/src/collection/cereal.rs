@@ -365,18 +365,18 @@ impl DeserializeYaml for RecipeBody {
         if yaml.data.is_mapping() {
             deserialize_enum! {
                 yaml,
-                "json" => |yaml| {
-                    Ok(Self::Json(deserialize_data(yaml, source_map)?))
-                },
-                "form_urlencoded" => |yaml| {
-                    Ok(Self::FormUrlencoded(deserialize_data(yaml, source_map)?))
-                },
-                "form_multipart" => |yaml| {
-                    Ok(Self::FormMultipart(deserialize_data(yaml, source_map)?))
-                },
-                "stream" => |yaml| {
-                    Ok(Self::Stream(deserialize_data(yaml, source_map)?))
-                },
+                // "json" => |yaml| {
+                //     Ok(Self::Json(deserialize_data(yaml, source_map)?))
+                // },
+                // "form_urlencoded" => |yaml| {
+                //     Ok(Self::FormUrlencoded(deserialize_data(yaml, source_map)?))
+                // },
+                // "form_multipart" => |yaml| {
+                //     Ok(Self::FormMultipart(deserialize_data(yaml, source_map)?))
+                // },
+                // "stream" => |yaml| {
+                //     Ok(Self::Stream(deserialize_data(yaml, source_map)?))
+                // },
             }
         } else {
             // Otherwise it's a raw body - deserialize as a template
@@ -591,8 +591,8 @@ mod tests {
     )]
     #[case::form_urlencoded(
         RecipeBody::FormUrlencoded(indexmap! {
-            "username".into() => "{{ username }}".into(),
-            "password".into() => "{{ prompt('Password', sensitive=true) }}".into(),
+            // "username".into() => "{{ username }}".into(),
+            // "password".into() => "{{ prompt('Password', sensitive=true) }}".into(),
         }),
         yaml_enum("form_urlencoded", [("data", yaml_mapping([
             ("username", "{{ username }}"),

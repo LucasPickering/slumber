@@ -64,14 +64,6 @@ slumber_macros = {path = "./crates/macros", version = "5.4.4"}
 slumber_template = {path = "./crates/template", version = "5.4.4"}
 slumber_tui = {path = "./crates/tui", version = "5.4.4"}
 slumber_util = {path = "./crates/util", version = "5.4.4"}
-slumber_console = {path = "./crates/console", version = "5.4.4"}
-slumber_core = {path = "./crates/core", version = "5.4.4"}
-slumber_import = {path = "./crates/import", version = "5.4.4"}
-slumber_macros = {path = "./crates/macros", version = "5.4.4"}
-slumber_mock = {path = "./crates/mock", version = "0.1.2"}
-slumber_template = {path = "./crates/template", version = "5.4.4"}
-slumber_tui = {path = "./crates/tui", version = "5.4.4"}
-slumber_util = {path = "./crates/util", version = "5.4.4"}
 strum = {version = "0.27.0", default-features = false}
 syn = "2.0.101"
 terminput = "0.5.3"

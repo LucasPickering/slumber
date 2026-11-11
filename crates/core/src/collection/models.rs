@@ -6,14 +6,12 @@ use crate::{
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::HttpMethod,
-    render::TemplateContext,
+    render::{self, TemplateContext},
 };
 use derive_more::{Deref, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
-use petitscript::{
-    Engine, Exports, NativeModuleName, Source, Value, error::ValueError,
-};
+use petitscript::{Engine, NativeModuleName, Source, Value, error::ValueError};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_util::yaml::SourceLocation;
@@ -65,11 +63,9 @@ impl Collection {
         fn init_engine() -> Engine {
             // TODO module name is clunky, shouldn't have to parse it
             let module_name: NativeModuleName = "slumber".parse().unwrap();
-            let mut module = Exports::default();
-            module.export_fn("command", |_, args: Vec<Value>| dbg!(args));
             Engine::builder()
                 .with_stdlib()
-                .with_module(module_name, module)
+                .with_module(module_name, render::module())
                 .build()
         }
 

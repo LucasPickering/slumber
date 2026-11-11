@@ -28,6 +28,7 @@ use derive_more::derive::Display;
 use futures::{StreamExt, TryFutureExt};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use petitscript::{Exports, NativeModuleName, Process};
 use serde::Deserialize;
 use slumber_template::{
     Arguments, Context, Identifier, RenderError, StreamSource, Value,
@@ -37,6 +38,23 @@ use std::{
     fmt::Debug, io, iter, path::PathBuf, process::ExitStatus, sync::Arc,
 };
 use thiserror::Error;
+
+/// Build the `slumber` PetitScript module
+pub fn module() -> Exports {
+    let mut module = Exports::default();
+    // Register all functions
+    module.export_fn("base64", functions::base64);
+    module.export_fn("command", functions::command);
+    module.export_fn("debug", functions::debug);
+    module.export_fn("env", functions::env);
+    module.export_fn("file", functions::file);
+    module.export_fn("prompt", functions::prompt);
+    module.export_fn("response", functions::response);
+    module.export_fn("response_header", functions::response_header);
+    module.export_fn("select", functions::select);
+    module.export_fn("sensitive", functions::sensitive);
+    module
+}
 
 /// A little container struct for all the data that the user can access via
 /// templating. Unfortunately this has to own all data so templating can be
@@ -319,11 +337,6 @@ impl Context<ValueStream> for TemplateContext {
             "response_header" => functions::response_header(arguments).await,
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
-            "slice" => functions::slice(arguments),
-            "split" => functions::split(arguments),
-            "string" => functions::string(arguments),
-            "trim" => functions::trim(arguments),
-            "upper" => functions::upper(arguments),
             _ => Err(RenderError::FunctionUnknown),
         }
     }
@@ -610,6 +623,22 @@ pub enum FunctionError {
 impl From<FunctionError> for RenderError {
     fn from(error: FunctionError) -> Self {
         RenderError::other(error)
+    }
+}
+
+/// Extension trait for PetitScript's [Process]
+trait ProcessExt {
+    /// Fetch template context from the process's app data
+    ///
+    /// Return a [FunctionError] if the context isn't present. This means a
+    /// template function such as `command()` was called outside a template
+    /// context (e.g. in a module root). Not allowed!
+    fn context(&self) -> Result<&TemplateContext, FunctionError>;
+}
+
+impl ProcessExt for Process {
+    fn context(&self) -> Result<&TemplateContext, FunctionError> {
+        self.app_data::<TemplateContext>().map_err(|_| todo!())
     }
 }
 

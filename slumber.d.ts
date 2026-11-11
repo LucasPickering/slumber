@@ -4,7 +4,8 @@ export type Primitive = null | boolean | string | number;
 export type Complex<T> =
   | T
   | Array<Complex<T>>
-  | { [key: string]: Complex<T> };
+  | { [key: string]: Complex<T> }
+  | Promise<Complex<T>>;
 export type Value = Complex<Primitive>;
 // TODO is Dynamic the best name? maybe rename again
 export type Dynamic<P extends ProfileData, T = Primitive> =
@@ -81,15 +82,15 @@ export type Stream = { $type: "stream" };
 export function command(
   command: string[],
   kwargs?: CommandKwargs & { output?: "string" },
-): string;
+): Promise<string>;
 export function command(
   command: string[],
   kwargs: CommandKwargs & { output: "bytes" },
-): Bytes;
+): Promise<Bytes>;
 export function command(
   command: string[],
   kwargs: CommandKwargs & { output: "stream" },
-): Stream;
+): Promise<Stream>;
 
 interface CommandKwargs {
   cwd?: string;
@@ -97,27 +98,33 @@ interface CommandKwargs {
   stdin?: string | Bytes;
 }
 
-export function file(path: string, kwargs?: { output?: "string" }): string;
-export function file(path: string, kwargs: { output: "bytes" }): Bytes;
-export function file(path: string, kwargs: { output: "stream" }): Stream;
+export function file(
+  path: string,
+  kwargs?: { output?: "string" },
+): Promise<string>;
+export function file(path: string, kwargs: { output: "bytes" }): Promise<Bytes>;
+export function file(
+  path: string,
+  kwargs: { output: "stream" },
+): Promise<Stream>;
 
 export function prompt(
   kwargs?: { message?: string; default?: string; sensitive?: boolean },
-): string;
+): Promise<string>;
 
 export function response<T>(
   recipeId: string,
   kwargs?: ResponseKwargs & { output?: "todo" },
-): T;
+): Promise<T>;
 // When not decoding, the response can bytes or UTF-8 string
 export function response(
   recipeId: string,
   kwargs: ResponseKwargs & { output: "string" },
-): string;
+): Promise<string>;
 export function response(
   recipeId: string,
   kwargs: ResponseKwargs & { output: "bytes" },
-): Bytes;
+): Promise<Bytes>;
 interface ResponseKwargs {
   trigger?: "never" | "noHistory" | "always" | string;
   output?: "todo" | "string" | "bytes";
@@ -127,18 +134,18 @@ export function responseHeader(
   recipeId: string,
   header: string,
   kwargs?: ResponseKwargs & { output?: "string" },
-): string;
+): Promise<string>;
 export function responseHeader(
   recipeId: string,
   header: string,
   kwargs?: ResponseKwargs & { output: "bytes" },
-): Bytes;
+): Promise<Bytes>;
 
 // Generics allows for type restriction when doing operations on the output
 export function select<T extends Value = Value>(
   options: SelectOption<T>[],
   kwargs?: { message?: string },
-): T;
+): Promise<T>;
 type SelectOption<T> = T | { label: string; value: T };
 
 export function sensitive<T>(value: T): T | string;

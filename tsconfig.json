@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "noLib": true,
+    "types": ["../petitscript/index.d.ts"],
+    "paths": {
+      "slumber": ["./slumber.d.ts"]
+    }
+  }
+}

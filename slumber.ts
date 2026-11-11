@@ -56,13 +56,14 @@ function folder<D extends ProfileData>(
   return { name, recipes };
 }
 
-function getUsername(): string {
-  const username = sensitive(command(["whoami"]).trim());
+async function getUsername(): Promise<string> {
+  const username = sensitive((await command(["whoami"])).trim());
   return `xX${username}Xx`;
 }
 
-function getFishId(): number {
-  const options = response<Fish[]>("list_fish").map((fish) => ({
+async function getFishId(): Promise<number> {
+  const fish = await response<Fish[]>("list_fish");
+  const options = fish.map((fish) => ({
     label: fish.name,
     value: fish.id,
   }));
@@ -78,7 +79,8 @@ const authenticated: Partial<Recipe> = {
   ...baseRecipe,
   authentication: {
     type: "bearer",
-    token: () => response<{ id: string }>("new_session", { trigger: "1h" }).id,
+    token: async () =>
+      (await response<{ id: string }>("new_session", { trigger: "1h" })).id,
   },
 };
 const weights = [1.2, 3.4, 5.6];
@@ -107,13 +109,13 @@ export const recipes: Recipes<ProfileData> = {
       method: "GET",
       url: ({ host }) => `${host}/fish/${getFishId()}`,
       query: {
-        select: () =>
+        select: async () =>
           select([
             "foo",
             "bar",
             "baz",
             "a really really really really long option",
-            getUsername(),
+            await getUsername(),
           ]),
       },
     },
@@ -128,7 +130,8 @@ export const recipes: Recipes<ProfileData> = {
           name: () => prompt({ message: "Name", default: "Fishy" }),
           species: () =>
             select(["Sunfish", "baby fuckin wheel"], { message: "Species" }),
-          age: () => parseInt(prompt({ message: "Age", default: "3" })),
+          age: async () =>
+            parseInt(await prompt({ message: "Age", default: "3" })),
           weight_kg: () => select(weights, { message: "Weight (kg)" }),
         },
       },
@@ -230,12 +233,12 @@ export const recipes: Recipes<ProfileData> = {
       body: {
         type: "formMultipart",
         data: {
-          image: () => {
-            const path = prompt({
+          image: async () => {
+            const path = await prompt({
               message: "Path",
               default: "static/slumber.png",
             });
-            return file(path, { output: "bytes" });
+            return await file(path, { output: "bytes" });
           },
         },
       },

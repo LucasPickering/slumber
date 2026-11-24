@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 <!-- ANCHOR: changelog -->
 
+### Changed
+
+- Update to Rust 1.100
+
 ### Fixed
 
 - Reduce UI delay when opening large response bodies

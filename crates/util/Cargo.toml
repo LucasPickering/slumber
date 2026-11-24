@@ -23,7 +23,7 @@ path-clean = "1.0.1"
 rstest = {workspace = true, optional = true}
 saphyr = {workspace = true}
 serde = {workspace = true}
-serde_yaml = {workspace = true}
+serde_yaml = {workspace = true, optional = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}
 tracing-subscriber = {workspace = true, features = ["ansi", "fmt", "registry"]}
@@ -38,7 +38,7 @@ serde = {workspace = true, features = ["derive"]}
 uuid = {workspace = true, features = ["v4"]}
 
 [features]
-test = ["dep:rstest"]
+test = ["dep:rstest", "dep:serde_yaml"]
 # Enable tokio-console tracing
 tokio_tracing = ["dep:console-subscriber"]
 
